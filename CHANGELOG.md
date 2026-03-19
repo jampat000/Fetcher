@@ -6,10 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-03-21
+
 ### Added
-- Single `VERSION` file for app + installer; Git tag `v*` overrides in CI.
-- `CHANGELOG.md`, `LICENSE` (MIT), Dependabot, CI test workflow.
-- Optional Authenticode signing script and docs.
+- `VERSION` file for app, installer metadata, and Web UI sidebar version.
+- `LICENSE` (MIT), `CHANGELOG.md`, Dependabot (pip + Actions), `.github/release.yml`.
+- CI **Test** workflow (`pytest` on Ubuntu); optional installer **Authenticode** signing (`scripts/sign-installer.ps1`).
+- `RunOnceId` on Inno `[UninstallRun]` entries.
+
+### Changed
+- README: download link, install/first-run, signing and CI docs.
+- Installer reads version from `-Version`, `GITHUB_REF_NAME` (`v*`), or `VERSION`.
 
 ## [1.0.4] - 2025-03-20
 
@@ -23,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - PyInstaller/Inno CI failure: `grabby.spec` was gitignored and missing on runners.
 
-[Unreleased]: https://github.com/jampat000/Grabby/compare/v1.0.4...HEAD
+[Unreleased]: https://github.com/jampat000/Grabby/compare/v1.0.5...HEAD
+[1.0.5]: https://github.com/jampat000/Grabby/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/jampat000/Grabby/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/jampat000/Grabby/releases/tag/v1.0.3
