@@ -4,6 +4,7 @@ import asyncio
 from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.schedulers.base import SchedulerNotRunningError
 from sqlalchemy import select
 
 from app.db import SessionLocal
@@ -57,5 +58,12 @@ class ServiceScheduler:
         )
 
     def shutdown(self) -> None:
-        self._sched.shutdown(wait=False)
+        if not self._sched.running:
+            return
+        try:
+            # Prefer waiting for active jobs to finish to avoid noisy cancellation traces.
+            self._sched.shutdown(wait=True)
+        except (RuntimeError, SchedulerNotRunningError):
+            # Can happen during process teardown when the event loop is gone.
+            pass
 

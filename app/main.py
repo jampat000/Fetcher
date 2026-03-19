@@ -187,6 +187,11 @@ def _looks_like_url(raw: str) -> bool:
     return v.startswith("http://") or v.startswith("https://")
 
 
+@app.get("/healthz")
+async def healthz() -> dict[str, str]:
+    return {"status": "ok", "app": APP_NAME}
+
+
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await _get_or_create_settings(session)
