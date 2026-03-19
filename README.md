@@ -69,3 +69,20 @@ cd C:\Users\User\grabby
 
 Output: `installer\output\GrabbySetup.exe`
 
+## CI (GitHub Actions)
+
+On **push** (any branch), **pull requests**, and **manual run** (`workflow_dispatch`), the workflow **Build installer** runs on `windows-latest`: PyInstaller bundle → WinSW → Inno Setup → **`installer/output/GrabbySetup.exe`**.
+
+- Open **Actions** → latest run → **Artifacts** → download **GrabbySetup** (good for PR / branch review before merge).
+- Pushing a **tag** matching `v*` (e.g. `v1.2.3`) **prepares** a release: the build finishes and uploads the artifact, then the **release** job **pauses** until someone approves it (see below). After approval, it creates/updates the **GitHub Release** and attaches `GrabbySetup.exe` (release notes are auto-generated).
+
+### Approve before publishing a release
+
+So you can inspect the workflow / artifact before anything goes on the **Releases** page:
+
+1. Repo **Settings** → **Environments** → create **`release`** (or open it after the first tagged run).
+2. Under **Environment protection rules**, add **Required reviewers** (and optional wait timer).
+3. Push tag `v*`: when the release job starts, GitHub shows **Review deployments**; approve there to publish.
+
+This does **not** block `git push` itself—only the **release** step on GitHub. To confirm locally before any push, use your usual branch/PR review; the PR build artifact is the installer for that commit.
+

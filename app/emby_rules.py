@@ -58,6 +58,76 @@ def movie_matches_selected_genres(item: dict, selected_genres: set[str]) -> bool
     return bool(item_genres & selected_genres)
 
 
+def tv_matches_selected_genres(item: dict, selected_genres: set[str]) -> bool:
+    if not selected_genres:
+        return True
+    genres = item.get("Genres") if isinstance(item.get("Genres"), list) else []
+    item_genres = {str(g).strip().lower() for g in genres if str(g).strip()}
+    return bool(item_genres & selected_genres)
+
+
+def parse_movie_people_phrases(raw: str | None) -> list[str]:
+    """Lowercased name phrases from comma- or newline-separated input."""
+    if not raw or not str(raw).strip():
+        return []
+    out: list[str] = []
+    for line in str(raw).replace("\r", "").split("\n"):
+        for chunk in line.split(","):
+            v = chunk.strip().lower()
+            if v:
+                out.append(v)
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for p in out:
+        if p not in seen:
+            seen.add(p)
+            uniq.append(p)
+    return uniq
+
+
+KNOWN_MOVIE_PEOPLE_CREDIT_TYPES = frozenset({"actor", "director", "writer", "producer", "gueststar"})
+
+
+def parse_movie_people_credit_types_csv(raw: str | None) -> frozenset[str]:
+    """Emby People.Type values (lowercase). Default cast-only if unset or invalid."""
+    if not raw or not str(raw).strip():
+        return frozenset({"actor"})
+    out: set[str] = set()
+    for chunk in str(raw).split(","):
+        v = chunk.strip().lower()
+        if v in KNOWN_MOVIE_PEOPLE_CREDIT_TYPES:
+            out.add(v)
+    return frozenset(out) if out else frozenset({"actor"})
+
+
+def movie_matches_people(
+    item: dict,
+    phrases: list[str],
+    *,
+    credit_types: frozenset[str] | None = None,
+) -> bool:
+    """Match name phrases against Emby People on a Movie or Series item (same field shape)."""
+    if not phrases:
+        return True
+    ct = credit_types if credit_types is not None else frozenset({"actor"})
+    people = item.get("People") if isinstance(item.get("People"), list) else []
+    names_lower: list[str] = []
+    for p in people:
+        if not isinstance(p, dict):
+            continue
+        ptype = str(p.get("Type", "")).strip().lower()
+        if ptype not in ct:
+            continue
+        n = str(p.get("Name", "")).strip().lower()
+        if n:
+            names_lower.append(n)
+    for phrase in phrases:
+        for n in names_lower:
+            if phrase in n:
+                return True
+    return False
+
+
 def evaluate_candidate(
     item: dict,
     *,

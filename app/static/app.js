@@ -25,6 +25,118 @@ function bindRevealButtons() {
   });
 }
 
+function scrollMainEl() {
+  return document.querySelector("main.main");
+}
+
+/** Same logical page whether or not URL has a trailing slash. */
+function normPathname(path) {
+  if (!path || path === "/") return path || "/";
+  return path.endsWith("/") ? path.slice(0, -1) : path;
+}
+
+function grabScrollY() {
+  const main = scrollMainEl();
+  return main ? main.scrollTop : window.scrollY;
+}
+
+function applyScrollY(y) {
+  const top = Math.max(0, Number(y) || 0);
+  const m = scrollMainEl();
+  if (m) m.scrollTop = top;
+  else window.scrollTo(0, top);
+}
+
+function persistScrollForAfterRedirect() {
+  try {
+    sessionStorage.setItem(
+      "grabby_restore_scroll",
+      JSON.stringify({
+        path: normPathname(window.location.pathname),
+        y: grabScrollY(),
+      }),
+    );
+  } catch (_) {
+    /* ignore quota / private mode */
+  }
+}
+
+function shouldRestoreAfterRedirect() {
+  const sp = new URLSearchParams(window.location.search);
+  return (
+    sp.get("saved") === "1" ||
+    sp.get("test") === "sonarr_ok" ||
+    sp.get("test") === "sonarr_fail" ||
+    sp.get("test") === "radarr_ok" ||
+    sp.get("test") === "radarr_fail" ||
+    sp.get("test") === "emby_ok" ||
+    sp.get("test") === "emby_fail"
+  );
+}
+
+/** Keeps main-column scroll across redirect + late layout (pageshow / fonts). */
+let grabbyPendingMainScroll = null;
+
+/** Remember scroll when saving (303 redirect reloads at top). */
+function bindScrollRestoreOnFormSubmit() {
+  document.querySelectorAll('form[method="post"]').forEach((form) => {
+    form.addEventListener("submit", persistScrollForAfterRedirect, true);
+    form
+      .querySelectorAll('button[type="submit"], button:not([type]), input[type="submit"]')
+      .forEach((el) => {
+        el.addEventListener("click", persistScrollForAfterRedirect, true);
+      });
+  });
+}
+
+function restoreScrollAfterFormRedirect() {
+  try {
+    if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+  } catch (_) {
+    /* ignore */
+  }
+
+  const fromReturn = shouldRestoreAfterRedirect();
+  const raw = sessionStorage.getItem("grabby_restore_scroll");
+
+  if (!fromReturn) {
+    if (raw) sessionStorage.removeItem("grabby_restore_scroll");
+    grabbyPendingMainScroll = null;
+    return;
+  }
+
+  if (!raw) {
+    if (grabbyPendingMainScroll != null) applyScrollY(grabbyPendingMainScroll);
+    return;
+  }
+
+  sessionStorage.removeItem("grabby_restore_scroll");
+
+  let path;
+  let y;
+  try {
+    const o = JSON.parse(raw);
+    path = normPathname(o.path);
+    y = Math.max(0, Number(o.y) || 0);
+  } catch (_) {
+    return;
+  }
+  if (path !== normPathname(window.location.pathname)) return;
+
+  grabbyPendingMainScroll = y;
+  const apply = () => applyScrollY(grabbyPendingMainScroll);
+  requestAnimationFrame(apply);
+  [0, 50, 100, 200, 400, 600].forEach((ms) => window.setTimeout(apply, ms));
+  window.setTimeout(() => {
+    grabbyPendingMainScroll = null;
+  }, 3000);
+}
+
+function reapplyPendingScrollAfterPageshow() {
+  if (!shouldRestoreAfterRedirect() || grabbyPendingMainScroll == null) return;
+  applyScrollY(grabbyPendingMainScroll);
+}
+
 function bindDaysPickers() {
   const dayOrder = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   document.querySelectorAll("[data-days-picker]").forEach((picker) => {
@@ -64,6 +176,8 @@ function bindDaysPickers() {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
+  bindScrollRestoreOnFormSubmit();
+  restoreScrollAfterFormRedirect();
   bindRevealButtons();
   bindDaysPickers();
   if (qs("saved") === "1") showToast("Settings saved");
@@ -75,4 +189,6 @@ window.addEventListener("DOMContentLoaded", () => {
   if (qs("test") === "emby_ok") showToast("Emby OK");
   if (qs("test") === "emby_fail") showToast("Emby failed");
 });
+
+window.addEventListener("pageshow", reapplyPendingScrollAfterPageshow);
 

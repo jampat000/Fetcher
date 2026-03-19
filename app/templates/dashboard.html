@@ -90,8 +90,12 @@
           </div>
 
           <div class="section small" style="margin-top:10px;">
-            <strong>Schedule:</strong> {{ "Enabled" if settings.emby_schedule_enabled else "Disabled" }} |
-            <strong>Scan/Delete limits:</strong> {{ settings.emby_max_items_scan }} / {{ settings.emby_max_deletes_per_run }}
+            <strong>Schedule:</strong>
+            <span class="rule-state {% if settings.emby_schedule_enabled %}rule-state-enabled{% else %}rule-state-disabled{% endif %}">
+              {{ "Enabled" if settings.emby_schedule_enabled else "Disabled" }}
+            </span>
+            |
+            <strong>Scan/Delete limits:</strong> {% if settings.emby_max_items_scan <= 0 %}Entire library{% else %}{{ settings.emby_max_items_scan }}{% endif %} / {{ settings.emby_max_deletes_per_run }}
           </div>
 
           <div class="section small" style="margin-top:10px;">
@@ -100,10 +104,34 @@
                 <strong>TV Rules</strong>
                 <div style="margin-top:6px;">
                   <span class="preview-reason preview-reason-tv">
-                    Watched delete {{ "Enabled" if settings.emby_rule_tv_delete_watched else "Disabled" }}
+                    Watched delete
+                    <span class="rule-state {% if settings.emby_rule_tv_delete_watched %}rule-state-enabled{% else %}rule-state-disabled{% endif %}">
+                      {{ "Enabled" if settings.emby_rule_tv_delete_watched else "Disabled" }}
+                    </span>
                   </span>
                   <span class="preview-reason preview-reason-tv">
-                    Unwatched {% if settings.emby_rule_tv_unwatched_days > 0 %}{{ settings.emby_rule_tv_unwatched_days }}d{% else %}Disabled{% endif %}
+                    Unwatched
+                    {% if settings.emby_rule_tv_unwatched_days > 0 %}
+                      <span class="rule-state rule-state-enabled">{{ settings.emby_rule_tv_unwatched_days }}d</span>
+                    {% else %}
+                      <span class="rule-state rule-state-disabled">Disabled</span>
+                    {% endif %}
+                  </span>
+                  <span class="preview-reason preview-reason-tv">
+                    Genres
+                    {% if selected_tv_genres %}
+                      <span class="rule-state rule-state-enabled">{{ selected_tv_genres | length }} selected</span>
+                    {% else %}
+                      <span class="rule-state rule-state-disabled">All</span>
+                    {% endif %}
+                  </span>
+                  <span class="preview-reason preview-reason-tv">
+                    People
+                    {% if tv_people_phrases %}
+                      <span class="rule-state rule-state-enabled">{{ tv_people_phrases | length }} name{{ "s" if tv_people_phrases | length != 1 else "" }} ({{ tv_people_credit_summary }})</span>
+                    {% else %}
+                      <span class="rule-state rule-state-disabled">Any</span>
+                    {% endif %}
                   </span>
                 </div>
               </div>
@@ -111,10 +139,36 @@
                 <strong>Movie Rules</strong>
                 <div style="margin-top:6px;">
                   <span class="preview-reason preview-reason-movie">
-                    Rating {% if settings.emby_rule_movie_watched_rating_below > 0 %}&lt; {{ settings.emby_rule_movie_watched_rating_below }}{% else %}Disabled{% endif %}
+                    Rating
+                    {% if settings.emby_rule_movie_watched_rating_below > 0 %}
+                      <span class="rule-state rule-state-enabled">&lt; {{ settings.emby_rule_movie_watched_rating_below }}</span>
+                    {% else %}
+                      <span class="rule-state rule-state-disabled">Disabled</span>
+                    {% endif %}
                   </span>
                   <span class="preview-reason preview-reason-movie">
-                    Unwatched {% if settings.emby_rule_movie_unwatched_days > 0 %}{{ settings.emby_rule_movie_unwatched_days }}d{% else %}Disabled{% endif %}
+                    Unwatched
+                    {% if settings.emby_rule_movie_unwatched_days > 0 %}
+                      <span class="rule-state rule-state-enabled">{{ settings.emby_rule_movie_unwatched_days }}d</span>
+                    {% else %}
+                      <span class="rule-state rule-state-disabled">Disabled</span>
+                    {% endif %}
+                  </span>
+                  <span class="preview-reason preview-reason-movie">
+                    Genres
+                    {% if selected_movie_genres %}
+                      <span class="rule-state rule-state-enabled">{{ selected_movie_genres | length }} selected</span>
+                    {% else %}
+                      <span class="rule-state rule-state-disabled">All</span>
+                    {% endif %}
+                  </span>
+                  <span class="preview-reason preview-reason-movie">
+                    People
+                    {% if movie_people_phrases %}
+                      <span class="rule-state rule-state-enabled">{{ movie_people_phrases | length }} name{{ "s" if movie_people_phrases | length != 1 else "" }} ({{ movie_people_credit_summary }})</span>
+                    {% else %}
+                      <span class="rule-state rule-state-disabled">Any</span>
+                    {% endif %}
                   </span>
                 </div>
               </div>
@@ -145,7 +199,7 @@
     </div>
 
     <div class="section">
-      <h2>What was grabbed</h2>
+      <h2>Activity</h2>
       <div class="hint">Recent grabs with tags. Full list on the Grabbed tab.</div>
       {% if activity %}
       <div class="activity-list">

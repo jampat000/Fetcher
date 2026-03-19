@@ -4,6 +4,9 @@ from dataclasses import dataclass
 
 import httpx
 
+# Emby Items API: fetch in pages so large libraries can exceed a single Limit cap.
+_DEFAULT_ITEMS_PAGE_SIZE = 2000
+
 
 @dataclass(frozen=True)
 class EmbyConfig:
@@ -12,7 +15,7 @@ class EmbyConfig:
 
 
 class EmbyClient:
-    def __init__(self, cfg: EmbyConfig, *, timeout_s: float = 30.0) -> None:
+    def __init__(self, cfg: EmbyConfig, *, timeout_s: float = 300.0) -> None:
         self._client = httpx.AsyncClient(
             base_url=cfg.base_url.rstrip("/"),
             # Emby installs vary in how they validate API credentials; send
@@ -41,22 +44,41 @@ class EmbyClient:
         return data if isinstance(data, list) else []
 
     async def items_for_user(self, *, user_id: str, limit: int) -> list[dict]:
-        # Pull only top-level Movie and Series so we do not delete episodes directly.
-        # Recursive scans libraries and returns metadata including UserData.
-        params = {
-            "Recursive": "true",
-            "IncludeItemTypes": "Movie,Series",
-            "Fields": "UserData,DateCreated,PremiereDate,DateLastMediaAdded",
-            "SortBy": "DateCreated",
-            "SortOrder": "Descending",
-            "StartIndex": "0",
-            "Limit": str(max(1, min(5000, int(limit)))),
-        }
-        r = await self._client.get(f"/Users/{user_id}/Items", params=params)
-        r.raise_for_status()
-        payload = r.json()
-        items = payload.get("Items") if isinstance(payload, dict) else None
-        return items if isinstance(items, list) else []
+        """Return Movies and Series for the user, newest DateCreated first.
+
+        * ``limit`` > 0: return at most that many items (paged API calls).
+        * ``limit`` <= 0: **entire library** — keep paging until Emby returns no more items.
+        """
+        unlimited = int(limit) <= 0
+        max_items = max(1, int(limit)) if not unlimited else None
+        chunk = _DEFAULT_ITEMS_PAGE_SIZE
+        out: list[dict] = []
+        start = 0
+        while True:
+            if not unlimited and max_items is not None and len(out) >= max_items:
+                break
+            take = chunk if unlimited else min(chunk, max_items - len(out))
+            params = {
+                "Recursive": "true",
+                "IncludeItemTypes": "Movie,Series",
+                "Fields": "UserData,DateCreated,PremiereDate,DateLastMediaAdded,Genres,People",
+                "SortBy": "DateCreated",
+                "SortOrder": "Descending",
+                "StartIndex": str(start),
+                "Limit": str(take),
+            }
+            r = await self._client.get(f"/Users/{user_id}/Items", params=params)
+            r.raise_for_status()
+            payload = r.json()
+            items = payload.get("Items") if isinstance(payload, dict) else None
+            batch = items if isinstance(items, list) else []
+            if not batch:
+                break
+            out.extend(batch)
+            if len(batch) < take:
+                break
+            start += len(batch)
+        return out
 
     async def delete_item(self, item_id: str) -> None:
         # Emby delete endpoint.

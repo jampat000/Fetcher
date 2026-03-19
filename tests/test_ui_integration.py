@@ -1,0 +1,164 @@
+"""Smoke + form tests for every main page and save endpoint (no live Emby/Sonarr)."""
+
+from __future__ import annotations
+
+from urllib.parse import urlencode
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.main import app
+
+
+def _client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    async def _noop_start() -> None:
+        return None
+
+    def _noop_shutdown() -> None:
+        return None
+
+    monkeypatch.setattr("app.main.scheduler.start", _noop_start)
+    monkeypatch.setattr("app.main.scheduler.shutdown", _noop_shutdown)
+    return TestClient(app)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/",
+        "/logs",
+        "/activity",
+        "/settings",
+        "/settings?saved=1",
+        "/emby/settings",
+        "/emby/settings?saved=1",
+        "/cleaner",
+        "/healthz",
+    ],
+)
+def test_get_pages_200(monkeypatch: pytest.MonkeyPatch, path: str) -> None:
+    with _client(monkeypatch) as client:
+        resp = client.get(path)
+    assert resp.status_code == 200, f"{path}: {resp.status_code}"
+
+
+def test_healthz_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        resp = client.get("/healthz")
+    data = resp.json()
+    assert data["status"] == "ok"
+    assert data["app"] == "Grabby"
+
+
+def test_dashboard_has_module_tabs(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        r = client.get("/")
+    assert r.status_code == 200
+    assert b"module-tab" in r.content
+    assert b"Dashboard" in r.content
+
+
+def test_settings_page_has_forms(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        r = client.get("/settings")
+    assert r.status_code == 200
+    assert b"sonarr_url" in r.content
+    assert b"radarr_url" in r.content
+
+
+def test_emby_settings_has_content_criteria(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        r = client.get("/emby/settings")
+    assert r.status_code == 200
+    html = r.text
+    assert "Content Criteria" in html
+    assert "People" in html
+    assert "emby_rule_movie_people" in html
+    assert "emby_rule_tv_people" in html
+
+
+def test_post_settings_save_redirects(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Minimal Grabby settings form post."""
+    payload = {
+        "sonarr_enabled": "false",
+        "sonarr_url": "",
+        "sonarr_api_key": "",
+        "sonarr_search_missing": "true",
+        "sonarr_search_upgrades": "true",
+        "sonarr_max_items_per_run": "50",
+        "sonarr_schedule_enabled": "false",
+        "sonarr_schedule_days": "Mon,Tue,Wed,Thu,Fri,Sat,Sun",
+        "sonarr_schedule_start": "00:00",
+        "sonarr_schedule_end": "23:59",
+        "radarr_enabled": "false",
+        "radarr_url": "",
+        "radarr_api_key": "",
+        "radarr_search_missing": "true",
+        "radarr_search_upgrades": "true",
+        "radarr_max_items_per_run": "50",
+        "radarr_schedule_enabled": "false",
+        "radarr_schedule_days": "Mon,Tue,Wed,Thu,Fri,Sat,Sun",
+        "radarr_schedule_start": "00:00",
+        "radarr_schedule_end": "23:59",
+        "interval_minutes": "60",
+        "timezone": "UTC",
+    }
+    with _client(monkeypatch) as client:
+        resp = client.post("/settings", data=payload, follow_redirects=False)
+    assert resp.status_code == 303
+    assert resp.headers.get("location", "").startswith("/settings")
+
+
+def test_post_emby_connection_save(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/emby/settings/connection",
+            data={
+                "emby_enabled": "false",
+                "emby_url": "http://localhost:8096",
+                "emby_api_key": "test-key-not-real",
+                "emby_user_id": "",
+            },
+            follow_redirects=False,
+        )
+    assert resp.status_code == 303
+    assert "/emby/settings" in resp.headers.get("location", "")
+
+
+def test_post_cleaner_settings_full(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cleaner form: genres (multi), People credits, schedules."""
+    # Use URL-encoded body so duplicate keys (genres, credit types) parse like a real browser.
+    pairs: list[tuple[str, str]] = [
+        ("emby_dry_run", "true"),
+        ("emby_schedule_enabled", "false"),
+        ("emby_schedule_days", "Mon,Tue,Wed,Thu,Fri,Sat,Sun"),
+        ("emby_schedule_start", "09:00"),
+        ("emby_schedule_end", "17:00"),
+        ("emby_max_items_scan", "1500"),
+        ("emby_max_deletes_per_run", "10"),
+        ("emby_rule_movie_watched_rating_below", "3"),
+        ("emby_rule_movie_unwatched_days", "30"),
+        ("emby_rule_movie_genres", "Action"),
+        ("emby_rule_movie_genres", "Drama"),
+        ("emby_rule_movie_people", "Test Actor"),
+        ("emby_rule_movie_people_credit_types", "Actor"),
+        ("emby_rule_movie_people_credit_types", "Director"),
+        ("emby_rule_tv_delete_watched", "true"),
+        ("emby_rule_tv_genres", "Comedy"),
+        ("emby_rule_tv_people", "Show Runner"),
+        ("emby_rule_tv_people_credit_types", "Writer"),
+        ("emby_rule_tv_unwatched_days", "14"),
+    ]
+    encoded = urlencode(pairs)
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/emby/settings/cleaner",
+            content=encoded,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=True,
+        )
+    assert resp.status_code == 200
+    body = resp.text
+    assert "saved=1" in str(resp.url) or "?saved=1" in str(resp.url)
+    assert "Test Actor" in body
+    assert "Show Runner" in body

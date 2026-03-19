@@ -39,12 +39,15 @@
     <div class="section small">
       <strong>User ID:</strong> {{ used_user_id or "-" }} |
       <strong>User name:</strong> {{ used_user_name or "-" }} |
-      <strong>Movie rating rule:</strong> {% if movie_rating_below > 0 %}watched &lt; {{ movie_rating_below }}{% else %}disabled{% endif %} |
-      <strong>Movie unwatched rule:</strong> {% if movie_unwatched_days > 0 %}{{ movie_unwatched_days }} days{% else %}disabled{% endif %} |
-      <strong>TV watched delete:</strong> {% if tv_delete_watched %}enabled{% else %}disabled{% endif %} |
-      <strong>TV unwatched rule:</strong> {% if tv_unwatched_days > 0 %}{{ tv_unwatched_days }} days{% else %}disabled{% endif %} |
-      <strong>Movie genres:</strong> {% if selected_movie_genres_display %}{{ selected_movie_genres_display | join(", ") }}{% else %}all{% endif %} |
-      <strong>Scan limit:</strong> {{ scan_limit }} |
+      <strong>Movie rating rule:</strong> {% if movie_rating_below > 0 %}Watched &lt; {{ movie_rating_below }}{% else %}Disabled{% endif %} |
+      <strong>Movie unwatched rule:</strong> {% if movie_unwatched_days > 0 %}{{ movie_unwatched_days }} days{% else %}Disabled{% endif %} |
+      <strong>Movie genres:</strong> {% if selected_movie_genres_display %}{{ selected_movie_genres_display | join(", ") }}{% else %}All{% endif %} |
+      <strong>Movie People:</strong> {% if selected_movie_people_display %}{{ selected_movie_people_display | length }} listed ({{ movie_people_credit_summary }}){% else %}Any{% endif %} |
+      <strong>TV People:</strong> {% if selected_tv_people_display %}{{ selected_tv_people_display | length }} listed ({{ tv_people_credit_summary }}){% else %}Any{% endif %} |
+      <strong>TV watched delete:</strong> {% if tv_delete_watched %}Enabled{% else %}Disabled{% endif %} |
+      <strong>TV unwatched rule:</strong> {% if tv_unwatched_days > 0 %}{{ tv_unwatched_days }} days{% else %}Disabled{% endif %} |
+      <strong>TV genres:</strong> {% if selected_tv_genres_display %}{{ selected_tv_genres_display | join(", ") }}{% else %}All{% endif %} |
+      <strong>Scan limit:</strong> {% if scan_limit <= 0 %}Entire library{% else %}{{ scan_limit }}{% endif %} |
       <strong>Max rows:</strong> {{ max_deletes }}
     </div>
 

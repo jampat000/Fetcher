@@ -18,7 +18,15 @@ import httpx
 
 from app.arr_client import ArrClient, ArrConfig
 from app.emby_client import EmbyClient, EmbyConfig
-from app.emby_rules import evaluate_candidate, movie_matches_selected_genres, parse_genres_csv
+from app.emby_rules import (
+    evaluate_candidate,
+    movie_matches_people,
+    movie_matches_selected_genres,
+    parse_genres_csv,
+    parse_movie_people_credit_types_csv,
+    parse_movie_people_phrases,
+    tv_matches_selected_genres,
+)
 from app.models import ActivityLog, AppSettings, AppSnapshot, Base, JobRunLog
 from app.schemas import SettingsIn
 from app.scheduler import ServiceScheduler
@@ -113,6 +121,47 @@ _MOVIE_GENRE_OPTIONS = [
     "War",
     "Western",
 ]
+
+# Values must match Emby People[].Type (storage is canonical casing).
+_PEOPLE_CREDIT_OPTIONS: list[tuple[str, str]] = [
+    ("Actor", "Cast (actors)"),
+    ("Director", "Directors"),
+    ("Writer", "Writers"),
+    ("Producer", "Producers"),
+    ("GuestStar", "Guest stars"),
+]
+
+_PEOPLE_CREDIT_TYPE_FORM_MAP = {
+    "actor": "Actor",
+    "director": "Director",
+    "writer": "Writer",
+    "producer": "Producer",
+    "gueststar": "GuestStar",
+}
+
+
+def _people_credit_types_csv_from_form(form_values: list[str] | None) -> str:
+    credit_vals: list[str] = []
+    for v in form_values or []:
+        key = str(v).strip().lower().replace(" ", "")
+        canon = _PEOPLE_CREDIT_TYPE_FORM_MAP.get(key)
+        if canon:
+            credit_vals.append(canon)
+    credit_vals = sorted(set(credit_vals))
+    return ",".join(credit_vals) if credit_vals else "Actor"
+
+
+def _movie_credit_types_summary(types: frozenset[str]) -> str:
+    short = {
+        "actor": "Cast",
+        "director": "Director",
+        "writer": "Writer",
+        "producer": "Producer",
+        "gueststar": "Guest",
+    }
+    order = ("actor", "director", "writer", "producer", "gueststar")
+    parts = [short[k] for k in order if k in types]
+    return "+".join(parts) if parts else "Cast"
 
 
 def _resolve_timezone_name(raw: str) -> str:
@@ -255,6 +304,23 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
             "sonarr": sonarr_snap,
             "radarr": radarr_snap,
             "emby": emby_snap,
+            "selected_movie_genres": sorted(parse_genres_csv(getattr(settings, "emby_rule_movie_genres_csv", ""))),
+            "selected_tv_genres": sorted(parse_genres_csv(getattr(settings, "emby_rule_tv_genres_csv", ""))),
+            "movie_people_phrases": parse_movie_people_phrases(getattr(settings, "emby_rule_movie_people_csv", "")),
+            "movie_people_credit_types": parse_movie_people_credit_types_csv(
+                getattr(settings, "emby_rule_movie_people_credit_types_csv", "Actor")
+            ),
+            "movie_people_credit_summary": _movie_credit_types_summary(
+                parse_movie_people_credit_types_csv(
+                    getattr(settings, "emby_rule_movie_people_credit_types_csv", "Actor")
+                )
+            ),
+            "tv_people_phrases": parse_movie_people_phrases(getattr(settings, "emby_rule_tv_people_csv", "")),
+            "tv_people_credit_summary": _movie_credit_types_summary(
+                parse_movie_people_credit_types_csv(
+                    getattr(settings, "emby_rule_tv_people_credit_types_csv", "Actor")
+                )
+            ),
             "now": datetime.utcnow(),
             "now_local": _now_local(tz),
             "timezone": tz,
@@ -378,6 +444,14 @@ async def emby_settings_page(request: Request, session: AsyncSession = Depends(g
             "emby_schedule_end_display": _to_12h(settings.emby_schedule_end, "11:59 PM"),
             "movie_genre_options": _MOVIE_GENRE_OPTIONS,
             "selected_movie_genres": parse_genres_csv(getattr(settings, "emby_rule_movie_genres_csv", "")),
+            "selected_tv_genres": parse_genres_csv(getattr(settings, "emby_rule_tv_genres_csv", "")),
+            "people_credit_options": _PEOPLE_CREDIT_OPTIONS,
+            "selected_movie_people_credit_types": parse_movie_people_credit_types_csv(
+                getattr(settings, "emby_rule_movie_people_credit_types_csv", "Actor")
+            ),
+            "selected_tv_people_credit_types": parse_movie_people_credit_types_csv(
+                getattr(settings, "emby_rule_tv_people_credit_types_csv", "Actor")
+            ),
         },
     )
 
@@ -397,9 +471,20 @@ async def emby_preview_page(request: Request, session: AsyncSession = Depends(ge
     movie_unwatched_days = rules["movie_unwatched_days"]
     tv_delete_watched = bool(rules["tv_delete_watched"])
     tv_unwatched_days = rules["tv_unwatched_days"]
-    scan_limit = max(1, int(getattr(settings, "emby_max_items_scan", 2000) or 2000))
+    _v_scan = getattr(settings, "emby_max_items_scan", 2000)
+    _raw_scan = int(_v_scan) if _v_scan is not None else 2000
+    scan_limit = 0 if _raw_scan <= 0 else max(1, min(100_000, _raw_scan))
     max_deletes = max(1, int(getattr(settings, "emby_max_deletes_per_run", 25) or 25))
     selected_movie_genres = parse_genres_csv(getattr(settings, "emby_rule_movie_genres_csv", ""))
+    selected_tv_genres = parse_genres_csv(getattr(settings, "emby_rule_tv_genres_csv", ""))
+    selected_movie_people = parse_movie_people_phrases(getattr(settings, "emby_rule_movie_people_csv", ""))
+    selected_movie_credit_types = parse_movie_people_credit_types_csv(
+        getattr(settings, "emby_rule_movie_people_credit_types_csv", "Actor")
+    )
+    selected_tv_people = parse_movie_people_phrases(getattr(settings, "emby_rule_tv_people_csv", ""))
+    selected_tv_credit_types = parse_movie_people_credit_types_csv(
+        getattr(settings, "emby_rule_tv_people_credit_types_csv", "Actor")
+    )
 
     if not settings.emby_url or not settings.emby_api_key:
         error = "Emby URL and API key are required."
@@ -431,7 +516,18 @@ async def emby_preview_page(request: Request, session: AsyncSession = Depends(ge
                         tv_delete_watched=tv_delete_watched,
                         tv_unwatched_days=tv_unwatched_days,
                     )
-                    if str(item.get("Type", "")).strip() == "Movie" and not movie_matches_selected_genres(item, selected_movie_genres):
+                    item_type = str(item.get("Type", "")).strip()
+                    if item_type == "Movie" and not movie_matches_selected_genres(item, selected_movie_genres):
+                        is_candidate = False
+                    if item_type == "Movie" and not movie_matches_people(
+                        item, selected_movie_people, credit_types=selected_movie_credit_types
+                    ):
+                        is_candidate = False
+                    if item_type in {"Series", "Season", "Episode"} and not tv_matches_selected_genres(item, selected_tv_genres):
+                        is_candidate = False
+                    if item_type in {"Series", "Season", "Episode"} and not movie_matches_people(
+                        item, selected_tv_people, credit_types=selected_tv_credit_types
+                    ):
                         is_candidate = False
                     if not is_candidate:
                         continue
@@ -473,6 +569,11 @@ async def emby_preview_page(request: Request, session: AsyncSession = Depends(ge
             "scan_limit": scan_limit,
             "max_deletes": max_deletes,
             "selected_movie_genres_display": sorted(selected_movie_genres),
+            "selected_tv_genres_display": sorted(selected_tv_genres),
+            "selected_movie_people_display": selected_movie_people,
+            "movie_people_credit_summary": _movie_credit_types_summary(selected_movie_credit_types),
+            "selected_tv_people_display": selected_tv_people,
+            "tv_people_credit_summary": _movie_credit_types_summary(selected_tv_credit_types),
             "dry_run": bool(getattr(settings, "emby_dry_run", True)),
             "matched_count": len(rows),
             "now": datetime.utcnow(),
@@ -614,7 +715,12 @@ async def save_cleaner_settings(
     emby_rule_movie_watched_rating_below: int = Form(0),
     emby_rule_movie_unwatched_days: int = Form(0),
     emby_rule_movie_genres: list[str] = Form([]),
+    emby_rule_movie_people: str = Form(""),
+    emby_rule_movie_people_credit_types: list[str] = Form([]),
     emby_rule_tv_delete_watched: bool = Form(False),
+    emby_rule_tv_genres: list[str] = Form([]),
+    emby_rule_tv_people: str = Form(""),
+    emby_rule_tv_people_credit_types: list[str] = Form([]),
     emby_rule_tv_unwatched_days: int = Form(0),
     session: AsyncSession = Depends(get_session),
 ) -> RedirectResponse:
@@ -624,13 +730,20 @@ async def save_cleaner_settings(
     row.emby_schedule_days = (emby_schedule_days or "Mon,Tue,Wed,Thu,Fri,Sat,Sun").strip()
     row.emby_schedule_start = _normalize_hhmm(emby_schedule_start, "00:00")
     row.emby_schedule_end = _normalize_hhmm(emby_schedule_end, "23:59")
-    row.emby_max_items_scan = max(1, min(5000, int(emby_max_items_scan or 2000)))
+    _scan = int(emby_max_items_scan)
+    row.emby_max_items_scan = 0 if _scan <= 0 else max(1, min(100_000, _scan))
     row.emby_max_deletes_per_run = max(1, min(500, int(emby_max_deletes_per_run or 25)))
     row.emby_rule_movie_watched_rating_below = max(0, min(10, int(emby_rule_movie_watched_rating_below or 0)))
     row.emby_rule_movie_unwatched_days = max(0, min(36500, int(emby_rule_movie_unwatched_days or 0)))
     selected_genres = sorted({str(v).strip() for v in (emby_rule_movie_genres or []) if str(v).strip()})
     row.emby_rule_movie_genres_csv = ",".join(selected_genres)
+    row.emby_rule_movie_people_csv = (emby_rule_movie_people or "").strip()[:8000]
+    row.emby_rule_movie_people_credit_types_csv = _people_credit_types_csv_from_form(emby_rule_movie_people_credit_types)
     row.emby_rule_tv_delete_watched = emby_rule_tv_delete_watched
+    selected_tv_genres = sorted({str(v).strip() for v in (emby_rule_tv_genres or []) if str(v).strip()})
+    row.emby_rule_tv_genres_csv = ",".join(selected_tv_genres)
+    row.emby_rule_tv_people_csv = (emby_rule_tv_people or "").strip()[:8000]
+    row.emby_rule_tv_people_credit_types_csv = _people_credit_types_csv_from_form(emby_rule_tv_people_credit_types)
     row.emby_rule_tv_watched_rating_below = 0
     row.emby_rule_tv_unwatched_days = max(0, min(36500, int(emby_rule_tv_unwatched_days or 0)))
     # Keep legacy global fields in sync for backward compatibility.

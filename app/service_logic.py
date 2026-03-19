@@ -18,7 +18,15 @@ from app.arr_client import (
 from app.models import ActivityLog, AppSettings, AppSnapshot, JobRunLog
 from app.schedule import in_window
 from app.emby_client import EmbyClient, EmbyConfig
-from app.emby_rules import evaluate_candidate, movie_matches_selected_genres, parse_genres_csv
+from app.emby_rules import (
+    evaluate_candidate,
+    movie_matches_people,
+    movie_matches_selected_genres,
+    parse_genres_csv,
+    parse_movie_people_credit_types_csv,
+    parse_movie_people_phrases,
+    tv_matches_selected_genres,
+)
 
 
 @dataclass(frozen=True)
@@ -223,14 +231,25 @@ async def run_once(session: AsyncSession) -> RunResult:
                     if not effective_user_id:
                         raise ValueError("Emby has no users available to query.")
 
-                    scan_limit = max(1, int(getattr(settings, "emby_max_items_scan", 2000) or 2000))
+                    _v_scan = getattr(settings, "emby_max_items_scan", 2000)
+                    _raw_scan = int(_v_scan) if _v_scan is not None else 2000
+                    scan_limit = 0 if _raw_scan <= 0 else max(1, min(100_000, _raw_scan))
                     max_deletes = max(1, int(getattr(settings, "emby_max_deletes_per_run", 25) or 25))
                     global_rating = max(0, int(getattr(settings, "emby_rule_watched_rating_below", 0) or 0))
                     global_unwatched = max(0, int(getattr(settings, "emby_rule_unwatched_days", 0) or 0))
                     movie_rating_below = max(0, int(getattr(settings, "emby_rule_movie_watched_rating_below", 0) or 0)) or global_rating
                     movie_unwatched_days = max(0, int(getattr(settings, "emby_rule_movie_unwatched_days", 0) or 0)) or global_unwatched
                     selected_movie_genres = parse_genres_csv(getattr(settings, "emby_rule_movie_genres_csv", ""))
+                    selected_movie_people = parse_movie_people_phrases(getattr(settings, "emby_rule_movie_people_csv", ""))
+                    selected_movie_credit_types = parse_movie_people_credit_types_csv(
+                        getattr(settings, "emby_rule_movie_people_credit_types_csv", "Actor")
+                    )
+                    selected_tv_people = parse_movie_people_phrases(getattr(settings, "emby_rule_tv_people_csv", ""))
+                    selected_tv_credit_types = parse_movie_people_credit_types_csv(
+                        getattr(settings, "emby_rule_tv_people_credit_types_csv", "Actor")
+                    )
                     tv_delete_watched = bool(getattr(settings, "emby_rule_tv_delete_watched", False))
+                    selected_tv_genres = parse_genres_csv(getattr(settings, "emby_rule_tv_genres_csv", ""))
                     tv_unwatched_days = max(0, int(getattr(settings, "emby_rule_tv_unwatched_days", 0) or 0)) or global_unwatched
                     dry_run = bool(getattr(settings, "emby_dry_run", True))
 
@@ -250,7 +269,18 @@ async def run_once(session: AsyncSession) -> RunResult:
                                 tv_delete_watched=tv_delete_watched,
                                 tv_unwatched_days=tv_unwatched_days,
                             )
-                            if str(item.get("Type", "")).strip() == "Movie" and not movie_matches_selected_genres(item, selected_movie_genres):
+                            item_type = str(item.get("Type", "")).strip()
+                            if item_type == "Movie" and not movie_matches_selected_genres(item, selected_movie_genres):
+                                is_candidate = False
+                            if item_type == "Movie" and not movie_matches_people(
+                                item, selected_movie_people, credit_types=selected_movie_credit_types
+                            ):
+                                is_candidate = False
+                            if item_type in {"Series", "Season", "Episode"} and not tv_matches_selected_genres(item, selected_tv_genres):
+                                is_candidate = False
+                            if item_type in {"Series", "Season", "Episode"} and not movie_matches_people(
+                                item, selected_tv_people, credit_types=selected_tv_credit_types
+                            ):
                                 is_candidate = False
                             if is_candidate:
                                 name = str(item.get("Name", "") or item_id)

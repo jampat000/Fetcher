@@ -22,3 +22,6 @@ service/winsw.exe
 .DS_Store
 Thumbs.db
 *.tmp
+
+# Local scratch
+tmp/

@@ -25,7 +25,7 @@ class SettingsIn(BaseModel):
     emby_api_key: str = ""
     emby_user_id: str = ""
     emby_dry_run: bool = True
-    emby_max_items_scan: int = Field(default=2000, ge=1, le=5000)
+    emby_max_items_scan: int = Field(default=2000, ge=0, le=100_000)
     emby_max_deletes_per_run: int = Field(default=25, ge=1, le=500)
     emby_rule_watched_rating_below: int = Field(default=0, ge=0, le=10)
     emby_rule_unwatched_days: int = Field(default=0, ge=0, le=36500)

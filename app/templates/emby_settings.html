@@ -14,10 +14,9 @@
   </div>
 
   <div class="card module-content">
-      <h2>Cleaner Settings</h2>
-      <div class="hint">Dedicated Emby configuration tab. Managed from the Cleaner section.</div>
-
-      {% if emby and emby.status_message and not emby.status_message.startswith("Test") %}
+      {% if emby and emby.status_message
+          and not emby.status_message.startswith("Test")
+          and emby.status_message.strip()|lower != "ok" %}
       <div class="section small">
         <div style="margin-top:6px;">{{ emby.status_message }}</div>
       </div>
@@ -58,10 +57,9 @@
       </div>
 
       <div class="section">
-      <h3>Cleaner Settings</h3>
       <form method="post" action="/emby/settings/cleaner">
         <div class="section">
-          <h3>Content criteria</h3>
+          <h3>Content Criteria</h3>
           <div class="criteria-grid">
             <div class="criteria-panel">
               <h4 class="criteria-title">
@@ -82,6 +80,18 @@
                 <input class="number" type="number" name="emby_rule_tv_unwatched_days" value="{{ settings.emby_rule_tv_unwatched_days }}" min="0" max="36500" />
                 <div class="small">Set 0 to disable this rule.</div>
               </div>
+              <div class="field genre-field">
+                <label>Delete TV with selected genres</label>
+                <select class="input genre-select" name="emby_rule_tv_genres" multiple size="8">
+                  {% for genre in movie_genre_options %}
+                  <option value="{{ genre }}" {% if genre.lower() in selected_tv_genres %}selected{% endif %}>{{ genre }}</option>
+                  {% endfor %}
+                </select>
+                <div class="small genre-help">
+                  <div><strong>Leave blank:</strong> All TV genres are included.</div>
+                  <div><strong>Select genres:</strong> Only TV with at least one selected genre can be deleted.</div>
+                </div>
+              </div>
             </div>
 
             <div class="criteria-panel">
@@ -101,14 +111,83 @@
                 <input class="number" type="number" name="emby_rule_movie_unwatched_days" value="{{ settings.emby_rule_movie_unwatched_days }}" min="0" max="36500" />
                 <div class="small">Set 0 to disable this rule.</div>
               </div>
-              <div class="field">
-                <label>Only delete movies in selected genres</label>
-                <select class="input" name="emby_rule_movie_genres" multiple size="8">
+              <div class="field genre-field">
+                <label>Delete movies with selected genres</label>
+                <select class="input genre-select" name="emby_rule_movie_genres" multiple size="8">
                   {% for genre in movie_genre_options %}
                   <option value="{{ genre }}" {% if genre.lower() in selected_movie_genres %}selected{% endif %}>{{ genre }}</option>
                   {% endfor %}
                 </select>
-                <div class="small">Optional. If selected, only movies matching at least one selected genre are eligible.</div>
+                <div class="small genre-help">
+                  <div><strong>Leave blank:</strong> All movie genres are included.</div>
+                  <div><strong>Select genres:</strong> Only movies with at least one selected genre can be deleted.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="criteria-grid criteria-people-row">
+            <div class="criteria-panel people-criteria-panel">
+              <h4 class="criteria-title">
+                <span class="criteria-icon criteria-icon-tv" aria-hidden="true">
+                  <img src="/static/icon-tv.svg" alt="" class="criteria-icon-img" />
+                </span>
+                <span>TV — People</span>
+              </h4>
+              <div class="field people-field">
+                <label>Delete TV shows when these people are credited</label>
+                <textarea class="input people-textarea" name="emby_rule_tv_people" rows="5" placeholder="Example: Alex Carter, Jordan Lee (comma or one per line)">{{ settings.emby_rule_tv_people_csv }}</textarea>
+                <div class="small genre-help people-help">
+                  <div><strong>Leave blank:</strong> No name filter — other TV rules still apply.</div>
+                  <div><strong>Enter names:</strong> Each name must appear in Emby series credits for a selected role (substring match, case-insensitive). Use Emby spelling — typos will not match.</div>
+                </div>
+              </div>
+              <div class="field people-credits-field">
+                <label>Match people in these credit roles</label>
+                {% for value, role_label in people_credit_options %}
+                <div class="checkline">
+                  <input
+                    type="checkbox"
+                    name="emby_rule_tv_people_credit_types"
+                    value="{{ value }}"
+                    {% if value.lower() in selected_tv_people_credit_types %}checked{% endif %}
+                  />
+                  {{ role_label }}
+                </div>
+                {% endfor %}
+                <div class="small people-credits-hint"><strong>Default:</strong> Cast (actors) only. Add other roles as needed. If none are checked, Cast is used when you save.</div>
+              </div>
+            </div>
+
+            <div class="criteria-panel people-criteria-panel">
+              <h4 class="criteria-title">
+                <span class="criteria-icon criteria-icon-movie" aria-hidden="true">
+                  <img src="/static/icon-film.svg" alt="" class="criteria-icon-img" />
+                </span>
+                <span>Movies — People</span>
+              </h4>
+              <div class="field people-field">
+                <label>Delete movies when these people are credited</label>
+                <textarea class="input people-textarea" name="emby_rule_movie_people" rows="5" placeholder="Example: Alex Carter, Jordan Lee (comma or one per line)">{{ settings.emby_rule_movie_people_csv }}</textarea>
+                <div class="small genre-help people-help">
+                  <div><strong>Leave blank:</strong> No name filter — other movie rules still apply.</div>
+                  <div><strong>Enter names:</strong> Each name must appear in Emby movie credits for a selected role (substring match, case-insensitive). Use Emby spelling — typos will not match.</div>
+                </div>
+              </div>
+              <div class="field people-credits-field">
+                <label>Match people in these credit roles</label>
+                {% for value, role_label in people_credit_options %}
+                <div class="checkline">
+                  <input
+                    type="checkbox"
+                    name="emby_rule_movie_people_credit_types"
+                    value="{{ value }}"
+                    {% if value.lower() in selected_movie_people_credit_types %}checked{% endif %}
+                  />
+                  {{ role_label }}
+                </div>
+                {% endfor %}
+                <div class="small people-credits-hint"><strong>Default:</strong> Cast (actors) only. Add other roles as needed. If none are checked, Cast is used when you save.</div>
               </div>
             </div>
           </div>
@@ -117,7 +196,8 @@
         <div class="row">
           <div class="field">
             <label>Max items to scan per run</label>
-            <input class="number" type="number" name="emby_max_items_scan" value="{{ settings.emby_max_items_scan }}" min="1" max="5000" />
+            <input class="number" type="number" name="emby_max_items_scan" value="{{ settings.emby_max_items_scan }}" min="0" max="100000" />
+            <div class="small"><strong>0</strong> = scan the <strong>entire</strong> library (all movies + series, newest first; may take a while). <strong>1–100000</strong> = cap how many titles are checked each run. Paging is automatic.</div>
           </div>
           <div class="field">
             <label>Max deletes per run</label>
@@ -127,7 +207,7 @@
 
         <div class="checkline">
           <input type="checkbox" name="emby_dry_run" {% if settings.emby_dry_run %}checked{% endif %} />
-          Dry-run (no actual deletes)
+          Dry run (no actual deletes)
         </div>
         <div class="small">Keep this on until review looks correct.</div>
 

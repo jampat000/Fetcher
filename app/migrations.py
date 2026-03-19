@@ -92,8 +92,18 @@ async def migrate(engine: AsyncEngine) -> None:
         await _add_column(engine, table=table, ddl="emby_rule_movie_unwatched_days INTEGER NOT NULL DEFAULT 0")
     if not await _has_column(engine, table=table, column="emby_rule_movie_genres_csv"):
         await _add_column(engine, table=table, ddl="emby_rule_movie_genres_csv TEXT NOT NULL DEFAULT ''")
+    if not await _has_column(engine, table=table, column="emby_rule_movie_people_csv"):
+        await _add_column(engine, table=table, ddl="emby_rule_movie_people_csv TEXT NOT NULL DEFAULT ''")
+    if not await _has_column(engine, table=table, column="emby_rule_movie_people_credit_types_csv"):
+        await _add_column(engine, table=table, ddl="emby_rule_movie_people_credit_types_csv TEXT NOT NULL DEFAULT 'Actor'")
     if not await _has_column(engine, table=table, column="emby_rule_tv_delete_watched"):
         await _add_column(engine, table=table, ddl="emby_rule_tv_delete_watched BOOLEAN NOT NULL DEFAULT 0")
+    if not await _has_column(engine, table=table, column="emby_rule_tv_genres_csv"):
+        await _add_column(engine, table=table, ddl="emby_rule_tv_genres_csv TEXT NOT NULL DEFAULT ''")
+    if not await _has_column(engine, table=table, column="emby_rule_tv_people_csv"):
+        await _add_column(engine, table=table, ddl="emby_rule_tv_people_csv TEXT NOT NULL DEFAULT ''")
+    if not await _has_column(engine, table=table, column="emby_rule_tv_people_credit_types_csv"):
+        await _add_column(engine, table=table, ddl="emby_rule_tv_people_credit_types_csv TEXT NOT NULL DEFAULT 'Actor'")
     if not await _has_column(engine, table=table, column="emby_rule_tv_watched_rating_below"):
         await _add_column(engine, table=table, ddl="emby_rule_tv_watched_rating_below INTEGER NOT NULL DEFAULT 0")
     if not await _has_column(engine, table=table, column="emby_rule_tv_unwatched_days"):
