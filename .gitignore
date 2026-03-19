@@ -14,7 +14,9 @@ installer/output/
 installer/_inno/
 installer/_innosetup-*.exe
 service/winsw.exe
+# Ignore stray PyInstaller specs; keep the real one for CI/local builds
 *.spec
+!packaging/grabby.spec
 
 # IDE / OS
 .idea/

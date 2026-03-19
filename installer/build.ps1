@@ -19,6 +19,12 @@ if ($Clean) {
 Write-Host "1) Building app (PyInstaller)..."
 .\packaging\build.ps1
 
+$distApp = Join-Path $root "dist\Grabby"
+$distExe = Join-Path $distApp "Grabby.exe"
+if (-not (Test-Path -LiteralPath $distExe)) {
+  throw "PyInstaller output missing: $distExe (is packaging\grabby.spec committed and present on this machine/CI?)"
+}
+
 Write-Host "2) Ensuring WinSW present..."
 $winswPath = ".\\service\\winsw.exe"
 if (!(Test-Path $winswPath)) {
