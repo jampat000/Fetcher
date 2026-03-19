@@ -11,8 +11,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Same commit can trigger twice (e.g. push `master` then push tag `v1.0.3` on that commit).
+# Group by commit SHA so the newest run cancels the older duplicate; tag run usually wins if you push branch then tag.
 concurrency:
-  group: build-installer-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: build-installer-${{ github.workflow }}-${{ github.sha }}
   cancel-in-progress: true
 
 # Opt in to Node 24 for JS actions until all deps default to it (GitHub deprecation of Node 20).
