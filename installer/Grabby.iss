@@ -4,14 +4,14 @@
 #define MyAppName "Grabby"
 #define MyAppPublisher "Grabby"
 #define MyAppVersion "0.1.0"
-#define MyServiceId "MediaArrManager"
+#define MyServiceId "Grabby"
 
 [Setup]
 AppId={{F4A8A6E6-0E7A-4E0E-96A6-3B61B30C2B0A}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-DefaultDirName={commonpf}\{#MyAppPublisher}\MediaArrManager
+DefaultDirName={commonpf}\{#MyAppPublisher}\Grabby
 DefaultGroupName={#MyAppName}
 OutputDir=output
 OutputBaseFilename=GrabbySetup
@@ -22,9 +22,9 @@ WizardStyle=modern
 
 [Files]
 ; Built output (PyInstaller one-folder build)
-Source: "..\dist\MediaArrManager\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
+Source: "..\dist\Grabby\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 ; WinSW + config
-Source: "..\service\MediaArrManagerService.xml"; DestDir: "{app}"; DestName: "winsw.xml"; Flags: ignoreversion
+Source: "..\service\GrabbyService.xml"; DestDir: "{app}"; DestName: "winsw.xml"; Flags: ignoreversion
 ; WinSW is bundled into the installer (installer/build.ps1 downloads it automatically)
 Source: "..\service\winsw.exe"; DestDir: "{app}"; DestName: "winsw.exe"; Flags: ignoreversion
 
@@ -40,4 +40,3 @@ Filename: "{app}\winsw.exe"; Parameters: "uninstall"; Flags: runhidden waituntil
 [Icons]
 Name: "{group}\{#MyAppName} (Web UI)"; Filename: "http://127.0.0.1:8765"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
-

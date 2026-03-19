@@ -1,14 +1,14 @@
 # Windows Service (WinSW)
 
-This project uses **WinSW** (Windows Service Wrapper) to run the packaged `MediaArrManager` executable as a Windows Service.
+This project uses **WinSW** (Windows Service Wrapper) to run the packaged `Grabby` executable as a Windows Service.
 
 ## Get WinSW
 
 Download WinSW (x64) and name it `winsw.exe`, then place it in the same folder as:
 
 - `winsw.exe`
-- `MediaArrManagerService.xml`
-- `MediaArrManager.exe` (your packaged app)
+- `GrabbyService.xml`
+- `Grabby.exe` (your packaged app)
 
 WinSW releases are available on GitHub (search “WinSW releases”).
 

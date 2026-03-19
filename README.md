@@ -19,7 +19,7 @@
 ## Run locally (dev)
 
 ```powershell
-cd C:\Users\User\media-arr-manager
+cd C:\Users\User\grabby
 py -m venv .venv
 .\.venv\Scripts\pip install -r requirements.txt
 .\.venv\Scripts\uvicorn app.main:app --host 127.0.0.1 --port 8765
@@ -30,7 +30,7 @@ Then open `http://127.0.0.1:8765`.
 ## Packaging (exe)
 
 ```powershell
-cd C:\Users\User\media-arr-manager
+cd C:\Users\User\grabby
 .\packaging\build.ps1 -Clean
 ```
 
@@ -40,8 +40,8 @@ The output executable will be placed under `dist/`.
 
 After building the exe, copy:
 
-- `dist\MediaArrManager\MediaArrManager.exe` (name may vary based on spec)
-- `service\MediaArrManagerService.xml`
+- `dist\Grabby\Grabby.exe` (name may vary based on spec)
+- `service\GrabbyService.xml`
 - `service\winsw.exe` (download separately; see `service/README.md`)
 
 Then run (admin PowerShell):
@@ -61,7 +61,7 @@ Prereq: install Inno Setup (so `ISCC.exe` exists).
 Build:
 
 ```powershell
-cd C:\Users\User\media-arr-manager
+cd C:\Users\User\grabby
 .\installer\build.ps1 -Clean
 ```
 

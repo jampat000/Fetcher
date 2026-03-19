@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 
 def default_data_dir() -> Path:
-    base = Path.home() / "AppData" / "Local" / "MediaArrManager"
+    base = Path.home() / "AppData" / "Local" / "Grabby"
     base.mkdir(parents=True, exist_ok=True)
     return base
 

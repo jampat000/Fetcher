@@ -10,22 +10,11 @@
 
   <div class="module-tabs">
     <a href="/settings" class="module-tab active">Grabby Settings</a>
-    <a href="/emby/settings" class="module-tab">Cleaner Settings</a>
-    <a href="/cleaner" class="module-tab">Cleaner Preview</a>
   </div>
 
   <div class="card module-content">
     <h2>Grabby Settings</h2>
     <div class="hint">Use <span class="kbd">http://</span> for direct Sonarr/Radarr/Emby connections unless you have HTTPS configured.</div>
-
-    <div class="section">
-      <h2>Cleaner</h2>
-      <div class="hint">Use Cleaner to delete movies in Emby based on your criteria.</div>
-      <div class="btnbar">
-        <a class="btn" href="/emby/settings">Open Cleaner Settings</a>
-        <a class="btn secondary" href="/cleaner">Open Cleaner Preview</a>
-      </div>
-    </div>
 
     <form method="post" action="/settings">
       <div class="row">
@@ -186,83 +175,6 @@
     <form id="test-sonarr" method="post" action="/test/sonarr"></form>
     <form id="test-radarr" method="post" action="/test/radarr"></form>
 
-    <div class="section">
-      <h2>Cleaner (Emby)</h2>
-      <div class="hint">Configure Emby cleanup and movie deletion criteria from this page.</div>
-
-      <form method="post" action="/emby/settings/connection">
-        <div class="checkline">
-          <input type="checkbox" name="emby_enabled" {% if settings.emby_enabled %}checked{% endif %} />
-          <strong>Enable Cleaner integration</strong>
-        </div>
-
-        <div class="row">
-          <div class="field">
-            <label>Emby URL</label>
-            <input class="input" type="text" name="emby_url" value="{{ settings.emby_url }}" placeholder="http://localhost:8096" />
-          </div>
-          <div class="field">
-            <label>Emby User ID (optional)</label>
-            <input class="input" type="text" name="emby_user_id" value="{{ settings.emby_user_id }}" placeholder="Leave blank to use first Emby user" />
-          </div>
-        </div>
-
-        <label>Emby API Key</label>
-        <div class="control">
-          <input class="password" id="emby_api_key_settings" type="password" name="emby_api_key" value="{{ settings.emby_api_key }}" placeholder="X-Emby-Token" />
-          <button class="icon-btn" data-reveal="emby_api_key_settings" type="button">Show</button>
-        </div>
-
-        <div class="btnbar">
-          <button class="btn secondary" type="submit">Save Emby connection</button>
-          <button class="btn secondary" type="submit" formaction="/test/emby-form">Test Emby</button>
-        </div>
-      </form>
-
-      <form method="post" action="/emby/settings/cleaner">
-        <div class="row">
-          <div class="field">
-            <label>Delete watched movies rated under</label>
-            <input class="number" type="number" name="emby_rule_movie_watched_rating_below" value="{{ settings.emby_rule_movie_watched_rating_below }}" min="0" max="10" />
-            <div class="small">Set 0 to disable.</div>
-          </div>
-          <div class="field">
-            <label>Delete unwatched movies older than N days</label>
-            <input class="number" type="number" name="emby_rule_movie_unwatched_days" value="{{ settings.emby_rule_movie_unwatched_days }}" min="0" max="36500" />
-            <div class="small">Set 0 to disable.</div>
-          </div>
-        </div>
-
-        <div class="row">
-          <div class="field">
-            <label>Max items to scan per run</label>
-            <input class="number" type="number" name="emby_max_items_scan" value="{{ settings.emby_max_items_scan }}" min="1" max="5000" />
-          </div>
-          <div class="field">
-            <label>Max deletes per run</label>
-            <input class="number" type="number" name="emby_max_deletes_per_run" value="{{ settings.emby_max_deletes_per_run }}" min="1" max="500" />
-          </div>
-        </div>
-
-        <div class="checkline">
-          <input type="checkbox" name="emby_dry_run" {% if settings.emby_dry_run %}checked{% endif %} />
-          Dry-run mode (recommended while testing)
-        </div>
-
-        <input type="hidden" name="emby_schedule_enabled" value="{{ 1 if settings.emby_schedule_enabled else 0 }}" />
-        <input type="hidden" name="emby_schedule_days" value="{{ settings.emby_schedule_days }}" />
-        <input type="hidden" name="emby_schedule_start" value="{{ settings.emby_schedule_start }}" />
-        <input type="hidden" name="emby_schedule_end" value="{{ settings.emby_schedule_end }}" />
-        <input type="hidden" name="emby_rule_tv_delete_watched" value="{{ 1 if settings.emby_rule_tv_delete_watched else 0 }}" />
-        <input type="hidden" name="emby_rule_tv_unwatched_days" value="{{ settings.emby_rule_tv_unwatched_days }}" />
-
-        <div class="btnbar">
-          <button class="btn" type="submit">Save movie cleanup criteria</button>
-          <a class="btn secondary" href="/cleaner">Open Cleaner Preview</a>
-          <a class="btn secondary" href="/emby/settings">Advanced Cleaner settings</a>
-        </div>
-      </form>
-    </div>
   </div>
 </div>
 {% endblock %}

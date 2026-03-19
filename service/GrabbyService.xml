@@ -1,10 +1,10 @@
 <service>
-  <id>MediaArrManager</id>
+  <id>Grabby</id>
   <name>Grabby</name>
   <description>Never miss a release. Sonarr/Radarr missing + upgrade automation with web UI.</description>
 
   <!-- Point this at your packaged exe path -->
-  <executable>%BASE%\MediaArrManager.exe</executable>
+  <executable>%BASE%\Grabby.exe</executable>
   <arguments>--host 127.0.0.1 --port 8765</arguments>
 
   <log mode="roll-by-size">
@@ -16,4 +16,3 @@
   <onfailure action="restart" delay="10 sec"/>
   <onfailure action="restart" delay="20 sec"/>
 </service>
-

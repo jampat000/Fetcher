@@ -100,7 +100,7 @@ if (-not $iscc) {
   throw "Inno Setup compiler (ISCC.exe) not found. Re-run with -IsccPath 'C:\path\to\ISCC.exe', or pass -InstallInnoSetupIfMissing to auto-install it."
 }
 
-& $iscc ".\\installer\\MediaArrManager.iss"
+& $iscc ".\\installer\\Grabby.iss"
 
 Write-Host ""
 Write-Host "Installer built under: installer\\output\\GrabbySetup.exe"
