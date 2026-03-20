@@ -224,6 +224,18 @@ def _sonarr_episode_label(rec: dict) -> str:
     return episode_title or code
 
 
+def _sonarr_episode_label_with_fallback(rec: dict, series_title_map: dict[int, str]) -> str:
+    """Prefer explicit show title from record; fallback to seriesId lookup if needed."""
+    base = _sonarr_episode_label(rec)
+    # If base has no show context, try series map.
+    if base and (" S" in base or base.startswith("Episode")):
+        sid = _safe_int(rec.get("seriesId"))
+        show = series_title_map.get(sid or 0, "").strip()
+        if show:
+            return f"{show} {base}"
+    return base
+
+
 def _radarr_movie_label(rec: dict) -> str:
     title = str(rec.get("title") or "").strip() or "Movie"
     year = _safe_int(rec.get("year"))
@@ -240,8 +252,8 @@ def _detail_from_labels(labels: list[str], *, total: int) -> str:
     shown = uniq[:max_items]
     remain = max(0, total - len(shown))
     if remain > 0:
-        return ", ".join(shown) + f", +{remain} more"
-    return ", ".join(shown)
+        return " | ".join(shown) + f" | +{remain} more"
+    return " | ".join(shown)
 
 
 async def run_once(session: AsyncSession) -> RunResult:
@@ -272,6 +284,16 @@ async def run_once(session: AsyncSession) -> RunResult:
                 sonarr = ArrClient(ArrConfig(settings.sonarr_url, settings.sonarr_api_key))
                 try:
                     await sonarr.health()
+                    sonarr_series_title_map: dict[int, str] = {}
+                    try:
+                        for s in await sonarr.series():
+                            sid = _safe_int(s.get("id"))
+                            title = str(s.get("title") or "").strip()
+                            if sid and title:
+                                sonarr_series_title_map[sid] = title
+                    except Exception:
+                        # Keep run resilient if catalog fetch fails; labels still use record data.
+                        sonarr_series_title_map = {}
 
                     sonarr_limit = max(1, int((settings.sonarr_max_items_per_run or 0) or default_limit))
                     sonarr_missing_enabled = bool(getattr(settings, "sonarr_search_missing", settings.search_missing))
@@ -301,13 +323,15 @@ async def run_once(session: AsyncSession) -> RunResult:
                                 )
                             await trigger_sonarr_missing_search(sonarr, episode_ids=ids)
                             actions.append(f"Sonarr: missing search for {len(ids)} episode(s)")
-                            labels = [_sonarr_episode_label(r) for r in missing_records[: len(ids)]]
+                            labels = [
+                                _sonarr_episode_label_with_fallback(r, sonarr_series_title_map)
+                                for r in missing_records[: len(ids)]
+                            ]
                             session.add(
                                 ActivityLog(
                                     job_run_id=log.id,
                                     app="sonarr",
                                     kind="missing",
-                                    status="ok",
                                     count=len(ids),
                                     detail=_detail_from_labels(labels, total=len(ids)),
                                 )
@@ -336,13 +360,15 @@ async def run_once(session: AsyncSession) -> RunResult:
                                 )
                             await trigger_sonarr_cutoff_search(sonarr, episode_ids=ids)
                             actions.append(f"Sonarr: cutoff-unmet search for {len(ids)} episode(s)")
-                            labels = [_sonarr_episode_label(r) for r in cutoff_records[: len(ids)]]
+                            labels = [
+                                _sonarr_episode_label_with_fallback(r, sonarr_series_title_map)
+                                for r in cutoff_records[: len(ids)]
+                            ]
                             session.add(
                                 ActivityLog(
                                     job_run_id=log.id,
                                     app="sonarr",
                                     kind="upgrade",
-                                    status="ok",
                                     count=len(ids),
                                     detail=_detail_from_labels(labels, total=len(ids)),
                                 )
@@ -405,7 +431,6 @@ async def run_once(session: AsyncSession) -> RunResult:
                                     job_run_id=log.id,
                                     app="radarr",
                                     kind="missing",
-                                    status="ok",
                                     count=len(ids),
                                     detail=_detail_from_labels(labels, total=len(ids)),
                                 )
@@ -434,7 +459,6 @@ async def run_once(session: AsyncSession) -> RunResult:
                                     job_run_id=log.id,
                                     app="radarr",
                                     kind="upgrade",
-                                    status="ok",
                                     count=len(ids),
                                     detail=_detail_from_labels(labels, total=len(ids)),
                                 )
@@ -606,7 +630,6 @@ async def run_once(session: AsyncSession) -> RunResult:
                                 job_run_id=log.id,
                                 app="emby",
                                 kind="cleanup",
-                                status="ok",
                                 count=len(candidates),
                                 detail=_detail_from_labels([name for _, name, _, _ in candidates], total=len(candidates)),
                             )

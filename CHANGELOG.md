@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.17] - 2026-03-20
+
+### Fixed
+
+- **Activity UI:** removed misleading success/failure badge (it did not represent “download/import succeeded” for Arr).
+
+### Changed
+
+- **Activity formatting:** improved separator formatting for multi-item details.
+- **Sonarr TV labels:** improved TV show name detection so Activity details prefer show name over episode-only context.
+
 ## [1.0.16] - 2026-03-20
 
 ### Added
