@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.7] - 2026-03-20
+
 ### Removed
 
 - **Settings:** expandable “Setup wizard vs this page vs Cleaner” explainer (redundant); wizard “tip” on the final step that pointed to it.
@@ -75,7 +77,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 3. Commit; tag **`vX.Y.Z`**; push commits **and** tags (installer/release workflows often key off **`v*`**).
 4. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 
-[Unreleased]: https://github.com/jampat000/Grabby/compare/v1.0.6...HEAD
+[Unreleased]: https://github.com/jampat000/Grabby/compare/v1.0.7...HEAD
+[1.0.7]: https://github.com/jampat000/Grabby/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/jampat000/Grabby/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/jampat000/Grabby/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/jampat000/Grabby/compare/v1.0.3...v1.0.4
