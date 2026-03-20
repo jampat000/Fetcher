@@ -212,3 +212,63 @@ def test_post_cleaner_settings_full(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "saved=1" in str(resp.url) or "?saved=1" in str(resp.url)
     assert "Test Actor" in body
     assert "Show Runner" in body
+
+
+def test_sonarr_schedule_all_days_stays_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = {
+        "sonarr_enabled": "true",
+        "sonarr_url": "http://localhost:8989",
+        "sonarr_api_key": "abc",
+        "sonarr_search_missing": "true",
+        "sonarr_search_upgrades": "true",
+        "sonarr_max_items_per_run": "50",
+        "sonarr_schedule_enabled": "true",
+        "sonarr_schedule_days": "Mon,Tue,Wed,Thu,Fri,Sat,Sun",
+        "sonarr_schedule_start": "00:00",
+        "sonarr_schedule_end": "23:59",
+        "radarr_enabled": "false",
+        "radarr_url": "",
+        "radarr_api_key": "",
+        "radarr_search_missing": "true",
+        "radarr_search_upgrades": "true",
+        "radarr_max_items_per_run": "50",
+        "radarr_schedule_days": "Mon,Tue,Wed,Thu,Fri,Sat,Sun",
+        "radarr_schedule_start": "00:00",
+        "radarr_schedule_end": "23:59",
+        "interval_minutes": "60",
+        "timezone": "UTC",
+        "save_scope": "sonarr",
+    }
+    with _client(monkeypatch) as client:
+        resp = client.post("/settings", data=payload, follow_redirects=False)
+        assert resp.status_code == 303
+        page = client.get("/settings")
+    html = page.text
+    assert 'name="sonarr_schedule_enabled" checked' in html
+    assert 'name="sonarr_schedule_days" value="Mon,Tue,Wed,Thu,Fri,Sat,Sun"' in html
+
+
+def test_cleaner_schedule_all_days_stays_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    pairs: list[tuple[str, str]] = [
+        ("emby_dry_run", "true"),
+        ("emby_schedule_enabled", "true"),
+        ("emby_schedule_days", "Mon,Tue,Wed,Thu,Fri,Sat,Sun"),
+        ("emby_schedule_start", "00:00"),
+        ("emby_schedule_end", "23:59"),
+        ("emby_max_items_scan", "2000"),
+        ("emby_max_deletes_per_run", "25"),
+        ("save_scope", "global"),
+    ]
+    encoded = urlencode(pairs)
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/emby/settings/cleaner",
+            content=encoded,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        page = client.get("/emby/settings")
+    html = page.text
+    assert 'name="emby_schedule_enabled" checked' in html
+    assert 'name="emby_schedule_days" value="Mon,Tue,Wed,Thu,Fri,Sat,Sun"' in html
