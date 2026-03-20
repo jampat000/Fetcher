@@ -69,6 +69,14 @@ async def migrate(engine: AsyncEngine) -> None:
     if not await _has_column(engine, table=table, column="timezone"):
         await _add_column(engine, table=table, ddl="timezone TEXT NOT NULL DEFAULT 'UTC'")
 
+    # Sonarr/Radarr: min minutes before re-searching the same library item (independent of scheduler interval).
+    if not await _has_column(engine, table=table, column="arr_search_cooldown_minutes"):
+        await _add_column(
+            engine,
+            table=table,
+            ddl="arr_search_cooldown_minutes INTEGER NOT NULL DEFAULT 1440",
+        )
+
     # Emby Cleaner
     if not await _has_column(engine, table=table, column="emby_enabled"):
         await _add_column(engine, table=table, ddl="emby_enabled BOOLEAN NOT NULL DEFAULT 0")

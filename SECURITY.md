@@ -19,12 +19,12 @@ We aim to acknowledge reports within a few days and coordinate disclosure after 
 - **API keys** (Sonarr, Radarr, Emby, etc.) belong in the app **Settings** / database—not in git, logs, or screenshots you share publicly.  
 - A **settings backup** (`.json` from **Settings** → **Backup & Restore**) contains the same secrets as the database—store it **encrypted** or **offline**; never commit it or post it publicly.  
 - When sharing **logs** or **bug reports**, redact URLs, tokens, hostnames, and paths you consider private.  
-- The Web UI and service run **locally by default**; if you expose Grabby to a network, use a **reverse proxy with TLS**, **firewall rules**, and strong **authentication** at the proxy boundary.
+- The **shipped WinSW service** listens on **`0.0.0.0`** (all interfaces) so you can open the Web UI from other PCs on your **LAN** (e.g. `http://YOUR-SERVER:8765`). The UI has **no login**—only use this on networks you trust, or switch the service to `--host 127.0.0.1` and use a **reverse proxy with TLS + auth** if you need remote access. Use **Windows Firewall** to limit who can reach the port.
 - **HTTP error lines** persisted in **Job history / logs** show the failing URL with **credential-like query parameters redacted** (for example Emby’s `api_key` on the query string). Still treat full log exports as sensitive.
 
 ## Threat model (what “secure enough” means here)
 
-Grabby targets a **single trusted operator on the same machine** (or private LAN), with the HTTP server bound to **loopback** in the shipped service config. Industry guidance (e.g. OWASP) still applies, but the **acceptable risk** is different than for a multi-tenant internet app.
+Grabby targets a **single trusted operator** on the **same machine** or a **private LAN**. The packaged service defaults to **`0.0.0.0`** for LAN access; use **`127.0.0.1`** in the service arguments if you want loopback-only. Industry guidance (e.g. OWASP) still applies, but the **acceptable risk** is different than for a multi-tenant internet app.
 
 | Area | In the intended model (localhost / trusted LAN) | If you expose the API/UI to the internet or untrusted networks |
 |------|--------------------------------------------------|------------------------------------------------------------------|

@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.21] - 2026-03-20
+
+### Fixed
+
+- **Arr search repeats:** cooldown now applies per **Sonarr/Radarr library item** (episode/movie id), not separately for “missing” vs “upgrade”, so the same title is not triggered twice in one run. **Arr search cooldown** is a dedicated setting (default **24 hours**), independent of scheduler interval—`0` restores the old “match run interval” behavior.
+- **Wanted queue coverage:** Sonarr/Radarr missing and cutoff-unmet handling **walks multiple API pages** per run until “max items per run” is filled with items that pass cooldown (or the queue ends). Previously only **page 1** was used, so the same top titles were the only candidates forever — unlike Huntarr-style tools that batch through the full backlog.
+- **Radarr/Sonarr IDs:** tolerate numeric ids returned as strings in Arr JSON when extracting episode/movie ids.
+
+### Changed
+
+- **Windows service (WinSW sample):** default bind address is **`0.0.0.0`** so the Web UI is reachable from other machines on the LAN (use firewall rules; UI has no built-in login).
+
 ## [1.0.20] - 2026-03-20
 
 ### Fixed

@@ -166,7 +166,12 @@
           <div class="field">
             <label>Run interval (minutes)</label>
             <input class="number" type="number" name="interval_minutes" value="{{ settings.interval_minutes }}" min="5" max="10080" />
-            <div class="small">Applies immediately after saving.</div>
+            <div class="small">How often the scheduler wakes Grabby. Applies immediately after saving.</div>
+          </div>
+          <div class="field">
+            <label>Arr search cooldown (minutes)</label>
+            <input class="number" type="number" name="arr_search_cooldown_minutes" value="{{ settings.arr_search_cooldown_minutes }}" min="0" max="525600" />
+            <div class="small">Minimum time before Grabby asks Sonarr/Radarr to <strong>search the same episode or movie</strong> again. Use <strong>0</strong> to match the run interval (old behavior). Default <strong>1440</strong> (24h) avoids hammering the same missing titles every tick. Missing + upgrade in one run share this cooldown. Grabby <strong>pages through the whole wanted queue</strong> each run (like Huntarr-style batching) until it fills “max items per run” with titles that are off cooldown — not only the first API page.</div>
           </div>
           <div class="field">
             <label>Timezone</label>
