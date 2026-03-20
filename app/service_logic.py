@@ -15,6 +15,7 @@ from app.arr_client import (
     trigger_sonarr_cutoff_search,
     trigger_sonarr_missing_search,
 )
+from app.http_status_hints import hint_for_http_status
 from app.log_sanitize import redact_url_for_logging
 from app.models import ActivityLog, AppSettings, AppSnapshot, JobRunLog
 from app.schedule import in_window
@@ -209,7 +210,7 @@ async def run_once(session: AsyncSession) -> RunResult:
                 finally:
                     await radarr.aclose()
 
-        # Emby cleanup
+        # Emby Cleaner
         if settings.emby_enabled and settings.emby_url and settings.emby_api_key:
             if not in_window(
                 schedule_enabled=getattr(settings, "emby_schedule_enabled", False),
@@ -256,7 +257,7 @@ async def run_once(session: AsyncSession) -> RunResult:
                     dry_run = bool(getattr(settings, "emby_dry_run", True))
 
                     if movie_rating_below <= 0 and movie_unwatched_days <= 0 and (not tv_delete_watched) and tv_unwatched_days <= 0:
-                        actions.append("Emby: skipped (no cleanup rules enabled)")
+                        actions.append("Emby: skipped (no Emby Cleaner rules enabled)")
                     else:
                         items = await emby.items_for_user(user_id=effective_user_id, limit=scan_limit)
                         candidates: list[tuple[str, str]] = []
@@ -335,7 +336,10 @@ async def run_once(session: AsyncSession) -> RunResult:
             body = "<unavailable>"
         log.ok = False
         safe_url = redact_url_for_logging(e.request.url)
-        log.message = f"Run failed: HTTP {e.response.status_code} for {e.request.method} {safe_url} | {body}"
+        code = e.response.status_code
+        hint = hint_for_http_status(code)
+        hint_suffix = f" {hint}" if hint else ""
+        log.message = f"Run failed: HTTP {code} for {e.request.method} {safe_url}{hint_suffix} | {body}"
         log.finished_at = utc_now_naive()
         # Snapshot failure if it’s clearly Sonarr/Radarr/Emby
         url = safe_url

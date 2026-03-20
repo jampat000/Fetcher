@@ -1,0 +1,20 @@
+"""Short user-facing hints for common HTTP errors from Arr / Emby APIs."""
+
+from __future__ import annotations
+
+
+def hint_for_http_status(status: int) -> str:
+    """One-line hint to append to logs or errors (no secrets)."""
+    hints: dict[int, str] = {
+        400: "Bad request — check URL and API version (Sonarr/Radarr v3).",
+        401: "Unauthorized — wrong or missing API key in Settings.",
+        403: "Forbidden — API key may lack permission for this action.",
+        404: "Not found — wrong base URL or API path (confirm Sonarr/Radarr v3 and port).",
+        408: "Server reported timeout — try again; library or disk may be busy.",
+        429: "Rate limited — Sonarr/Radarr/Emby asked to slow down.",
+        500: "Server error on the Arr/Emby side — check their logs.",
+        502: "Bad gateway — reverse proxy or upstream may be down.",
+        503: "Service unavailable — Arr/Emby may be starting or overloaded.",
+        504: "Gateway timeout — proxy or Arr did not respond in time.",
+    }
+    return hints.get(status, "")

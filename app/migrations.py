@@ -59,7 +59,7 @@ async def migrate(engine: AsyncEngine) -> None:
     if not await _has_column(engine, table=table, column="timezone"):
         await _add_column(engine, table=table, ddl="timezone TEXT NOT NULL DEFAULT 'UTC'")
 
-    # Emby cleanup
+    # Emby Cleaner
     if not await _has_column(engine, table=table, column="emby_enabled"):
         await _add_column(engine, table=table, ddl="emby_enabled BOOLEAN NOT NULL DEFAULT 0")
     if not await _has_column(engine, table=table, column="emby_url"):

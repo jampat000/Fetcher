@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.schedulers.base import SchedulerNotRunningError
@@ -56,6 +57,20 @@ class ServiceScheduler:
             id=self._job_id,
             replace_existing=True,
         )
+
+    def next_grabby_run_at(self) -> datetime | None:
+        """Next scheduled interval tick for the main automation job (naive UTC if job uses naive)."""
+        if not self._sched.running:
+            return None
+        job = self._sched.get_job(self._job_id)
+        if not job:
+            return None
+        nrt = job.next_run_time
+        if nrt is None:
+            return None
+        if nrt.tzinfo is not None:
+            return nrt.astimezone(timezone.utc).replace(tzinfo=None)
+        return nrt
 
     def shutdown(self) -> None:
         if not self._sched.running:

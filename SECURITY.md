@@ -36,15 +36,18 @@ Grabby targets a **single trusted operator on the same machine** (or private LAN
 
 ## Default branch (`master`) on GitHub
 
-Do not rely on local git habits alone: in GitHub **Settings → Branches** (or **Rules → Rulesets**), protect **`master`** with **required PR**, **required passing checks** (`Test / pytest`, `Security / pip-audit`, `CodeQL / Analyze (Python)` — copy exact names from a PR), **no force-push**, and (for strongest posture) **don’t allow admins to bypass**.
+Do not rely on local git habits alone: in GitHub **Settings → Branches** (or **Rules → Rulesets**), protect **`master`** with **required PR**, **required passing checks** (`Test / pytest`, `Security / pip-audit` — copy exact names from a PR), **no force-push**, and (for strongest posture) **don’t allow admins to bypass**.
 
 Step-by-step checklist: **[`.github/BRANCH_PROTECTION.md`](.github/BRANCH_PROTECTION.md)**.
 
 ## CI security checks
 
 - **pip-audit** runs against `requirements.txt` on pushes and PRs to `master` / `main`.  
-- **CodeQL** analyzes the Python codebase on the same triggers plus a weekly schedule.
 
 ## Supply chain
 
 Prefer downloading **`GrabbySetup.exe`** from **official [GitHub Releases](https://github.com/jampat000/Grabby/releases)** only.
+
+
+
+

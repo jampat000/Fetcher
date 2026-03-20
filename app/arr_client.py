@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
+
+from app.http_retry import httpx_request_with_retries
 
 
 @dataclass(frozen=True)
@@ -20,26 +23,29 @@ class ArrClient:
             timeout=timeout_s,
         )
 
+    async def _req(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+        return await httpx_request_with_retries(self._client, method, path, **kwargs)
+
     async def aclose(self) -> None:
         await self._client.aclose()
 
     async def health(self) -> bool:
         # Both Sonarr and Radarr support /api/v3/system/status
-        r = await self._client.get("/api/v3/system/status")
+        r = await self._req("GET", "/api/v3/system/status")
         r.raise_for_status()
         return True
 
     async def wanted_missing(self, *, page: int = 1, page_size: int = 50) -> dict:
         # Sonarr: /api/v3/wanted/missing
         # Radarr: /api/v3/wanted/missing
-        r = await self._client.get("/api/v3/wanted/missing", params={"page": page, "pageSize": page_size})
+        r = await self._req("GET", "/api/v3/wanted/missing", params={"page": page, "pageSize": page_size})
         r.raise_for_status()
         return r.json()
 
     async def wanted_cutoff_unmet(self, *, page: int = 1, page_size: int = 50) -> dict:
         # Sonarr: /api/v3/wanted/cutoff
         # Radarr: /api/v3/wanted/cutoff
-        r = await self._client.get("/api/v3/wanted/cutoff", params={"page": page, "pageSize": page_size})
+        r = await self._req("GET", "/api/v3/wanted/cutoff", params={"page": page, "pageSize": page_size})
         r.raise_for_status()
         return r.json()
 
@@ -47,12 +53,12 @@ class ArrClient:
         # POST /api/v3/command with { name: ... }
         payload = {"name": name}
         payload.update(kwargs)
-        r = await self._client.post("/api/v3/command", json=payload)
+        r = await self._req("POST", "/api/v3/command", json=payload)
         r.raise_for_status()
         return r.json()
 
     async def tags(self) -> list[dict]:
-        r = await self._client.get("/api/v3/tag")
+        r = await self._req("GET", "/api/v3/tag")
         r.raise_for_status()
         data = r.json()
         return data if isinstance(data, list) else []
@@ -67,7 +73,7 @@ class ArrClient:
                 tag_id = t.get("id")
                 if isinstance(tag_id, int) and tag_id > 0:
                     return tag_id
-        r = await self._client.post("/api/v3/tag", json={"label": wanted})
+        r = await self._req("POST", "/api/v3/tag", json={"label": wanted})
         r.raise_for_status()
         payload = r.json()
         created = payload if isinstance(payload, dict) else {}
@@ -91,7 +97,7 @@ class ArrClient:
             "tags": tag_ids,
             "applyTags": "add",
         }
-        r = await self._client.put("/api/v3/episode/editor", json=payload)
+        r = await self._req("PUT", "/api/v3/episode/editor", json=payload)
         r.raise_for_status()
 
     async def add_tags_to_movies(self, *, movie_ids: list[int], tag_ids: list[int]) -> None:
@@ -102,7 +108,7 @@ class ArrClient:
             "tags": tag_ids,
             "applyTags": "add",
         }
-        r = await self._client.put("/api/v3/movie/editor", json=payload)
+        r = await self._req("PUT", "/api/v3/movie/editor", json=payload)
         r.raise_for_status()
 
 

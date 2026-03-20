@@ -68,7 +68,7 @@
       <p class="hint">Optional. Server URL, API key (Emby → API Keys), and your user ID if required by your server policy.</p>
       <div class="checkline">
         <input type="checkbox" name="emby_enabled" id="emby_enabled" {% if settings.emby_enabled %}checked{% endif %} />
-        <label for="emby_enabled"><strong>Enable</strong> Emby cleanup features</label>
+        <label for="emby_enabled"><strong>Enable</strong> Emby Cleaner</label>
       </div>
       <label for="emby_url">Emby URL</label>
       <input class="input" id="emby_url" name="emby_url" type="text" value="{{ settings.emby_url }}" placeholder="http://localhost:8096" autocomplete="off" />
@@ -106,7 +106,7 @@
       <p class="hint">Basics are saved. Use the links below when you want to fine-tune automation, Cleaner rules, or run a library match scan.</p>
       <ul class="small setup-done-list">
         <li><a href="/settings"><strong>Grabby Settings</strong></a> — Sonarr/Radarr search options, per-app schedules, max items, backups</li>
-        <li><a href="/emby/settings"><strong>Cleaner Settings</strong></a> — Emby cleanup rules, dry-run vs live, scan limits, Cleaner schedule</li>
+        <li><a href="/emby/settings"><strong>Cleaner Settings</strong></a> — Emby Cleaner rules, dry-run vs live, scan limits, schedule</li>
         <li><a href="/cleaner"><strong>Cleaner</strong></a> — <strong>Scan Emby for matches</strong> to preview what your rules would target (on-demand)</li>
       </ul>
       <div class="setup-wizard-footer">

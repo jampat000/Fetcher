@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.8] - 2026-03-20
+
+### Added
+
+- **Dashboard — Automation:** last run summary (time, OK/fail, short message) and **next scheduler tick** (interval + note about per-app schedule windows).
+- **Cleaner Settings:** prominent **Dry run** vs **Live delete** banners; muted banner when **Emby Cleaner** is disabled.
+
+### Changed
+
+- **Naming:** user-facing **Emby cleanup** wording → **Emby Cleaner** (templates, messages, docs). Internal activity kind `cleanup` unchanged.
+- **Reliability:** Sonarr/Radarr (**ArrClient**) and **Emby** HTTP calls use **retries with backoff** on transient errors (connection/timeouts, 429/502/503/504).
+- **Logs / snapshots:** HTTP failures append short **hints** for common status codes (401/403/404, etc.).
+- **CI:** removed CodeQL workflow for private-repo plan compatibility (keep `pytest` + `pip-audit`).
+- **Docs:** `SECURITY.md`, branch-protection docs, and import JSON updated to require only supported checks (`Test / pytest`, `Security / pip-audit`).
+
 ## [1.0.7] - 2026-03-20
 
 ### Removed
@@ -77,9 +92,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 3. Commit; tag **`vX.Y.Z`**; push commits **and** tags (installer/release workflows often key off **`v*`**).
 4. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 
-[Unreleased]: https://github.com/jampat000/Grabby/compare/v1.0.7...HEAD
+[Unreleased]: https://github.com/jampat000/Grabby/compare/v1.0.8...HEAD
+[1.0.8]: https://github.com/jampat000/Grabby/compare/v1.0.7...v1.0.8
 [1.0.7]: https://github.com/jampat000/Grabby/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/jampat000/Grabby/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/jampat000/Grabby/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/jampat000/Grabby/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/jampat000/Grabby/releases/tag/v1.0.3
+
+
+
+

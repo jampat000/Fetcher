@@ -4,7 +4,7 @@
   <div class="page-head">
     <div>
       <h1>Cleaner Settings</h1>
-      <p>Dedicated cleanup configuration, fully separate from Arr settings.</p>
+      <p>Dedicated <strong>Emby Cleaner</strong> configuration, fully separate from Arr settings.</p>
     </div>
   </div>
 
@@ -12,6 +12,22 @@
     <a href="/cleaner" class="module-tab">Cleaner</a>
     <a href="/emby/settings" class="module-tab active">Cleaner Settings</a>
   </div>
+
+  {% if settings.emby_enabled %}
+  {% if settings.emby_dry_run %}
+  <div class="banner banner-ok cleaner-mode-banner" role="status">
+    <strong>Dry run (safe)</strong> — Grabby will <em>not</em> delete anything in Emby. Review matches under <a href="/logs">Logs</a> or <a href="/cleaner?scan=1">Cleaner</a>; uncheck dry run only when you intend real deletes.
+  </div>
+  {% else %}
+  <div class="banner banner-warn cleaner-mode-banner" role="alert">
+    <strong>Live delete</strong> — Matching items can be <em>removed</em> from Emby on schedule or when you run Cleaner. Re‑enable <strong>Dry run</strong> below if you only want previews.
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="banner banner-ok cleaner-mode-banner" role="status" style="opacity:.9;">
+    <strong>Emby Cleaner off</strong> — Turn on <strong>Enable Emby Cleaner</strong> below to use dry run or live mode.
+  </div>
+  {% endif %}
 
   <div class="card module-content">
       {% if emby and emby.status_message
@@ -27,7 +43,7 @@
       <form method="post" action="/emby/settings/connection">
         <div class="checkline">
           <input type="checkbox" name="emby_enabled" {% if settings.emby_enabled %}checked{% endif %} />
-          <strong>Enable Emby Cleanup</strong>
+          <strong>Enable Emby Cleaner</strong>
         </div>
 
         <div class="row">
@@ -214,7 +230,7 @@
         <div class="section">
           <div class="checkline">
             <input type="checkbox" name="emby_schedule_enabled" {% if settings.emby_schedule_enabled %}checked{% endif %} />
-            Enable Emby schedule window
+            Enable Emby Cleaner schedule window
           </div>
           <label>Days</label>
           <input type="hidden" name="emby_schedule_days" value="{{ settings.emby_schedule_days }}" data-days-input />

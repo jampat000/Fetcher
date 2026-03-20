@@ -44,7 +44,7 @@ class AppSettings(Base):
     interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     timezone: Mapped[str] = mapped_column(String(64), default="UTC")  # IANA e.g. America/New_York
 
-    # Emby cleanup
+    # Emby Cleaner
     emby_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     emby_url: Mapped[str] = mapped_column(String(512), default="")
     emby_api_key: Mapped[str] = mapped_column(String(256), default="")

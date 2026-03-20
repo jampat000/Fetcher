@@ -16,7 +16,7 @@
 
   <div class="card module-content">
     <h2>Activity</h2>
-    <div class="hint">What Grabby triggered: missing, upgrade, and cleanup actions. Times in your chosen timezone.</div>
+    <div class="hint">What Grabby triggered: missing, upgrade, and <strong>Emby Cleaner</strong> actions. Times in your chosen timezone.</div>
     <div class="section">
       {% if activity %}
       <div class="activity-list">
@@ -31,7 +31,7 @@
             {% if e.kind == "missing" %}
               {{ e.count }} {{ "episode" if e.app == "sonarr" else "movie" }}{{ "s" if e.count != 1 else "" }} searched
             {% elif e.kind == "cleanup" %}
-              {{ e.count }} item{{ "s" if e.count != 1 else "" }} matched cleanup rules
+              {{ e.count }} item{{ "s" if e.count != 1 else "" }} matched Emby Cleaner rules
             {% else %}
               {{ e.count }} {{ "episode" if e.app == "sonarr" else "movie" }}{{ "s" if e.count != 1 else "" }} upgrade search
             {% endif %}

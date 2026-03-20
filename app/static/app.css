@@ -169,6 +169,10 @@ body{
   background:rgba(52,211,153,.12);
   border-color:rgba(52,211,153,.35);
 }
+.cleaner-mode-banner{margin-bottom:14px}
+.automation-card h2{margin-top:0}
+.monospace-ish{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
+
 .banner-warn{
   background:rgba(251,191,36,.10);
   border-color:rgba(251,191,36,.35);

@@ -21,7 +21,7 @@ Use **classic branch protection**, not rulesets (rulesets often don’t enforce 
    |---------|----------|
    | **Require a pull request before merging** | ✅ Yes — set **1** approval (*solo:* you **Approve** your own PRs). |
    | **Require status checks to pass** | ✅ Yes — enable **Require branches to be up to date before merging**. |
-   | **Status checks** (search & add all three) | `Test / pytest`, `Security / pip-audit`, `CodeQL / Analyze (Python)` |
+   | **Status checks** (search & add both checks) | `Test / pytest`, `Security / pip-audit` |
    | **Block force pushes** | ✅ Yes |
    | **Allow deletions** | ❌ Leave **off** / unchecked |
 
@@ -55,13 +55,13 @@ $env:GITHUB_TOKEN = 'paste_token_here'
 
 Use **single quotes** around the token. If you omit quotes, PowerShell tries to run the token as a command. Run from the **repo root** (folder that contains `scripts\`).
 
-If GitHub returns **422** because a required check has never run on the repo, either open any PR so **Test / Security / CodeQL** run once and retry, **or**:
+If GitHub returns **422** because a required check has never run on the repo, either open any PR so **Test / Security** run once and retry, **or**:
 
 ```powershell
 .\scripts\protect-master-branch.ps1 -SkipRequiredStatusChecks
 ```
 
-…then add the three required checks in **Settings → Branches → `master`**.
+…then add the required checks in **Settings → Branches → `master`**.
 
 ---
 
@@ -92,7 +92,6 @@ If GitHub returns **422** because a required check has never run on the repo, ei
 
    - `Test / pytest`
    - `Security / pip-audit`
-   - `CodeQL / Analyze (Python)`
 
    > **Tip:** Open any PR → **Checks** → copy the **exact** names from the list (GitHub is picky about spelling/spaces).
 
@@ -105,7 +104,7 @@ If GitHub returns **422** because a required check has never run on the repo, ei
 If you prefer rulesets (fine-grained, multiple targets):
 
 - **Target branches:** `master` (and `main` if used).
-- **Rules:** restrict updates, require PR, required checks (same three as above), block force-push, optional block deletions.
+- **Rules:** restrict updates, require PR, required checks (same two checks as above), block force-push, optional block deletions.
 - **Bypass list:** empty for strongest posture, or emergency break-glass role only.
 
 **Private repo on a free account:** GitHub may show *“Rulesets won’t be enforced … until you move to GitHub Team”*. In that case rulesets are **not** your answer—use **§1 Classic branch protection** (Settings → Branches) instead; it still protects `master` on typical free private repositories.
@@ -130,3 +129,6 @@ If you use `gh` and prefer API automation, generate rulesets from the UI once, o
 
 - All changes to `master` should go through a **PR**; bots (e.g. Dependabot) still open PRs and merge **only if** checks pass and approval policy is satisfied.
 - If a required check name changes (workflow/job rename), update the branch rule or ruleset so merges don’t stall.
+
+
+

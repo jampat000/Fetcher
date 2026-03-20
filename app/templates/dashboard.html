@@ -38,6 +38,32 @@
   </div>
   {% endif %}
 
+  <div class="card module-content automation-card">
+    <h2>Automation</h2>
+    <div class="small">
+      {% if last_run %}
+      <p style="margin:0;">
+        <strong>Last run:</strong> {{ last_run.started_local }}
+        {% if last_run.ok %}<span class="status-pill status-pill-ok">OK</span>{% else %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
+        {% if last_run.has_finished and last_run.finished_local %}<span class="muted"> · finished {{ last_run.finished_local }}</span>{% elif not last_run.has_finished %}<span class="muted"> · still running or interrupted</span>{% endif %}
+      </p>
+      {% if last_run.message %}
+      <p class="muted monospace-ish" style="margin:8px 0 0;line-height:1.45;">{{ last_run.message }}</p>
+      {% endif %}
+      {% else %}
+      <p class="muted" style="margin:0;">No runs logged yet. After the first scheduled pass, a summary appears here.</p>
+      {% endif %}
+      {% if next_scheduler_tick_local %}
+      <p style="margin:12px 0 0;">
+        <strong>Next scheduler tick:</strong> {{ next_scheduler_tick_local }}
+        <span class="muted"> — interval <strong>{{ scheduler_interval_minutes }} min</strong> (see <a href="/settings">Settings</a>). Sonarr, Radarr, and Emby only act when their own <strong>schedule windows</strong> allow it.</span>
+      </p>
+      {% else %}
+      <p class="muted" style="margin:12px 0 0;">Next run time will show here after the service scheduler starts.</p>
+      {% endif %}
+    </div>
+  </div>
+
   <div class="card module-content">
     <h2>Overview</h2>
     <div class="hint">Counts reflect the most recent run/test snapshot. Use Settings to configure schedules and connections.</div>
@@ -92,7 +118,7 @@
 
     <div class="section">
       <div class="card" style="padding:14px;">
-        <h2 style="margin-bottom:10px;">Emby Cleanup</h2>
+        <h2 style="margin-bottom:10px;">Emby Cleaner</h2>
         {% if not settings.emby_enabled %}
           <div class="small">Disabled</div>
         {% else %}
@@ -238,7 +264,7 @@
             {% if e.kind == "missing" %}
               {{ e.count }} {{ "episode" if e.app == "sonarr" else "movie" }}{{ "s" if e.count != 1 else "" }} searched
             {% elif e.kind == "cleanup" %}
-              {{ e.count }} item{{ "s" if e.count != 1 else "" }} matched cleanup rules
+              {{ e.count }} item{{ "s" if e.count != 1 else "" }} matched Emby Cleaner rules
             {% else %}
               {{ e.count }} {{ "episode" if e.app == "sonarr" else "movie" }}{{ "s" if e.count != 1 else "" }} upgrade search
             {% endif %}

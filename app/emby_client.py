@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
+
+from app.http_retry import httpx_request_with_retries
 
 # Emby Items API: fetch in pages so large libraries can exceed a single Limit cap.
 _DEFAULT_ITEMS_PAGE_SIZE = 2000
@@ -28,17 +31,20 @@ class EmbyClient:
             timeout=timeout_s,
         )
 
+    async def _req(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+        return await httpx_request_with_retries(self._client, method, path, **kwargs)
+
     async def aclose(self) -> None:
         await self._client.aclose()
 
     async def health(self) -> bool:
         # Simple health/probe endpoint.
-        r = await self._client.get("/System/Info")
+        r = await self._req("GET", "/System/Info")
         r.raise_for_status()
         return True
 
     async def users(self) -> list[dict]:
-        r = await self._client.get("/Users")
+        r = await self._req("GET", "/Users")
         r.raise_for_status()
         data = r.json()
         return data if isinstance(data, list) else []
@@ -67,7 +73,7 @@ class EmbyClient:
                 "StartIndex": str(start),
                 "Limit": str(take),
             }
-            r = await self._client.get(f"/Users/{user_id}/Items", params=params)
+            r = await self._req("GET", f"/Users/{user_id}/Items", params=params)
             r.raise_for_status()
             payload = r.json()
             items = payload.get("Items") if isinstance(payload, dict) else None
@@ -82,5 +88,5 @@ class EmbyClient:
 
     async def delete_item(self, item_id: str) -> None:
         # Emby delete endpoint.
-        r = await self._client.delete(f"/Items/{item_id}")
+        r = await self._req("DELETE", f"/Items/{item_id}")
         r.raise_for_status()

@@ -227,6 +227,13 @@ def _now_local(timezone: str) -> str:
     return datetime.now(tz).strftime("%d-%m-%Y %I:%M %p")
 
 
+def _truncate_display(s: str, max_len: int = 220) -> str:
+    t = (s or "").strip().replace("\n", " ")
+    if len(t) <= max_len:
+        return t
+    return t[: max_len - 1] + "…"
+
+
 def _fmt_local(dt: datetime, tz_name: str) -> str:
     try:
         tz = ZoneInfo(_resolve_timezone_name(tz_name))
@@ -433,6 +440,21 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
         or (settings.radarr_url or "").strip()
         or (settings.emby_url or "").strip()
     )
+    last_run = (
+        (await session.execute(select(JobRunLog).order_by(desc(JobRunLog.id)).limit(1))).scalars().first()
+    )
+    last_run_display = None
+    if last_run:
+        last_run_display = {
+            "started_local": _fmt_local(last_run.started_at, tz),
+            "finished_local": _fmt_local(last_run.finished_at, tz) if last_run.finished_at else "",
+            "has_finished": last_run.finished_at is not None,
+            "ok": last_run.ok,
+            "message": _truncate_display(last_run.message or ""),
+        }
+    next_tick = scheduler.next_grabby_run_at()
+    next_tick_local = _fmt_local(next_tick, tz) if next_tick else ""
+    interval_m = max(5, int(settings.interval_minutes or 60))
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -443,6 +465,9 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
             "subtitle": "Status overview and counts",
             "settings": settings,
             "suggest_setup_wizard": suggest_setup_wizard,
+            "last_run": last_run_display,
+            "next_scheduler_tick_local": next_tick_local,
+            "scheduler_interval_minutes": interval_m,
             "activity": activity_display,
             "sonarr": sonarr_snap,
             "radarr": radarr_snap,
@@ -611,7 +636,7 @@ async def emby_settings_page(request: Request, session: AsyncSession = Depends(g
             "app_name": APP_NAME,
             "app_tagline": APP_TAGLINE,
             "title": f"{APP_NAME} — Cleaner Settings",
-            "subtitle": "Configure Emby cleanup and schedule",
+            "subtitle": "Configure Emby Cleaner and schedule",
             "settings": settings,
             "emby": emby_snap,
             "now": utc_now_naive(),
@@ -672,7 +697,7 @@ async def emby_preview_page(request: Request, session: AsyncSession = Depends(ge
     if not settings.emby_url or not settings.emby_api_key:
         error = "Emby URL and API key are required."
     elif movie_rating_below <= 0 and movie_unwatched_days <= 0 and (not tv_delete_watched) and tv_unwatched_days <= 0:
-        error = "No rules are enabled. Set at least one Emby cleanup rule in Settings."
+        error = "No rules are enabled. Set at least one Emby Cleaner rule in Cleaner Settings."
     elif not run_emby_scan:
         # Fast path: sidebar / default navigation should not scan the whole library.
         scan_prompt = True
@@ -744,7 +769,7 @@ async def emby_preview_page(request: Request, session: AsyncSession = Depends(ge
             "app_name": APP_NAME,
             "app_tagline": APP_TAGLINE,
             "title": f"{APP_NAME} — Cleaner",
-            "subtitle": "Review exact titles matching cleanup rules",
+            "subtitle": "Review exact titles matching Emby Cleaner rules",
             "settings": settings,
             "rows": rows,
             "error": error,

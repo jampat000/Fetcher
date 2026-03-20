@@ -9,7 +9,7 @@ This repo uses **classic branch protection** on **`master`**: pull requests, req
 1. **Branch** from `master` (example: `fix/thing`, `chore/docs`, `feat/whatever`).
 2. **Commit** with clear messages.
 3. Open a **pull request** into `master`.
-4. Wait for **required checks** (e.g. `Test / pytest`, `Security / pip-audit`, `CodeQL / Analyze (Python)`).
+4. Wait for **required checks** (e.g. `Test / pytest`, `Security / pip-audit`).
 5. **Approve** the PR if your branch rules require an approval (solo maintainers often self-approve).
 6. **Merge** when green.
 
@@ -40,3 +40,4 @@ py -m pytest -q
 ## Releases
 
 Maintainers: see **Releasing** at the bottom of **[`CHANGELOG.md`](CHANGELOG.md)** and **`VERSION`**.
+

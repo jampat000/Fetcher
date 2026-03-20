@@ -14,8 +14,9 @@ def test_items_for_user_stops_when_api_returns_short_page() -> None:
     async def _run() -> None:
         client = EmbyClient(EmbyConfig("http://localhost:8096", "key"))
 
-        async def fake_get(url: str, params: dict | None = None) -> MagicMock:
-            p = params or {}
+        async def fake_request(_method: str, _url: str, **kwargs: object) -> MagicMock:
+            p = kwargs.get("params") or {}
+            assert isinstance(p, dict)
             idx = int(p.get("StartIndex", 0))
             lim = int(p.get("Limit", 0))
             if idx == 0:
@@ -23,11 +24,12 @@ def test_items_for_user_stops_when_api_returns_short_page() -> None:
             else:
                 batch = []
             resp = MagicMock()
+            resp.status_code = 200
             resp.json.return_value = {"Items": batch}
             resp.raise_for_status = MagicMock()
             return resp
 
-        client._client.get = AsyncMock(side_effect=fake_get)
+        client._client.request = AsyncMock(side_effect=fake_request)
         try:
             out = await client.items_for_user(user_id="u1", limit=50_000)
         finally:
@@ -42,24 +44,26 @@ def test_items_for_user_respects_total_cap_across_pages() -> None:
     async def _run() -> None:
         client = EmbyClient(EmbyConfig("http://localhost:8096", "key"))
 
-        async def fake_get(url: str, params: dict | None = None) -> MagicMock:
-            p = params or {}
+        async def fake_request(_method: str, _url: str, **kwargs: object) -> MagicMock:
+            p = kwargs.get("params") or {}
+            assert isinstance(p, dict)
             idx = int(p.get("StartIndex", 0))
             lim = int(p.get("Limit", 0))
             batch = [{"Id": f"{idx}-{i}"} for i in range(lim)]
             resp = MagicMock()
+            resp.status_code = 200
             resp.json.return_value = {"Items": batch}
             resp.raise_for_status = MagicMock()
             return resp
 
-        client._client.get = AsyncMock(side_effect=fake_get)
+        client._client.request = AsyncMock(side_effect=fake_request)
         try:
             out = await client.items_for_user(user_id="u1", limit=4500)
         finally:
             await client.aclose()
 
         assert len(out) == 4500
-        assert client._client.get.call_count == 3  # 2000 + 2000 + 500
+        assert client._client.request.call_count == 3  # 2000 + 2000 + 500
 
     asyncio.run(_run())
 
@@ -70,8 +74,9 @@ def test_items_for_user_limit_zero_scans_until_exhausted() -> None:
     async def _run() -> None:
         client = EmbyClient(EmbyConfig("http://localhost:8096", "key"))
 
-        async def fake_get(url: str, params: dict | None = None) -> MagicMock:
-            p = params or {}
+        async def fake_request(_method: str, _url: str, **kwargs: object) -> MagicMock:
+            p = kwargs.get("params") or {}
+            assert isinstance(p, dict)
             idx = int(p.get("StartIndex", 0))
             lim = int(p.get("Limit", 0))
             if idx == 0:
@@ -81,17 +86,18 @@ def test_items_for_user_limit_zero_scans_until_exhausted() -> None:
             else:
                 batch = []
             resp = MagicMock()
+            resp.status_code = 200
             resp.json.return_value = {"Items": batch}
             resp.raise_for_status = MagicMock()
             return resp
 
-        client._client.get = AsyncMock(side_effect=fake_get)
+        client._client.request = AsyncMock(side_effect=fake_request)
         try:
             out = await client.items_for_user(user_id="u1", limit=0)
         finally:
             await client.aclose()
 
         assert len(out) == 2500
-        assert client._client.get.call_count == 2
+        assert client._client.request.call_count == 2
 
     asyncio.run(_run())

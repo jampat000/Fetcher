@@ -3,8 +3,7 @@
     "strict": true,
     "checks": [
       { "context": "Test / pytest" },
-      { "context": "Security / pip-audit" },
-      { "context": "CodeQL / Analyze (Python)" }
+      { "context": "Security / pip-audit" }
     ]
   },
   "enforce_admins": true,

@@ -4,7 +4,7 @@
 
 - Search for **missing** movies/episodes
 - Re-trigger searches to **upgrade** existing items until the Arr app reports the **quality cutoff** is met (your Quality Profiles still decide what “better” means)
-- Optionally run **Emby cleanup rules** (dry-run supported) to delete old/low-rated content. The **Cleaner** tab opens right away; use **Scan Emby for matches** when you want to pull your library and see what fits your rules (big libraries can take a bit).
+- Optionally run **Emby Cleaner rules** (dry-run supported) to delete old/low-rated content. The **Cleaner** tab opens right away; use **Scan Emby for matches** when you want to pull your library and see what fits your rules (big libraries can take a bit).
 
 ## Download (Windows installer)
 
@@ -33,7 +33,7 @@ Version is shown in the sidebar of the Web UI (`v…` next to the clock). It mat
 
 See **[`SECURITY.md`](SECURITY.md)** (reporting issues, handling API keys, official downloads).
 
-GitHub Actions runs **pip-audit** on dependencies and **CodeQL** on Python code for the default branch. **Protect `master`** in repo settings — see **[`.github/BRANCH_PROTECTION.md`](.github/BRANCH_PROTECTION.md)**.
+GitHub Actions runs **pip-audit** on dependencies for the default branch. **Protect `master`** in repo settings — see **[`.github/BRANCH_PROTECTION.md`](.github/BRANCH_PROTECTION.md)**.
 
 ## What’s in this repo
 
@@ -150,7 +150,6 @@ $env:INSTALLER_SIGN_PASSWORD = "your-pfx-password"
 
 - **Test**: **pytest** on **Ubuntu** for every push / PR (`.github/workflows/test.yml`).
 - **Security**: **pip-audit** on `requirements.txt` (`.github/workflows/security.yml`).
-- **CodeQL**: Python static analysis (`.github/workflows/codeql.yml`), weekly schedule + on push/PR to `master` / `main`.
 - **Build installer**: on **Windows**, PyInstaller → Inno → **smoke test** (start `Grabby.exe`, hit `/healthz`) → artifact — **only** when you push a **`v*`** tag or run the workflow **manually** (`workflow_dispatch`). Ordinary branch/PR pushes do **not** trigger it (saves minutes and notification noise). **Tags** `v*` also run the **Release** job (`.github/workflows/build-installer.yml`).
 
 On **`v*`** tag push or **Actions → Build installer → Run workflow**, the job runs on `windows-latest` and uploads **`installer/output/GrabbySetup.exe`**.
@@ -171,3 +170,5 @@ This does **not** block `git push` itself—only the **release** step on GitHub.
 ### Dependency updates
 
 [**Dependabot**](.github/dependabot.yml) opens weekly PRs for **pip** and **GitHub Actions** dependencies.
+
+

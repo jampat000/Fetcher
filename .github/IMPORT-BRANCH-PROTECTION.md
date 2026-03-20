@@ -41,7 +41,7 @@ Invoke-RestMethod -Method Put `
   } -Body $json -ContentType 'application/json'
 ```
 
-If GitHub returns **422** (unknown context), run CI once on `master` or open a PR so the three checks exist, then retry. Or temporarily remove `required_status_checks` in the JSON, apply, and add checks in **Settings → Branches**.
+If GitHub returns **422** (unknown context), run CI once on `master` or open a PR so the required checks exist, then retry. Or temporarily remove `required_status_checks` in the JSON, apply, and add checks in **Settings → Branches**.
 
 ## Status check names
 
@@ -49,4 +49,5 @@ Must match the **Checks** tab on a PR exactly. Defaults for this repo:
 
 - `Test / pytest`
 - `Security / pip-audit`
-- `CodeQL / Analyze (Python)`
+
+

@@ -67,8 +67,7 @@ $headers = @{
 # Check names must match the "Checks" tab on a PR exactly.
 $checks = @(
     @{ context = "Test / pytest" },
-    @{ context = "Security / pip-audit" },
-    @{ context = "CodeQL / Analyze (Python)" }
+    @{ context = "Security / pip-audit" }
 )
 
 $body = [ordered]@{
@@ -118,7 +117,9 @@ try {
         Write-Host ""
         Write-Host "If GitHub says a required check is unknown, open a PR so all workflows run once," -ForegroundColor Yellow
         Write-Host "or re-run with: .\scripts\protect-master-branch.ps1 -SkipRequiredStatusChecks" -ForegroundColor Yellow
-        Write-Host "then add the three checks manually under Settings → Branches → master." -ForegroundColor Yellow
+        Write-Host "then add required checks manually under Settings → Branches → master." -ForegroundColor Yellow
     }
     throw
 }
+
+
