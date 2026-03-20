@@ -39,5 +39,5 @@ py -m pytest -q
 
 ## Releases
 
-Maintainers: see **Releasing** at the bottom of **[`CHANGELOG.md`](CHANGELOG.md)** and **`VERSION`**.
+Maintainers: see **Releasing** at the bottom of **[`CHANGELOG.md`](CHANGELOG.md)** and **`VERSION`**. After merge to **`master`**, a change to **`VERSION`** automatically creates and pushes **`vX.Y.Z`** in GitHub Actions (then the installer workflow runs).
 
