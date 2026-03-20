@@ -116,3 +116,17 @@ class ActivityLog(Base):
     detail: Mapped[str] = mapped_column(Text, default="")
 
 
+class ArrActionLog(Base):
+    """Cooldown/history to prevent repeated Arr searches/upgrades for the same item."""
+
+    __tablename__ = "arr_action_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
+
+    app: Mapped[str] = mapped_column(String(16))  # "sonarr" | "radarr"
+    action: Mapped[str] = mapped_column(String(16))  # "missing" | "upgrade"
+    item_type: Mapped[str] = mapped_column(String(16))  # "episode" | "movie"
+    item_id: Mapped[int] = mapped_column(Integer)  # episodeId/movieId
+
+

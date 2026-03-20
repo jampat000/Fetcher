@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.20] - 2026-03-20
+
+### Fixed
+
+- **Arr search/upgrade loops:** added a per-item cooldown (`arr_action_log` + cooldown filtering) so Grabby does not keep re-triggering the same missing/upgrade search for the same movie/episode every scheduler tick.
+
 ## [1.0.19] - 2026-03-20
 
 ### Fixed
