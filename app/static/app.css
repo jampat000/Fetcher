@@ -566,6 +566,7 @@ th{text-align:left;color:#bfdbfe;font-weight:700}
   color: var(--text);
   font-size: 13px;
   display: none;
+  pointer-events: none;
 }
 .toast.show{display:block}
 

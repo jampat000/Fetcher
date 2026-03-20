@@ -69,6 +69,8 @@ Then open the URL printed by the script (default `http://127.0.0.1:8766`).
 
 Why `8766` by default: the installed Windows service app often runs on `8765`, which can hide source-code UI changes in Simple Browser.
 
+If **Simple Browser** (or another embedded preview) still looks stuck after an update, use **Open in browser** / Chrome/Edge, or run **Developer: Reload Webview** / reload the Simple Browser tab so it picks up new `app.js`.
+
 ## Packaging (exe)
 
 ```powershell

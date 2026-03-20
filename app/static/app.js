@@ -90,14 +90,18 @@ function bindScrollRestoreOnFormSubmit() {
 }
 
 function restoreScrollAfterFormRedirect() {
-  try {
-    if ("scrollRestoration" in history) history.scrollRestoration = "manual";
-  } catch (_) {
-    /* ignore */
-  }
-
   const fromReturn = shouldRestoreAfterRedirect();
   const raw = sessionStorage.getItem("grabby_restore_scroll");
+
+  // Only take over scroll restoration when we're actually restoring after a save/test redirect.
+  // Setting "manual" on every page breaks some embedded browsers (e.g. VS Code / Cursor Simple Browser).
+  if (fromReturn) {
+    try {
+      if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+    } catch (_) {
+      /* ignore */
+    }
+  }
 
   if (!fromReturn) {
     if (raw) sessionStorage.removeItem("grabby_restore_scroll");
@@ -175,7 +179,16 @@ function bindDaysPickers() {
   });
 }
 
+/** Helps embedded / webview panels (Simple Browser) where default navigation can stick. */
+function bindInternalLinksTargetTop() {
+  document.querySelectorAll('a[href^="/"]').forEach((a) => {
+    if (a.hasAttribute("download")) return;
+    a.setAttribute("target", "_top");
+  });
+}
+
 window.addEventListener("DOMContentLoaded", () => {
+  bindInternalLinksTargetTop();
   bindScrollRestoreOnFormSubmit();
   restoreScrollAfterFormRedirect();
   bindRevealButtons();
