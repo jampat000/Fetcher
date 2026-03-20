@@ -161,3 +161,20 @@ async def migrate(engine: AsyncEngine) -> None:
     if not await _has_column(engine, table="activity_log", column="status"):
         await _add_column(engine, table="activity_log", ddl="status TEXT NOT NULL DEFAULT 'ok'")
 
+    # Arr action cooldown/history table.
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS arr_action_log (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  created_at DATETIME NOT NULL,
+                  app TEXT NOT NULL,
+                  action TEXT NOT NULL,
+                  item_type TEXT NOT NULL,
+                  item_id INTEGER NOT NULL
+                )
+                """
+            )
+        )
+
