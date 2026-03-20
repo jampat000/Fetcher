@@ -32,14 +32,15 @@ if (!(Test-Path ".\.venv\Scripts\python.exe")) {
   throw "Missing .venv. Run: py -m venv .venv; .\.venv\Scripts\pip install -r requirements.txt"
 }
 
-$pidOnPreferred = Get-FirstListenerPid -Port $PreferredPort
-if ($pidOnPreferred) {
-  $procName = Get-ProcessNameByPid -ProcessId $pidOnPreferred
-  Write-Host "Freeing port $PreferredPort — stopping PID $pidOnPreferred ($procName)..."
+# Avoid $pid* names: $PID is an automatic variable and breaks parsing (e.g. "$pidOnPreferred").
+$listenerPid = Get-FirstListenerPid -Port $PreferredPort
+if ($listenerPid) {
+  $procName = Get-ProcessNameByPid -ProcessId $listenerPid
+  Write-Host "Freeing port $PreferredPort - stopping PID $listenerPid ($procName)..."
   try {
-    Stop-Process -Id $pidOnPreferred -Force -ErrorAction Stop
+    Stop-Process -Id $listenerPid -Force -ErrorAction Stop
   } catch {
-    throw "Port $PreferredPort is in use by PID $pidOnPreferred ($procName) and could not be stopped. Close that app or run as Administrator, or use -PreferredPort with a free port."
+    throw "Port $PreferredPort is in use by PID $listenerPid ($procName) and could not be stopped. Close that app or run as Administrator, or use -PreferredPort with a free port."
   }
   Start-Sleep -Milliseconds 400
 }

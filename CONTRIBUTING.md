@@ -41,3 +41,5 @@ py -m pytest -q
 
 Maintainers: see **Releasing** at the bottom of **[`CHANGELOG.md`](CHANGELOG.md)** and **`VERSION`**. After merge to **`master`**, a change to **`VERSION`** automatically creates and pushes **`vX.Y.Z`** in GitHub Actions (then the installer workflow runs).
 
+**GitHub CLI:** Install **`gh`**, run **`gh auth login`**, then you can **`gh pr merge`** and manage releases from the terminal — see **[`docs/GITHUB-CLI.md`](docs/GITHUB-CLI.md)**. If **`gh`** isn’t found in a terminal, restart it after install or use **`%ProgramFiles%\GitHub CLI\gh.exe`**.
+
