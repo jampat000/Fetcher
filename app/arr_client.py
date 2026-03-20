@@ -89,15 +89,16 @@ class ArrClient:
                     return tag_id
         raise RuntimeError(f"Unable to resolve tag id for '{wanted}'.")
 
-    async def add_tags_to_episodes(self, *, episode_ids: list[int], tag_ids: list[int]) -> None:
-        if not episode_ids or not tag_ids:
+    async def add_tags_to_series(self, *, series_ids: list[int], tag_ids: list[int]) -> None:
+        """Sonarr: tags are on series, not episodes (`PUT /api/v3/series/editor`)."""
+        if not series_ids or not tag_ids:
             return
         payload = {
-            "episodeIds": episode_ids,
+            "seriesIds": series_ids,
             "tags": tag_ids,
             "applyTags": "add",
         }
-        r = await self._req("PUT", "/api/v3/episode/editor", json=payload)
+        r = await self._req("PUT", "/api/v3/series/editor", json=payload)
         r.raise_for_status()
 
     async def add_tags_to_movies(self, *, movie_ids: list[int], tag_ids: list[int]) -> None:

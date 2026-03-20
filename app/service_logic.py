@@ -15,7 +15,7 @@ from app.arr_client import (
     trigger_sonarr_cutoff_search,
     trigger_sonarr_missing_search,
 )
-from app.http_status_hints import hint_for_http_status
+from app.http_status_hints import format_http_error_detail, hint_for_http_status
 from app.log_sanitize import redact_url_for_logging
 from app.models import ActivityLog, AppSettings, AppSnapshot, JobRunLog
 from app.schedule import in_window
@@ -64,6 +64,30 @@ def _take_int_ids(records: list[dict], *keys: str, limit: int) -> list[int]:
     return out
 
 
+def _sonarr_series_ids_for_episode_batch(records: list[dict], *episode_keys: str, limit: int) -> list[int]:
+    """Unique seriesIds for the first `limit` episodes (same walk order as _take_int_ids)."""
+    series_out: list[int] = []
+    seen_series: set[int] = set()
+    taken = 0
+    for r in records:
+        if taken >= limit:
+            break
+        ep_id: int | None = None
+        for k in episode_keys:
+            v = r.get(k)
+            if isinstance(v, int) and v > 0:
+                ep_id = v
+                break
+        if ep_id is None:
+            continue
+        taken += 1
+        sid = r.get("seriesId")
+        if isinstance(sid, int) and sid > 0 and sid not in seen_series:
+            seen_series.add(sid)
+            series_out.append(sid)
+    return series_out
+
+
 async def run_once(session: AsyncSession) -> RunResult:
     log = JobRunLog(started_at=utc_now_naive(), ok=False, message="")
     session.add(log)
@@ -107,9 +131,17 @@ async def run_once(session: AsyncSession) -> RunResult:
                         if ids:
                             try:
                                 tag_id = await sonarr.ensure_tag("grabby-missing")
-                                await sonarr.add_tags_to_episodes(episode_ids=ids, tag_ids=[tag_id])
+                                series_ids = _sonarr_series_ids_for_episode_batch(
+                                    missing.get("records", []) or [],
+                                    "episodeId",
+                                    "id",
+                                    limit=sonarr_limit,
+                                )
+                                await sonarr.add_tags_to_series(series_ids=series_ids, tag_ids=[tag_id])
                             except Exception as e:  # noqa: BLE001 - tag failure should not block searches
-                                actions.append(f"Sonarr: tag apply warning (grabby-missing): {type(e).__name__}")
+                                actions.append(
+                                    f"Sonarr: tag apply warning (grabby-missing): {format_http_error_detail(e)}"
+                                )
                             await trigger_sonarr_missing_search(sonarr, episode_ids=ids)
                             actions.append(f"Sonarr: missing search for {len(ids)} episode(s)")
                             session.add(ActivityLog(job_run_id=log.id, app="sonarr", kind="missing", count=len(ids)))
@@ -123,9 +155,17 @@ async def run_once(session: AsyncSession) -> RunResult:
                         if ids:
                             try:
                                 tag_id = await sonarr.ensure_tag("grabby-upgrade")
-                                await sonarr.add_tags_to_episodes(episode_ids=ids, tag_ids=[tag_id])
+                                series_ids = _sonarr_series_ids_for_episode_batch(
+                                    cutoff.get("records", []) or [],
+                                    "episodeId",
+                                    "id",
+                                    limit=sonarr_limit,
+                                )
+                                await sonarr.add_tags_to_series(series_ids=series_ids, tag_ids=[tag_id])
                             except Exception as e:  # noqa: BLE001 - tag failure should not block searches
-                                actions.append(f"Sonarr: tag apply warning (grabby-upgrade): {type(e).__name__}")
+                                actions.append(
+                                    f"Sonarr: tag apply warning (grabby-upgrade): {format_http_error_detail(e)}"
+                                )
                             await trigger_sonarr_cutoff_search(sonarr, episode_ids=ids)
                             actions.append(f"Sonarr: cutoff-unmet search for {len(ids)} episode(s)")
                             session.add(ActivityLog(job_run_id=log.id, app="sonarr", kind="upgrade", count=len(ids)))
@@ -175,7 +215,9 @@ async def run_once(session: AsyncSession) -> RunResult:
                                 tag_id = await radarr.ensure_tag("grabby-missing")
                                 await radarr.add_tags_to_movies(movie_ids=ids, tag_ids=[tag_id])
                             except Exception as e:  # noqa: BLE001 - tag failure should not block searches
-                                actions.append(f"Radarr: tag apply warning (grabby-missing): {type(e).__name__}")
+                                actions.append(
+                                    f"Radarr: tag apply warning (grabby-missing): {format_http_error_detail(e)}"
+                                )
                             await trigger_radarr_missing_search(radarr, movie_ids=ids)
                             actions.append(f"Radarr: missing search for {len(ids)} movie(s)")
                             session.add(ActivityLog(job_run_id=log.id, app="radarr", kind="missing", count=len(ids)))
@@ -191,7 +233,9 @@ async def run_once(session: AsyncSession) -> RunResult:
                                 tag_id = await radarr.ensure_tag("grabby-upgrade")
                                 await radarr.add_tags_to_movies(movie_ids=ids, tag_ids=[tag_id])
                             except Exception as e:  # noqa: BLE001 - tag failure should not block searches
-                                actions.append(f"Radarr: tag apply warning (grabby-upgrade): {type(e).__name__}")
+                                actions.append(
+                                    f"Radarr: tag apply warning (grabby-upgrade): {format_http_error_detail(e)}"
+                                )
                             await trigger_radarr_cutoff_search(radarr, movie_ids=ids)
                             actions.append(f"Radarr: cutoff-unmet search for {len(ids)} movie(s)")
                             session.add(ActivityLog(job_run_id=log.id, app="radarr", kind="upgrade", count=len(ids)))

@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.11] - 2026-03-20
+
+### Fixed
+
+- **Sonarr:** `grabby-missing` / `grabby-upgrade` tags now apply to **series** via `PUT /api/v3/series/editor` (Sonarr has no episode-level tag editor; the old path caused `HTTPStatusError`, often 404).
+
+### Changed
+
+- **Logs:** Sonarr/Radarr tag-apply warnings include **HTTP status, hint, and response snippet** when the API returns an error (`format_http_error_detail`).
+
 ## [1.0.10] - 2026-03-20
 
 ### Added

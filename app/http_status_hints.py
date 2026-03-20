@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import httpx
+
 
 def hint_for_http_status(status: int) -> str:
     """One-line hint to append to logs or errors (no secrets)."""
@@ -18,3 +20,24 @@ def hint_for_http_status(status: int) -> str:
         504: "Gateway timeout — proxy or Arr did not respond in time.",
     }
     return hints.get(status, "")
+
+
+def format_http_error_detail(exc: BaseException) -> str:
+    """Format an exception for logs (e.g. Arr tag apply); include HTTP status + body when available."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        r = exc.response
+        code = r.status_code
+        hint = hint_for_http_status(code)
+        text = (r.text or "").replace("\r", " ").replace("\n", " ").strip()
+        if len(text) > 200:
+            text = text[:197] + "..."
+        parts = [f"HTTP {code}"]
+        if hint:
+            parts.append(f"({hint})")
+        if text:
+            parts.append(f"— {text}")
+        return " ".join(parts)
+    msg = str(exc).strip()
+    if msg:
+        return f"{type(exc).__name__}: {msg}"
+    return type(exc).__name__
