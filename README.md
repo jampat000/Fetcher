@@ -4,7 +4,7 @@
 
 - Search for **missing** movies/episodes
 - Re-trigger searches to **upgrade** existing items until the Arr app reports the **quality cutoff** is met (your Quality Profiles still decide what “better” means)
-- Optionally run **Emby cleanup rules** (dry-run supported) to delete old/low-rated content
+- Optionally run **Emby cleanup rules** (dry-run supported) to delete old/low-rated content. The **Cleaner** tab opens right away; use **Scan Emby for matches** when you want to pull your library and see what fits your rules (big libraries can take a bit).
 
 ## Download (Windows installer)
 
@@ -17,7 +17,10 @@
 
 1. Run **`GrabbySetup.exe`** and complete the wizard (admin prompt is normal for a service).
 2. Open **`http://127.0.0.1:8765`** in your browser (default service port).
-3. Go to **Settings** and add your **Sonarr**, **Radarr**, and/or **Emby** URLs and API keys.
+3. Use **Setup** in the sidebar (or **Settings** → *Run the setup wizard*) to add **Sonarr**, **Radarr**, and **Emby** with a **Test** on each step—or configure everything in **Settings** if you prefer.
+4. **Which screen for what?** In **Settings**, expand **Setup wizard vs this page vs Cleaner** (short guide to Grabby Settings vs Cleaner rules vs backup/testing).
+
+Upgrading an existing install (replace exe / new installer): **[`service/UPGRADE.md`](service/UPGRADE.md)**.
 
 Version is shown in the sidebar of the Web UI (`v…` next to the clock). It matches the repo **`VERSION`** file or your **release tag** when built in CI.
 
@@ -50,11 +53,14 @@ Export **Grabby** and **Cleaner** settings to **one JSON file** from **Settings*
 
 ## Changelog
 
-See [`CHANGELOG.md`](CHANGELOG.md).
+See [`CHANGELOG.md`](CHANGELOG.md), including maintainer **Releasing** steps.
 
 ## Prereqs (dev)
 
 - Python (via the `py` launcher)
+- **E2E tests** (`tests/e2e/`): install dev deps, then **once** download Chromium:  
+  `pip install -r requirements-dev.txt` → `py -m playwright install chromium`  
+  (GitHub Actions uses `playwright install --with-deps chromium` on Ubuntu.)
 
 ## Run locally (dev)
 
@@ -70,6 +76,14 @@ Then open the URL printed by the script (default `http://127.0.0.1:8766`).
 Why `8766` by default: the installed Windows service app often runs on `8765`, which can hide source-code UI changes in Simple Browser.
 
 If **Simple Browser** (or another embedded preview) still looks stuck after an update, use **Open in browser** / Chrome/Edge, or run **Developer: Reload Webview** / reload the Simple Browser tab so it picks up new `app.js`.
+
+### Browser smoke tests (optional)
+
+```powershell
+pip install -r requirements-dev.txt
+py -m playwright install chromium
+pytest tests/e2e -q
+```
 
 ## Packaging (exe)
 

@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Integer, String, Text
+
+from app.time_util import utc_now_naive
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -72,14 +74,14 @@ class AppSettings(Base):
     search_upgrades: Mapped[bool] = mapped_column(Boolean, default=True)
     max_items_per_run: Mapped[int] = mapped_column(Integer, default=50)
 
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
 
 
 class JobRunLog(Base):
     __tablename__ = "job_run_log"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ok: Mapped[bool] = mapped_column(Boolean, default=False)
     message: Mapped[str] = mapped_column(Text, default="")
@@ -89,7 +91,7 @@ class AppSnapshot(Base):
     __tablename__ = "app_snapshot"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
 
     app: Mapped[str] = mapped_column(String(16))  # "sonarr" | "radarr"
     ok: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -105,7 +107,7 @@ class ActivityLog(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     job_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # FK to job_run_log.id
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
 
     app: Mapped[str] = mapped_column(String(16))   # "sonarr" | "radarr"
     kind: Mapped[str] = mapped_column(String(16))  # "missing" | "upgrade"

@@ -12,7 +12,7 @@ if (!(Test-Path -LiteralPath $ProjectPath)) {
 
 New-Item -ItemType Directory -Path $BackupRoot -Force | Out-Null
 
-$ts = Get-Date -Format "yyyyMMdd-HHmmss"
+$ts = Get-Date -Format "dd-MM-yyyy-HHmmss"
 $projectZip = Join-Path $BackupRoot ("grabby-" + $ts + ".zip")
 $transcriptZip = Join-Path $BackupRoot ("grabby-transcripts-" + $ts + ".zip")
 

@@ -14,6 +14,30 @@
     <a href="/logs" class="module-tab">Logs</a>
   </div>
 
+  {% if request.query_params.get('setup') == 'complete' %}
+  <div class="banner banner-ok setup-complete-banner dashboard-dismissible" role="status" data-dismiss-storage="grabby_v1_dismiss_setup_complete_banner">
+    <div class="dashboard-dismissible-inner">
+      <div>
+        <strong>Setup complete.</strong> You can fine-tune Sonarr, Radarr, Emby, and schedules anytime in <a href="/settings">Settings</a>.
+      </div>
+      <button type="button" class="dashboard-dismiss-btn" data-dismiss-btn aria-label="Dismiss">×</button>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if suggest_setup_wizard %}
+  <div class="card setup-cta-card dashboard-dismissible" data-dismiss-storage="grabby_v1_dismiss_setup_wizard_cta">
+    <div class="dashboard-dismissible-inner setup-cta-inner">
+      <div>
+        <h2>Connect your stack</h2>
+        <p class="hint">Sonarr, Radarr, and Emby are not configured yet. Run the guided wizard to add URLs, API keys, and test each connection.</p>
+        <p style="margin:0;"><a class="btn" href="/setup">Run setup wizard</a></p>
+      </div>
+      <button type="button" class="dashboard-dismiss-btn" data-dismiss-btn aria-label="Dismiss suggestion">×</button>
+    </div>
+  </div>
+  {% endif %}
+
   <div class="card module-content">
     <h2>Overview</h2>
     <div class="hint">Counts reflect the most recent run/test snapshot. Use Settings to configure schedules and connections.</div>

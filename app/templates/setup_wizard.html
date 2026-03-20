@@ -1,0 +1,172 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="wrap">
+  <div class="page-head">
+    <div>
+      <h1>First-run setup</h1>
+      <p>Step {{ step }} of {{ setup_steps_total }} — <strong>{{ step_title }}</strong></p>
+    </div>
+    <div class="setup-wizard-actions-top">
+      <a class="btn ghost" href="/settings">Skip wizard — open Settings</a>
+    </div>
+  </div>
+
+  <nav class="setup-stepper" aria-label="Setup steps">
+    {% for label in setup_step_labels %}
+      {% set s = loop.index %}
+      <span class="setup-step {% if s == step %}setup-step-current{% elif s < step %}setup-step-done{% endif %}">
+        <span class="setup-step-num">{{ s }}</span>
+        <span class="setup-step-label">{{ label }}</span>
+      </span>
+      {% if not loop.last %}<span class="setup-step-join" aria-hidden="true"></span>{% endif %}
+    {% endfor %}
+  </nav>
+
+  <div class="card module-content setup-wizard-card">
+    <div id="setup-test-result" class="setup-test-result" role="status" hidden></div>
+
+    {% if step < 5 %}
+    <form method="post" action="/setup/{{ step }}" class="setup-wizard-form">
+      {% if step == 1 %}
+      <h2>Sonarr</h2>
+      <p class="hint">Base URL and API key from Sonarr → Settings → General. You can test the connection before saving.</p>
+      <div class="checkline">
+        <input type="checkbox" name="sonarr_enabled" id="sonarr_enabled" {% if settings.sonarr_enabled %}checked{% endif %} />
+        <label for="sonarr_enabled"><strong>Enable</strong> Sonarr automation</label>
+      </div>
+      <label for="sonarr_url">Sonarr URL</label>
+      <input class="input" id="sonarr_url" name="sonarr_url" type="text" value="{{ settings.sonarr_url }}" placeholder="http://localhost:8989" autocomplete="off" />
+      <label for="sonarr_api_key">Sonarr API key</label>
+      <div class="control">
+        <input class="password" id="sonarr_api_key" name="sonarr_api_key" type="password" value="{{ settings.sonarr_api_key }}" placeholder="X-Api-Key" autocomplete="off" />
+        <button class="icon-btn" data-reveal="sonarr_api_key" type="button">Show</button>
+      </div>
+      <div class="setup-wizard-buttons">
+        <button class="btn secondary" type="button" id="btn-test-sonarr">Test connection</button>
+      </div>
+
+      {% elif step == 2 %}
+      <h2>Radarr</h2>
+      <p class="hint">Base URL and API key from Radarr → Settings → General.</p>
+      <div class="checkline">
+        <input type="checkbox" name="radarr_enabled" id="radarr_enabled" {% if settings.radarr_enabled %}checked{% endif %} />
+        <label for="radarr_enabled"><strong>Enable</strong> Radarr automation</label>
+      </div>
+      <label for="radarr_url">Radarr URL</label>
+      <input class="input" id="radarr_url" name="radarr_url" type="text" value="{{ settings.radarr_url }}" placeholder="http://localhost:7878" autocomplete="off" />
+      <label for="radarr_api_key">Radarr API key</label>
+      <div class="control">
+        <input class="password" id="radarr_api_key" name="radarr_api_key" type="password" value="{{ settings.radarr_api_key }}" placeholder="X-Api-Key" autocomplete="off" />
+        <button class="icon-btn" data-reveal="radarr_api_key" type="button">Show</button>
+      </div>
+      <div class="setup-wizard-buttons">
+        <button class="btn secondary" type="button" id="btn-test-radarr">Test connection</button>
+      </div>
+
+      {% elif step == 3 %}
+      <h2>Emby (Cleaner)</h2>
+      <p class="hint">Optional. Server URL, API key (Emby → API Keys), and your user ID if required by your server policy.</p>
+      <div class="checkline">
+        <input type="checkbox" name="emby_enabled" id="emby_enabled" {% if settings.emby_enabled %}checked{% endif %} />
+        <label for="emby_enabled"><strong>Enable</strong> Emby cleanup features</label>
+      </div>
+      <label for="emby_url">Emby URL</label>
+      <input class="input" id="emby_url" name="emby_url" type="text" value="{{ settings.emby_url }}" placeholder="http://localhost:8096" autocomplete="off" />
+      <label for="emby_api_key">Emby API key</label>
+      <div class="control">
+        <input class="password" id="emby_api_key" name="emby_api_key" type="password" value="{{ settings.emby_api_key }}" placeholder="API key" autocomplete="off" />
+        <button class="icon-btn" data-reveal="emby_api_key" type="button">Show</button>
+      </div>
+      <label for="emby_user_id">Emby user ID (optional)</label>
+      <input class="input" id="emby_user_id" name="emby_user_id" type="text" value="{{ settings.emby_user_id }}" placeholder="e.g. user guid" autocomplete="off" />
+      <div class="setup-wizard-buttons">
+        <button class="btn secondary" type="button" id="btn-test-emby">Test connection</button>
+      </div>
+
+      {% elif step == 4 %}
+      <h2>Schedule &amp; timezone</h2>
+      <p class="hint">How often Grabby runs its automation loop, and how times are shown in the UI. You can change this later in Settings.</p>
+      <label for="interval_minutes">Interval (minutes)</label>
+      <input class="number" id="interval_minutes" name="interval_minutes" type="number" value="{{ settings.interval_minutes }}" min="5" max="10080" />
+      <label for="timezone">Timezone</label>
+      <select class="input" id="timezone" name="timezone">
+        {% for val, label in timezone_choices %}
+        <option value="{{ val }}" {% if settings.timezone == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      {% endif %}
+
+      <div class="setup-wizard-footer">
+        <button class="btn" type="submit" name="wizard_action" value="continue">Continue</button>
+        <button class="btn ghost" type="submit" name="wizard_action" value="skip" formnovalidate>Skip for now</button>
+      </div>
+    </form>
+    {% else %}
+      <h2>You're all set</h2>
+      <p class="hint">Basics are saved. Use the links below when you want to fine-tune automation, Cleaner rules, or run a library match scan.</p>
+      <ul class="small setup-done-list">
+        <li><a href="/settings"><strong>Grabby Settings</strong></a> — Sonarr/Radarr search options, per-app schedules, max items, backups</li>
+        <li><a href="/emby/settings"><strong>Cleaner Settings</strong></a> — Emby cleanup rules, dry-run vs live, scan limits, Cleaner schedule</li>
+        <li><a href="/cleaner"><strong>Cleaner</strong></a> — <strong>Scan Emby for matches</strong> to preview what your rules would target (on-demand)</li>
+      </ul>
+      <div class="setup-wizard-footer">
+        <a class="btn" href="/?setup=complete">Open dashboard</a>
+        <a class="btn ghost" href="/settings">Open Grabby Settings</a>
+      </div>
+      <p class="small muted" style="margin-top:14px;">Tip: expand <strong>Setup wizard vs this page vs Cleaner</strong> on the Settings screen anytime for a quick map of the UI.</p>
+    {% endif %}
+  </div>
+</div>
+<script>
+(function () {
+  const step = {{ step }};
+  if (step >= 5) return;
+  const el = document.getElementById("setup-test-result");
+  function show(msg, ok) {
+    if (!el) return;
+    el.hidden = false;
+    el.textContent = msg || "";
+    el.classList.remove("setup-test-ok", "setup-test-fail");
+    el.classList.add(ok ? "setup-test-ok" : "setup-test-fail");
+  }
+  async function postJson(url, body) {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json().catch(function () { return {}; });
+    return data;
+  }
+  if (step === 1) {
+    document.getElementById("btn-test-sonarr")?.addEventListener("click", async function () {
+      show("Testing…", true);
+      const data = await postJson("/api/setup/test-sonarr", {
+        url: document.getElementById("sonarr_url")?.value || "",
+        api_key: document.getElementById("sonarr_api_key")?.value || "",
+      });
+      show(data.message || (data.ok ? "OK" : "Failed"), !!data.ok);
+    });
+  } else if (step === 2) {
+    document.getElementById("btn-test-radarr")?.addEventListener("click", async function () {
+      show("Testing…", true);
+      const data = await postJson("/api/setup/test-radarr", {
+        url: document.getElementById("radarr_url")?.value || "",
+        api_key: document.getElementById("radarr_api_key")?.value || "",
+      });
+      show(data.message || (data.ok ? "OK" : "Failed"), !!data.ok);
+    });
+  } else if (step === 3) {
+    document.getElementById("btn-test-emby")?.addEventListener("click", async function () {
+      show("Testing…", true);
+      const data = await postJson("/api/setup/test-emby", {
+        url: document.getElementById("emby_url")?.value || "",
+        api_key: document.getElementById("emby_api_key")?.value || "",
+        user_id: document.getElementById("emby_user_id")?.value || "",
+      });
+      show(data.message || (data.ok ? "OK" : "Failed"), !!data.ok);
+    });
+  }
+})();
+</script>
+{% endblock %}

@@ -43,3 +43,16 @@ class SettingsIn(BaseModel):
 class SettingsOut(SettingsIn):
     pass
 
+
+class SetupConnTestIn(BaseModel):
+    """JSON body for wizard connection tests (Sonarr/Radarr)."""
+
+    url: str = ""
+    api_key: str = ""
+
+
+class SetupEmbyTestIn(BaseModel):
+    url: str = ""
+    api_key: str = ""
+    user_id: str = ""
+

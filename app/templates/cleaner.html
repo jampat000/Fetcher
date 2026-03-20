@@ -15,7 +15,11 @@
 
   <div class="card module-content">
       <h2>Cleaner Review</h2>
-      <div class="hint">Shows exact titles that match your current rules. This page does not delete anything.</div>
+      <div class="hint">
+        See <strong>which titles in Emby match your cleanup rules</strong> — same checks the scheduler uses, but shown here as a list.
+        <strong>This page never deletes anything by itself.</strong>
+        We only contact Emby when you run a scan so opening <strong>Cleaner</strong> stays fast.
+      </div>
 
     <div class="preview-stats">
       <div class="preview-stat">
@@ -33,7 +37,8 @@
     </div>
 
     <div class="btnbar">
-      <a class="btn" href="/cleaner">Refresh Status</a>
+      <a class="btn" href="/cleaner?scan=1">Scan Emby for matches</a>
+      <a class="btn secondary" href="/cleaner" title="Clear the list and stop until you scan again">Clear results</a>
     </div>
 
     <div class="section small">
@@ -60,6 +65,13 @@
       {% if error %}
         <div class="section">
           <p class="status-fail">{{ error }}</p>
+        </div>
+      {% elif scan_prompt %}
+        <div class="section">
+          <div class="banner banner-warn" role="status">
+            <strong>No scan yet.</strong> Click <a href="/cleaner?scan=1"><strong>Scan Emby for matches</strong></a> above to load your library from Emby and list titles that match your rules <em>right now</em>.
+            Nothing is deleted by this — it only builds the list. Large libraries may take a minute.
+          </div>
         </div>
       {% else %}
         <div class="section">
@@ -93,7 +105,7 @@
           </tbody>
           </table>
           {% else %}
-          <p class="small muted">No titles currently match your enabled rules.</p>
+          <p class="small muted">No titles currently match your enabled rules (within scan limits).</p>
           {% endif %}
         </div>
       {% endif %}

@@ -229,7 +229,7 @@ async def main() -> None:
                 rec["error"] = _redact(f"{type(exc).__name__}: {exc}")
             call_results.append(rec)
 
-    timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%d-%m-%Y_%H%M%S")
     out_dir = Path("tmp") / f"emby-inventory-{timestamp}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -242,7 +242,7 @@ async def main() -> None:
     }
 
     metadata = {
-        "generated_at_utc": datetime.now(UTC).isoformat(),
+        "generated_at_utc": datetime.now(UTC).strftime("%d-%m-%Y %H:%M:%S"),
         "emby_base_url": base_url,
         "calls": call_results,
         "output_dir": str(out_dir.resolve()),

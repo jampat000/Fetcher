@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote, urlparse
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import desc, select
@@ -29,36 +30,36 @@ from app.emby_rules import (
     tv_matches_selected_genres,
 )
 from app.models import ActivityLog, AppSettings, AppSnapshot, Base, JobRunLog
-from app.schemas import SettingsIn
+from app.schemas import SetupConnTestIn, SetupEmbyTestIn, SettingsIn
+from app.setup_helpers import test_emby_connection, test_radarr_connection, test_sonarr_connection
 from app.scheduler import ServiceScheduler
+from app.time_util import utc_now_naive
 from app.version_info import get_app_version
 
 
 APP_NAME = "Grabby"
 APP_TAGLINE = "Never miss a release."
 
-app = FastAPI(title=APP_NAME)
+scheduler = ServiceScheduler()
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    await migrate(engine)
+    await scheduler.start()
+    yield
+    scheduler.shutdown()
+
+
+app = FastAPI(title=APP_NAME, lifespan=_lifespan)
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.globals["app_version"] = get_app_version()
 
 static_dir = Path(__file__).parent / "static"
 static_dir.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
-
-scheduler = ServiceScheduler()
-
-
-@app.on_event("startup")
-async def on_startup() -> None:
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    await migrate(engine)
-    await scheduler.start()
-
-
-@app.on_event("shutdown")
-async def on_shutdown() -> None:
-    scheduler.shutdown()
 
 
 async def _get_or_create_settings(session: AsyncSession) -> AppSettings:
@@ -223,7 +224,7 @@ def _now_local(timezone: str) -> str:
     except Exception:
         tz = ZoneInfo("UTC")
     # Keep a stable-width display across tabs to avoid subtle layout jitter.
-    return datetime.now(tz).strftime("%Y-%m-%d %I:%M %p")
+    return datetime.now(tz).strftime("%d-%m-%Y %I:%M %p")
 
 
 def _fmt_local(dt: datetime, tz_name: str) -> str:
@@ -233,7 +234,7 @@ def _fmt_local(dt: datetime, tz_name: str) -> str:
         tz = ZoneInfo("UTC")
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=ZoneInfo("UTC"))
-    return dt.astimezone(tz).strftime("%m-%d %I:%M %p")
+    return dt.astimezone(tz).strftime("%d-%m-%Y %I:%M %p")
 
 
 def _normalize_base_url(raw: str) -> str:
@@ -277,6 +278,128 @@ async def api_version() -> dict[str, str]:
     return {"app": APP_NAME, "version": get_app_version()}
 
 
+@app.post("/api/setup/test-sonarr")
+async def api_setup_test_sonarr(body: SetupConnTestIn) -> JSONResponse:
+    ok, msg = await test_sonarr_connection(body.url, body.api_key)
+    return JSONResponse({"ok": ok, "message": msg})
+
+
+@app.post("/api/setup/test-radarr")
+async def api_setup_test_radarr(body: SetupConnTestIn) -> JSONResponse:
+    ok, msg = await test_radarr_connection(body.url, body.api_key)
+    return JSONResponse({"ok": ok, "message": msg})
+
+
+@app.post("/api/setup/test-emby")
+async def api_setup_test_emby(body: SetupEmbyTestIn) -> JSONResponse:
+    ok, msg = await test_emby_connection(body.url, body.api_key, body.user_id)
+    return JSONResponse({"ok": ok, "message": msg})
+
+
+@app.get("/setup", response_class=RedirectResponse)
+async def setup_wizard_entry() -> RedirectResponse:
+    return RedirectResponse("/setup/1", status_code=302)
+
+
+_SETUP_WIZARD_STEPS = 5
+
+
+def _setup_wizard_step_title(step: int) -> str:
+    return {
+        1: "Sonarr",
+        2: "Radarr",
+        3: "Emby",
+        4: "Schedule & timezone",
+        5: "What's next",
+    }.get(step, "Setup")
+
+
+@app.get("/setup/{step}", response_class=HTMLResponse, response_model=None)
+async def setup_wizard_page(
+    step: int, request: Request, session: AsyncSession = Depends(get_session)
+) -> HTMLResponse | RedirectResponse:
+    if step < 1 or step > _SETUP_WIZARD_STEPS:
+        return RedirectResponse("/setup/1", status_code=302)
+    settings = await _get_or_create_settings(session)
+    tz = getattr(settings, "timezone", None) or "UTC"
+    return templates.TemplateResponse(
+        request,
+        "setup_wizard.html",
+        {
+            "app_name": APP_NAME,
+            "app_tagline": APP_TAGLINE,
+            "title": f"{APP_NAME} — Setup (step {step} of {_SETUP_WIZARD_STEPS})",
+            "subtitle": "Connect your apps",
+            "settings": settings,
+            "step": step,
+            "setup_steps_total": _SETUP_WIZARD_STEPS,
+            "step_title": _setup_wizard_step_title(step),
+            "setup_step_labels": ["Sonarr", "Radarr", "Emby", "Schedule", "Next steps"],
+            "timezone_choices": _TIMEZONE_CHOICES,
+            "now": utc_now_naive(),
+            "now_local": _now_local(tz),
+            "timezone": tz,
+        },
+    )
+
+
+@app.post("/setup/{step}")
+async def setup_wizard_save(
+    step: int,
+    wizard_action: str = Form("continue"),
+    sonarr_enabled: bool = Form(False),
+    sonarr_url: str = Form(""),
+    sonarr_api_key: str = Form(""),
+    radarr_enabled: bool = Form(False),
+    radarr_url: str = Form(""),
+    radarr_api_key: str = Form(""),
+    emby_enabled: bool = Form(False),
+    emby_url: str = Form(""),
+    emby_api_key: str = Form(""),
+    emby_user_id: str = Form(""),
+    interval_minutes: int = Form(60),
+    timezone: str = Form("UTC"),
+    session: AsyncSession = Depends(get_session),
+) -> RedirectResponse:
+    if step < 1 or step > _SETUP_WIZARD_STEPS:
+        return RedirectResponse("/setup/1", status_code=303)
+    if step == 5:
+        return RedirectResponse("/?setup=complete", status_code=303)
+    skip = (wizard_action or "").strip().lower() == "skip"
+    if not skip:
+        row = await _get_or_create_settings(session)
+        if step == 1:
+            row.sonarr_enabled = sonarr_enabled
+            row.sonarr_url = _normalize_base_url(sonarr_url)
+            row.sonarr_api_key = (sonarr_api_key or "").strip()
+        elif step == 2:
+            row.radarr_enabled = radarr_enabled
+            row.radarr_url = _normalize_base_url(radarr_url)
+            row.radarr_api_key = (radarr_api_key or "").strip()
+        elif step == 3:
+            row.emby_enabled = emby_enabled
+            row.emby_url = _normalize_base_url(emby_url)
+            row.emby_api_key = (emby_api_key or "").strip()
+            row.emby_user_id = (emby_user_id or "").strip()
+        elif step == 4:
+            # Match SettingsIn / Grabby settings bounds
+            try:
+                im = int(interval_minutes)
+            except (TypeError, ValueError):
+                im = 60
+            im = max(5, min(7 * 24 * 60, im))
+            row.interval_minutes = im
+            row.timezone = _resolve_timezone_name(timezone)
+        row.updated_at = utc_now_naive()
+        await session.commit()
+        await scheduler.reschedule()
+
+    nxt = step + 1
+    if nxt > _SETUP_WIZARD_STEPS:
+        return RedirectResponse("/?setup=complete", status_code=303)
+    return RedirectResponse(f"/setup/{nxt}", status_code=303)
+
+
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await _get_or_create_settings(session)
@@ -305,15 +428,21 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
         .first()
     )
     tz = getattr(settings, "timezone", None) or "UTC"
+    suggest_setup_wizard = not (
+        (settings.sonarr_url or "").strip()
+        or (settings.radarr_url or "").strip()
+        or (settings.emby_url or "").strip()
+    )
     return templates.TemplateResponse(
+        request,
         "dashboard.html",
         {
-            "request": request,
             "app_name": APP_NAME,
             "app_tagline": APP_TAGLINE,
             "title": f"{APP_NAME} — Dashboard",
             "subtitle": "Status overview and counts",
             "settings": settings,
+            "suggest_setup_wizard": suggest_setup_wizard,
             "activity": activity_display,
             "sonarr": sonarr_snap,
             "radarr": radarr_snap,
@@ -335,7 +464,7 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
                     getattr(settings, "emby_rule_tv_people_credit_types_csv", "Actor")
                 )
             ),
-            "now": datetime.utcnow(),
+            "now": utc_now_naive(),
             "now_local": _now_local(tz),
             "timezone": tz,
         },
@@ -352,15 +481,15 @@ async def logs_page(request: Request, session: AsyncSession = Depends(get_sessio
         for r in logs
     ]
     return templates.TemplateResponse(
+        request,
         "logs.html",
         {
-            "request": request,
             "app_name": APP_NAME,
             "app_tagline": APP_TAGLINE,
             "title": f"{APP_NAME} — Logs",
             "subtitle": "Service run history",
             "logs": logs_display,
-            "now": datetime.utcnow(),
+            "now": utc_now_naive(),
             "now_local": _now_local(tz),
             "timezone": tz,
         },
@@ -380,15 +509,15 @@ async def activity_page(request: Request, session: AsyncSession = Depends(get_se
         for e in activity
     ]
     return templates.TemplateResponse(
+        request,
         "activity.html",
         {
-            "request": request,
             "app_name": APP_NAME,
             "app_tagline": APP_TAGLINE,
             "title": f"{APP_NAME} — Grabbed",
             "subtitle": "What was grabbed",
             "activity": activity_display,
-            "now": datetime.utcnow(),
+            "now": utc_now_naive(),
             "now_local": _now_local(tz),
             "timezone": tz,
         },
@@ -410,9 +539,9 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
     )
     tz = getattr(settings, "timezone", None) or "UTC"
     return templates.TemplateResponse(
+        request,
         "settings.html",
         {
-            "request": request,
             "app_name": APP_NAME,
             "app_tagline": APP_TAGLINE,
             "title": f"{APP_NAME} — Grabby Settings",
@@ -420,7 +549,7 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
             "settings": settings,
             "sonarr": sonarr_snap,
             "radarr": radarr_snap,
-            "now": datetime.utcnow(),
+            "now": utc_now_naive(),
             "now_local": _now_local(tz),
             "timezone": tz,
             "timezones": _TIMEZONE_CHOICES,
@@ -436,7 +565,7 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
 async def settings_backup_export(session: AsyncSession = Depends(get_session)) -> Response:
     row = await _get_or_create_settings(session)
     body = export_json_bytes(row)
-    d = datetime.now(timezone.utc).strftime("%Y%m%d")
+    d = datetime.now(timezone.utc).strftime("%d-%m-%Y")
     fname = f"grabby-settings-backup-{d}.json"
     return Response(
         content=body,
@@ -476,16 +605,16 @@ async def emby_settings_page(request: Request, session: AsyncSession = Depends(g
     )
     tz = getattr(settings, "timezone", None) or "UTC"
     return templates.TemplateResponse(
+        request,
         "emby_settings.html",
         {
-            "request": request,
             "app_name": APP_NAME,
             "app_tagline": APP_TAGLINE,
             "title": f"{APP_NAME} — Cleaner Settings",
             "subtitle": "Configure Emby cleanup and schedule",
             "settings": settings,
             "emby": emby_snap,
-            "now": datetime.utcnow(),
+            "now": utc_now_naive(),
             "now_local": _now_local(tz),
             "timezone": tz,
             "emby_schedule_start_display": _to_12h(settings.emby_schedule_start, "12:00 AM"),
@@ -534,10 +663,19 @@ async def emby_preview_page(request: Request, session: AsyncSession = Depends(ge
         getattr(settings, "emby_rule_tv_people_credit_types_csv", "Actor")
     )
 
+    _truthy = ("1", "true", "yes")
+    qp = request.query_params
+    run_emby_scan = qp.get("scan", "").strip().lower() in _truthy or qp.get("preview", "").strip().lower() in _truthy
+    scan_prompt = False
+    scan_loaded = False
+
     if not settings.emby_url or not settings.emby_api_key:
         error = "Emby URL and API key are required."
     elif movie_rating_below <= 0 and movie_unwatched_days <= 0 and (not tv_delete_watched) and tv_unwatched_days <= 0:
         error = "No rules are enabled. Set at least one Emby cleanup rule in Settings."
+    elif not run_emby_scan:
+        # Fast path: sidebar / default navigation should not scan the whole library.
+        scan_prompt = True
     else:
         client = EmbyClient(EmbyConfig(settings.emby_url, settings.emby_api_key))
         try:
@@ -552,6 +690,7 @@ async def emby_preview_page(request: Request, session: AsyncSession = Depends(ge
             elif not used_user_name:
                 error = "Configured Emby user ID was not found."
             else:
+                scan_loaded = True
                 items = await client.items_for_user(user_id=used_user_id, limit=scan_limit)
                 for item in items:
                     item_id = str(item.get("Id", "")).strip()
@@ -594,13 +733,14 @@ async def emby_preview_page(request: Request, session: AsyncSession = Depends(ge
                         break
         except Exception as e:  # noqa: BLE001 - user-facing review path
             error = f"Review failed: {type(e).__name__}: {e}"
+            scan_loaded = False
         finally:
             await client.aclose()
 
     return templates.TemplateResponse(
+        request,
         "cleaner.html",
         {
-            "request": request,
             "app_name": APP_NAME,
             "app_tagline": APP_TAGLINE,
             "title": f"{APP_NAME} — Cleaner",
@@ -624,7 +764,9 @@ async def emby_preview_page(request: Request, session: AsyncSession = Depends(ge
             "tv_people_credit_summary": _movie_credit_types_summary(selected_tv_credit_types),
             "dry_run": bool(getattr(settings, "emby_dry_run", True)),
             "matched_count": len(rows),
-            "now": datetime.utcnow(),
+            "scan_prompt": scan_prompt,
+            "scan_loaded": scan_loaded,
+            "now": utc_now_naive(),
             "now_local": _now_local(tz),
             "timezone": tz,
         },
@@ -705,7 +847,7 @@ async def save_settings(
     row.radarr_schedule_end = _normalize_hhmm(radarr_schedule_end, "23:59")
 
     row.timezone = _resolve_timezone_name(timezone)
-    row.updated_at = datetime.utcnow()
+    row.updated_at = utc_now_naive()
     await session.commit()
 
     await scheduler.reschedule()
@@ -726,7 +868,7 @@ async def save_emby_settings(
     row.emby_url = _normalize_base_url(emby_url)
     row.emby_api_key = emby_api_key.strip()
     row.emby_user_id = emby_user_id.strip()
-    row.updated_at = datetime.utcnow()
+    row.updated_at = utc_now_naive()
     await session.commit()
     await scheduler.reschedule()
     return RedirectResponse("/emby/settings?saved=1", status_code=303)
@@ -745,7 +887,7 @@ async def save_emby_connection_settings(
     row.emby_url = _normalize_base_url(emby_url)
     row.emby_api_key = emby_api_key.strip()
     row.emby_user_id = emby_user_id.strip()
-    row.updated_at = datetime.utcnow()
+    row.updated_at = utc_now_naive()
     await session.commit()
     await scheduler.reschedule()
     return RedirectResponse("/emby/settings?saved=1", status_code=303)
@@ -803,7 +945,7 @@ async def save_cleaner_settings(
         row.emby_rule_movie_unwatched_days,
         row.emby_rule_tv_unwatched_days,
     )
-    row.updated_at = datetime.utcnow()
+    row.updated_at = utc_now_naive()
     await session.commit()
     await scheduler.reschedule()
     return RedirectResponse("/emby/settings?saved=1", status_code=303)
@@ -935,7 +1077,7 @@ async def test_emby_from_form(
     row.emby_url = emby_url_n
     row.emby_api_key = emby_api_key_n
     row.emby_user_id = emby_user_id_n
-    row.updated_at = datetime.utcnow()
+    row.updated_at = utc_now_naive()
     await session.commit()
     try:
         c = EmbyClient(EmbyConfig(emby_url_n, emby_api_key_n))

@@ -17,6 +17,7 @@ from app.arr_client import (
 )
 from app.models import ActivityLog, AppSettings, AppSnapshot, JobRunLog
 from app.schedule import in_window
+from app.time_util import utc_now_naive
 from app.emby_client import EmbyClient, EmbyConfig
 from app.emby_rules import (
     evaluate_candidate,
@@ -62,7 +63,7 @@ def _take_int_ids(records: list[dict], *keys: str, limit: int) -> list[int]:
 
 
 async def run_once(session: AsyncSession) -> RunResult:
-    log = JobRunLog(started_at=datetime.utcnow(), ok=False, message="")
+    log = JobRunLog(started_at=utc_now_naive(), ok=False, message="")
     session.add(log)
     await session.commit()
     await session.refresh(log)
@@ -320,7 +321,7 @@ async def run_once(session: AsyncSession) -> RunResult:
         msg = " | ".join(actions) if actions else "No actions (check enabled flags + URLs + API keys)."
         log.ok = True
         log.message = msg
-        log.finished_at = datetime.utcnow()
+        log.finished_at = utc_now_naive()
         await session.commit()
         return RunResult(ok=True, message=msg)
     except httpx.HTTPStatusError as e:
@@ -333,7 +334,7 @@ async def run_once(session: AsyncSession) -> RunResult:
             body = "<unavailable>"
         log.ok = False
         log.message = f"Run failed: HTTP {e.response.status_code} for {e.request.method} {e.request.url} | {body}"
-        log.finished_at = datetime.utcnow()
+        log.finished_at = utc_now_naive()
         # Snapshot failure if it’s clearly Sonarr/Radarr/Emby
         url = str(e.request.url)
         app = "sonarr" if ":8989" in url else ("radarr" if ":7878" in url else ("emby" if (":8096" in url or ":8920" in url) else ""))
@@ -344,7 +345,7 @@ async def run_once(session: AsyncSession) -> RunResult:
     except Exception as e:  # noqa: BLE001 - service boundary logging
         log.ok = False
         log.message = f"Run failed: {type(e).__name__}: {e}"
-        log.finished_at = datetime.utcnow()
+        log.finished_at = utc_now_naive()
         await session.commit()
         return RunResult(ok=False, message=log.message)
 

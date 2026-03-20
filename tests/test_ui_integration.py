@@ -36,6 +36,11 @@ def _client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
         "/healthz",
         "/settings?import=ok",
         "/settings/backup/export",
+        "/setup/1",
+        "/setup/2",
+        "/setup/3",
+        "/setup/4",
+        "/setup/5",
     ],
 )
 def test_get_pages_200(monkeypatch: pytest.MonkeyPatch, path: str) -> None:
@@ -77,6 +82,49 @@ def test_emby_settings_has_content_criteria(monkeypatch: pytest.MonkeyPatch) -> 
     assert "People" in html
     assert "emby_rule_movie_people" in html
     assert "emby_rule_tv_people" in html
+
+
+def test_post_setup_wizard_continue_redirects(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Wizard step 1 saves Sonarr fields and advances to step 2."""
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/setup/1",
+            data={
+                "wizard_action": "continue",
+                "sonarr_enabled": "true",
+                "sonarr_url": "http://127.0.0.1:8989",
+                "sonarr_api_key": "k1",
+            },
+            follow_redirects=False,
+        )
+    assert resp.status_code == 303
+    assert resp.headers.get("location", "").endswith("/setup/2")
+
+
+def test_post_setup_wizard_step4_redirects_to_step5(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/setup/4",
+            data={
+                "wizard_action": "continue",
+                "interval_minutes": "60",
+                "timezone": "UTC",
+            },
+            follow_redirects=False,
+        )
+    assert resp.status_code == 303
+    assert resp.headers.get("location", "").endswith("/setup/5")
+
+
+def test_post_setup_wizard_step5_redirects_home(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/setup/5",
+            data={"wizard_action": "continue"},
+            follow_redirects=False,
+        )
+    assert resp.status_code == 303
+    assert "setup=complete" in (resp.headers.get("location") or "")
 
 
 def test_post_settings_save_redirects(monkeypatch: pytest.MonkeyPatch) -> None:

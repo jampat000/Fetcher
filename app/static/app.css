@@ -806,3 +806,179 @@ th{text-align:left;color:#bfdbfe;font-weight:700}
   padding:12px;
   border-radius:14px;
 }
+
+/* Setup wizard */
+.setup-wizard-actions-top{
+  display:flex;
+  align-items:flex-start;
+}
+.setup-wizard-actions-top .btn.ghost{
+  white-space:nowrap;
+}
+.setup-stepper{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  flex-wrap:wrap;
+  margin:12px 0 18px;
+  padding:12px 14px;
+  border:1px solid var(--border);
+  border-radius:14px;
+  background:rgba(255,255,255,.03);
+}
+.setup-step{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 10px;
+  border-radius:999px;
+  font-size:12px;
+  color:var(--muted);
+  border:1px solid transparent;
+}
+.setup-step-current{
+  color:#e0f2fe;
+  border-color:rgba(96,165,250,.45);
+  background:rgba(96,165,250,.12);
+  font-weight:600;
+}
+.setup-step-done{
+  color:var(--good);
+}
+.setup-step-num{
+  width:22px;height:22px;border-radius:999px;
+  display:inline-flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;
+  background:rgba(255,255,255,.08);
+}
+.setup-step-current .setup-step-num{
+  background:rgba(96,165,250,.35);
+  color:#0b1220;
+}
+.setup-step-done .setup-step-num{
+  background:rgba(52,211,153,.22);
+  color:var(--good);
+}
+.setup-step-join{
+  width:14px;height:2px;
+  background:rgba(255,255,255,.12);
+  border-radius:2px;
+}
+.setup-wizard-card .setup-wizard-form label{
+  display:block;margin-top:12px;font-size:12px;color:var(--muted2);
+}
+.setup-wizard-card .setup-wizard-form .input,
+.setup-wizard-card .setup-wizard-form .password,
+.setup-wizard-card .setup-wizard-form .number{
+  margin-top:6px;width:100%;max-width:520px;
+}
+.setup-wizard-buttons{
+  margin-top:14px;
+}
+.setup-wizard-footer{
+  display:flex;gap:10px;flex-wrap:wrap;align-items:center;
+  margin-top:22px;padding-top:16px;border-top:1px solid var(--border);
+}
+.btn.ghost{
+  background:transparent;
+  border-color:rgba(255,255,255,.16);
+  color:var(--muted);
+  font-weight:600;
+}
+.btn.ghost:hover{
+  background:rgba(255,255,255,.05);
+  color:var(--text);
+}
+.setup-test-result{
+  margin-bottom:14px;padding:10px 12px;border-radius:12px;
+  font-size:13px;font-weight:600;
+}
+.setup-test-ok{
+  border:1px solid rgba(52,211,153,.45);
+  background:rgba(52,211,153,.10);
+  color:#a7f3d0;
+}
+.setup-test-fail{
+  border:1px solid rgba(251,113,133,.45);
+  background:rgba(251,113,133,.10);
+  color:#fecdd3;
+}
+.setup-cta-card{
+  margin-bottom:16px;
+  border:1px solid rgba(96,165,250,.28);
+  background:rgba(96,165,250,.08);
+}
+.setup-complete-banner a{
+  color:inherit;font-weight:700;
+}
+.dashboard-dismissible-inner{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+}
+.setup-cta-inner .dashboard-dismiss-btn{
+  flex-shrink:0;
+  margin-top:2px;
+}
+.dashboard-dismiss-btn{
+  flex-shrink:0;
+  border:none;
+  background:rgba(255,255,255,.08);
+  color:var(--muted);
+  width:32px;
+  height:32px;
+  border-radius:10px;
+  cursor:pointer;
+  font-size:22px;
+  line-height:1;
+  padding:0;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+.dashboard-dismiss-btn:hover{
+  background:rgba(255,255,255,.12);
+  color:var(--text);
+}
+.setup-done-list{
+  margin:12px 0 0;
+  padding-left:1.2rem;
+  line-height:1.65;
+  color:var(--muted2);
+}
+.setup-done-list li{margin:8px 0 0}
+.setup-done-list a{color:var(--accent2);font-weight:600}
+
+/* Settings: wizard vs full settings explainer */
+.settings-overview-card{
+  margin-bottom:16px;
+  padding:0;
+  border:1px solid var(--border);
+  border-radius:14px;
+  background:rgba(255,255,255,.03);
+}
+.settings-overview-summary{
+  cursor:pointer;
+  list-style:none;
+  padding:12px 14px;
+  font-weight:600;
+  color:var(--muted2);
+}
+.settings-overview-summary::-webkit-details-marker{display:none}
+.settings-overview-summary::before{
+  content:"▸ ";
+  color:var(--accent);
+}
+details.settings-overview-card[open] .settings-overview-summary::before{
+  content:"▾ ";
+}
+.settings-overview-body{
+  padding:0 14px 14px;
+  border-top:1px solid var(--border);
+  color:var(--muted);
+  line-height:1.5;
+}
+.settings-overview-body p{margin:10px 0 0}
+.settings-overview-body p:first-child{margin-top:12px}
+.settings-overview-body code{font-size:11px}

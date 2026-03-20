@@ -13,6 +13,8 @@ Use the **Web UI** so your **Grabby** (Sonarr/Radarr) and **Cleaner** (Emby) set
 3. Under **Backup & Restore**, click **Download Backup**.
 4. Keep the file **private** (same as a password manager export).
 
+**Backup file format:** Timestamps inside the JSON (for example `exported_at` and `updated_at`) use **dd-mm-yyyy** style strings for readability. Older backups that used **ISO-8601** datetime strings still **import** correctly.
+
 ### Restore on a new install
 
 1. Install or start **Grabby** on the new machine.

@@ -187,12 +187,36 @@ function bindInternalLinksTargetTop() {
   });
 }
 
+function bindDashboardDismissibles() {
+  document.querySelectorAll(".dashboard-dismissible[data-dismiss-storage]").forEach((panel) => {
+    const key = panel.getAttribute("data-dismiss-storage");
+    if (!key) return;
+    try {
+      if (localStorage.getItem(key) === "1") {
+        panel.hidden = true;
+        return;
+      }
+    } catch (_) {
+      /* private mode / quota */
+    }
+    const btn = panel.querySelector("[data-dismiss-btn]");
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+      try {
+        localStorage.setItem(key, "1");
+      } catch (_) {}
+      panel.hidden = true;
+    });
+  });
+}
+
 window.addEventListener("DOMContentLoaded", () => {
   bindInternalLinksTargetTop();
   bindScrollRestoreOnFormSubmit();
   restoreScrollAfterFormRedirect();
   bindRevealButtons();
   bindDaysPickers();
+  bindDashboardDismissibles();
   if (qs("saved") === "1") showToast("Settings saved");
   if (qs("ran") === "1") showToast("Run triggered");
   if (qs("test") === "sonarr_ok") showToast("Sonarr OK");

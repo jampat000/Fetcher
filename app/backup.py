@@ -15,6 +15,39 @@ from app.models import AppSettings
 BACKUP_MAGIC = "grabby_settings_v1"
 BACKUP_FORMAT_VERSION = 1
 
+# Human-readable timestamps in JSON (import accepts ISO from older backups too).
+BACKUP_DATETIME_FMT = "%d-%m-%Y %H:%M:%S"
+
+
+def format_backup_datetime(dt: datetime) -> str:
+    """UTC wall clock as dd-mm-yyyy HH:MM:SS (settings + export metadata)."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return dt.strftime(BACKUP_DATETIME_FMT)
+
+
+def parse_backup_datetime_string(s: str) -> datetime:
+    """Parse datetime from backup JSON: ISO (legacy) or dd-mm-yyyy [HH:MM:SS]."""
+    raw = str(s).strip().replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(raw)
+    except ValueError:
+        for fmt in (BACKUP_DATETIME_FMT, "%d-%m-%Y"):
+            try:
+                dt = datetime.strptime(raw, fmt)
+                break
+            except ValueError:
+                continue
+        else:
+            raise ValueError(f"Unrecognized datetime string: {s!r}") from None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return dt
+
 
 def app_settings_to_plain(row: AppSettings) -> dict[str, Any]:
     """ORM row → JSON-serializable dict (no `id`)."""
@@ -26,7 +59,7 @@ def app_settings_to_plain(row: AppSettings) -> dict[str, Any]:
             continue
         val = getattr(row, key)
         if isinstance(val, datetime):
-            out[key] = val.replace(tzinfo=timezone.utc).isoformat() if val.tzinfo is None else val.isoformat()
+            out[key] = format_backup_datetime(val)
         else:
             out[key] = val
     return out
@@ -37,7 +70,7 @@ def build_export_payload(row: AppSettings) -> dict[str, Any]:
     return {
         "grabby_backup": BACKUP_MAGIC,
         "format_version": BACKUP_FORMAT_VERSION,
-        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "exported_at": format_backup_datetime(datetime.now(timezone.utc)),
         "includes": {
             "grabby": True,
             "cleaner": True,
@@ -92,11 +125,7 @@ def _coerce_for_column(col: Any, raw: Any) -> Any:
         if py is datetime:
             if isinstance(raw, (int, float)):
                 return datetime.fromtimestamp(raw, tz=timezone.utc)
-            s = str(raw).strip().replace("Z", "+00:00")
-            dt = datetime.fromisoformat(s)
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            return dt
+            return parse_backup_datetime_string(str(raw))
     except (TypeError, ValueError):
         pass
     return str(raw)

@@ -6,14 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
 ### Changed
-- **Build installer** workflow: runs only on **`v*`** tag push and **manual** `workflow_dispatch` (no longer on every branch/PR push).
+
+## [1.0.6] - 2026-03-22
 
 ### Added
-- **Backup & Restore:** one JSON file for all **Grabby** and **Cleaner** settings (same DB row); panel with **Download Backup** / **Restore from Backup**; export metadata `includes` clarifies scope.
-- `/healthz` includes `version`; new `GET /api/version`.
-- Windows CI smoke test: start packaged `Grabby.exe`, probe `/healthz`.
-- Workflows: **pip-audit** (`security.yml`), **CodeQL** (`codeql.yml`); `SECURITY.md`.
+- **First-run setup wizard** (`/setup`): guided steps for Sonarr, Radarr, Emby (with **Test connection** via JSON API), schedule interval & timezone; final **Next steps** screen with links to Grabby Settings, Cleaner Settings, and Cleaner.
+- **Setup** sidebar entry; dashboard CTA when no stack URLs are configured; **dismissible** dashboard banners (stored in `localStorage`).
+- **API:** `POST /api/setup/test-sonarr`, `test-radarr`, `test-emby` for wizard tests.
+- **Cleaner:** default **`GET /cleaner`** no longer scans Emby (fast sidebar); use **`Scan Emby for matches`** (`/cleaner?scan=1`; legacy `?preview=1` still accepted).
+- **Service upgrades:** [`service/UPGRADE.md`](service/UPGRADE.md) for replacing the Windows install / exe.
+- Playwright **E2E smoke tests** ([`tests/e2e/`](tests/e2e/)) against a live uvicorn process (`healthz`, setup step 1, Cleaner page).
+- **Settings:** expandable **Setup wizard vs this page vs Cleaner** guide; **Backup** download filename uses **dd-mm-yyyy**.
+
+### Changed
+- **Backup JSON:** human-readable **dd-mm-yyyy** datetime strings (`exported_at`, settings columns); **ISO-8601 strings from older backups still import**.
+- **Dates in UI:** sidebar clock, activity, and logs use **dd-mm-yyyy**-style display.
+- **FastAPI:** **lifespan** context for startup/shutdown (replaces deprecated `@app.on_event`).
+- **Templates:** **Starlette**-style `TemplateResponse(request, name, context)` (no deprecation warning).
+- **`datetime.utcnow()`** replaced with **`utc_now_naive()`** ([`app/time_util.py`](app/time_util.py)) for ORM and scheduler use.
+- **CI Test workflow:** install **Playwright Chromium** before `pytest`.
+- **Build installer workflow:** runs on **`v*`** tags and **manual** `workflow_dispatch` only (no longer on every branch/PR push).
+- **Backup & Restore:** one JSON file for all **Grabby** and **Cleaner** settings; export metadata `includes` clarifies scope.
+- **`/healthz`** includes **`version`**; **`GET /api/version`** added.
+- Windows CI smoke: start packaged **`Grabby.exe`**, probe **`/healthz`**.
+- **pip-audit** (`security.yml`), **CodeQL** (`codeql.yml`); **`SECURITY.md`**.
 
 ## [1.0.5] - 2026-03-21
 
@@ -39,7 +58,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - PyInstaller/Inno CI failure: `grabby.spec` was gitignored and missing on runners.
 
-[Unreleased]: https://github.com/jampat000/Grabby/compare/v1.0.5...HEAD
+## Releasing (maintainers)
+
+1. Update this file: move **`[Unreleased]`** items under a new **`[X.Y.Z] - YYYY-MM-DD`** heading, then keep **`[Unreleased]`** empty (or note pending work).
+2. Bump **`VERSION`** to match the release.
+3. Commit; tag **`vX.Y.Z`**; push commits **and** tags (installer/release workflows often key off **`v*`**).
+4. Follow **GitHub Actions** / environment rules for approving production releases if configured.
+
+[Unreleased]: https://github.com/jampat000/Grabby/compare/v1.0.6...HEAD
+[1.0.6]: https://github.com/jampat000/Grabby/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/jampat000/Grabby/compare/v1.0.4...v1.0.5
 [1.0.4]: https://github.com/jampat000/Grabby/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/jampat000/Grabby/releases/tag/v1.0.3

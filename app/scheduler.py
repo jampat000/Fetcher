@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.schedulers.base import SchedulerNotRunningError
@@ -10,6 +9,7 @@ from sqlalchemy import select
 from app.db import SessionLocal
 from app.models import AppSettings
 from app.service_logic import run_once
+from app.time_util import utc_now_naive
 
 
 class ServiceScheduler:
@@ -41,7 +41,7 @@ class ServiceScheduler:
             minutes=interval,
             id=self._job_id,
             replace_existing=True,
-            next_run_time=datetime.utcnow(),
+            next_run_time=utc_now_naive(),
         )
         self._sched.start()
 

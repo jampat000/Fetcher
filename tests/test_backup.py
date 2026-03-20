@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 
 import pytest
 
@@ -11,9 +12,21 @@ from app.backup import (
     app_settings_to_plain,
     build_export_payload,
     export_json_bytes,
+    format_backup_datetime,
     parse_and_validate_settings_dict,
+    parse_backup_datetime_string,
 )
 from app.models import AppSettings
+
+
+def test_backup_datetime_format_and_parse_roundtrip() -> None:
+    utc = datetime(2024, 6, 15, 10, 30, 5, tzinfo=timezone.utc)
+    s = format_backup_datetime(utc)
+    assert s == "15-06-2024 10:30:05"
+    assert parse_backup_datetime_string(s) == utc
+    # Legacy ISO strings from older exports still import
+    legacy = "2024-06-15T10:30:05+00:00"
+    assert parse_backup_datetime_string(legacy) == utc
 
 
 def test_export_payload_structure() -> None:
@@ -47,7 +60,7 @@ def test_roundtrip_plain_dict() -> None:
 def test_parse_validate_rejects_garbage() -> None:
     with pytest.raises(ValueError, match="Invalid JSON"):
         parse_and_validate_settings_dict(b"not json")
-    with pytest.raises(ValueError, match="Not a Grabby"):
+    with pytest.raises(ValueError, match="Grabby settings backup"):
         parse_and_validate_settings_dict(json.dumps({"foo": 1}).encode())
     with pytest.raises(ValueError, match="format_version"):
         parse_and_validate_settings_dict(
@@ -86,6 +99,7 @@ def test_http_export_import_redirects_ok(monkeypatch: pytest.MonkeyPatch) -> Non
             "/settings/backup/import",
             files={"file": ("grabby.json", ex.content, "application/json")},
             data={"confirm": "yes"},
+            follow_redirects=False,
         )
     assert imp.status_code == 303
     assert "import=ok" in (imp.headers.get("location") or "")

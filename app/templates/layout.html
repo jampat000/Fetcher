@@ -37,6 +37,10 @@
             <span class="sidebar-icon">⚙</span>
             <span>Settings</span>
           </a>
+          <a href="/setup" class="sidebar-link {% if request.url.path.startswith('/setup') %}active{% endif %}">
+            <span class="sidebar-icon">◇</span>
+            <span>Setup</span>
+          </a>
           <a href="/cleaner" class="sidebar-link {% if request.url.path in ['/cleaner', '/emby/preview', '/emby/settings'] %}active{% endif %}">
             <span class="sidebar-icon">✦</span>
             <span>Cleaner</span>
