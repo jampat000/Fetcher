@@ -44,6 +44,10 @@ GitHub Actions runs **pip-audit** on dependencies and **CodeQL** on Python code 
 
 This project is licensed under the **MIT License** — see [`LICENSE`](LICENSE).
 
+## Backup & restore
+
+Export **all settings** to **one JSON file** from **Settings → Backup & restore** (move PCs, reinstall, keep API keys). Details: **[`HOWTO-RESTORE.md`](HOWTO-RESTORE.md)**.
+
 ## Changelog
 
 See [`CHANGELOG.md`](CHANGELOG.md).

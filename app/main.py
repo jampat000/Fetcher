@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 from zoneinfo import ZoneInfo
 
-from fastapi import Depends, FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import desc, select
@@ -16,6 +16,7 @@ from app.db import engine, get_session
 from app.migrations import migrate
 import httpx
 
+from app.backup import export_json_bytes, import_settings_replace
 from app.arr_client import ArrClient, ArrConfig
 from app.emby_client import EmbyClient, EmbyConfig
 from app.emby_rules import (
@@ -429,6 +430,40 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
             "radarr_schedule_end_display": _to_12h(settings.radarr_schedule_end, "11:59 PM"),
         },
     )
+
+
+@app.get("/settings/backup/export")
+async def settings_backup_export(session: AsyncSession = Depends(get_session)) -> Response:
+    row = await _get_or_create_settings(session)
+    body = export_json_bytes(row)
+    d = datetime.now(timezone.utc).strftime("%Y%m%d")
+    fname = f"grabby-settings-backup-{d}.json"
+    return Response(
+        content=body,
+        media_type="application/json; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+@app.post("/settings/backup/import")
+async def settings_backup_import(
+    session: AsyncSession = Depends(get_session),
+    file: UploadFile = File(...),
+    confirm: str = Form(""),
+) -> RedirectResponse:
+    if (confirm or "").strip() != "yes":
+        return RedirectResponse("/settings?import=need_confirm", status_code=303)
+    raw = await file.read()
+    if not raw.strip():
+        return RedirectResponse("/settings?import=empty", status_code=303)
+    try:
+        await import_settings_replace(session, raw)
+    except ValueError as e:
+        r = str(e)
+        if len(r) > 180:
+            r = r[:177] + "..."
+        return RedirectResponse(f"/settings?import=fail&reason={quote(r, safe='')}", status_code=303)
+    return RedirectResponse("/settings?import=ok", status_code=303)
 
 
 @app.get("/emby/settings", response_class=HTMLResponse)

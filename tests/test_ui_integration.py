@@ -34,6 +34,8 @@ def _client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
         "/emby/settings?saved=1",
         "/cleaner",
         "/healthz",
+        "/settings?import=ok",
+        "/settings/backup/export",
     ],
 )
 def test_get_pages_200(monkeypatch: pytest.MonkeyPatch, path: str) -> None:

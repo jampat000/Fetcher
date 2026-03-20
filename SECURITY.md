@@ -16,6 +16,7 @@ We aim to acknowledge reports within a few days and coordinate disclosure after 
 ## Secrets and sensitive data
 
 - **API keys** (Sonarr, Radarr, Emby, etc.) belong in the app **Settings** / database—not in git, logs, or screenshots you share publicly.  
+- A **settings backup** (`.json` from the Grabby UI) contains the same secrets as the database—store it **encrypted** or **offline**; never commit it or post it publicly.  
 - When sharing **logs** or **bug reports**, redact URLs, tokens, hostnames, and paths you consider private.  
 - The Web UI and service run **locally by default**; if you expose Grabby to a network, use a **reverse proxy with TLS**, **firewall rules**, and strong **authentication** at the proxy boundary.
 

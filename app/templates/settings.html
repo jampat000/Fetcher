@@ -14,6 +14,16 @@
 
   <div class="card module-content">
     <h2>Grabby Settings</h2>
+    {% set im = request.query_params.get('import', '') %}
+    {% if im == 'ok' %}
+    <div class="banner banner-ok" role="status">Settings restored from backup. <strong>Restart the Grabby Windows service</strong> (or the app) so schedules pick up changes.</div>
+    {% elif im == 'need_confirm' %}
+    <div class="banner banner-warn" role="alert">Import cancelled — check the confirmation box to replace settings.</div>
+    {% elif im == 'empty' %}
+    <div class="banner banner-warn" role="alert">Import cancelled — the file was empty.</div>
+    {% elif im == 'fail' %}
+    <div class="banner banner-warn" role="alert">Import failed: {{ request.query_params.get('reason', 'Unknown error') | e }}</div>
+    {% endif %}
     <div class="hint">Use <span class="kbd">http://</span> for direct Sonarr/Radarr/Emby connections unless you have HTTPS configured.</div>
 
     <form method="post" action="/settings">
@@ -175,6 +185,46 @@
     <form id="test-sonarr" method="post" action="/test/sonarr"></form>
     <form id="test-radarr" method="post" action="/test/radarr"></form>
 
+  </div>
+
+  <div class="card module-content">
+    <h2>Backup &amp; restore</h2>
+    <div class="hint">Export <strong>all settings</strong> (Sonarr, Radarr, Emby cleaner, schedules, API keys) into <strong>one JSON file</strong>. Use it when moving PCs or reinstalling. Treat the file like a password — anyone with it can use your keys.</div>
+    <div class="row" style="align-items:flex-end; gap:16px; flex-wrap:wrap;">
+      <div class="field">
+        <a class="btn" href="/settings/backup/export" download>Download settings backup (.json)</a>
+        <div class="small">Filename: <code>grabby-settings-backup-YYYYMMDD.json</code></div>
+      </div>
+    </div>
+    <hr class="section-rule" />
+    <h3>Restore from file</h3>
+    <div class="hint">This <strong>replaces</strong> every setting in this Grabby install with the contents of the backup. Activity history in the database is not changed.</div>
+    <form method="post" action="/settings/backup/import" enctype="multipart/form-data" class="section">
+      <div class="field">
+        <label>Backup file</label>
+        <input class="input" type="file" name="file" accept="application/json,.json" required />
+      </div>
+      <div class="checkline">
+        <input type="checkbox" name="confirm" value="yes" id="backup-confirm" />
+        <label for="backup-confirm">I understand this will <strong>overwrite</strong> current settings</label>
+      </div>
+      <div class="btnbar">
+        <button type="submit" class="btn secondary">Import settings</button>
+      </div>
+    </form>
+    <script>
+      (function () {
+        var form = document.querySelector('form[action="/settings/backup/import"]');
+        if (!form) return;
+        form.addEventListener("submit", function (e) {
+          var ok = form.querySelector("#backup-confirm");
+          if (!ok || !ok.checked) {
+            e.preventDefault();
+            alert("Check the box to confirm you want to overwrite settings.");
+          }
+        });
+      })();
+    </script>
   </div>
 </div>
 {% endblock %}

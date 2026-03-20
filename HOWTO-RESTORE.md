@@ -1,58 +1,31 @@
-# Restore and Backup Guide
+# Grabby backup & restore
 
-This guide helps you keep your app files and chat history safe.
+Grabby stores your **settings** (Sonarr, Radarr, Emby cleaner, API keys, schedules) in a **local SQLite database** under your profile:
 
-## What is already safe right now
+- **Windows:** `%LOCALAPPDATA%\Grabby\app.db` (usually `C:\Users\You\AppData\Local\Grabby\app.db`)
 
-- Project folder exists at `C:\Users\User\grabby`
-- Local Git history is enabled in this folder
-- A full backup zip was created in `C:\Users\User\grabby-backups`
+## One-file settings backup (recommended)
 
-## One-click backup (project + chat transcripts)
+Use the **Web UI** so everything you need for a **reinstall or new PC** is in **one JSON file** (API keys included).
 
-Run this any time (especially before updates/restarts):
+1. Open Grabby in the browser (e.g. `http://127.0.0.1:8765`).
+2. Go to **Settings**.
+3. Under **Backup & restore**, click **Download settings backup (.json)**.
+4. Keep the file **private** (same as a password manager export).
 
-```powershell
-cd C:\Users\User\grabby
-.\scripts\backup-all.ps1
-```
+### Restore on a new install
 
-It creates timestamped zip files in:
+1. Install/start Grabby on the new machine.
+2. Open **Settings** → **Backup & restore**.
+3. Choose the `.json` file, check **overwrite**, click **Import settings**.
+4. **Restart the Grabby Windows service** (or the app) so the scheduler reloads.
 
-- `C:\Users\User\grabby-backups`
+**Note:** Import replaces **settings only**. **Activity / dashboard history** in the database is **not** included in the JSON backup (only configuration is).
 
-Expected output files:
+## Full database copy (optional)
 
-- `grabby-YYYYMMDD-HHMMSS.zip`
-- `grabby-transcripts-YYYYMMDD-HHMMSS.zip`
+To clone **everything** in the database (including activity tables), **stop Grabby** (so the DB is not locked), then copy `app.db` to a safe place. To restore, stop Grabby and replace `app.db` with your copy.
 
-## Reopen your project after restart
+## Git / source folder
 
-1. Open Cursor
-2. Open folder: `C:\Users\User\grabby`
-3. Start app in dev mode if needed:
-
-```powershell
-cd C:\Users\User\grabby
-.\scripts\dev-start.ps1
-```
-
-Then browse to:
-
-- URL shown by the script (usually `http://127.0.0.1:8766`)
-
-## Restore from backup zip
-
-If needed, extract the newest zip from:
-
-- `C:\Users\User\grabby-backups`
-
-Extract back to:
-
-- `C:\Users\User\grabby`
-
-## Recommended extra safety
-
-- Keep using Git commits after each work session.
-- Push to a private GitHub repo for off-PC backup.
-- Keep backup zips in OneDrive or an external drive too.
+Your **project folder** (clone of this repo) is separate from the **runtime database**. Backing up only the repo does **not** back up `app.db` unless you copy it separately or use the JSON export above.

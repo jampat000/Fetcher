@@ -157,6 +157,28 @@ body{
   .sidebar-footer{width:100%;padding-top:12px}
 }
 
+.banner{
+  padding:12px 14px;
+  border-radius:10px;
+  margin:0 0 14px;
+  border:1px solid var(--border);
+  font-size:14px;
+  line-height:1.45;
+}
+.banner-ok{
+  background:rgba(52,211,153,.12);
+  border-color:rgba(52,211,153,.35);
+}
+.banner-warn{
+  background:rgba(251,191,36,.10);
+  border-color:rgba(251,191,36,.35);
+}
+.section-rule{
+  border:none;
+  border-top:1px solid var(--border);
+  margin:20px 0;
+}
+
 .wrap{max-width:1120px;margin:0 auto;padding:0 16px}
 .page-head{
   display:flex;
