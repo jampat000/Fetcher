@@ -19,7 +19,19 @@ def test_healthz_ok(monkeypatch) -> None:
     with _build_client(monkeypatch) as client:
         resp = client.get("/healthz")
     assert resp.status_code == 200
-    assert resp.json()["status"] == "ok"
+    data = resp.json()
+    assert data["status"] == "ok"
+    assert data["app"] == "Grabby"
+    assert "version" in data and len(data["version"]) > 0
+
+
+def test_api_version_ok(monkeypatch) -> None:
+    with _build_client(monkeypatch) as client:
+        resp = client.get("/api/version")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["app"] == "Grabby"
+    assert "version" in body and len(body["version"]) > 0
 
 
 def test_dashboard_route_smoke(monkeypatch) -> None:

@@ -51,6 +51,37 @@ jobs:
           $ErrorActionPreference = 'Stop'
           & "${{ github.workspace }}\installer\build.ps1" -Clean -InstallInnoSetupIfMissing
 
+      - name: Smoke test packaged Grabby.exe
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $exe = "${{ github.workspace }}\dist\Grabby\Grabby.exe"
+          if (-not (Test-Path -LiteralPath $exe)) { throw "Missing packaged exe: $exe" }
+          & $exe --help
+          $port = 28765
+          $proc = Start-Process -FilePath $exe -ArgumentList @("--host","127.0.0.1","--port",$port) -PassThru -WindowStyle Hidden
+          try {
+            $deadline = (Get-Date).AddMinutes(2)
+            $ok = $false
+            while ((Get-Date) -lt $deadline) {
+              try {
+                $r = Invoke-RestMethod -Uri "http://127.0.0.1:$port/healthz" -TimeoutSec 3
+                if ($r.status -eq "ok" -and $r.version) {
+                  if ($r.version.Length -lt 1) { throw "empty version in healthz" }
+                  $ok = $true
+                  break
+                }
+              } catch {
+                Start-Sleep -Milliseconds 500
+              }
+            }
+            if (-not $ok) { throw "Packaged app did not respond OK at /healthz on port $port" }
+          } finally {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            Get-Process -Name "Grabby" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          }
+
       # Repo Settings → Variables: ENABLE_CODE_SIGNING = true
       # Repo Settings → Secrets: WINDOWS_PFX_BASE64 (PFX as base64), WINDOWS_PFX_PASSWORD
       - name: Sign installer (optional)

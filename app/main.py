@@ -262,7 +262,18 @@ def _looks_like_url(raw: str) -> bool:
 
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
-    return {"status": "ok", "app": APP_NAME}
+    """Liveness for monitors (incl. packaged build smoke tests)."""
+    return {
+        "status": "ok",
+        "app": APP_NAME,
+        "version": get_app_version(),
+    }
+
+
+@app.get("/api/version")
+async def api_version() -> dict[str, str]:
+    """Lightweight version endpoint for automation / dashboards."""
+    return {"app": APP_NAME, "version": get_app_version()}
 
 
 @app.get("/", response_class=HTMLResponse)

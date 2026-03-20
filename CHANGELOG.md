@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- `/healthz` includes `version`; new `GET /api/version`.
+- Windows CI smoke test: start packaged `Grabby.exe`, probe `/healthz`.
+- Workflows: **pip-audit** (`security.yml`), **CodeQL** (`codeql.yml`); `SECURITY.md`.
+
 ## [1.0.5] - 2026-03-21
 
 ### Added

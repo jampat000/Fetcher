@@ -21,6 +21,18 @@
 
 Version is shown in the sidebar of the Web UI (`v…` next to the clock). It matches the repo **`VERSION`** file or your **release tag** when built in CI.
 
+### Monitoring / observability
+
+- **`GET /healthz`** — JSON: `status`, `app`, **`version`** (use for load balancers / uptime checks).
+- **`GET /api/version`** — JSON: `app`, **`version`** (lightweight automation).
+- Logs go to the **process console**; when running under **WinSW**, see the service wrapper logs in `service/README.md`. For long-running hosts, configure **log rotation** at the OS or service-manager level if log files grow large.
+
+## Security
+
+See **[`SECURITY.md`](SECURITY.md)** (reporting issues, handling API keys, official downloads).
+
+GitHub Actions runs **pip-audit** on dependencies and **CodeQL** on Python code for the default branch.
+
 ## What’s in this repo
 
 - `app/`: FastAPI web app + background scheduler
@@ -114,7 +126,9 @@ $env:INSTALLER_SIGN_PASSWORD = "your-pfx-password"
 ## CI (GitHub Actions)
 
 - **Test**: **pytest** on **Ubuntu** for every push / PR (`.github/workflows/test.yml`).
-- **Build installer**: on **Windows**, PyInstaller → Inno → artifact; **tags** `v*` also publish a **Release** (`.github/workflows/build-installer.yml`).
+- **Security**: **pip-audit** on `requirements.txt` (`.github/workflows/security.yml`).
+- **CodeQL**: Python static analysis (`.github/workflows/codeql.yml`), weekly schedule + on push/PR to `master` / `main`.
+- **Build installer**: on **Windows**, PyInstaller → Inno → **smoke test** (start `Grabby.exe`, hit `/healthz`) → artifact; **tags** `v*` also publish a **Release** (`.github/workflows/build-installer.yml`).
 
 On **push** (any branch), **pull requests**, and **manual run** (`workflow_dispatch`), **Build installer** runs on `windows-latest`: PyInstaller bundle → WinSW → Inno Setup → **`installer/output/GrabbySetup.exe`**.
 
