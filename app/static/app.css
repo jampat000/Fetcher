@@ -836,6 +836,12 @@ th{text-align:left;color:#bfdbfe;font-weight:700}
 .activity-time{color:var(--muted);min-width:140px}
 .activity-tags{display:flex;gap:6px;flex-wrap:wrap}
 .activity-msg{color:var(--text)}
+.activity-detail{
+  white-space:pre-line;
+  word-break:break-word;
+  display:block;
+  max-width:980px;
+}
 
 .preview-stats{
   display:grid;
