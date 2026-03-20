@@ -1,7 +1,9 @@
 param(
   [string]$BindHost = "127.0.0.1",
   [int]$PreferredPort = 8766,
-  [switch]$Reload = $true
+  [switch]$Reload = $true,
+  # Offer UAC once if normal kill failed (helps when another user/admin owns the listener).
+  [switch]$TryElevatedKill
 )
 
 $ErrorActionPreference = "Stop"
@@ -15,35 +17,81 @@ function Get-ProcessNameByPid {
   }
 }
 
-function Get-FirstListenerPid {
+function Get-ListenerPids {
   param([int]$Port)
-  # Prefer Get-NetTCPConnection (reliable on Windows) over parsing netstat.
   try {
-    $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
-      Select-Object -First 1
-    if ($conn -and $null -ne $conn.OwningProcess) {
-      return [int]$conn.OwningProcess
+    return @(
+      Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+        ForEach-Object { [int]$_.OwningProcess } |
+        Where-Object { $_ -gt 0 } |
+        Sort-Object -Unique
+    )
+  } catch {
+    return @()
+  }
+}
+
+function Test-PortListening {
+  param([int]$Port)
+  return (Get-ListenerPids -Port $Port).Count -gt 0
+}
+
+function Stop-ListenerProcesses {
+  param([int]$Port)
+
+  $pids = Get-ListenerPids -Port $Port
+  if ($pids.Count -eq 0) {
+    return
+  }
+
+  foreach ($listenerPid in $pids) {
+    $procName = Get-ProcessNameByPid -ProcessId $listenerPid
+    Write-Host "Freeing port $Port - stopping PID $listenerPid ($procName)..."
+    $stopped = $false
+    try {
+      Stop-Process -Id $listenerPid -Force -ErrorAction Stop
+      $stopped = $true
+    } catch {
+      # Process may be elevated / different session; taskkill sometimes succeeds when Stop-Process does not.
+      $tk = Start-Process -FilePath "taskkill.exe" -ArgumentList @("/F", "/PID", "$listenerPid") -Wait -PassThru -WindowStyle Hidden
+      if ($tk.ExitCode -eq 0) {
+        $stopped = $true
+      }
     }
-  } catch {}
-  return $null
+    if (-not $stopped -and $TryElevatedKill) {
+      Write-Host "Requesting elevated kill for PID $listenerPid (UAC prompt)..."
+      $cmd = "try { Stop-Process -Id $listenerPid -Force -ErrorAction Stop } catch { taskkill /F /PID $listenerPid | Out-Null }"
+      Start-Process powershell.exe -Verb RunAs -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $cmd) -Wait
+    }
+  }
+
+  Start-Sleep -Milliseconds 500
+
+  # Stale LISTEN rows (ghost OwningProcess): try resetting those TCP entries (may need admin).
+  if (Test-PortListening -Port $Port) {
+    try {
+      Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+        Stop-NetTCPConnection -Confirm:$false -ErrorAction SilentlyContinue
+    } catch {}
+    Start-Sleep -Milliseconds 400
+  }
+
+  if (Test-PortListening -Port $Port) {
+    Write-Host ""
+    Write-Host "Port $Port is still in use. Common fixes:" -ForegroundColor Yellow
+    Write-Host "  1) Close the other terminal running uvicorn / Grabby dev, or reboot once." -ForegroundColor Yellow
+    Write-Host "  2) Admin PowerShell: Get-NetTCPConnection -LocalPort $Port -State Listen | Stop-NetTCPConnection -Confirm:`$false" -ForegroundColor Yellow
+    Write-Host "  3) Re-run: .\scripts\dev-start.ps1 -TryElevatedKill   (UAC prompt to kill the owning process)" -ForegroundColor Yellow
+    Write-Host ""
+    throw "Port $Port could not be freed. See messages above."
+  }
 }
 
 if (!(Test-Path ".\.venv\Scripts\python.exe")) {
   throw "Missing .venv. Run: py -m venv .venv; .\.venv\Scripts\pip install -r requirements.txt"
 }
 
-# Avoid $pid* names: $PID is an automatic variable and breaks parsing (e.g. "$pidOnPreferred").
-$listenerPid = Get-FirstListenerPid -Port $PreferredPort
-if ($listenerPid) {
-  $procName = Get-ProcessNameByPid -ProcessId $listenerPid
-  Write-Host "Freeing port $PreferredPort - stopping PID $listenerPid ($procName)..."
-  try {
-    Stop-Process -Id $listenerPid -Force -ErrorAction Stop
-  } catch {
-    throw "Port $PreferredPort is in use by PID $listenerPid ($procName) and could not be stopped. Close that app or run as Administrator, or use -PreferredPort with a free port."
-  }
-  Start-Sleep -Milliseconds 400
-}
+Stop-ListenerProcesses -Port $PreferredPort
 
 $reloadArgs = @()
 if ($Reload) {

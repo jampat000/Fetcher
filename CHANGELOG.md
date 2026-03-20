@@ -6,13 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.26] - 2026-03-21
+
 ### Fixed
 
 - **Software updates / GitHub API rate limits:** On **403** or **429** from **`api.github.com`**, fall back to **`github.com/.../releases/latest`** and **`releases.atom`** so the check still works without a token. Cache successful lookups (**`GRABBY_UPDATES_CACHE_SECONDS`**, default **900**) to avoid burning the **60/hour** unauthenticated API quota.
+- **Dev server (`dev-start.ps1`):** Frees the chosen port by stopping **every** listener PID (not just the first), uses **`taskkill`** when **`Stop-Process`** fails, optionally **`Stop-NetTCPConnection`**, and **`-TryElevatedKill`** for a one-time **UAC** kill attempt. Clearer errors if the port stays busy (ghost/stale listeners).
 
 ### Changed
 
 - **CI / releasing:** When **`VERSION`** changes on **`master`** or **`main`**, **Tag release (from VERSION)** runs automatically, creates **`vX.Y.Z`** if missing, and pushes it — **Build installer** then runs on that tag (no local `git tag` / `git push`). **Actions → Tag release (from VERSION) → Run workflow** remains available to retry or tag without editing `VERSION` again.
+- **Docs:** **[`docs/GITHUB-CLI.md`](docs/GITHUB-CLI.md)** (Windows **`gh`** PATH, **`gh auth login`**, merge/release commands) and **[`docs/PRUNE-OLD-RELEASES.md`](docs/PRUNE-OLD-RELEASES.md)**.
 
 ## [1.0.25] - 2026-03-21
 
@@ -240,7 +244,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 4. If tagging did not run (e.g. workflow not merged yet), use **Actions → Tag release (from VERSION) → Run workflow**, or create the tag from **GitHub Releases**.
 5. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 
-[Unreleased]: https://github.com/jampat000/Grabby/compare/v1.0.25...HEAD
+[Unreleased]: https://github.com/jampat000/Grabby/compare/v1.0.26...HEAD
+[1.0.26]: https://github.com/jampat000/Grabby/compare/v1.0.25...v1.0.26
 [1.0.25]: https://github.com/jampat000/Grabby/compare/v1.0.24...v1.0.25
 [1.0.8]: https://github.com/jampat000/Grabby/compare/v1.0.7...v1.0.8
 [1.0.7]: https://github.com/jampat000/Grabby/compare/v1.0.6...v1.0.7
