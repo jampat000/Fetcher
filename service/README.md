@@ -19,6 +19,10 @@ WinSW releases are available on GitHub (search “WinSW releases”).
 .\winsw.exe start
 ```
 
+## Listen address (LAN vs localhost)
+
+`GrabbyService.xml` passes **`--host`** to `Grabby.exe`. **`0.0.0.0`** listens on all interfaces so you can use **`http://<this-pc-ip>:8765`** from other devices on your network. Use **`127.0.0.1`** if you want the Web UI only on this machine. Open **TCP 8765** in Windows Firewall when using `0.0.0.0`. The UI has **no login**—see root **`SECURITY.md`**.
+
 ## Stop / Uninstall
 
 ```powershell

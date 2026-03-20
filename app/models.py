@@ -42,6 +42,9 @@ class AppSettings(Base):
 
     # Scheduler & display
     interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    # Min minutes before Grabby will ask Sonarr/Radarr to search the same episode/movie again.
+    # 0 = use interval_minutes (legacy; can re-trigger every scheduler tick). Default 1440 = 24h.
+    arr_search_cooldown_minutes: Mapped[int] = mapped_column(Integer, default=1440)
     timezone: Mapped[str] = mapped_column(String(64), default="UTC")  # IANA e.g. America/New_York
 
     # Emby Cleaner
@@ -125,6 +128,7 @@ class ArrActionLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
 
     app: Mapped[str] = mapped_column(String(16))  # "sonarr" | "radarr"
+    # Audit only — suppression uses (app, item_type, item_id), not action.
     action: Mapped[str] = mapped_column(String(16))  # "missing" | "upgrade"
     item_type: Mapped[str] = mapped_column(String(16))  # "episode" | "movie"
     item_id: Mapped[int] = mapped_column(Integer)  # episodeId/movieId

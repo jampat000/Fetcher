@@ -841,6 +841,7 @@ async def save_settings(
     radarr_schedule_start: str = Form("00:00"),
     radarr_schedule_end: str = Form("23:59"),
     interval_minutes: int = Form(60),
+    arr_search_cooldown_minutes: int = Form(1440),
     timezone: str = Form("UTC"),
     save_scope: str = Form("all"),
     session: AsyncSession = Depends(get_session),
@@ -861,6 +862,7 @@ async def save_settings(
         radarr_search_upgrades=radarr_search_upgrades,
         radarr_max_items_per_run=radarr_max_items_per_run,
         interval_minutes=interval_minutes,
+        arr_search_cooldown_minutes=arr_search_cooldown_minutes,
     )
 
     row = await _get_or_create_settings(session)
@@ -892,6 +894,7 @@ async def save_settings(
 
     if scope in ("all", "global"):
         row.interval_minutes = data.interval_minutes
+        row.arr_search_cooldown_minutes = data.arr_search_cooldown_minutes
         row.timezone = _resolve_timezone_name(timezone)
 
     row.updated_at = utc_now_naive()

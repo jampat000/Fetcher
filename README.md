@@ -34,7 +34,7 @@
 ## Install & first run
 
 1. Run **`GrabbySetup.exe`** and complete the wizard (admin prompt is normal for a service).
-2. Open **`http://127.0.0.1:8765`** in your browser (default service port).
+2. Open **`http://127.0.0.1:8765`** on the server (default port), or **`http://<server-ip>:8765`** from another PC on your LAN if the service listens on all interfaces (default in `service/GrabbyService.xml` is **`0.0.0.0`**). Allow **TCP 8765** in **Windows Defender Firewall** on the Grabby machine if browsers on other devices cannot connect. The Web UI has **no login**—only expose it on networks you trust (see [`SECURITY.md`](SECURITY.md)).
 3. Use **Setup** in the sidebar (or **Settings** → *Run the setup wizard*) to add **Sonarr**, **Radarr**, and **Emby** with a **Test** on each step—or configure everything in **Settings** if you prefer. **Cleaner** rules and scans are under **Cleaner** / **Cleaner Settings** in the sidebar.
 
 Upgrading an existing install: **Settings → Software updates** can run the latest **`GrabbySetup.exe`** silently (Windows service install), or follow **[`service/UPGRADE.md`](service/UPGRADE.md)** for manual steps.

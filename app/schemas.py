@@ -19,6 +19,12 @@ class SettingsIn(BaseModel):
     radarr_max_items_per_run: int = Field(default=50, ge=1, le=1000)
 
     interval_minutes: int = Field(default=60, ge=5, le=7 * 24 * 60)
+    arr_search_cooldown_minutes: int = Field(
+        default=1440,
+        ge=0,
+        le=365 * 24 * 60,
+        description="0 = same as run interval; else min minutes before re-searching the same Sonarr/Radarr item.",
+    )
 
     emby_enabled: bool = False
     emby_url: str = Field(default="", description="Base URL, e.g. http://localhost:8096")
