@@ -102,14 +102,12 @@ jobs:
           path: installer/output/GrabbySetup.exe
           if-no-files-found: error
 
-  # Waits at "Review deployments" until a configured reviewer approves (repo Settings → Environments → release).
-  # Build + artifact upload already finished; approve here before creating the GitHub Release.
+  # Creates the GitHub Release + attaches GrabbySetup.exe (no deployment Environment gate — those often
+  # stall on “Review deployments” and leave tags without a Latest release).
   release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
-    environment:
-      name: release
     permissions:
       contents: write
     steps:
