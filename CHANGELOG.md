@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.19] - 2026-03-20
+
+### Fixed
+
+- **Activity formatting:** `Activity`/`Dashboard` detail text now uses valid block markup and updated CSS so multi-item details (TV show + episodes) are readable and wrap cleanly.
+
 ## [1.0.18] - 2026-03-20
 
 ### Fixed
