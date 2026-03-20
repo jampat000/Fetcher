@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- **Build installer** workflow: runs only on **`v*`** tag push and **manual** `workflow_dispatch` (no longer on every branch/PR push).
+
 ### Added
 - **Backup & Restore:** one JSON file for all **Grabby** and **Cleaner** settings (same DB row); panel with **Download Backup** / **Restore from Backup**; export metadata `includes` clarifies scope.
 - `/healthz` includes `version`; new `GET /api/version`.

@@ -1,14 +1,14 @@
 # Build Grabby PyInstaller bundle + Inno Setup installer on Windows.
 # Produces installer/output/GrabbySetup.exe as a workflow artifact.
-# Push a tag matching v* (e.g. v1.2.3) to also attach the installer to a GitHub Release.
+# Runs only when you push a version tag (v*) or run this workflow manually — not on every branch/PR push.
+# Tag push v* also runs the release job (GitHub Release + GrabbySetup.exe).
 
 name: Build installer
 
 on:
   push:
-    branches: ["**"]
-    tags: ["v*"]
-  pull_request:
+    tags:
+      - "v*"
   workflow_dispatch:
 
 # Same commit can trigger twice (e.g. push `master` then push tag `v1.0.3` on that commit).

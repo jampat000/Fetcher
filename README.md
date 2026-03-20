@@ -134,11 +134,11 @@ $env:INSTALLER_SIGN_PASSWORD = "your-pfx-password"
 - **Test**: **pytest** on **Ubuntu** for every push / PR (`.github/workflows/test.yml`).
 - **Security**: **pip-audit** on `requirements.txt` (`.github/workflows/security.yml`).
 - **CodeQL**: Python static analysis (`.github/workflows/codeql.yml`), weekly schedule + on push/PR to `master` / `main`.
-- **Build installer**: on **Windows**, PyInstaller → Inno → **smoke test** (start `Grabby.exe`, hit `/healthz`) → artifact; **tags** `v*` also publish a **Release** (`.github/workflows/build-installer.yml`).
+- **Build installer**: on **Windows**, PyInstaller → Inno → **smoke test** (start `Grabby.exe`, hit `/healthz`) → artifact — **only** when you push a **`v*`** tag or run the workflow **manually** (`workflow_dispatch`). Ordinary branch/PR pushes do **not** trigger it (saves minutes and notification noise). **Tags** `v*` also run the **Release** job (`.github/workflows/build-installer.yml`).
 
-On **push** (any branch), **pull requests**, and **manual run** (`workflow_dispatch`), **Build installer** runs on `windows-latest`: PyInstaller bundle → WinSW → Inno Setup → **`installer/output/GrabbySetup.exe`**.
+On **`v*`** tag push or **Actions → Build installer → Run workflow**, the job runs on `windows-latest` and uploads **`installer/output/GrabbySetup.exe`**.
 
-- Open **Actions** → latest run → **Artifacts** → download **GrabbySetup** (good for PR / branch review before merge).
+- Open **Actions** → the run you care about → **Artifacts** → **GrabbySetup**.
 - Pushing a **tag** matching `v*` (e.g. `v1.2.3`) **prepares** a release: the build finishes and uploads the artifact, then the **release** job **pauses** until someone approves it (see below). After approval, it creates/updates the **GitHub Release** and attaches `GrabbySetup.exe` (release notes use `.github/release.yml` categories when auto-generated).
 
 ### Approve before publishing a release
@@ -149,7 +149,7 @@ So you can inspect the workflow / artifact before anything goes on the **Release
 2. Under **Environment protection rules**, add **Required reviewers** (and optional wait timer).
 3. Push tag `v*`: when the release job starts, GitHub shows **Review deployments**; approve there to publish.
 
-This does **not** block `git push` itself—only the **release** step on GitHub. To confirm locally before any push, use your usual branch/PR review; the PR build artifact is the installer for that commit.
+This does **not** block `git push` itself—only the **release** step on GitHub. To produce an installer for a commit without tagging, use **Actions → Build installer → Run workflow** and pick the branch; or build locally with `.\installer\build.ps1`.
 
 ### Dependency updates
 
