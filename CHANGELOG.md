@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.18] - 2026-03-20
+
+### Fixed
+
+- **Activity formatting:** `detail` is now multi-line (pre-line rendering) so TV show + episode/movie entries are readable instead of a single long line.
+
 ## [1.0.17] - 2026-03-20
 
 ### Fixed

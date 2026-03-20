@@ -248,12 +248,12 @@ def _detail_from_labels(labels: list[str], *, total: int) -> str:
     uniq = [x for x in labels if x]
     if not uniq:
         return ""
-    max_items = 8
+    max_items = 4
     shown = uniq[:max_items]
     remain = max(0, total - len(shown))
     if remain > 0:
-        return " | ".join(shown) + f" | +{remain} more"
-    return " | ".join(shown)
+        return "\n".join(shown + [f"+{remain} more"])
+    return "\n".join(shown)
 
 
 async def run_once(session: AsyncSession) -> RunResult:
