@@ -31,6 +31,7 @@ Grabby targets a **single trusted operator on the same machine** (or private LAN
 | **Access control** | No in-app login is assumed necessary. | **Do not** expose the app without **authentication** (e.g. at a reverse proxy) and narrow **firewall** rules. |
 | **SSRF** | Setup / “test connection” endpoints request **URLs you supply** (Sonarr, Radarr, Emby, etc.). Abuse requires reaching those API routes. | High risk: an attacker could probe internal URLs. Keep Grabby **off** public networks or **block** those routes at the proxy. |
 | **CSRF** | Forms use POST **without CSRF tokens**; risk is low when only you use the browser on the same origin. | If the UI is reachable cross-site from a malicious page while you’re “logged in” to nothing (no session), risk is still lower than cookie-based apps, but prefer **network isolation** or **proxy auth**. |
+| **In-app upgrade** | **`POST /api/updates/apply`** downloads the release **`GrabbySetup.exe`** from GitHub and runs a **silent** Inno install (stops/restarts the Windows service). Treat like any admin installer: only use on **trusted networks**; do not expose the Web UI to the internet without proxy auth. Forks can set **`GRABBY_UPDATES_REPO`** (`owner/repo`). |
 | **Injection** | Data access uses **SQLAlchemy** ORM/API for normal queries; migrations use fixed table names. | Keep dependencies updated (`pip-audit` in CI). |
 | **Secrets in storage** | Keys live in **SQLite** and **backup JSON** (documented above). | Encrypt backups, restrict file permissions. |
 

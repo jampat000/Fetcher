@@ -236,6 +236,193 @@
       })();
     </script>
   </div>
+
+  <div class="card module-content updates-card" id="updates-card">
+    <h2>Software Updates</h2>
+    <p class="hint updates-lead">Compares this PC with the latest <strong>GitHub</strong> release. You can run <code class="code-inline">GrabbySetup.exe</code> silently; the <strong>Grabby</strong> Windows service stops briefly, then starts again.</p>
+
+    <div class="backup-panels updates-panels">
+      <div class="backup-panel backup-panel-updates-status">
+        <div class="backup-panel-head">
+          <span class="backup-panel-icon" aria-hidden="true">◉</span>
+          <h3 class="backup-panel-title">Release Status</h3>
+        </div>
+        <p class="small backup-panel-desc">Installed version, latest published tag, and whether <code class="code-inline">GrabbySetup.exe</code> is attached to that release.</p>
+        <div id="updates-panel" class="updates-panel-inner" data-check-url="/api/updates/check" data-apply-url="/api/updates/apply">
+          <p class="small muted updates-loading">Checking GitHub…</p>
+        </div>
+      </div>
+
+      <div class="backup-panel backup-panel-upgrades-actions">
+        <div class="backup-panel-head">
+          <span class="backup-panel-icon" aria-hidden="true">⬆</span>
+          <h3 class="backup-panel-title">Apply Upgrade</h3>
+        </div>
+        <p class="small backup-panel-desc">When a newer release is available, confirm below and run the installer. Use <strong>Release Notes</strong> to see what changed.</p>
+        <p class="small muted updates-idle-hint" id="updates-idle-hint">No action needed until a newer release is detected.</p>
+        <div class="checkline backup-confirm-line updates-confirm-line" id="updates-confirm-wrap" hidden>
+          <input type="checkbox" id="updates-confirm" />
+          <label for="updates-confirm">I understand the <strong>Grabby</strong> service will restart and this page may disconnect until the upgrade finishes.</label>
+        </div>
+        <div class="btnbar updates-actions backup-panel-actions" id="updates-actions" hidden>
+          <button type="button" class="btn backup-panel-btn" id="updates-apply-btn" disabled>Upgrade Now</button>
+          <a class="btn secondary backup-panel-btn" id="updates-notes-link" href="#" target="_blank" rel="noopener noreferrer">Release Notes</a>
+        </div>
+        <p class="small muted backup-panel-desc updates-dev-hint" id="updates-dev-hint" hidden><strong>Development:</strong> in-app upgrade is off unless you set <code class="code-inline">GRABBY_ALLOW_DEV_UPGRADE=1</code>.</p>
+      </div>
+    </div>
+    <script>
+      (function () {
+        var panel = document.getElementById("updates-panel");
+        if (!panel) return;
+        var checkUrl = panel.getAttribute("data-check-url") || "/api/updates/check";
+        var applyUrl = panel.getAttribute("data-apply-url") || "/api/updates/apply";
+        var confirmWrap = document.getElementById("updates-confirm-wrap");
+        var confirmCb = document.getElementById("updates-confirm");
+        var actions = document.getElementById("updates-actions");
+        var applyBtn = document.getElementById("updates-apply-btn");
+        var notesLink = document.getElementById("updates-notes-link");
+        var devHint = document.getElementById("updates-dev-hint");
+        var idleHint = document.getElementById("updates-idle-hint");
+
+        function esc(s) {
+          var d = document.createElement("div");
+          d.textContent = s;
+          return d.innerHTML;
+        }
+
+        function setIdleVisible(show) {
+          if (idleHint) idleHint.hidden = !show;
+        }
+
+        function render(data) {
+          panel.querySelector(".updates-loading") && panel.querySelector(".updates-loading").remove();
+          setIdleVisible(false);
+
+          var ver = esc(String(data.current_version || "?"));
+          var kvStart = "<dl class=\"updates-kv\"><dt>Installed version</dt><dd>" + ver + "</dd>";
+          var notesHref = esc(data.release_notes_url || "#");
+
+          if (!data.platform_supported) {
+            panel.innerHTML =
+              kvStart +
+              "</dl><p class=\"small updates-status-foot\">" +
+              esc(data.message || "In-app updates are only available on Windows.") +
+              "</p>";
+            return;
+          }
+
+          if (!data.ok) {
+            panel.innerHTML =
+              kvStart +
+              "</dl><div class=\"banner banner-warn updates-status-msg\" role=\"alert\"><strong>Update check failed.</strong> " +
+              esc(data.check_error || "Unknown error.") +
+              "</div><p class=\"small updates-status-foot\"><a class=\"text-link\" href=\"" +
+              notesHref +
+              "\">View releases on GitHub</a></p>";
+            if (notesLink && data.release_notes_url) notesLink.href = data.release_notes_url;
+            return;
+          }
+
+          var latest = data.latest_version != null ? String(data.latest_version) : (data.tag_name || "?");
+          var html =
+            kvStart +
+            "<dt>Latest release</dt><dd>" +
+            esc(latest) +
+            "</dd></dl>";
+
+          if (data.asset_missing) {
+            html +=
+              "<div class=\"banner banner-warn updates-status-msg\" role=\"alert\">This release has no <code class=\"code-inline\">GrabbySetup.exe</code> file attached.</div>";
+          }
+
+          panel.innerHTML = html;
+
+          if (data.download_url && data.update_available) {
+            var href = String(data.download_url).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+            panel.insertAdjacentHTML(
+              "beforeend",
+              "<p class=\"small updates-status-foot\"><a class=\"text-link\" href=\"" +
+                href +
+                "\" target=\"_blank\" rel=\"noopener noreferrer\">Download GrabbySetup.exe</a> (manual install)</p>"
+            );
+          }
+
+          if (notesLink && data.release_notes_url) {
+            notesLink.href = data.release_notes_url;
+          }
+          if (!data.apply_supported && devHint) {
+            devHint.hidden = false;
+          }
+          if (data.update_available && data.apply_supported && confirmWrap && actions && applyBtn && confirmCb) {
+            confirmWrap.hidden = false;
+            actions.hidden = false;
+            applyBtn.disabled = !confirmCb.checked;
+            confirmCb.onchange = function () {
+              applyBtn.disabled = !confirmCb.checked;
+            };
+            applyBtn.onclick = function () {
+              if (!confirmCb.checked) return;
+              applyBtn.disabled = true;
+              applyBtn.textContent = "Starting…";
+              fetch(applyUrl, { method: "POST", headers: { Accept: "application/json" }, cache: "no-store" })
+                .then(function (r) {
+                  return r.json().then(function (j) {
+                    return { ok: r.ok, body: j };
+                  });
+                })
+                .then(function (res) {
+                  if (res.body && res.body.ok) {
+                    panel.insertAdjacentHTML(
+                      "beforeend",
+                      "<p class=\"banner banner-ok updates-status-msg\" role=\"status\">" +
+                        esc(res.body.message || "Upgrade started.") +
+                        "</p>"
+                    );
+                  } else {
+                    applyBtn.disabled = false;
+                    applyBtn.textContent = "Upgrade Now";
+                    var err = (res.body && res.body.error) || "Request failed";
+                    panel.insertAdjacentHTML(
+                      "beforeend",
+                      "<div class=\"banner banner-warn updates-status-msg\" role=\"alert\">" + esc(err) + "</div>"
+                    );
+                  }
+                })
+                .catch(function () {
+                  applyBtn.disabled = false;
+                  applyBtn.textContent = "Upgrade Now";
+                  panel.insertAdjacentHTML(
+                    "beforeend",
+                    "<div class=\"banner banner-warn updates-status-msg\" role=\"alert\">Network error.</div>"
+                  );
+                });
+            };
+          }
+          if (data.update_available && !data.apply_supported && actions) {
+            actions.hidden = false;
+            if (applyBtn) applyBtn.style.display = "none";
+          }
+          if (data.ok && !data.update_available && !data.asset_missing) {
+            panel.insertAdjacentHTML(
+              "beforeend",
+              "<p class=\"banner banner-ok updates-status-msg\" role=\"status\">You are up to date.</p>"
+            );
+            setIdleVisible(true);
+          }
+        }
+
+        fetch(checkUrl, { headers: { Accept: "application/json" }, cache: "no-store" })
+          .then(function (r) {
+            return r.json();
+          })
+          .then(render)
+          .catch(function () {
+            panel.innerHTML = "<p class=\"banner banner-warn\" role=\"alert\">Could not reach the update service.</p>";
+          });
+      })();
+    </script>
+  </div>
   </div>{# end settings-page-group #}
 </div>
 {% endblock %}

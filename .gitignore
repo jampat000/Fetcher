@@ -27,3 +27,9 @@ Thumbs.db
 
 # Local scratch
 tmp/
+
+# Never commit secrets or exported settings (see docs/PUBLIC-REPO-CHECKLIST.md)
+.env
+.env.*
+grabby-settings-backup*.json
+*settings-backup*.json

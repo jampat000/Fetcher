@@ -183,12 +183,14 @@ body{
   margin:20px 0;
 }
 
-/* Backup & Restore (Settings) */
-.backup-restore-card h2{
+/* Backup & Restore + Software updates (Settings) */
+.backup-restore-card h2,
+.updates-card h2{
   margin:0 0 8px;
   letter-spacing: -0.02em;
 }
-.backup-restore-lead{
+.backup-restore-lead,
+.updates-lead{
   margin:0 0 20px;
   max-width:820px;
   line-height:1.55;
@@ -214,6 +216,9 @@ body{
   align-items:center;
   gap:10px;
   margin:0 0 4px;
+}
+.backup-panel-head .backup-panel-icon{
+  flex-shrink:0;
 }
 .backup-panel-icon{
   font-size:18px;
@@ -293,6 +298,21 @@ input.backup-file-input[type="file"]::file-selector-button:hover{
 .backup-restore-submit{
   align-self:flex-start;
   margin-top:4px;
+}
+.backup-panel-actions{
+  margin-top:4px;
+  flex-direction:column;
+  align-items:flex-start;
+}
+a.text-link{
+  color:var(--accent2);
+  font-weight:600;
+  text-decoration:none;
+}
+a.text-link:hover{
+  color:var(--accent);
+  text-decoration:underline;
+  text-underline-offset:2px;
 }
 @media (max-width: 640px){
   .backup-panels{
@@ -381,6 +401,64 @@ input.backup-file-input[type="file"]::file-selector-button:hover{
 }
 .settings-page-group > .card.backup-restore-card{
   padding-top:14px;
+}
+.settings-page-group > .card.updates-card{
+  padding-top:14px;
+  border-top:1px solid var(--border);
+}
+
+/* Software Updates (Settings) — aligned status rows */
+.updates-panels{
+  align-items:stretch;
+}
+.updates-panel-inner{
+  margin-top:2px;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+dl.updates-kv{
+  margin:0;
+  display:grid;
+  grid-template-columns:minmax(8rem, max-content) 1fr;
+  gap:6px 20px;
+  align-items:baseline;
+  font-size:13px;
+  line-height:1.4;
+}
+dl.updates-kv dt{
+  margin:0;
+  padding:0;
+  color:var(--muted2);
+  font-weight:600;
+}
+dl.updates-kv dd{
+  margin:0;
+  padding:0;
+  color:var(--text);
+  font-variant-numeric:tabular-nums;
+}
+.updates-status-msg{
+  margin:0;
+}
+.updates-status-foot{
+  margin:0;
+  color:var(--muted);
+  line-height:1.45;
+}
+.updates-idle-hint{
+  margin:0;
+  line-height:1.45;
+}
+.updates-card .backup-panel-actions{
+  flex-direction:row;
+  flex-wrap:wrap;
+  gap:10px;
+  align-items:center;
+  margin-top:10px;
+}
+.updates-card .updates-confirm-line{
+  margin-top:4px;
 }
 
 .topbar{
@@ -604,6 +682,13 @@ input.backup-file-input[type="file"]::file-selector-button:hover{
   color:#e0f2fe;
   padding:10px 12px;border-radius:12px;
   cursor:pointer;font-weight:700;font-size:13px;
+  text-decoration:none;
+}
+a.btn:visited{
+  color:#e0f2fe;
+}
+a.btn.secondary:visited{
+  color:var(--text);
 }
 .btn.secondary{
   background:rgba(255,255,255,.06);

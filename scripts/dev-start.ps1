@@ -50,5 +50,10 @@ if ($Reload) {
 
 Write-Host "Starting Grabby dev server..."
 Write-Host "Open: http://$BindHost`:$PreferredPort"
+Write-Host ""
+Write-Host "NOTE: http://127.0.0.1:8765 is normally the INSTALLED Windows service (packaged exe)."
+Write-Host "      It does NOT show git/source edits. Use the URL above for development."
+Write-Host "      To develop ON port 8765: stop the Grabby service, then run this script with -PreferredPort 8765."
+Write-Host ""
 
 & .\.venv\Scripts\python.exe -m uvicorn app.main:app --host $BindHost --port $PreferredPort @reloadArgs

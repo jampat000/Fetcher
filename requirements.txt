@@ -9,3 +9,4 @@ python-multipart==0.0.22
 apscheduler==3.11.0
 sqlalchemy==2.0.38
 aiosqlite==0.21.0
+packaging==24.2

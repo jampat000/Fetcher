@@ -34,6 +34,7 @@ from app.schemas import SetupConnTestIn, SetupEmbyTestIn, SettingsIn
 from app.setup_helpers import test_emby_connection, test_radarr_connection, test_sonarr_connection
 from app.scheduler import ServiceScheduler
 from app.time_util import utc_now_naive
+from app import updates as app_updates
 from app.version_info import get_app_version
 
 
@@ -60,6 +61,7 @@ templates.env.globals["app_version"] = get_app_version()
 static_dir = Path(__file__).parent / "static"
 static_dir.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+app.include_router(app_updates.router)
 
 
 async def _get_or_create_settings(session: AsyncSession) -> AppSettings:
@@ -563,7 +565,7 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
         .first()
     )
     tz = getattr(settings, "timezone", None) or "UTC"
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request,
         "settings.html",
         {
@@ -584,6 +586,10 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
             "radarr_schedule_end_display": _to_12h(settings.radarr_schedule_end, "11:59 PM"),
         },
     )
+    # Simple Browser / embedded WebViews often cache HTML; force reload of Settings.
+    response.headers["Cache-Control"] = "no-store, max-age=0, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @app.get("/settings/backup/export")

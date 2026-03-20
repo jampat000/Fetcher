@@ -2,6 +2,8 @@
 
 Use this when you have a **new build** (e.g. from GitHub Releases) and want the **installed service** on **`127.0.0.1:8765`** to match what you run in development (**`8766`** in `scripts/dev-start.ps1` is only for local source runs).
 
+**Easiest (GUI):** Web UI → **Settings** → **Software updates** → **Upgrade automatically** (downloads `GrabbySetup.exe` and runs it silently; service restarts). Same end result as Option A.
+
 ## Before you start
 
 - Grab the new **`GrabbySetup.exe`** from [Releases](https://github.com/jampat000/Grabby/releases/latest), **or** build locally with `packaging/build.ps1` and use the output folder.

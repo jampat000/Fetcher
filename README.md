@@ -19,7 +19,7 @@
 2. Open **`http://127.0.0.1:8765`** in your browser (default service port).
 3. Use **Setup** in the sidebar (or **Settings** → *Run the setup wizard*) to add **Sonarr**, **Radarr**, and **Emby** with a **Test** on each step—or configure everything in **Settings** if you prefer. **Cleaner** rules and scans are under **Cleaner** / **Cleaner Settings** in the sidebar.
 
-Upgrading an existing install (replace exe / new installer): **[`service/UPGRADE.md`](service/UPGRADE.md)**.
+Upgrading an existing install: **Settings → Software updates** can run the latest **`GrabbySetup.exe`** silently (Windows service install), or follow **[`service/UPGRADE.md`](service/UPGRADE.md)** for manual steps.
 
 Version is shown in the sidebar of the Web UI (`v…` next to the clock). It matches the repo **`VERSION`** file or your **release tag** when built in CI.
 
@@ -41,6 +41,7 @@ GitHub Actions runs **pip-audit** on dependencies for the default branch. **Prot
 - `service/`: WinSW (Windows Service Wrapper) config for running the packaged app as a Windows service
 - `installer/`: Inno Setup script to produce `GrabbySetup.exe`
 - `VERSION`: current release version (semver) for the app + installer metadata
+- `docs/`: maintainer guides — **[public repo checklist](docs/PUBLIC-REPO-CHECKLIST.md)**, **[audit log after local checks](docs/PUBLIC-REPO-AUDIT.md)**
 
 ## License
 
@@ -76,9 +77,20 @@ py -m venv .venv
 
 Then open the URL printed by the script (default `http://127.0.0.1:8766`).
 
-Why `8766` by default: the installed Windows service app often runs on `8765`, which can hide source-code UI changes in Simple Browser.
+### Port **8765** vs **8766** (Simple Browser)
 
-If **Simple Browser** (or another embedded preview) still looks stuck after an update, use **Open in browser** / Chrome/Edge, or run **Developer: Reload Webview** / reload the Simple Browser tab so it picks up new `app.js`.
+| URL | What it is |
+|-----|------------|
+| **`http://127.0.0.1:8765`** | The **installed** Grabby (**Windows service**). This is the packaged **`Grabby.exe`** from your last **`GrabbySetup.exe`**. It does **not** pick up edits you make in the git repo. |
+| **`http://127.0.0.1:8766`** (or whatever `dev-start.ps1` prints) | **Development** server running **source code** from this folder (`uvicorn`). Use this to see UI/code changes immediately. |
+
+**If you only ever open 8765:** rebuild with **`packaging\build.ps1`**, run a new **`GrabbySetup.exe`**, or use **Settings → Software updates** to get a release that includes the feature.
+
+**To use port 8765 for dev** (same URL you’re used to): stop the **Grabby** service in `services.msc`, then from the repo run  
+`.\scripts\dev-start.ps1 -PreferredPort 8765`  
+so nothing else is listening on 8765.
+
+If **Simple Browser** still looks stuck after a change, reload the tab or open the page in Chrome/Edge.
 
 ### Browser smoke tests (optional)
 
