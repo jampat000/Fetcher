@@ -17,8 +17,7 @@
 
 1. Run **`GrabbySetup.exe`** and complete the wizard (admin prompt is normal for a service).
 2. Open **`http://127.0.0.1:8765`** in your browser (default service port).
-3. Use **Setup** in the sidebar (or **Settings** → *Run the setup wizard*) to add **Sonarr**, **Radarr**, and **Emby** with a **Test** on each step—or configure everything in **Settings** if you prefer.
-4. **Which screen for what?** In **Settings**, expand **Setup wizard vs this page vs Cleaner** (short guide to Grabby Settings vs Cleaner rules vs backup/testing).
+3. Use **Setup** in the sidebar (or **Settings** → *Run the setup wizard*) to add **Sonarr**, **Radarr**, and **Emby** with a **Test** on each step—or configure everything in **Settings** if you prefer. **Cleaner** rules and scans are under **Cleaner** / **Cleaner Settings** in the sidebar.
 
 Upgrading an existing install (replace exe / new installer): **[`service/UPGRADE.md`](service/UPGRADE.md)**.
 

@@ -949,36 +949,3 @@ th{text-align:left;color:#bfdbfe;font-weight:700}
 }
 .setup-done-list li{margin:8px 0 0}
 .setup-done-list a{color:var(--accent2);font-weight:600}
-
-/* Settings: wizard vs full settings explainer */
-.settings-overview-card{
-  margin-bottom:16px;
-  padding:0;
-  border:1px solid var(--border);
-  border-radius:14px;
-  background:rgba(255,255,255,.03);
-}
-.settings-overview-summary{
-  cursor:pointer;
-  list-style:none;
-  padding:12px 14px;
-  font-weight:600;
-  color:var(--muted2);
-}
-.settings-overview-summary::-webkit-details-marker{display:none}
-.settings-overview-summary::before{
-  content:"▸ ";
-  color:var(--accent);
-}
-details.settings-overview-card[open] .settings-overview-summary::before{
-  content:"▾ ";
-}
-.settings-overview-body{
-  padding:0 14px 14px;
-  border-top:1px solid var(--border);
-  color:var(--muted);
-  line-height:1.5;
-}
-.settings-overview-body p{margin:10px 0 0}
-.settings-overview-body p:first-child{margin-top:12px}
-.settings-overview-body code{font-size:11px}
