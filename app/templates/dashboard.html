@@ -259,9 +259,14 @@
           <span class="activity-tags">
             <span class="tag tag-{{ e.app }}">{{ e.app }}</span>
             <span class="tag tag-{{ e.kind }}">{{ e.kind.capitalize() }}</span>
+            <span class="tag {% if e.status == 'ok' %}tag-ok{% else %}tag-err{% endif %}">
+              {{ "Success" if e.status == "ok" else "Failed" }}
+            </span>
           </span>
           <span class="activity-msg">
-            {% if e.kind == "missing" %}
+            {% if e.kind == "error" %}
+              Action failed
+            {% elif e.kind == "missing" %}
               {{ e.count }} {{ "episode" if e.app == "sonarr" else "movie" }}{{ "s" if e.count != 1 else "" }} searched
             {% elif e.kind == "cleanup" %}
               {{ e.count }} item{{ "s" if e.count != 1 else "" }} matched Emby Cleaner rules

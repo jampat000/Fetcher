@@ -820,6 +820,10 @@ th{text-align:left;color:#bfdbfe;font-weight:700}
 .tag-missing{background:rgba(251,191,36,.2);color:#fcd34d}
 .tag-upgrade{background:rgba(56,189,248,.2);color:#7dd3fc}
 .tag-cleanup{background:rgba(167,139,250,.2);color:#c4b5fd}
+.tag-error{background:rgba(239,68,68,.2);color:#fca5a5}
+.tag-service{background:rgba(148,163,184,.25);color:#cbd5e1}
+.tag-ok{background:rgba(34,197,94,.2);color:#86efac}
+.tag-err{background:rgba(239,68,68,.2);color:#fca5a5}
 .activity-row{
   display:flex;
   align-items:center;

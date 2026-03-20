@@ -422,6 +422,7 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
             "time_local": _fmt_local(e.created_at, tz),
             "app": e.app,
             "kind": e.kind,
+            "status": (getattr(e, "status", "") or "ok").strip().lower(),
             "count": e.count,
             "detail": (getattr(e, "detail", "") or "").strip(),
         }
@@ -542,6 +543,7 @@ async def activity_page(request: Request, session: AsyncSession = Depends(get_se
             "time_local": _fmt_local(e.created_at, tz),
             "app": e.app,
             "kind": e.kind,
+            "status": (getattr(e, "status", "") or "ok").strip().lower(),
             "count": e.count,
             "detail": (getattr(e, "detail", "") or "").strip(),
         }

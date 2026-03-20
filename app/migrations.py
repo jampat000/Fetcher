@@ -158,4 +158,6 @@ async def migrate(engine: AsyncEngine) -> None:
     # Detailed activity log text for existing DBs.
     if not await _has_column(engine, table="activity_log", column="detail"):
         await _add_column(engine, table="activity_log", ddl="detail TEXT NOT NULL DEFAULT ''")
+    if not await _has_column(engine, table="activity_log", column="status"):
+        await _add_column(engine, table="activity_log", ddl="status TEXT NOT NULL DEFAULT 'ok'")
 

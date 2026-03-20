@@ -202,7 +202,14 @@ def _episode_ids_for_emby_tv_item(emby_item: dict, sonarr_episodes: list[dict]) 
 
 
 def _sonarr_episode_label(rec: dict) -> str:
-    title = str(rec.get("seriesTitle") or rec.get("title") or "").strip()
+    series_obj = rec.get("series") if isinstance(rec.get("series"), dict) else {}
+    title = str(
+        rec.get("seriesTitle")
+        or series_obj.get("title")
+        or rec.get("seriesName")
+        or rec.get("title")
+        or ""
+    ).strip()
     season = _safe_int(rec.get("seasonNumber")) or 0
     ep_no = _safe_int(rec.get("episodeNumber")) or _safe_int(rec.get("episodeNumberStart")) or 0
     ep_end = _safe_int(rec.get("episodeNumberEnd")) or ep_no
@@ -300,6 +307,7 @@ async def run_once(session: AsyncSession) -> RunResult:
                                     job_run_id=log.id,
                                     app="sonarr",
                                     kind="missing",
+                                    status="ok",
                                     count=len(ids),
                                     detail=_detail_from_labels(labels, total=len(ids)),
                                 )
@@ -334,6 +342,7 @@ async def run_once(session: AsyncSession) -> RunResult:
                                     job_run_id=log.id,
                                     app="sonarr",
                                     kind="upgrade",
+                                    status="ok",
                                     count=len(ids),
                                     detail=_detail_from_labels(labels, total=len(ids)),
                                 )
@@ -396,6 +405,7 @@ async def run_once(session: AsyncSession) -> RunResult:
                                     job_run_id=log.id,
                                     app="radarr",
                                     kind="missing",
+                                    status="ok",
                                     count=len(ids),
                                     detail=_detail_from_labels(labels, total=len(ids)),
                                 )
@@ -424,6 +434,7 @@ async def run_once(session: AsyncSession) -> RunResult:
                                     job_run_id=log.id,
                                     app="radarr",
                                     kind="upgrade",
+                                    status="ok",
                                     count=len(ids),
                                     detail=_detail_from_labels(labels, total=len(ids)),
                                 )
@@ -595,6 +606,7 @@ async def run_once(session: AsyncSession) -> RunResult:
                                 job_run_id=log.id,
                                 app="emby",
                                 kind="cleanup",
+                                status="ok",
                                 count=len(candidates),
                                 detail=_detail_from_labels([name for _, name, _, _ in candidates], total=len(candidates)),
                             )
@@ -630,12 +642,32 @@ async def run_once(session: AsyncSession) -> RunResult:
         app = "sonarr" if ":8989" in url else ("radarr" if ":7878" in url else ("emby" if (":8096" in url or ":8920" in url) else ""))
         if app:
             session.add(AppSnapshot(app=app, ok=False, status_message=log.message, missing_total=0, cutoff_unmet_total=0))
+            session.add(
+                ActivityLog(
+                    job_run_id=log.id,
+                    app=app,
+                    kind="error",
+                    status="failed",
+                    count=0,
+                    detail=(log.message or "")[:500],
+                )
+            )
         await session.commit()
         return RunResult(ok=False, message=log.message)
     except Exception as e:  # noqa: BLE001 - service boundary logging
         log.ok = False
         log.message = f"Run failed: {type(e).__name__}: {e}"
         log.finished_at = utc_now_naive()
+        session.add(
+            ActivityLog(
+                job_run_id=log.id,
+                app="service",
+                kind="error",
+                status="failed",
+                count=0,
+                detail=(log.message or "")[:500],
+            )
+        )
         await session.commit()
         return RunResult(ok=False, message=log.message)
 
