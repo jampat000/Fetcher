@@ -169,6 +169,6 @@ This does **not** block `git push` itself—only the **release** step on GitHub.
 
 ### Dependency updates
 
-[**Dependabot**](.github/dependabot.yml) opens weekly PRs for **pip** and **GitHub Actions** dependencies.
+[**Dependabot**](.github/dependabot.yml) opens weekly PRs for **pip** and **GitHub Actions** dependencies. 
 
 
