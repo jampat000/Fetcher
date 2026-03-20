@@ -251,6 +251,9 @@
           <h3 class="backup-panel-title">Release Status</h3>
         </div>
         <p class="small backup-panel-desc">Installed version, latest published tag, and whether <code class="code-inline">GrabbySetup.exe</code> is attached to that release.</p>
+        <div class="btnbar" style="margin-top: 0;">
+          <button type="button" class="btn secondary" id="updates-check-btn">Check for Updates</button>
+        </div>
         <div id="updates-panel" class="updates-panel-inner" data-check-url="/api/updates/check" data-apply-url="/api/updates/apply">
           <p class="small muted updates-loading">Checking GitHub…</p>
         </div>
@@ -284,6 +287,7 @@
         var confirmCb = document.getElementById("updates-confirm");
         var actions = document.getElementById("updates-actions");
         var applyBtn = document.getElementById("updates-apply-btn");
+        var checkBtn = document.getElementById("updates-check-btn");
         var notesLink = document.getElementById("updates-notes-link");
         var devHint = document.getElementById("updates-dev-hint");
         var idleHint = document.getElementById("updates-idle-hint");
@@ -415,14 +419,31 @@
           }
         }
 
-        fetch(checkUrl, { headers: { Accept: "application/json" }, cache: "no-store" })
-          .then(function (r) {
-            return r.json();
-          })
-          .then(render)
-          .catch(function () {
-            panel.innerHTML = "<p class=\"banner banner-warn\" role=\"alert\">Could not reach the update service.</p>";
-          });
+        function runCheck() {
+          if (checkBtn) {
+            checkBtn.disabled = true;
+            checkBtn.textContent = "Checking…";
+          }
+          fetch(checkUrl, { headers: { Accept: "application/json" }, cache: "no-store" })
+            .then(function (r) {
+              return r.json();
+            })
+            .then(render)
+            .catch(function () {
+              panel.innerHTML = "<p class=\"banner banner-warn\" role=\"alert\">Could not reach the update service.</p>";
+            })
+            .finally(function () {
+              if (checkBtn) {
+                checkBtn.disabled = false;
+                checkBtn.textContent = "Check for Updates";
+              }
+            });
+        }
+
+        if (checkBtn) {
+          checkBtn.addEventListener("click", runCheck);
+        }
+        runCheck();
       })();
     </script>
   </div>

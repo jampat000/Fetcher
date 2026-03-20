@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.10] - 2026-03-20
+
+### Added
+
+- **Settings → Software Updates:** **Check for Updates** button (explicit refresh; still auto-checks on load).
+
+### Changed
+
+- **Grabby Settings / Cleaner Settings:** scoped **Save … Settings** actions (Sonarr, Radarr, global Grabby; Cleaner global + content criteria for TV/Movies) so you do not have to save the whole page at once.
+- **Cleaner Settings:** headings (**Emby Cleaner Settings**, **Global Cleaner Settings**, **Content Criteria Settings**) and layout aligned with those saves.
+
 ## [1.0.9] - 2026-03-20
 
 ### Added
