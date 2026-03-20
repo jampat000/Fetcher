@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import tempfile
 import threading
+import time
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
 import httpx
 from fastapi import APIRouter
@@ -57,7 +61,14 @@ def _github_error_message(response: httpx.Response) -> str:
 
 _apply_lock = threading.Lock()
 
+# Short cache so Settings / repeated checks do not burn GitHub REST API quota (60/hr per IP unauthenticated).
+_RELEASE_CACHE_TTL_SEC = max(60, int(os.environ.get("GRABBY_UPDATES_CACHE_SECONDS", "900")))
+_release_payload_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_release_cache_lock = threading.Lock()
+
 _NO_STORE_HEADERS = {"Cache-Control": "no-store, max-age=0, must-revalidate", "Pragma": "no-cache"}
+
+_ATOM_NS = "{http://www.w3.org/2005/Atom}"
 
 
 def _no_store_json(body: dict[str, Any]) -> JSONResponse:
@@ -102,6 +113,85 @@ def _latest_api_url(repo: str) -> str:
     return f"https://api.github.com/repos/{repo}/releases/latest"
 
 
+def _web_headers() -> dict[str, str]:
+    """Headers for github.com pages / Atom (not api.github.com); avoids REST API rate limits."""
+    repo = _releases_repo()
+    ver = get_app_version()
+    return {"User-Agent": f"Grabby/{ver} (+https://github.com/{repo})"}
+
+
+def _tag_from_releases_url(url: str) -> str | None:
+    m = re.search(r"/releases/tag/([^/?#]+)", url)
+    if not m:
+        return None
+    return unquote(m.group(1))
+
+
+async def _payload_from_tag_and_repo(_client: httpx.AsyncClient, repo: str, tag: str) -> dict[str, Any]:
+    """Build API-shaped payload using GitHub's conventional release asset URL."""
+    html_url = f"https://github.com/{repo}/releases/tag/{tag}"
+    dl = f"https://github.com/{repo}/releases/download/{tag}/{SETUP_ASSET_NAME}"
+    return {
+        "tag_name": tag,
+        "html_url": html_url,
+        "assets": [{"name": SETUP_ASSET_NAME, "browser_download_url": dl}],
+    }
+
+
+async def _fetch_latest_via_github_web(repo: str) -> dict[str, Any] | None:
+    """Follow https://github.com/{repo}/releases/latest to discover tag (no REST API)."""
+    timeout = httpx.Timeout(30.0, connect=10.0)
+    async with httpx.AsyncClient(
+        headers=_web_headers(),
+        timeout=timeout,
+        follow_redirects=True,
+    ) as client:
+        r = await client.get(f"https://github.com/{repo}/releases/latest")
+        if r.status_code >= 400:
+            return None
+        tag = _tag_from_releases_url(str(r.url))
+        if not tag:
+            return None
+        return await _payload_from_tag_and_repo(client, repo, tag)
+
+
+async def _fetch_latest_via_releases_atom(repo: str) -> dict[str, Any] | None:
+    """Parse releases.atom first entry (fallback if /releases/latest did not expose a tag URL)."""
+    timeout = httpx.Timeout(30.0, connect=10.0)
+    async with httpx.AsyncClient(
+        headers={**_web_headers(), "Accept": "application/atom+xml"},
+        timeout=timeout,
+        follow_redirects=True,
+    ) as client:
+        r = await client.get(f"https://github.com/{repo}/releases.atom")
+        if r.status_code >= 400:
+            return None
+        try:
+            root = ET.fromstring(r.text)
+        except ET.ParseError:
+            return None
+        entry = root.find(f"{_ATOM_NS}entry")
+        if entry is None:
+            return None
+        tag: str | None = None
+        for link in entry.findall(f"{_ATOM_NS}link"):
+            href = link.get("href") or ""
+            tag = _tag_from_releases_url(href)
+            if tag:
+                break
+        if not tag:
+            return None
+        return await _payload_from_tag_and_repo(client, repo, tag)
+
+
+async def _fetch_latest_without_api(repo: str) -> dict[str, Any] | None:
+    """When REST API returns 403/429 (rate limit), use web/Atom instead."""
+    w = await _fetch_latest_via_github_web(repo)
+    if w:
+        return w
+    return await _fetch_latest_via_releases_atom(repo)
+
+
 async def _fetch_latest_release_payload(repo: str) -> dict[str, Any]:
     url = _latest_api_url(repo)
     timeout = httpx.Timeout(30.0, connect=10.0)
@@ -113,6 +203,32 @@ async def _fetch_latest_release_payload(repo: str) -> dict[str, Any]:
         r = await client.get(url)
         r.raise_for_status()
         return r.json()
+
+
+async def _resolve_latest_release_payload(repo: str) -> dict[str, Any]:
+    """GitHub REST API first; on rate-limit 403/429 fall back to github.com (separate limits)."""
+    now = time.monotonic()
+    with _release_cache_lock:
+        hit = _release_payload_cache.get(repo)
+        if hit and hit[0] > now:
+            return hit[1].copy()
+
+    try:
+        payload = await _fetch_latest_release_payload(repo)
+    except httpx.HTTPStatusError as e:
+        # REST API: 60 req/hr per IP when unauthenticated. github.com / Atom use separate limits.
+        if e.response.status_code in (403, 429):
+            fb = await _fetch_latest_without_api(repo)
+            if fb is not None:
+                payload = fb
+            else:
+                raise
+        else:
+            raise
+
+    with _release_cache_lock:
+        _release_payload_cache[repo] = (now + _RELEASE_CACHE_TTL_SEC, payload.copy())
+    return payload.copy()
 
 
 def _pick_setup_asset(payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -188,7 +304,7 @@ async def _compute_updates_check_payload() -> dict[str, Any]:
             "message": "In-app upgrade is only available on Windows.",
         }
     try:
-        payload = await _fetch_latest_release_payload(repo)
+        payload = await _resolve_latest_release_payload(repo)
     except httpx.HTTPStatusError as e:
         code = e.response.status_code
         detail = _github_error_message(e.response)

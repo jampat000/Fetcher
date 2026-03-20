@@ -1,0 +1,18 @@
+---
+description: After substantive changes, ask about deploy, git sync, and restart
+alwaysApply: true
+---
+
+# After changes — deploy, sync, restart?
+
+When you finish **substantive** work (app code, `app/templates`, DB/migrations, `VERSION`, installer/packaging, service config, CI workflows, or anything that affects the **running** Grabby build), **end your reply** with a **short, explicit check-in** for the user:
+
+> **Want to deploy this build and sync your machine?**  
+> I can help with: **install new `GrabbySetup.exe` / restart the Windows service** (8765), **`git pull`** (or match **`origin/master`**), and **restart the dev server** (`scripts/dev-start.ps1`, 8766) so the UI and DB migrations match the repo.
+
+- **Ask once per task** (not after every tiny edit in the same turn).
+- **Skip** for **trivial-only** changes (e.g. comment typos, pure internal refactors with no runtime effect) unless they’re validating that area.
+- If they **yes** / **do it**: propose **concrete** PowerShell/git steps (or run them if they want terminal actions). For **full release + local**, follow **`.cursor/rules/bump-and-restart-workflow.mdc`**.
+- If they **no** / **later**: acknowledge — they can come back when ready.
+
+**Goal:** They’re never left wondering whether to redeploy, pull, or restart to see the fix.

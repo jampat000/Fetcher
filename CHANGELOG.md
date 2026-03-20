@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Software updates / GitHub API rate limits:** On **403** or **429** from **`api.github.com`**, fall back to **`github.com/.../releases/latest`** and **`releases.atom`** so the check still works without a token. Cache successful lookups (**`GRABBY_UPDATES_CACHE_SECONDS`**, default **900**) to avoid burning the **60/hour** unauthenticated API quota.
+
 ### Changed
 
 - **CI / releasing:** When **`VERSION`** changes on **`master`** or **`main`**, **Tag release (from VERSION)** runs automatically, creates **`vX.Y.Z`** if missing, and pushes it — **Build installer** then runs on that tag (no local `git tag` / `git push`). **Actions → Tag release (from VERSION) → Run workflow** remains available to retry or tag without editing `VERSION` again.

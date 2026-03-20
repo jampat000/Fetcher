@@ -5,11 +5,20 @@ from __future__ import annotations
 import types
 from typing import Any
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app import updates as updates_mod
 from app.updates import _apply_eligible, _tag_to_version
+
+
+@pytest.fixture(autouse=True)
+def _clear_updates_release_cache() -> None:
+    updates_mod._release_payload_cache.clear()
+    yield
+    updates_mod._release_payload_cache.clear()
 
 
 def _build_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
@@ -66,6 +75,40 @@ def test_api_updates_check_fresh_release(monkeypatch: pytest.MonkeyPatch) -> Non
     assert data["update_available"] is True
     assert data["latest_version"] == "2.0.0"
     assert "GrabbySetup.exe" in (data.get("download_url") or "")
+
+
+def test_api_updates_check_falls_back_when_api_rate_limited(monkeypatch: pytest.MonkeyPatch) -> None:
+    req = httpx.Request("GET", "https://api.github.com/repos/x/y/releases/latest")
+    resp = httpx.Response(403, json={"message": "API rate limit exceeded for 1.2.3.4."})
+    err = httpx.HTTPStatusError("rate limited", request=req, response=resp)
+
+    async def _api_fail(_repo: str) -> dict[str, Any]:
+        raise err
+
+    async def _web_ok(_repo: str) -> dict[str, Any]:
+        return {
+            "tag_name": "v2.0.0",
+            "html_url": "https://github.com/jampat000/Grabby/releases/tag/v2.0.0",
+            "assets": [
+                {
+                    "name": "GrabbySetup.exe",
+                    "browser_download_url": "https://github.com/jampat000/Grabby/releases/download/v2.0.0/GrabbySetup.exe",
+                }
+            ],
+        }
+
+    monkeypatch.setattr("app.updates._fetch_latest_release_payload", _api_fail)
+    monkeypatch.setattr("app.updates._fetch_latest_without_api", _web_ok)
+    monkeypatch.setattr("app.updates._platform_ok", lambda: True)
+    monkeypatch.setattr("app.updates.get_app_version", lambda: "1.0.0")
+
+    with _build_client(monkeypatch) as client:
+        r = client.get("/api/updates/check")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    assert data["update_available"] is True
+    assert data["latest_version"] == "2.0.0"
 
 
 def test_api_updates_check_up_to_date(monkeypatch: pytest.MonkeyPatch) -> None:
