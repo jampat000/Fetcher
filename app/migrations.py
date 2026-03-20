@@ -16,6 +16,16 @@ async def _add_column(engine: AsyncEngine, *, table: str, ddl: str) -> None:
         await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
 
 
+async def _widen_schedule_days_columns(engine: AsyncEngine) -> None:
+    """Ensure schedule day columns can store the full Mon..Sun CSV on SQL backends with strict VARCHAR."""
+    # SQLite is permissive about text length and doesn't support straightforward ALTER TYPE.
+    if engine.dialect.name == "sqlite":
+        return
+    async with engine.begin() as conn:
+        for col in ("sonarr_schedule_days", "radarr_schedule_days", "emby_schedule_days"):
+            await conn.execute(text(f"ALTER TABLE app_settings ALTER COLUMN {col} TYPE TEXT"))
+
+
 async def migrate(engine: AsyncEngine) -> None:
     # Lightweight SQLite migration: add new columns if missing.
     table = "app_settings"
@@ -108,6 +118,9 @@ async def migrate(engine: AsyncEngine) -> None:
         await _add_column(engine, table=table, ddl="emby_rule_tv_watched_rating_below INTEGER NOT NULL DEFAULT 0")
     if not await _has_column(engine, table=table, column="emby_rule_tv_unwatched_days"):
         await _add_column(engine, table=table, ddl="emby_rule_tv_unwatched_days INTEGER NOT NULL DEFAULT 0")
+
+    # Older schemas used VARCHAR(16), which can be too short for full week CSV on strict DBs.
+    await _widen_schedule_days_columns(engine)
 
     # Snapshots table (create if missing)
     async with engine.begin() as conn:

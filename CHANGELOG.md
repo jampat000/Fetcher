@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.13] - 2026-03-20
+
+### Fixed
+
+- **Schedules:** selecting all schedule days no longer reverts unexpectedly; schedule-day columns are stored as `TEXT` and migration widens legacy strict DB schemas.
+- **Tests:** added regression coverage to ensure Grabby + Cleaner schedules stay enabled with all 7 days selected.
+
 ## [1.0.11] - 2026-03-20
 
 ### Fixed
