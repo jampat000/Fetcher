@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.9] - 2026-03-20
+
 ### Added
 
 - **Settings → Software updates:** checks **GitHub Releases** against the installed version; **Upgrade automatically** downloads `GrabbySetup.exe` and runs it **silently** (Windows installed build only). Optional env: `GRABBY_UPDATES_REPO`, `GRABBY_ALLOW_DEV_UPGRADE`, `GET /api/updates/check`, `POST /api/updates/apply`.
