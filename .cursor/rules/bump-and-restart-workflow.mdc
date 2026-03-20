@@ -27,3 +27,16 @@ After the steps above, **briefly confirm** in your reply:
 4. **Optional** — Remind them to **merge PR** and **`git tag vX.Y.Z && git push origin vX.Y.Z`** if they use tagged releases / CI.
 
 Do **not** end the task without this **short recap** so they know what to do next on GitHub and locally.
+
+## Full end-to-end (“new version on GitHub + local dev ready”)
+
+When the user wants the **whole workflow** so they can **download the installer** and **test from source**:
+
+1. **Release branch** — Commit + push `chore/release-vX.Y.Z` as usual.
+2. **Tag** — `git tag -a vX.Y.Z -m "Release vX.Y.Z"` and `git push origin vX.Y.Z` (triggers **Build installer** on Actions).
+3. **Merge to `master`** — If **`master` is protected**, open/merge the PR on GitHub (or confirm **Merge pull request** is done). **Do not assume** `git push origin master` works from the agent shell.
+4. **Local sync** — `git fetch origin && git checkout master && git pull origin master` so **`HEAD` matches `origin/master`** and **`VERSION`** matches the release.
+5. **Installer** — After Actions finishes, **`GrabbySetup.exe`** is on the **Release** or **workflow Artifacts**. Point them to **`https://github.com/<owner>/<repo>/releases`** (or `/releases/tag/vX.Y.Z`).
+6. **Dev server** — Run **`scripts/dev-start.ps1`** (default **8766**). If the port is stuck, **`Stop-Process`** on the owning PID, or use **`-PreferredPort 8767`**.
+
+**Run these git/terminal steps for the user** when they ask for the full workflow—don’t only describe them.
