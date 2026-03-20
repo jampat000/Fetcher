@@ -32,7 +32,7 @@ from app.emby_rules import (
 from app.models import ActivityLog, AppSettings, AppSnapshot, Base, JobRunLog
 from app.schemas import SetupConnTestIn, SetupEmbyTestIn, SettingsIn
 from app.setup_helpers import test_emby_connection, test_radarr_connection, test_sonarr_connection
-from app.scheduler import ServiceScheduler
+from app.scheduler import ServiceScheduler, compute_grabby_tick_minutes
 from app.time_util import utc_now_naive
 from app import updates as app_updates
 from app.version_info import get_app_version
@@ -464,6 +464,7 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
     next_tick = scheduler.next_grabby_run_at()
     next_tick_local = _fmt_local(next_tick, tz) if next_tick else ""
     interval_m = max(5, int(settings.interval_minutes or 60))
+    scheduler_tick_minutes = compute_grabby_tick_minutes(settings)
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -477,6 +478,7 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
             "last_run": last_run_display,
             "next_scheduler_tick_local": next_tick_local,
             "scheduler_interval_minutes": interval_m,
+            "scheduler_tick_minutes": scheduler_tick_minutes,
             "activity": activity_display,
             "sonarr": sonarr_snap,
             "radarr": radarr_snap,
@@ -826,6 +828,7 @@ async def save_settings(
     sonarr_search_missing: bool = Form(False),
     sonarr_search_upgrades: bool = Form(False),
     sonarr_max_items_per_run: int = Form(50),
+    sonarr_interval_minutes: int = Form(0),
     sonarr_schedule_enabled: bool = Form(False),
     sonarr_schedule_days: str = Form("Mon,Tue,Wed,Thu,Fri,Sat,Sun"),
     sonarr_schedule_start: str = Form("00:00"),
@@ -836,11 +839,11 @@ async def save_settings(
     radarr_search_missing: bool = Form(False),
     radarr_search_upgrades: bool = Form(False),
     radarr_max_items_per_run: int = Form(50),
+    radarr_interval_minutes: int = Form(0),
     radarr_schedule_enabled: bool = Form(False),
     radarr_schedule_days: str = Form("Mon,Tue,Wed,Thu,Fri,Sat,Sun"),
     radarr_schedule_start: str = Form("00:00"),
     radarr_schedule_end: str = Form("23:59"),
-    interval_minutes: int = Form(60),
     arr_search_cooldown_minutes: int = Form(1440),
     timezone: str = Form("UTC"),
     save_scope: str = Form("all"),
@@ -854,6 +857,7 @@ async def save_settings(
         sonarr_search_missing=sonarr_search_missing,
         sonarr_search_upgrades=sonarr_search_upgrades,
         sonarr_max_items_per_run=sonarr_max_items_per_run,
+        sonarr_interval_minutes=sonarr_interval_minutes,
         # schedule fields are not in SettingsIn; set on ORM row below
         radarr_enabled=radarr_enabled,
         radarr_url=_normalize_base_url(radarr_url),
@@ -861,7 +865,7 @@ async def save_settings(
         radarr_search_missing=radarr_search_missing,
         radarr_search_upgrades=radarr_search_upgrades,
         radarr_max_items_per_run=radarr_max_items_per_run,
-        interval_minutes=interval_minutes,
+        radarr_interval_minutes=radarr_interval_minutes,
         arr_search_cooldown_minutes=arr_search_cooldown_minutes,
     )
 
@@ -875,6 +879,7 @@ async def save_settings(
         row.sonarr_search_missing = data.sonarr_search_missing
         row.sonarr_search_upgrades = data.sonarr_search_upgrades
         row.sonarr_max_items_per_run = data.sonarr_max_items_per_run
+        row.sonarr_interval_minutes = data.sonarr_interval_minutes
         row.sonarr_schedule_enabled = sonarr_schedule_enabled
         row.sonarr_schedule_days = (sonarr_schedule_days or "Mon,Tue,Wed,Thu,Fri,Sat,Sun").strip()
         row.sonarr_schedule_start = _normalize_hhmm(sonarr_schedule_start, "00:00")
@@ -887,13 +892,13 @@ async def save_settings(
         row.radarr_search_missing = data.radarr_search_missing
         row.radarr_search_upgrades = data.radarr_search_upgrades
         row.radarr_max_items_per_run = data.radarr_max_items_per_run
+        row.radarr_interval_minutes = data.radarr_interval_minutes
         row.radarr_schedule_enabled = radarr_schedule_enabled
         row.radarr_schedule_days = (radarr_schedule_days or "Mon,Tue,Wed,Thu,Fri,Sat,Sun").strip()
         row.radarr_schedule_start = _normalize_hhmm(radarr_schedule_start, "00:00")
         row.radarr_schedule_end = _normalize_hhmm(radarr_schedule_end, "23:59")
 
     if scope in ("all", "global"):
-        row.interval_minutes = data.interval_minutes
         row.arr_search_cooldown_minutes = data.arr_search_cooldown_minutes
         row.timezone = _resolve_timezone_name(timezone)
 
@@ -945,6 +950,7 @@ async def save_emby_connection_settings(
 
 @app.post("/emby/settings/cleaner")
 async def save_cleaner_settings(
+    interval_minutes: int = Form(60),
     emby_dry_run: bool = Form(False),
     emby_schedule_enabled: bool = Form(False),
     emby_schedule_days: str = Form("Mon,Tue,Wed,Thu,Fri,Sat,Sun"),
@@ -967,6 +973,10 @@ async def save_cleaner_settings(
 ) -> RedirectResponse:
     row = await _get_or_create_settings(session)
     scope = (save_scope or "all").strip().lower()
+    # One shared form: persist tick interval on any save so it isn't ignored when saving TV/Movies only.
+    im = max(5, min(7 * 24 * 60, int(interval_minutes or 60)))
+    row.interval_minutes = im
+
     if scope in ("all", "global"):
         row.emby_dry_run = emby_dry_run
         row.emby_schedule_enabled = emby_schedule_enabled

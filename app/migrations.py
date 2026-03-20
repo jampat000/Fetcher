@@ -65,6 +65,18 @@ async def migrate(engine: AsyncEngine) -> None:
     if not await _has_column(engine, table=table, column="radarr_schedule_end"):
         await _add_column(engine, table=table, ddl="radarr_schedule_end TEXT NOT NULL DEFAULT '23:59'")
 
+    if not await _has_column(engine, table=table, column="sonarr_interval_minutes"):
+        await _add_column(engine, table=table, ddl="sonarr_interval_minutes INTEGER NOT NULL DEFAULT 0")
+    if not await _has_column(engine, table=table, column="radarr_interval_minutes"):
+        await _add_column(engine, table=table, ddl="radarr_interval_minutes INTEGER NOT NULL DEFAULT 0")
+
+    if not await _has_column(engine, table=table, column="sonarr_last_run_at"):
+        await _add_column(engine, table=table, ddl="sonarr_last_run_at DATETIME")
+    if not await _has_column(engine, table=table, column="radarr_last_run_at"):
+        await _add_column(engine, table=table, ddl="radarr_last_run_at DATETIME")
+    if not await _has_column(engine, table=table, column="emby_last_run_at"):
+        await _add_column(engine, table=table, ddl="emby_last_run_at DATETIME")
+
     # Timezone
     if not await _has_column(engine, table=table, column="timezone"):
         await _add_column(engine, table=table, ddl="timezone TEXT NOT NULL DEFAULT 'UTC'")

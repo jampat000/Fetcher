@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.23] - 2026-03-20
+
+### Fixed
+
+- **Emby Cleaner + Sonarr:** Cleaner always **deletes Sonarr episode files** when a file exists (disk + Sonarr state) for matched TV items. Shows **still airing** (`status` not `ended`) then get those episodes **left monitored** so the season/show keeps grabbing new episodes. **Ended** series get those episodes **unmonitored** after delete once your Cleaner rules matched (watched / criteria).
+
+### Changed
+
+- **Settings UI:** Removed **Global run interval** from **Grabby Settings**; scheduler / **Emby Cleaner** run interval is edited under **Cleaner Settings → Global Cleaner Settings**. **Sonarr** / **Radarr run interval** moved under each app’s **schedule window** section (still **`0`** = use that shared scheduler interval). **Global Settings** section label; removed **Save All Grabby Settings**.
+
+## [1.0.22] - 2026-03-21
+
+### Added
+
+- **Grabby scheduler — Sonarr / Radarr run intervals:** Under **Settings → Grabby scheduler**, optional **Run interval — Sonarr** and **Run interval — Radarr** (minutes). **`0`** uses the **Global run interval**. One scheduler wake runs at the **minimum** of global + configured Arr intervals; each app is skipped until its own interval has elapsed since the last run (Emby uses the global interval only).
+
 ## [1.0.21] - 2026-03-20
 
 ### Fixed
