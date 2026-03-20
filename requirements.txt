@@ -1,6 +1,6 @@
 fastapi==0.129.2
 starlette==0.52.1
-uvicorn[standard]==0.34.0
+uvicorn[standard]==0.42.0
 httpx==0.28.1
 pydantic==2.10.6
 pydantic-settings==2.8.1
