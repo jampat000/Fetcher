@@ -27,6 +27,9 @@ class AppSettings(Base):
     sonarr_schedule_days: Mapped[str] = mapped_column(Text, default="Mon,Tue,Wed,Thu,Fri,Sat,Sun")
     sonarr_schedule_start: Mapped[str] = mapped_column(String(5), default="00:00")  # HH:MM
     sonarr_schedule_end: Mapped[str] = mapped_column(String(5), default="23:59")  # HH:MM
+    # 0 = use interval_minutes (scheduler / Emby Cleaner cadence; edited in Cleaner Settings) for run cadence + Arr cooldown fallback.
+    sonarr_interval_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    sonarr_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Radarr
     radarr_url: Mapped[str] = mapped_column(String(512), default="")
@@ -39,11 +42,16 @@ class AppSettings(Base):
     radarr_schedule_days: Mapped[str] = mapped_column(Text, default="Mon,Tue,Wed,Thu,Fri,Sat,Sun")
     radarr_schedule_start: Mapped[str] = mapped_column(String(5), default="00:00")  # HH:MM
     radarr_schedule_end: Mapped[str] = mapped_column(String(5), default="23:59")  # HH:MM
+    # 0 = use interval_minutes (scheduler / Emby Cleaner cadence; edited in Cleaner Settings) for run cadence + Arr cooldown fallback.
+    radarr_interval_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    radarr_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Scheduler & display
+    # Base tick (Emby cadence) + default when Sonarr/Radarr run interval is 0.
     interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    emby_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # Min minutes before Grabby will ask Sonarr/Radarr to search the same episode/movie again.
-    # 0 = use interval_minutes (legacy; can re-trigger every scheduler tick). Default 1440 = 24h.
+    # 0 = tie cooldown to each app’s run interval (Sonarr vs Radarr may differ). Default 1440 = 24h.
     arr_search_cooldown_minutes: Mapped[int] = mapped_column(Integer, default=1440)
     timezone: Mapped[str] = mapped_column(String(64), default="UTC")  # IANA e.g. America/New_York
 

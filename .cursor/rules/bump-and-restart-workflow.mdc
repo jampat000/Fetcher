@@ -1,0 +1,17 @@
+---
+description: Full workflow when user asks to bump version and restart local
+alwaysApply: true
+---
+
+# Bump + restart local (full workflow)
+
+When the user asks to **bump** (version/release) **and restart local**, or clearly means the same (e.g. “ship it”, “release bump”, “bump and restart”), do **all** of the following unless they explicitly opt out of one step:
+
+1. **Bump** — Update repo `VERSION` and move `CHANGELOG.md` `[Unreleased]` into a dated `[X.Y.Z]` section (per `CHANGELOG.md` “Releasing”).
+2. **Commit** — `git add` the release-related changes (typically `VERSION`, `CHANGELOG.md`, and any code/docs in that release), write a clear message (e.g. `chore: release vX.Y.Z — …`).
+3. **Push** — `git push` to `origin` for the **current branch** (e.g. `master`). **Do not skip push** unless the user says not to or authentication/network fails—in that case report the error clearly.
+4. **Restart local** — Restart the dev server (Windows: `scripts/dev-start.ps1` from repo root, or equivalent `uvicorn` with reload). Note **8766** = dev source vs **8765** = installed service.
+
+**Tagging:** If the project’s release process uses `v*` tags (see `CHANGELOG.md` / CI), remind the user to tag and push tags after the commit, or run `git tag vX.Y.Z && git push origin vX.Y.Z` when they want the installer workflow.
+
+Do **not** treat “bump and restart local” as complete without **push** (after a successful commit).

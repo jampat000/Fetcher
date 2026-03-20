@@ -85,8 +85,8 @@
 
       {% elif step == 4 %}
       <h2>Schedule &amp; timezone</h2>
-      <p class="hint">How often Grabby runs its automation loop, and how times are shown in the UI. You can change this later in Settings.</p>
-      <label for="interval_minutes">Interval (minutes)</label>
+      <p class="hint">How often the scheduler wakes (Emby Cleaner cadence and default when Sonarr/Radarr run interval is 0), plus how times are shown. You can change the interval later under <strong>Cleaner Settings</strong> and timezone under <strong>Grabby Settings</strong>.</p>
+      <label for="interval_minutes">Scheduler / Emby Cleaner run interval (minutes)</label>
       <input class="number" id="interval_minutes" name="interval_minutes" type="number" value="{{ settings.interval_minutes }}" min="5" max="10080" />
       <label for="timezone">Timezone</label>
       <select class="input" id="timezone" name="timezone">

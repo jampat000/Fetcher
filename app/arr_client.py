@@ -146,11 +146,18 @@ class ArrClient:
         r = await self._req("PUT", "/api/v3/series/editor", json=payload)
         r.raise_for_status()
 
-    async def unmonitor_episodes(self, *, episode_ids: list[int]) -> None:
+    async def set_episodes_monitored(self, *, episode_ids: list[int], monitored: bool) -> None:
         if not episode_ids:
             return
-        payload = {"episodeIds": episode_ids, "monitored": False}
+        payload = {"episodeIds": episode_ids, "monitored": monitored}
         r = await self._req("PUT", "/api/v3/episode/monitor", json=payload)
+        r.raise_for_status()
+
+    async def unmonitor_episodes(self, *, episode_ids: list[int]) -> None:
+        await self.set_episodes_monitored(episode_ids=episode_ids, monitored=False)
+
+    async def delete_episode_file(self, *, episode_file_id: int) -> None:
+        r = await self._req("DELETE", f"/api/v3/episodeFile/{int(episode_file_id)}")
         r.raise_for_status()
 
 

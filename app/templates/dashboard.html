@@ -56,7 +56,7 @@
       {% if next_scheduler_tick_local %}
       <p style="margin:12px 0 0;">
         <strong>Next scheduler tick:</strong> {{ next_scheduler_tick_local }}
-        <span class="muted"> — interval <strong>{{ scheduler_interval_minutes }} min</strong> (see <a href="/settings">Settings</a>). Sonarr, Radarr, and Emby only act when their own <strong>schedule windows</strong> allow it.</span>
+        <span class="muted"> — wake every <strong>{{ scheduler_tick_minutes }} min</strong> (minimum of scheduler base + Sonarr/Radarr run intervals; base interval is under <a href="/emby/settings">Cleaner Settings</a> → Global Cleaner). Sonarr, Radarr, and Emby only act when their own <strong>schedule windows</strong> allow it; Sonarr/Radarr <strong>run interval</strong> is on <a href="/settings">Grabby Settings</a> under each app’s schedule.</span>
       </p>
       {% else %}
       <p class="muted" style="margin:12px 0 0;">Next run time will show here after the service scheduler starts.</p>

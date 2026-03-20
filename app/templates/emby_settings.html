@@ -123,6 +123,9 @@
               </div>
             </div>
             <div class="small">If start is later than end, the window crosses midnight.</div>
+            <label>Run interval (minutes)</label>
+            <input class="number" type="number" name="interval_minutes" value="{{ settings.interval_minutes }}" min="5" max="10080" />
+            <div class="small">How often the scheduler <strong>wakes</strong> (at least every this many minutes), how often <strong>Emby Cleaner</strong> may run on schedule, and the default when Sonarr/Radarr <strong>run interval</strong> is <strong>0</strong> on <a href="/settings">Grabby Settings</a>.</div>
           </div>
 
           <div class="btnbar">

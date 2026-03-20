@@ -1,4 +1,10 @@
-from app.service_logic import _episode_ids_for_emby_tv_item, _match_radarr_movie_id, _match_sonarr_series_id
+from app.service_logic import (
+    _episode_ids_for_emby_tv_item,
+    _match_radarr_movie_id,
+    _match_sonarr_series_id,
+    _sonarr_episode_file_id,
+    _sonarr_series_is_ended,
+)
 
 
 def test_match_radarr_by_tmdb_then_imdb_then_title_year() -> None:
@@ -38,3 +44,18 @@ def test_episode_ids_for_emby_tv_item_episode_season_series() -> None:
     assert _episode_ids_for_emby_tv_item(emby_episode, sonarr_eps) == [102]
     assert _episode_ids_for_emby_tv_item(emby_season, sonarr_eps) == [101, 102]
     assert _episode_ids_for_emby_tv_item(emby_series, sonarr_eps) == [101, 102, 201]
+
+
+def test_sonarr_series_is_ended_only_when_status_ended() -> None:
+    assert _sonarr_series_is_ended({"status": "ended"}) is True
+    assert _sonarr_series_is_ended({"status": "Continuing"}) is False
+    assert _sonarr_series_is_ended({"status": "upcoming"}) is False
+    assert _sonarr_series_is_ended({}) is False
+    assert _sonarr_series_is_ended(None) is False
+
+
+def test_sonarr_episode_file_id_from_field_or_nested() -> None:
+    assert _sonarr_episode_file_id({"episodeFileId": 99}) == 99
+    assert _sonarr_episode_file_id({"episodeFile": {"id": 88}}) == 88
+    assert _sonarr_episode_file_id({"episodeFileId": 99, "episodeFile": {"id": 88}}) == 99
+    assert _sonarr_episode_file_id({}) is None

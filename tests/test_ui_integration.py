@@ -150,7 +150,9 @@ def test_post_settings_save_redirects(monkeypatch: pytest.MonkeyPatch) -> None:
         "radarr_schedule_days": "Mon,Tue,Wed,Thu,Fri,Sat,Sun",
         "radarr_schedule_start": "00:00",
         "radarr_schedule_end": "23:59",
-        "interval_minutes": "60",
+        "sonarr_interval_minutes": "0",
+        "radarr_interval_minutes": "0",
+        "arr_search_cooldown_minutes": "1440",
         "timezone": "UTC",
     }
     with _client(monkeypatch) as client:
@@ -235,7 +237,9 @@ def test_sonarr_schedule_all_days_stays_enabled(monkeypatch: pytest.MonkeyPatch)
         "radarr_schedule_days": "Mon,Tue,Wed,Thu,Fri,Sat,Sun",
         "radarr_schedule_start": "00:00",
         "radarr_schedule_end": "23:59",
-        "interval_minutes": "60",
+        "sonarr_interval_minutes": "0",
+        "radarr_interval_minutes": "0",
+        "arr_search_cooldown_minutes": "1440",
         "timezone": "UTC",
         "save_scope": "sonarr",
     }

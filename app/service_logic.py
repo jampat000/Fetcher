@@ -360,6 +360,23 @@ def _episode_ids_for_emby_tv_item(emby_item: dict, sonarr_episodes: list[dict]) 
     return []
 
 
+def _sonarr_series_is_ended(series: dict | None) -> bool:
+    """Sonarr series.status is typically 'continuing', 'ended', or 'upcoming'."""
+    if not series or not isinstance(series, dict):
+        return False
+    return str(series.get("status") or "").strip().lower() == "ended"
+
+
+def _sonarr_episode_file_id(episode: dict) -> int | None:
+    fid = _safe_int(episode.get("episodeFileId"))
+    if fid:
+        return fid
+    ef = episode.get("episodeFile")
+    if isinstance(ef, dict):
+        return _safe_int(ef.get("id"))
+    return None
+
+
 def _sonarr_episode_label(rec: dict) -> str:
     series_obj = rec.get("series") if isinstance(rec.get("series"), dict) else {}
     title = str(
@@ -415,6 +432,16 @@ def _detail_from_labels(labels: list[str], *, total: int) -> str:
     return "\n".join(shown)
 
 
+def _effective_app_interval_minutes(specific: object, *, global_minutes: int) -> int:
+    """Per-app scheduler tick length; 0 or invalid uses global ``interval_minutes`` (min 5)."""
+    try:
+        v = int(specific) if specific is not None else 0
+    except (TypeError, ValueError):
+        v = 0
+    base = max(5, int(global_minutes or 60))
+    return max(5, v) if v > 0 else base
+
+
 async def run_once(session: AsyncSession) -> RunResult:
     log = JobRunLog(started_at=utc_now_naive(), ok=False, message="")
     session.add(log)
@@ -429,13 +456,24 @@ async def run_once(session: AsyncSession) -> RunResult:
 
         tz = (getattr(settings, "timezone", None) or "UTC").strip() or "UTC"
         interval_m = max(5, int(getattr(settings, "interval_minutes", 60) or 60))
+        sonarr_tick_m = _effective_app_interval_minutes(
+            getattr(settings, "sonarr_interval_minutes", None), global_minutes=interval_m
+        )
+        radarr_tick_m = _effective_app_interval_minutes(
+            getattr(settings, "radarr_interval_minutes", None), global_minutes=interval_m
+        )
         _cd = getattr(settings, "arr_search_cooldown_minutes", None)
         try:
             cd_raw = int(_cd) if _cd is not None else 0
         except (TypeError, ValueError):
             cd_raw = 0
-        # 0 = legacy: tie cooldown to scheduler interval (often re-searches every tick).
-        cooldown_minutes = max(1, interval_m if cd_raw <= 0 else min(cd_raw, 365 * 24 * 60))
+        # 0 = tie Arr cooldown fallback to that app's scheduler interval.
+        sonarr_cooldown_minutes = max(
+            1, sonarr_tick_m if cd_raw <= 0 else min(cd_raw, 365 * 24 * 60)
+        )
+        radarr_cooldown_minutes = max(
+            1, radarr_tick_m if cd_raw <= 0 else min(cd_raw, 365 * 24 * 60)
+        )
         now = utc_now_naive()
         await _prune_action_log(session, older_than_days=14)
 
@@ -450,131 +488,136 @@ async def run_once(session: AsyncSession) -> RunResult:
             ):
                 actions.append("Sonarr: skipped (outside schedule window)")
             else:
-                sonarr = ArrClient(ArrConfig(settings.sonarr_url, settings.sonarr_api_key))
-                try:
-                    await sonarr.health()
-                    sonarr_series_title_map: dict[int, str] = {}
+                last_sonarr = getattr(settings, "sonarr_last_run_at", None)
+                if last_sonarr is not None and (now - last_sonarr).total_seconds() < sonarr_tick_m * 60:
+                    actions.append("Sonarr: skipped (run interval not elapsed)")
+                else:
+                    sonarr = ArrClient(ArrConfig(settings.sonarr_url, settings.sonarr_api_key))
                     try:
-                        for s in await sonarr.series():
-                            sid = _safe_int(s.get("id"))
-                            title = str(s.get("title") or "").strip()
-                            if sid and title:
-                                sonarr_series_title_map[sid] = title
-                    except Exception:
-                        # Keep run resilient if catalog fetch fails; labels still use record data.
-                        sonarr_series_title_map = {}
+                        await sonarr.health()
+                        sonarr_series_title_map: dict[int, str] = {}
+                        try:
+                            for s in await sonarr.series():
+                                sid = _safe_int(s.get("id"))
+                                title = str(s.get("title") or "").strip()
+                                if sid and title:
+                                    sonarr_series_title_map[sid] = title
+                        except Exception:
+                            # Keep run resilient if catalog fetch fails; labels still use record data.
+                            sonarr_series_title_map = {}
 
-                    sonarr_limit = max(1, int((settings.sonarr_max_items_per_run or 0) or default_limit))
-                    sonarr_missing_enabled = bool(getattr(settings, "sonarr_search_missing", settings.search_missing))
-                    sonarr_upgrades_enabled = bool(getattr(settings, "sonarr_search_upgrades", settings.search_upgrades))
+                        sonarr_limit = max(1, int((settings.sonarr_max_items_per_run or 0) or default_limit))
+                        sonarr_missing_enabled = bool(getattr(settings, "sonarr_search_missing", settings.search_missing))
+                        sonarr_upgrades_enabled = bool(getattr(settings, "sonarr_search_upgrades", settings.search_upgrades))
 
-                    missing_total = 0
-                    cutoff_total = 0
+                        missing_total = 0
+                        cutoff_total = 0
 
-                    if sonarr_missing_enabled:
-                        allowed_ids, allowed_records, missing_total = await _paginate_wanted_for_search(
-                            sonarr,
-                            session,
-                            kind="missing",
-                            id_keys=("episodeId", "id"),
-                            item_type="episode",
-                            app="sonarr",
-                            action="missing",
-                            limit=sonarr_limit,
-                            cooldown_minutes=cooldown_minutes,
-                            now=now,
-                        )
-                        if allowed_ids:
-                            # Tagging is best-effort; it should not block the search trigger.
-                            try:
-                                tag_id = await sonarr.ensure_tag("grabby-missing")
-                                series_ids = _sonarr_series_ids_for_episode_batch(
-                                    allowed_records,
-                                    "episodeId",
-                                    "id",
-                                    limit=len(allowed_records),
-                                )
-                                await sonarr.add_tags_to_series(series_ids=series_ids, tag_ids=[tag_id])
-                            except Exception as e:  # noqa: BLE001
-                                actions.append(f"Sonarr: tag apply warning (grabby-missing): {format_http_error_detail(e)}")
-
-                            await trigger_sonarr_missing_search(sonarr, episode_ids=allowed_ids)
-                            actions.append(f"Sonarr: missing search for {len(allowed_ids)} episode(s)")
-                            labels = [
-                                _sonarr_episode_label_with_fallback(r, sonarr_series_title_map)
-                                for r in allowed_records
-                            ]
-                            session.add(
-                                ActivityLog(
-                                    job_run_id=log.id,
-                                    app="sonarr",
-                                    kind="missing",
-                                    count=len(allowed_ids),
-                                    detail=_detail_from_labels(labels, total=len(allowed_ids)),
-                                )
+                        if sonarr_missing_enabled:
+                            allowed_ids, allowed_records, missing_total = await _paginate_wanted_for_search(
+                                sonarr,
+                                session,
+                                kind="missing",
+                                id_keys=("episodeId", "id"),
+                                item_type="episode",
+                                app="sonarr",
+                                action="missing",
+                                limit=sonarr_limit,
+                                cooldown_minutes=sonarr_cooldown_minutes,
+                                now=now,
                             )
-                        elif missing_total > 0:
-                            actions.append("Sonarr: missing search suppressed (cooldown)")
-                        else:
-                            actions.append("Sonarr: no missing episodes found")
+                            if allowed_ids:
+                                # Tagging is best-effort; it should not block the search trigger.
+                                try:
+                                    tag_id = await sonarr.ensure_tag("grabby-missing")
+                                    series_ids = _sonarr_series_ids_for_episode_batch(
+                                        allowed_records,
+                                        "episodeId",
+                                        "id",
+                                        limit=len(allowed_records),
+                                    )
+                                    await sonarr.add_tags_to_series(series_ids=series_ids, tag_ids=[tag_id])
+                                except Exception as e:  # noqa: BLE001
+                                    actions.append(f"Sonarr: tag apply warning (grabby-missing): {format_http_error_detail(e)}")
 
-                    if sonarr_upgrades_enabled:
-                        allowed_ids, allowed_records, cutoff_total = await _paginate_wanted_for_search(
-                            sonarr,
-                            session,
-                            kind="cutoff",
-                            id_keys=("episodeId", "id"),
-                            item_type="episode",
-                            app="sonarr",
-                            action="upgrade",
-                            limit=sonarr_limit,
-                            cooldown_minutes=cooldown_minutes,
-                            now=now,
-                        )
-                        if allowed_ids:
-                            try:
-                                tag_id = await sonarr.ensure_tag("grabby-upgrade")
-                                series_ids = _sonarr_series_ids_for_episode_batch(
-                                    allowed_records,
-                                    "episodeId",
-                                    "id",
-                                    limit=len(allowed_records),
+                                await trigger_sonarr_missing_search(sonarr, episode_ids=allowed_ids)
+                                actions.append(f"Sonarr: missing search for {len(allowed_ids)} episode(s)")
+                                labels = [
+                                    _sonarr_episode_label_with_fallback(r, sonarr_series_title_map)
+                                    for r in allowed_records
+                                ]
+                                session.add(
+                                    ActivityLog(
+                                        job_run_id=log.id,
+                                        app="sonarr",
+                                        kind="missing",
+                                        count=len(allowed_ids),
+                                        detail=_detail_from_labels(labels, total=len(allowed_ids)),
+                                    )
                                 )
-                                await sonarr.add_tags_to_series(series_ids=series_ids, tag_ids=[tag_id])
-                            except Exception as e:  # noqa: BLE001
-                                actions.append(f"Sonarr: tag apply warning (grabby-upgrade): {format_http_error_detail(e)}")
+                            elif missing_total > 0:
+                                actions.append("Sonarr: missing search suppressed (cooldown)")
+                            else:
+                                actions.append("Sonarr: no missing episodes found")
 
-                            await trigger_sonarr_cutoff_search(sonarr, episode_ids=allowed_ids)
-                            actions.append(f"Sonarr: cutoff-unmet search for {len(allowed_ids)} episode(s)")
-                            labels = [
-                                _sonarr_episode_label_with_fallback(r, sonarr_series_title_map)
-                                for r in allowed_records
-                            ]
-                            session.add(
-                                ActivityLog(
-                                    job_run_id=log.id,
-                                    app="sonarr",
-                                    kind="upgrade",
-                                    count=len(allowed_ids),
-                                    detail=_detail_from_labels(labels, total=len(allowed_ids)),
-                                )
+                        if sonarr_upgrades_enabled:
+                            allowed_ids, allowed_records, cutoff_total = await _paginate_wanted_for_search(
+                                sonarr,
+                                session,
+                                kind="cutoff",
+                                id_keys=("episodeId", "id"),
+                                item_type="episode",
+                                app="sonarr",
+                                action="upgrade",
+                                limit=sonarr_limit,
+                                cooldown_minutes=sonarr_cooldown_minutes,
+                                now=now,
                             )
-                        elif cutoff_total > 0:
-                            actions.append("Sonarr: cutoff-unmet search suppressed (cooldown)")
-                        else:
-                            actions.append("Sonarr: no cutoff-unmet episodes found")
+                            if allowed_ids:
+                                try:
+                                    tag_id = await sonarr.ensure_tag("grabby-upgrade")
+                                    series_ids = _sonarr_series_ids_for_episode_batch(
+                                        allowed_records,
+                                        "episodeId",
+                                        "id",
+                                        limit=len(allowed_records),
+                                    )
+                                    await sonarr.add_tags_to_series(series_ids=series_ids, tag_ids=[tag_id])
+                                except Exception as e:  # noqa: BLE001
+                                    actions.append(f"Sonarr: tag apply warning (grabby-upgrade): {format_http_error_detail(e)}")
 
-                    session.add(
-                        AppSnapshot(
-                            app="sonarr",
-                            ok=True,
-                            status_message="OK",
-                            missing_total=missing_total,
-                            cutoff_unmet_total=cutoff_total,
+                                await trigger_sonarr_cutoff_search(sonarr, episode_ids=allowed_ids)
+                                actions.append(f"Sonarr: cutoff-unmet search for {len(allowed_ids)} episode(s)")
+                                labels = [
+                                    _sonarr_episode_label_with_fallback(r, sonarr_series_title_map)
+                                    for r in allowed_records
+                                ]
+                                session.add(
+                                    ActivityLog(
+                                        job_run_id=log.id,
+                                        app="sonarr",
+                                        kind="upgrade",
+                                        count=len(allowed_ids),
+                                        detail=_detail_from_labels(labels, total=len(allowed_ids)),
+                                    )
+                                )
+                            elif cutoff_total > 0:
+                                actions.append("Sonarr: cutoff-unmet search suppressed (cooldown)")
+                            else:
+                                actions.append("Sonarr: no cutoff-unmet episodes found")
+
+                        session.add(
+                            AppSnapshot(
+                                app="sonarr",
+                                ok=True,
+                                status_message="OK",
+                                missing_total=missing_total,
+                                cutoff_unmet_total=cutoff_total,
+                            )
                         )
-                    )
-                finally:
-                    await sonarr.aclose()
+                        settings.sonarr_last_run_at = now
+                    finally:
+                        await sonarr.aclose()
 
         # Radarr
         if settings.radarr_enabled and settings.radarr_url and settings.radarr_api_key:
@@ -587,102 +630,107 @@ async def run_once(session: AsyncSession) -> RunResult:
             ):
                 actions.append("Radarr: skipped (outside schedule window)")
             else:
-                radarr = ArrClient(ArrConfig(settings.radarr_url, settings.radarr_api_key))
-                try:
-                    await radarr.health()
+                last_radarr = getattr(settings, "radarr_last_run_at", None)
+                if last_radarr is not None and (now - last_radarr).total_seconds() < radarr_tick_m * 60:
+                    actions.append("Radarr: skipped (run interval not elapsed)")
+                else:
+                    radarr = ArrClient(ArrConfig(settings.radarr_url, settings.radarr_api_key))
+                    try:
+                        await radarr.health()
 
-                    radarr_limit = max(1, int((settings.radarr_max_items_per_run or 0) or default_limit))
-                    radarr_missing_enabled = bool(getattr(settings, "radarr_search_missing", settings.search_missing))
-                    radarr_upgrades_enabled = bool(getattr(settings, "radarr_search_upgrades", settings.search_upgrades))
+                        radarr_limit = max(1, int((settings.radarr_max_items_per_run or 0) or default_limit))
+                        radarr_missing_enabled = bool(getattr(settings, "radarr_search_missing", settings.search_missing))
+                        radarr_upgrades_enabled = bool(getattr(settings, "radarr_search_upgrades", settings.search_upgrades))
 
-                    missing_total = 0
-                    cutoff_total = 0
+                        missing_total = 0
+                        cutoff_total = 0
 
-                    if radarr_missing_enabled:
-                        allowed_ids, allowed_records, missing_total = await _paginate_wanted_for_search(
-                            radarr,
-                            session,
-                            kind="missing",
-                            id_keys=("movieId", "id"),
-                            item_type="movie",
-                            app="radarr",
-                            action="missing",
-                            limit=radarr_limit,
-                            cooldown_minutes=cooldown_minutes,
-                            now=now,
-                        )
-                        if allowed_ids:
-                            try:
-                                tag_id = await radarr.ensure_tag("grabby-missing")
-                                await radarr.add_tags_to_movies(movie_ids=allowed_ids, tag_ids=[tag_id])
-                            except Exception as e:  # noqa: BLE001
-                                actions.append(f"Radarr: tag apply warning (grabby-missing): {format_http_error_detail(e)}")
-
-                            await trigger_radarr_missing_search(radarr, movie_ids=allowed_ids)
-                            actions.append(f"Radarr: missing search for {len(allowed_ids)} movie(s)")
-                            labels = [_radarr_movie_label(r) for r in allowed_records]
-                            session.add(
-                                ActivityLog(
-                                    job_run_id=log.id,
-                                    app="radarr",
-                                    kind="missing",
-                                    count=len(allowed_ids),
-                                    detail=_detail_from_labels(labels, total=len(allowed_ids)),
-                                )
+                        if radarr_missing_enabled:
+                            allowed_ids, allowed_records, missing_total = await _paginate_wanted_for_search(
+                                radarr,
+                                session,
+                                kind="missing",
+                                id_keys=("movieId", "id"),
+                                item_type="movie",
+                                app="radarr",
+                                action="missing",
+                                limit=radarr_limit,
+                                cooldown_minutes=radarr_cooldown_minutes,
+                                now=now,
                             )
-                        elif missing_total > 0:
-                            actions.append("Radarr: missing search suppressed (cooldown)")
-                        else:
-                            actions.append("Radarr: no missing movies found")
+                            if allowed_ids:
+                                try:
+                                    tag_id = await radarr.ensure_tag("grabby-missing")
+                                    await radarr.add_tags_to_movies(movie_ids=allowed_ids, tag_ids=[tag_id])
+                                except Exception as e:  # noqa: BLE001
+                                    actions.append(f"Radarr: tag apply warning (grabby-missing): {format_http_error_detail(e)}")
 
-                    if radarr_upgrades_enabled:
-                        allowed_ids, allowed_records, cutoff_total = await _paginate_wanted_for_search(
-                            radarr,
-                            session,
-                            kind="cutoff",
-                            id_keys=("movieId", "id"),
-                            item_type="movie",
-                            app="radarr",
-                            action="upgrade",
-                            limit=radarr_limit,
-                            cooldown_minutes=cooldown_minutes,
-                            now=now,
-                        )
-                        if allowed_ids:
-                            try:
-                                tag_id = await radarr.ensure_tag("grabby-upgrade")
-                                await radarr.add_tags_to_movies(movie_ids=allowed_ids, tag_ids=[tag_id])
-                            except Exception as e:  # noqa: BLE001
-                                actions.append(f"Radarr: tag apply warning (grabby-upgrade): {format_http_error_detail(e)}")
-
-                            await trigger_radarr_cutoff_search(radarr, movie_ids=allowed_ids)
-                            actions.append(f"Radarr: cutoff-unmet search for {len(allowed_ids)} movie(s)")
-                            labels = [_radarr_movie_label(r) for r in allowed_records]
-                            session.add(
-                                ActivityLog(
-                                    job_run_id=log.id,
-                                    app="radarr",
-                                    kind="upgrade",
-                                    count=len(allowed_ids),
-                                    detail=_detail_from_labels(labels, total=len(allowed_ids)),
+                                await trigger_radarr_missing_search(radarr, movie_ids=allowed_ids)
+                                actions.append(f"Radarr: missing search for {len(allowed_ids)} movie(s)")
+                                labels = [_radarr_movie_label(r) for r in allowed_records]
+                                session.add(
+                                    ActivityLog(
+                                        job_run_id=log.id,
+                                        app="radarr",
+                                        kind="missing",
+                                        count=len(allowed_ids),
+                                        detail=_detail_from_labels(labels, total=len(allowed_ids)),
+                                    )
                                 )
-                            )
-                        elif cutoff_total > 0:
-                            actions.append("Radarr: cutoff-unmet search suppressed (cooldown)")
-                        else:
-                            actions.append("Radarr: no cutoff-unmet movies found")
+                            elif missing_total > 0:
+                                actions.append("Radarr: missing search suppressed (cooldown)")
+                            else:
+                                actions.append("Radarr: no missing movies found")
 
-                    session.add(
-                        AppSnapshot(
-                            app="radarr",
-                            ok=True,
-                            status_message="OK",
-                            missing_total=missing_total,
-                            cutoff_unmet_total=cutoff_total,
+                        if radarr_upgrades_enabled:
+                            allowed_ids, allowed_records, cutoff_total = await _paginate_wanted_for_search(
+                                radarr,
+                                session,
+                                kind="cutoff",
+                                id_keys=("movieId", "id"),
+                                item_type="movie",
+                                app="radarr",
+                                action="upgrade",
+                                limit=radarr_limit,
+                                cooldown_minutes=radarr_cooldown_minutes,
+                                now=now,
+                            )
+                            if allowed_ids:
+                                try:
+                                    tag_id = await radarr.ensure_tag("grabby-upgrade")
+                                    await radarr.add_tags_to_movies(movie_ids=allowed_ids, tag_ids=[tag_id])
+                                except Exception as e:  # noqa: BLE001
+                                    actions.append(f"Radarr: tag apply warning (grabby-upgrade): {format_http_error_detail(e)}")
+
+                                await trigger_radarr_cutoff_search(radarr, movie_ids=allowed_ids)
+                                actions.append(f"Radarr: cutoff-unmet search for {len(allowed_ids)} movie(s)")
+                                labels = [_radarr_movie_label(r) for r in allowed_records]
+                                session.add(
+                                    ActivityLog(
+                                        job_run_id=log.id,
+                                        app="radarr",
+                                        kind="upgrade",
+                                        count=len(allowed_ids),
+                                        detail=_detail_from_labels(labels, total=len(allowed_ids)),
+                                    )
+                                )
+                            elif cutoff_total > 0:
+                                actions.append("Radarr: cutoff-unmet search suppressed (cooldown)")
+                            else:
+                                actions.append("Radarr: no cutoff-unmet movies found")
+
+                        session.add(
+                            AppSnapshot(
+                                app="radarr",
+                                ok=True,
+                                status_message="OK",
+                                missing_total=missing_total,
+                                cutoff_unmet_total=cutoff_total,
+                            )
                         )
-                    )
-                finally:
-                    await radarr.aclose()
+                        settings.radarr_last_run_at = now
+                    finally:
+                        await radarr.aclose()
 
         # Emby Cleaner
         if settings.emby_enabled and settings.emby_url and settings.emby_api_key:
@@ -695,153 +743,209 @@ async def run_once(session: AsyncSession) -> RunResult:
             ):
                 actions.append("Emby: skipped (outside schedule window)")
             else:
-                emby = EmbyClient(EmbyConfig(settings.emby_url, settings.emby_api_key))
-                try:
-                    await emby.health()
-                    users = await emby.users()
-                    configured_user_id = (settings.emby_user_id or "").strip()
-                    effective_user_id = configured_user_id
-                    if not effective_user_id and users:
-                        first_user = users[0]
-                        effective_user_id = str(first_user.get("Id", "")).strip()
-                        actions.append("Emby: no user configured, using first Emby user")
-                    if not effective_user_id:
-                        raise ValueError("Emby has no users available to query.")
+                last_emby = getattr(settings, "emby_last_run_at", None)
+                if last_emby is not None and (now - last_emby).total_seconds() < interval_m * 60:
+                    actions.append("Emby: skipped (run interval not elapsed)")
+                else:
+                    emby = EmbyClient(EmbyConfig(settings.emby_url, settings.emby_api_key))
+                    try:
+                        await emby.health()
+                        users = await emby.users()
+                        configured_user_id = (settings.emby_user_id or "").strip()
+                        effective_user_id = configured_user_id
+                        if not effective_user_id and users:
+                            first_user = users[0]
+                            effective_user_id = str(first_user.get("Id", "")).strip()
+                            actions.append("Emby: no user configured, using first Emby user")
+                        if not effective_user_id:
+                            raise ValueError("Emby has no users available to query.")
 
-                    _v_scan = getattr(settings, "emby_max_items_scan", 2000)
-                    _raw_scan = int(_v_scan) if _v_scan is not None else 2000
-                    scan_limit = 0 if _raw_scan <= 0 else max(1, min(100_000, _raw_scan))
-                    max_deletes = max(1, int(getattr(settings, "emby_max_deletes_per_run", 25) or 25))
-                    global_rating = max(0, int(getattr(settings, "emby_rule_watched_rating_below", 0) or 0))
-                    global_unwatched = max(0, int(getattr(settings, "emby_rule_unwatched_days", 0) or 0))
-                    movie_rating_below = max(0, int(getattr(settings, "emby_rule_movie_watched_rating_below", 0) or 0)) or global_rating
-                    movie_unwatched_days = max(0, int(getattr(settings, "emby_rule_movie_unwatched_days", 0) or 0)) or global_unwatched
-                    selected_movie_genres = parse_genres_csv(getattr(settings, "emby_rule_movie_genres_csv", ""))
-                    selected_movie_people = parse_movie_people_phrases(getattr(settings, "emby_rule_movie_people_csv", ""))
-                    selected_movie_credit_types = parse_movie_people_credit_types_csv(
-                        getattr(settings, "emby_rule_movie_people_credit_types_csv", "Actor")
-                    )
-                    selected_tv_people = parse_movie_people_phrases(getattr(settings, "emby_rule_tv_people_csv", ""))
-                    selected_tv_credit_types = parse_movie_people_credit_types_csv(
-                        getattr(settings, "emby_rule_tv_people_credit_types_csv", "Actor")
-                    )
-                    tv_delete_watched = bool(getattr(settings, "emby_rule_tv_delete_watched", False))
-                    selected_tv_genres = parse_genres_csv(getattr(settings, "emby_rule_tv_genres_csv", ""))
-                    tv_unwatched_days = max(0, int(getattr(settings, "emby_rule_tv_unwatched_days", 0) or 0)) or global_unwatched
-                    dry_run = bool(getattr(settings, "emby_dry_run", True))
+                        _v_scan = getattr(settings, "emby_max_items_scan", 2000)
+                        _raw_scan = int(_v_scan) if _v_scan is not None else 2000
+                        scan_limit = 0 if _raw_scan <= 0 else max(1, min(100_000, _raw_scan))
+                        max_deletes = max(1, int(getattr(settings, "emby_max_deletes_per_run", 25) or 25))
+                        global_rating = max(0, int(getattr(settings, "emby_rule_watched_rating_below", 0) or 0))
+                        global_unwatched = max(0, int(getattr(settings, "emby_rule_unwatched_days", 0) or 0))
+                        movie_rating_below = max(0, int(getattr(settings, "emby_rule_movie_watched_rating_below", 0) or 0)) or global_rating
+                        movie_unwatched_days = max(0, int(getattr(settings, "emby_rule_movie_unwatched_days", 0) or 0)) or global_unwatched
+                        selected_movie_genres = parse_genres_csv(getattr(settings, "emby_rule_movie_genres_csv", ""))
+                        selected_movie_people = parse_movie_people_phrases(getattr(settings, "emby_rule_movie_people_csv", ""))
+                        selected_movie_credit_types = parse_movie_people_credit_types_csv(
+                            getattr(settings, "emby_rule_movie_people_credit_types_csv", "Actor")
+                        )
+                        selected_tv_people = parse_movie_people_phrases(getattr(settings, "emby_rule_tv_people_csv", ""))
+                        selected_tv_credit_types = parse_movie_people_credit_types_csv(
+                            getattr(settings, "emby_rule_tv_people_credit_types_csv", "Actor")
+                        )
+                        tv_delete_watched = bool(getattr(settings, "emby_rule_tv_delete_watched", False))
+                        selected_tv_genres = parse_genres_csv(getattr(settings, "emby_rule_tv_genres_csv", ""))
+                        tv_unwatched_days = max(0, int(getattr(settings, "emby_rule_tv_unwatched_days", 0) or 0)) or global_unwatched
+                        dry_run = bool(getattr(settings, "emby_dry_run", True))
 
-                    if movie_rating_below <= 0 and movie_unwatched_days <= 0 and (not tv_delete_watched) and tv_unwatched_days <= 0:
-                        actions.append("Emby: skipped (no Emby Cleaner rules enabled)")
-                    else:
-                        items = await emby.items_for_user(user_id=effective_user_id, limit=scan_limit)
-                        candidates: list[tuple[str, str, str, dict]] = []
-                        for item in items:
-                            item_id = str(item.get("Id", "")).strip()
-                            if not item_id:
-                                continue
-                            is_candidate, _, _, _, _ = evaluate_candidate(
-                                item,
-                                movie_watched_rating_below=movie_rating_below,
-                                movie_unwatched_days=movie_unwatched_days,
-                                tv_delete_watched=tv_delete_watched,
-                                tv_unwatched_days=tv_unwatched_days,
-                            )
-                            item_type = str(item.get("Type", "")).strip()
-                            if item_type == "Movie" and not movie_matches_selected_genres(item, selected_movie_genres):
-                                is_candidate = False
-                            if item_type == "Movie" and not movie_matches_people(
-                                item, selected_movie_people, credit_types=selected_movie_credit_types
-                            ):
-                                is_candidate = False
-                            if item_type in {"Series", "Season", "Episode"} and not tv_matches_selected_genres(item, selected_tv_genres):
-                                is_candidate = False
-                            if item_type in {"Series", "Season", "Episode"} and not movie_matches_people(
-                                item, selected_tv_people, credit_types=selected_tv_credit_types
-                            ):
-                                is_candidate = False
-                            if is_candidate:
-                                name = str(item.get("Name", "") or item_id)
-                                item_type = str(item.get("Type", "") or "").strip()
-                                candidates.append((item_id, name, item_type, item))
-                                if len(candidates) >= max_deletes:
-                                    break
-
-                        if dry_run:
-                            actions.append(f"Emby: dry-run matched {len(candidates)} item(s)")
+                        if movie_rating_below <= 0 and movie_unwatched_days <= 0 and (not tv_delete_watched) and tv_unwatched_days <= 0:
+                            actions.append("Emby: skipped (no Emby Cleaner rules enabled)")
                         else:
-                            movie_candidates = [raw for _, _, t, raw in candidates if t == "Movie"]
-                            tv_candidates = [raw for _, _, t, raw in candidates if t in {"Series", "Season", "Episode"}]
+                            items = await emby.items_for_user(user_id=effective_user_id, limit=scan_limit)
+                            candidates: list[tuple[str, str, str, dict]] = []
+                            for item in items:
+                                item_id = str(item.get("Id", "")).strip()
+                                if not item_id:
+                                    continue
+                                is_candidate, _, _, _, _ = evaluate_candidate(
+                                    item,
+                                    movie_watched_rating_below=movie_rating_below,
+                                    movie_unwatched_days=movie_unwatched_days,
+                                    tv_delete_watched=tv_delete_watched,
+                                    tv_unwatched_days=tv_unwatched_days,
+                                )
+                                item_type = str(item.get("Type", "")).strip()
+                                if item_type == "Movie" and not movie_matches_selected_genres(item, selected_movie_genres):
+                                    is_candidate = False
+                                if item_type == "Movie" and not movie_matches_people(
+                                    item, selected_movie_people, credit_types=selected_movie_credit_types
+                                ):
+                                    is_candidate = False
+                                if item_type in {"Series", "Season", "Episode"} and not tv_matches_selected_genres(item, selected_tv_genres):
+                                    is_candidate = False
+                                if item_type in {"Series", "Season", "Episode"} and not movie_matches_people(
+                                    item, selected_tv_people, credit_types=selected_tv_credit_types
+                                ):
+                                    is_candidate = False
+                                if is_candidate:
+                                    name = str(item.get("Name", "") or item_id)
+                                    item_type = str(item.get("Type", "") or "").strip()
+                                    candidates.append((item_id, name, item_type, item))
+                                    if len(candidates) >= max_deletes:
+                                        break
 
-                            if movie_candidates and settings.radarr_url and settings.radarr_api_key:
-                                radarr2 = ArrClient(ArrConfig(settings.radarr_url, settings.radarr_api_key))
-                                try:
-                                    catalog = await radarr2.movies()
-                                    movie_ids: list[int] = []
-                                    for item in movie_candidates:
-                                        mid = _match_radarr_movie_id(item, catalog)
-                                        if mid and mid not in movie_ids:
-                                            movie_ids.append(mid)
-                                    if movie_ids:
-                                        await radarr2.unmonitor_movies(movie_ids=movie_ids)
-                                    actions.append(
-                                        f"Radarr: unmonitored {len(movie_ids)}/{len(movie_candidates)} movie(s) after Emby delete match"
-                                    )
-                                except Exception as e:
-                                    actions.append(f"Radarr: unmonitor warning after Emby deletes: {format_http_error_detail(e)}")
-                                finally:
-                                    await radarr2.aclose()
+                            if dry_run:
+                                actions.append(f"Emby: dry-run matched {len(candidates)} item(s)")
+                            else:
+                                movie_candidates = [raw for _, _, t, raw in candidates if t == "Movie"]
+                                tv_candidates = [raw for _, _, t, raw in candidates if t in {"Series", "Season", "Episode"}]
 
-                            if tv_candidates and settings.sonarr_url and settings.sonarr_api_key:
-                                sonarr2 = ArrClient(ArrConfig(settings.sonarr_url, settings.sonarr_api_key))
-                                try:
-                                    catalog = await sonarr2.series()
-                                    episode_ids: list[int] = []
-                                    seen_episode_ids: set[int] = set()
-                                    episodes_cache: dict[int, list[dict]] = {}
-                                    for item in tv_candidates:
-                                        sid = _match_sonarr_series_id(item, catalog)
-                                        if not sid:
-                                            continue
-                                        if sid not in episodes_cache:
-                                            episodes_cache[sid] = await sonarr2.episodes_for_series(series_id=sid)
-                                        for eid in _episode_ids_for_emby_tv_item(item, episodes_cache[sid]):
-                                            if eid not in seen_episode_ids:
+                                if movie_candidates and settings.radarr_url and settings.radarr_api_key:
+                                    radarr2 = ArrClient(ArrConfig(settings.radarr_url, settings.radarr_api_key))
+                                    try:
+                                        catalog = await radarr2.movies()
+                                        movie_ids: list[int] = []
+                                        for item in movie_candidates:
+                                            mid = _match_radarr_movie_id(item, catalog)
+                                            if mid and mid not in movie_ids:
+                                                movie_ids.append(mid)
+                                        if movie_ids:
+                                            await radarr2.unmonitor_movies(movie_ids=movie_ids)
+                                        actions.append(
+                                            f"Radarr: unmonitored {len(movie_ids)}/{len(movie_candidates)} movie(s) after Emby delete match"
+                                        )
+                                    except Exception as e:
+                                        actions.append(f"Radarr: unmonitor warning after Emby deletes: {format_http_error_detail(e)}")
+                                    finally:
+                                        await radarr2.aclose()
+
+                                if tv_candidates and settings.sonarr_url and settings.sonarr_api_key:
+                                    sonarr2 = ArrClient(ArrConfig(settings.sonarr_url, settings.sonarr_api_key))
+                                    try:
+                                        catalog = await sonarr2.series()
+                                        series_by_id: dict[int, dict] = {}
+                                        for s in catalog:
+                                            sid = _safe_int(s.get("id"))
+                                            if sid:
+                                                series_by_id[sid] = s
+
+                                        to_unmonitor: list[int] = []
+                                        to_keep_monitored: list[int] = []
+                                        seen_episode_ids: set[int] = set()
+                                        episodes_cache: dict[int, list[dict]] = {}
+                                        for item in tv_candidates:
+                                            sid = _match_sonarr_series_id(item, catalog)
+                                            if not sid:
+                                                continue
+                                            if sid not in episodes_cache:
+                                                episodes_cache[sid] = await sonarr2.episodes_for_series(series_id=sid)
+                                            series_rec = series_by_id.get(sid)
+                                            ended = _sonarr_series_is_ended(series_rec)
+                                            for eid in _episode_ids_for_emby_tv_item(item, episodes_cache[sid]):
+                                                if eid in seen_episode_ids:
+                                                    continue
                                                 seen_episode_ids.add(eid)
-                                                episode_ids.append(eid)
-                                    if episode_ids:
-                                        await sonarr2.unmonitor_episodes(episode_ids=episode_ids)
-                                    actions.append(
-                                        f"Sonarr: unmonitored {len(episode_ids)} episode(s) for {len(tv_candidates)} TV delete candidate(s)"
-                                    )
-                                except Exception as e:
-                                    actions.append(f"Sonarr: unmonitor warning after Emby deletes: {format_http_error_detail(e)}")
-                                finally:
-                                    await sonarr2.aclose()
+                                                if ended:
+                                                    to_unmonitor.append(eid)
+                                                else:
+                                                    to_keep_monitored.append(eid)
 
-                            for item_id, _, _, _ in candidates:
-                                await emby.delete_item(item_id)
-                            actions.append(f"Emby: deleted {len(candidates)} item(s)")
+                                        to_unmonitor = list(dict.fromkeys(to_unmonitor))
+                                        to_keep_monitored = list(dict.fromkeys(to_keep_monitored))
 
-                        session.add(
-                            AppSnapshot(
-                                app="emby",
-                                ok=True,
-                                status_message="OK",
-                                missing_total=len(candidates),
-                                cutoff_unmet_total=0 if dry_run else len(candidates),
+                                        episode_by_id: dict[int, dict] = {}
+                                        for eps in episodes_cache.values():
+                                            for ep in eps:
+                                                eid = _safe_int(ep.get("id"))
+                                                if eid:
+                                                    episode_by_id[eid] = ep
+
+                                        # Always remove on-disk files in Sonarr when present; monitoring differs by series status.
+                                        all_tv_episode_ids = list(dict.fromkeys(to_keep_monitored + to_unmonitor))
+                                        deleted_files = 0
+                                        if all_tv_episode_ids:
+                                            for eid in all_tv_episode_ids:
+                                                ep = episode_by_id.get(eid) or {}
+                                                efid = _sonarr_episode_file_id(ep)
+                                                if efid:
+                                                    await sonarr2.delete_episode_file(episode_file_id=efid)
+                                                    deleted_files += 1
+                                            actions.append(
+                                                f"Sonarr: deleted {deleted_files} on-disk episode file(s) "
+                                                f"for {len(all_tv_episode_ids)} episode(s)"
+                                            )
+
+                                        if to_keep_monitored:
+                                            # Keep season/show grabbing new eps (Sonarr may unmonitor on file delete).
+                                            await sonarr2.set_episodes_monitored(episode_ids=to_keep_monitored, monitored=True)
+                                            actions.append(
+                                                f"Sonarr: left {len(to_keep_monitored)} episode(s) monitored "
+                                                f"(series still airing)"
+                                            )
+
+                                        if to_unmonitor:
+                                            await sonarr2.unmonitor_episodes(episode_ids=to_unmonitor)
+                                            actions.append(
+                                                f"Sonarr: unmonitored {len(to_unmonitor)} episode(s) "
+                                                f"(ended series) after delete criteria met"
+                                            )
+
+                                        if not all_tv_episode_ids:
+                                            actions.append("Sonarr: no episodes linked for TV delete candidate(s)")
+                                    except Exception as e:
+                                        actions.append(f"Sonarr: sync warning after Emby deletes: {format_http_error_detail(e)}")
+                                    finally:
+                                        await sonarr2.aclose()
+
+                                for item_id, _, _, _ in candidates:
+                                    await emby.delete_item(item_id)
+                                actions.append(f"Emby: deleted {len(candidates)} item(s)")
+
+                            session.add(
+                                AppSnapshot(
+                                    app="emby",
+                                    ok=True,
+                                    status_message="OK",
+                                    missing_total=len(candidates),
+                                    cutoff_unmet_total=0 if dry_run else len(candidates),
+                                )
                             )
-                        )
-                        session.add(
-                            ActivityLog(
-                                job_run_id=log.id,
-                                app="emby",
-                                kind="cleanup",
-                                count=len(candidates),
-                                detail=_detail_from_labels([name for _, name, _, _ in candidates], total=len(candidates)),
+                            session.add(
+                                ActivityLog(
+                                    job_run_id=log.id,
+                                    app="emby",
+                                    kind="cleanup",
+                                    count=len(candidates),
+                                    detail=_detail_from_labels([name for _, name, _, _ in candidates], total=len(candidates)),
+                                )
                             )
-                        )
-                finally:
-                    await emby.aclose()
+                        settings.emby_last_run_at = now
+                    finally:
+                        await emby.aclose()
         elif settings.emby_enabled:
             actions.append("Emby: skipped (missing URL/API key)")
 
