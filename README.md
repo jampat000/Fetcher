@@ -37,7 +37,7 @@
 2. Open **`http://127.0.0.1:8765`** on the server (default port), or **`http://<server-ip>:8765`** from another PC on your LAN if the service listens on all interfaces (default in `service/GrabbyService.xml` is **`0.0.0.0`**). Allow **TCP 8765** in **Windows Defender Firewall** on the Grabby machine if browsers on other devices cannot connect. The Web UI has **no login**—only expose it on networks you trust (see [`SECURITY.md`](SECURITY.md)).
 3. Use **Setup** in the sidebar (or **Settings** → *Run the setup wizard*) to add **Sonarr**, **Radarr**, and **Emby** with a **Test** on each step—or configure everything in **Settings** if you prefer. **Cleaner** rules and scans are under **Cleaner** / **Cleaner Settings** in the sidebar.
 
-Upgrading an existing install: **Settings → Software updates** can run the latest **`GrabbySetup.exe`** silently (Windows service install), or follow **[`service/UPGRADE.md`](service/UPGRADE.md)** for manual steps.
+Upgrading an existing install: **Settings → Software updates** can run the latest **`GrabbySetup.exe`** silently (Windows service install), or follow **[`service/UPGRADE.md`](service/UPGRADE.md)** for manual steps. If the check fails with **GitHub error (403)**, wait a few minutes (rate limits) or set **`GRABBY_GITHUB_TOKEN`** to a read-only GitHub personal access token on that PC (see [`SECURITY.md`](SECURITY.md)).
 
 Version is shown in the sidebar of the Web UI (`v…` next to the clock). It matches the repo **`VERSION`** file or your **release tag** when built in CI.
 
@@ -101,6 +101,8 @@ Then open the URL printed by the script (default `http://127.0.0.1:8766`).
 |-----|------------|
 | **`http://127.0.0.1:8765`** | The **installed** Grabby (**Windows service**). This is the packaged **`Grabby.exe`** from your last **`GrabbySetup.exe`**. It does **not** pick up edits you make in the git repo. |
 | **`http://127.0.0.1:8766`** (or whatever `dev-start.ps1` prints) | **Development** server running **source code** from this folder (`uvicorn`). Use this to see UI/code changes immediately. |
+
+`dev-start.ps1` **stops whatever is listening** on the dev port (default **8766**) so you can keep using the same URL instead of picking a new port when something was left running.
 
 **If you only ever open 8765:** rebuild with **`packaging\build.ps1`**, run a new **`GrabbySetup.exe`**, or use **Settings → Software updates** to get a release that includes the feature.
 

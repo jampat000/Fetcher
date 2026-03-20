@@ -16,6 +16,20 @@ async def _add_column(engine: AsyncEngine, *, table: str, ddl: str) -> None:
         await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
 
 
+async def _coerce_zero_arr_intervals(engine: AsyncEngine) -> None:
+    """Set Sonarr/Radarr run intervals to 60 if DB still has legacy 0 (or invalid <1)."""
+    table = "app_settings"
+    if not await _has_column(engine, table=table, column="sonarr_interval_minutes"):
+        return
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(f"UPDATE {table} SET sonarr_interval_minutes = 60 WHERE sonarr_interval_minutes < 1")
+        )
+        await conn.execute(
+            text(f"UPDATE {table} SET radarr_interval_minutes = 60 WHERE radarr_interval_minutes < 1")
+        )
+
+
 async def _widen_schedule_days_columns(engine: AsyncEngine) -> None:
     """Ensure schedule day columns can store the full Mon..Sun CSV on SQL backends with strict VARCHAR."""
     # SQLite is permissive about text length and doesn't support straightforward ALTER TYPE.
@@ -162,6 +176,9 @@ async def migrate(engine: AsyncEngine) -> None:
 
     # Older schemas used VARCHAR(16), which can be too short for full week CSV on strict DBs.
     await _widen_schedule_days_columns(engine)
+
+    # Every startup: legacy or re-saved 0 must not persist (per-app run interval is min 1 minute).
+    await _coerce_zero_arr_intervals(engine)
 
     # Snapshots / activity tables (create if missing)
     async with engine.begin() as conn:

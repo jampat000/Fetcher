@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.25] - 2026-03-21
+
+### Fixed
+
+- **Sonarr / Radarr run interval:** Stored **`0`** was only fixed once when `arr_interval_defaults_applied` was added; saving the form or old DBs could keep **`0`**. Run intervals now enforce **minimum 1** in the UI, **coerce legacy 0 → 60** on every save (Pydantic) and **on every startup** (migration), so the fields show real minutes (default **60**), not **`0`**.
+- **Software updates / GitHub:** Update check uses a proper **`User-Agent`** (version + repo URL), optional **`GRABBY_GITHUB_TOKEN`** / **`GITHUB_TOKEN`** for rate limits or private repos, and clearer messages when GitHub returns **403** (includes API `message` when present).
+- **Dev server:** **`scripts/dev-start.ps1`** frees the preferred port by stopping **any** process listening there (not only Python), using **`Get-NetTCPConnection`** instead of parsing `netstat`.
+
 ## [1.0.24] - 2026-03-21
 
 ### Fixed
@@ -223,7 +231,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 3. Commit; tag **`vX.Y.Z`**; push commits **and** tags (installer/release workflows often key off **`v*`**).
 4. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 
-[Unreleased]: https://github.com/jampat000/Grabby/compare/v1.0.8...HEAD
+[Unreleased]: https://github.com/jampat000/Grabby/compare/v1.0.25...HEAD
+[1.0.25]: https://github.com/jampat000/Grabby/compare/v1.0.24...v1.0.25
 [1.0.8]: https://github.com/jampat000/Grabby/compare/v1.0.7...v1.0.8
 [1.0.7]: https://github.com/jampat000/Grabby/compare/v1.0.6...v1.0.7
 [1.0.6]: https://github.com/jampat000/Grabby/compare/v1.0.5...v1.0.6

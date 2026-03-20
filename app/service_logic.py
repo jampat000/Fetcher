@@ -433,7 +433,7 @@ def _detail_from_labels(labels: list[str], *, total: int) -> str:
 
 
 def _effective_app_interval_minutes(specific: object, *, global_minutes: int) -> int:
-    """Per-app Arr tick length; 0 or invalid uses Grabby ``interval_minutes`` base (min 5)."""
+    """Per-app Arr tick length; invalid or less than 1 uses Grabby ``interval_minutes`` base (min 5)."""
     try:
         v = int(specific) if specific is not None else 0
     except (TypeError, ValueError):

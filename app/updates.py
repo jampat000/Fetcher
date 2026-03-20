@@ -22,12 +22,38 @@ router = APIRouter(prefix="/api/updates", tags=["updates"])
 DEFAULT_RELEASES_REPO = "jampat000/Grabby"
 SETUP_ASSET_NAME = "GrabbySetup.exe"
 
-# GitHub unauthenticated API rate limit is low; a static User-Agent helps.
-GITHUB_HEADERS = {
-    "Accept": "application/vnd.github+json",
-    "X-GitHub-Api-Version": "2022-11-28",
-    "User-Agent": "Grabby-UpdateCheck",
-}
+GITHUB_API_VERSION = "2022-11-28"
+
+
+def _github_headers(*, accept: str | None = None) -> dict[str, str]:
+    """Headers for GitHub API and release-asset downloads.
+
+    GitHub rejects many requests without a descriptive User-Agent (403). Optional
+    ``GRABBY_GITHUB_TOKEN`` or ``GITHUB_TOKEN`` raises rate limits and allows
+    private-repo release checks.
+    """
+    repo = _releases_repo()
+    contact = f"https://github.com/{repo}"
+    ver = get_app_version()
+    h: dict[str, str] = {
+        "User-Agent": f"Grabby/{ver} (+{contact})",
+        "X-GitHub-Api-Version": GITHUB_API_VERSION,
+        "Accept": accept or "application/vnd.github+json",
+    }
+    token = (os.environ.get("GRABBY_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN") or "").strip()
+    if token:
+        h["Authorization"] = f"Bearer {token}"
+    return h
+
+
+def _github_error_message(response: httpx.Response) -> str:
+    try:
+        data = response.json()
+        if isinstance(data, dict) and data.get("message"):
+            return str(data["message"])
+    except (ValueError, TypeError):
+        pass
+    return ""
 
 _apply_lock = threading.Lock()
 
@@ -80,7 +106,7 @@ async def _fetch_latest_release_payload(repo: str) -> dict[str, Any]:
     url = _latest_api_url(repo)
     timeout = httpx.Timeout(30.0, connect=10.0)
     async with httpx.AsyncClient(
-        headers=GITHUB_HEADERS,
+        headers=_github_headers(),
         timeout=timeout,
         follow_redirects=True,
     ) as client:
@@ -124,7 +150,7 @@ def _launch_installer_detached(exe_path: Path) -> None:
 async def _download_installer(url: str, dest: Path) -> None:
     timeout = httpx.Timeout(600.0, connect=30.0)
     async with httpx.AsyncClient(
-        headers={**GITHUB_HEADERS, "Accept": "application/octet-stream"},
+        headers=_github_headers(accept="application/octet-stream"),
         timeout=timeout,
         follow_redirects=True,
     ) as client:
@@ -165,13 +191,21 @@ async def _compute_updates_check_payload() -> dict[str, Any]:
         payload = await _fetch_latest_release_payload(repo)
     except httpx.HTTPStatusError as e:
         code = e.response.status_code
+        detail = _github_error_message(e.response)
+        suffix = f" ({detail})" if detail else ""
         if code == 404:
             err = (
                 "No GitHub releases found for this repository (404). "
                 "If you use a fork, set GRABBY_UPDATES_REPO to owner/repo."
             )
+        elif code == 403:
+            err = (
+                "GitHub denied access (403). This is often rate limiting or a missing/invalid token. "
+                "Wait a few minutes and retry. If it persists, set GRABBY_GITHUB_TOKEN to a read-only "
+                f"personal access token (see GitHub docs).{suffix}"
+            )
         else:
-            err = f"GitHub returned an error ({code})."
+            err = f"GitHub returned an error ({code}).{suffix}"
         return {
             **base,
             "ok": False,

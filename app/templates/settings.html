@@ -90,7 +90,7 @@
             <div class="row">
               <div class="field">
                 <label>Run interval (minutes)</label>
-                <input class="number" type="number" name="sonarr_interval_minutes" value="{{ settings.sonarr_interval_minutes }}" min="0" max="10080" placeholder="60" />
+                <input class="number" type="number" name="sonarr_interval_minutes" value="{{ settings.sonarr_interval_minutes }}" min="1" max="10080" placeholder="60" />
                 <div class="small">Minimum time between Sonarr automation runs when this schedule window allows. Used for <strong>TV</strong> (missing searches, upgrades).</div>
               </div>
             </div>
@@ -162,7 +162,7 @@
             <div class="row">
               <div class="field">
                 <label>Run interval (minutes)</label>
-                <input class="number" type="number" name="radarr_interval_minutes" value="{{ settings.radarr_interval_minutes }}" min="0" max="10080" placeholder="60" />
+                <input class="number" type="number" name="radarr_interval_minutes" value="{{ settings.radarr_interval_minutes }}" min="1" max="10080" placeholder="60" />
                 <div class="small">Minimum time between Radarr automation runs when this schedule window allows. Used for <strong>movies</strong> (missing searches, upgrades).</div>
               </div>
             </div>
@@ -182,7 +182,7 @@
           <div class="field">
             <label>Scheduler base interval (minutes)</label>
             <input class="number" type="number" name="interval_minutes" value="{{ settings.interval_minutes }}" min="5" max="10080" />
-            <div class="small">How often the scheduler <strong>wakes</strong> (with Sonarr/Radarr run intervals), and the fallback when a per-app <strong>run interval</strong> is <strong>0</strong>. Independent of <strong>Emby Cleaner</strong>.</div>
+            <div class="small">How often the scheduler <strong>wakes</strong> (combined with each app’s <strong>run interval</strong> above). Independent of <strong>Emby Cleaner</strong>.</div>
           </div>
           <div class="field">
             <label>Arr search cooldown (minutes)</label>
