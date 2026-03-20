@@ -6,9 +6,9 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import inspect as orm_inspect
 
 from app.models import AppSettings
 
@@ -19,7 +19,7 @@ BACKUP_FORMAT_VERSION = 1
 def app_settings_to_plain(row: AppSettings) -> dict[str, Any]:
     """ORM row → JSON-serializable dict (no `id`)."""
     out: dict[str, Any] = {}
-    mapper = orm_inspect(AppSettings).mapper
+    mapper = sa_inspect(AppSettings).mapper
     for attr in mapper.column_attrs:
         key = attr.key
         if key == "id":
