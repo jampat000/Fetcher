@@ -826,7 +826,7 @@ th{text-align:left;color:#bfdbfe;font-weight:700}
 .tag-err{background:rgba(239,68,68,.2);color:#fca5a5}
 .activity-row{
   display:flex;
-  align-items:center;
+  align-items:flex-start;
   gap:10px;
   padding:10px 12px;
   border-bottom:1px solid var(--border);
@@ -835,11 +835,12 @@ th{text-align:left;color:#bfdbfe;font-weight:700}
 .activity-row:last-child{border-bottom:none}
 .activity-time{color:var(--muted);min-width:140px}
 .activity-tags{display:flex;gap:6px;flex-wrap:wrap}
-.activity-msg{color:var(--text)}
+.activity-msg{color:var(--text);display:flex;flex-direction:column;gap:6px}
 .activity-detail{
   white-space:pre-line;
   word-break:break-word;
-  display:block;
+  font-size:12px;
+  line-height:1.25;
   max-width:980px;
 }
 

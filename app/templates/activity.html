@@ -27,7 +27,7 @@
             <span class="tag tag-{{ e.app }}">{{ e.app }}</span>
             <span class="tag tag-{{ e.kind }}">{{ e.kind.capitalize() }}</span>
           </span>
-          <span class="activity-msg">
+          <div class="activity-msg">
             {% if e.kind == "missing" %}
               {{ e.count }} {{ "episode" if e.app == "sonarr" else "movie" }}{{ "s" if e.count != 1 else "" }} searched
             {% elif e.kind == "cleanup" %}
@@ -36,10 +36,9 @@
               {{ e.count }} {{ "episode" if e.app == "sonarr" else "movie" }}{{ "s" if e.count != 1 else "" }} upgrade search
             {% endif %}
             {% if e.detail %}
-              <br />
-              <span class="small muted activity-detail">{{ e.detail }}</span>
+              <div class="small muted activity-detail">{{ e.detail }}</div>
             {% endif %}
-          </span>
+          </div>
         </div>
         {% endfor %}
       </div>
