@@ -11,10 +11,9 @@ on:
       - "v*"
   workflow_dispatch:
 
-# Same commit can trigger twice (e.g. push `master` then push tag `v1.0.3` on that commit).
-# Group by commit SHA so the newest run cancels the older duplicate; tag run usually wins if you push branch then tag.
+# Group by ref so a `workflow_dispatch` from `master` does not cancel an in-flight tag build for the same SHA.
 concurrency:
-  group: build-installer-${{ github.workflow }}-${{ github.sha }}
+  group: build-installer-${{ github.ref }}
   cancel-in-progress: true
 
 # Opt in to Node 24 for JS actions until all deps default to it (GitHub deprecation of Node 20).
@@ -105,7 +104,8 @@ jobs:
   # Creates the GitHub Release + attaches GrabbySetup.exe (no deployment Environment gate — those often
   # stall on “Review deployments” and leave tags without a Latest release).
   release:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    # Tag push (PAT or rare cases) OR manual "Run workflow" with ref = tag (recover missed releases).
+    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && startsWith(github.ref, 'refs/tags/v') }}
     needs: build
     runs-on: ubuntu-latest
     permissions:

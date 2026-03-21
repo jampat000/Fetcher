@@ -1,5 +1,7 @@
 # Auto-tags v{X.Y.Z} from VERSION on the merge commit when VERSION changes on the default branch.
-# That tag push triggers "Build installer". No local git required.
+#
+# IMPORTANT: `git push` of the tag uses `GITHUB_TOKEN`, which does NOT fire other `on: push: tags`
+# workflows (GitHub security). So we explicitly dispatch "Build installer" for that tag ref.
 # Manual run: Actions → "Tag release (from VERSION)" → Run workflow (retry / if auto was skipped).
 name: Tag release (from VERSION)
 
@@ -14,6 +16,7 @@ on:
 
 permissions:
   contents: write
+  actions: write # required to workflow_dispatch "Build installer" after pushing the tag
 
 concurrency:
   group: tag-release-${{ github.ref }}
@@ -28,8 +31,10 @@ jobs:
           fetch-depth: 0
 
       - name: Create and push tag if missing
+        id: tag_push
         run: |
           set -e
+          echo "pushed=false" >> "$GITHUB_OUTPUT"
           V="$(tr -d ' \r\n' < VERSION)"
           if ! echo "$V" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "VERSION must be semver X.Y.Z, got: $V"
@@ -44,4 +49,21 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$TAG" -m "$TAG"
           git push origin "$TAG"
-          echo "Pushed $TAG — Build installer workflow should start next."
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Pushed $TAG — dispatching Build installer…"
+
+      - name: Dispatch Build installer
+        if: steps.tag_push.outputs.pushed == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const tag = '${{ steps.tag_push.outputs.tag }}';
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'build-installer.yml',
+              ref: tag,
+            });
+            core.info(`Dispatched build-installer.yml for ref ${tag}`);

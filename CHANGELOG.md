@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **CI / releases:** Pushing a tag with the default **`GITHUB_TOKEN`** does **not** start other workflows, so **v1.0.26** could exist as a **git tag** while **GitHub Releases “Latest”** stayed on **v1.0.25** with no new **`GrabbySetup.exe`**. **Tag release** now **`workflow_dispatch`es** **Build installer** for the new tag; **Build installer** also publishes a release when run **manually** with ref = that **tag** (recover a missed build).
+
 ## [1.0.26] - 2026-03-21
 
 ### Fixed
@@ -242,7 +246,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 2. Bump **`VERSION`** to match the release.
 3. Open a **PR** into **`master`** (branch protection) and **merge** when checks pass. Merging a commit that changes **`VERSION`** triggers **Tag release (from VERSION)** in Actions, which pushes **`vX.Y.Z`** if it does not already exist; **Build installer** then runs on that tag. You do **not** need to tag locally unless you prefer to.
 4. If tagging did not run (e.g. workflow not merged yet), use **Actions → Tag release (from VERSION) → Run workflow**, or create the tag from **GitHub Releases**.
-5. Follow **GitHub Actions** / environment rules for approving production releases if configured.
+5. If a **tag** exists but **Releases → Latest** never updated (no **`GrabbySetup.exe`** for that tag), open **Actions → Build installer → Run workflow**, set **ref** to the **tag** (e.g. **`v1.0.26`**) — the workflow file on **`master`** is used; the build checks out that tag.
+6. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 
 [Unreleased]: https://github.com/jampat000/Grabby/compare/v1.0.26...HEAD
 [1.0.26]: https://github.com/jampat000/Grabby/compare/v1.0.25...v1.0.26
