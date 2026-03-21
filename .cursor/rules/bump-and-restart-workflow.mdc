@@ -8,9 +8,12 @@ alwaysApply: true
 When the user asks to **bump** (version/release) **and restart local**, or clearly means the same (e.g. “ship it”, “release bump”, “bump and restart”, “new build on GitHub”), do **all** of the following unless they explicitly opt out of one step:
 
 1. **Bump** — Update repo `VERSION` and move `CHANGELOG.md` `[Unreleased]` into a dated `[X.Y.Z] - YYYY-MM-DD` section (per `CHANGELOG.md` “Releasing”).
-2. **Commit** — `git add` the release-related changes (typically `VERSION`, `CHANGELOG.md`, and any code/docs in that release), write a clear message (e.g. `release vX.Y.Z` or `chore: release vX.Y.Z — …`).
-3. **Push** — `git push` to `origin` for the **current branch**. **Do not skip push** unless the user says not to or auth/network fails—report errors clearly.
-   - If **`master`** is **protected** (push rejected, PR required): push **`chore/release-vX.Y.Z`**, reset local **`master`** to **`origin/master`**, give the **“Open a pull request”** URL, and **merge** when possible (`gh pr merge` if mergeable and allowed, else tell the user to merge on GitHub).
+2. **Commit** — On a **release branch only** (see below), `git add` the release-related changes (typically `VERSION`, `CHANGELOG.md`, and any code/docs in that release), message e.g. `Release vX.Y.Z` or `chore: release vX.Y.Z — …`.
+3. **Branch + push (avoid local `master` mess)** — **`master`** is **protected** on **`jampat000/Grabby`**: **never** commit the release directly on local **`master`** (that leaves you **ahead of `origin/master`** and duplicate history vs the PR).
+   - **Do:** `git fetch origin && git switch -c release/vX.Y.Z origin/master` (or `chore/release-vX.Y.Z` if you prefer that naming), then bump/commit on **that** branch, `git push -u origin release/vX.Y.Z`, open PR → merge on GitHub.
+   - **After merge:** `git fetch origin && git switch master && git reset --hard origin/master` (or `git pull --ff-only`), then `git branch -d release/vX.Y.Z`. If the remote branch still exists, `git push origin --delete release/vX.Y.Z`.
+   - **If push to `master` was rejected:** Do **not** leave local **`master`** carrying the release commit; create **`release/vX.Y.Z`** from **`origin/master`**, cherry-pick or re-apply the bump commit if needed, push the branch, then **`git switch master && git reset --hard origin/master`**.
+   - **Do not skip push** of the release branch unless the user says not to or auth/network fails—report errors clearly. Give the **“Open a pull request”** URL; merge with **`gh pr merge`** when available (`%ProgramFiles%\GitHub CLI\gh.exe`) or tell the user to merge on GitHub.
 4. **Installer build on GitHub (required)** — After **`vX.Y.Z`** exists on **`origin`** (merge to `master` updates **VERSION** → **Tag release** workflow creates the tag; may take **1–3 minutes**):
    - `git fetch origin master --tags`
    - Confirm tag: `git ls-remote origin refs/tags/vX.Y.Z` (or retry fetch after a short wait).
