@@ -102,7 +102,7 @@ Then open the URL printed by the script (default `http://127.0.0.1:8766`).
 | **`http://127.0.0.1:8765`** | The **installed** Grabby (**Windows service**). This is the packaged **`Grabby.exe`** from your last **`GrabbySetup.exe`**. It does **not** pick up edits you make in the git repo. |
 | **`http://127.0.0.1:8766`** (or whatever `dev-start.ps1` prints) | **Development** server running **source code** from this folder (`uvicorn`). Use this to see UI/code changes immediately. |
 
-`dev-start.ps1` **stops whatever is listening** on the dev port (default **8766**) so you can keep using the same URL instead of picking a new port when something was left running.
+`dev-start.ps1` **stops whatever is listening** on the dev port (default **8766**) so you can keep using the same URL. If a process cannot be stopped (permissions / ghost listener), run **`.\scripts\dev-start.ps1 -TryElevatedKill`** once to get a **UAC** prompt, or use **Administrator** PowerShell: `Get-NetTCPConnection -LocalPort 8766 -State Listen | Stop-NetTCPConnection -Confirm:$false`.
 
 **If you only ever open 8765:** rebuild with **`packaging\build.ps1`**, run a new **`GrabbySetup.exe`**, or use **Settings → Software updates** to get a release that includes the feature.
 
