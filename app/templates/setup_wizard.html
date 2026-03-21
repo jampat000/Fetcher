@@ -85,9 +85,9 @@
 
       {% elif step == 4 %}
       <h2>Schedule &amp; timezone</h2>
-      <p class="hint">Starting interval for <strong>both</strong> the Grabby scheduler (Sonarr/Radarr) and <strong>Emby Cleaner</strong>; you can set them independently later under <strong>Grabby Settings</strong> → Global and <strong>Cleaner Settings</strong>. Times below use your timezone.</p>
-      <label for="interval_minutes">Interval (minutes)</label>
-      <input class="number" id="interval_minutes" name="interval_minutes" type="number" value="{{ settings.interval_minutes }}" min="5" max="10080" />
+      <p class="hint">Starting <strong>run interval</strong> for <strong>Sonarr</strong>, <strong>Radarr</strong>, and <strong>Emby Cleaner</strong> (minutes between runs when schedules allow). You can change each later under <strong>Grabby Settings</strong> and <strong>Cleaner Settings</strong>. Times below use your timezone.</p>
+      <label for="interval_minutes">Run interval (minutes)</label>
+      <input class="number" id="interval_minutes" name="interval_minutes" type="number" value="{{ settings.sonarr_interval_minutes | default(60, true) }}" min="5" max="10080" />
       <label for="timezone">Timezone</label>
       <select class="input" id="timezone" name="timezone">
         {% for val, label in timezone_choices %}

@@ -197,7 +197,7 @@ So you can inspect the workflow / artifact before anything goes on the **Release
 2. Under **Environment protection rules**, add **Required reviewers** (and optional wait timer).
 3. Push tag `v*`: when the release job starts, GitHub shows **Review deployments**; approve there to publish.
 
-This does **not** block `git push` itself—only the **release** step on GitHub. To produce an installer for a commit without tagging, use **Actions → Build installer → Run workflow** and pick the branch; or build locally with `.\installer\build.ps1`.
+This does **not** block `git push` itself—only the **release** step on GitHub. To produce an installer for a commit without tagging, use **Actions → Build installer → Run workflow** and pick the branch; or build locally with `.\installer\build.ps1`. **Note:** If you run the workflow against a **tag** ref, GitHub uses that **tag commit’s** workflow file — a tag on an **old** SHA can build but **not** publish **Releases**; see **CHANGELOG → Releasing** and **`docs/GITHUB-CLI.md`**.
 
 ### Dependency updates
 

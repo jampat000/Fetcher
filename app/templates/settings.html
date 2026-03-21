@@ -177,26 +177,21 @@
 
       <div class="section">
         <h3 style="margin:0 0 8px;">Global Settings</h3>
-        <p class="small muted" style="margin:0 0 12px;"><strong>Emby Cleaner</strong> cadence is under <a href="/emby/settings">Cleaner Settings</a>. Per-app run intervals sit in each <strong>schedule window</strong> above.</p>
-        <div class="settings-global-grid">
-          <div class="field">
-            <label>Scheduler base interval (minutes)</label>
-            <input class="number" type="number" name="interval_minutes" value="{{ settings.interval_minutes }}" min="5" max="10080" />
-            <div class="small">How often the scheduler <strong>wakes</strong> (combined with each app’s <strong>run interval</strong> above). Independent of <strong>Emby Cleaner</strong>.</div>
-          </div>
-          <div class="field">
+        <p class="small muted" style="margin:0 0 12px;"><strong>Emby Cleaner</strong> cadence is under <a href="/emby/settings">Cleaner Settings</a>. The Grabby scheduler <strong>wake interval</strong> is the <strong>minimum</strong> of your Sonarr and Radarr <strong>run intervals</strong> (in each schedule section above).</p>
+        <div class="settings-global-stack">
+          <div class="field settings-global-field">
             <label>Arr search cooldown (minutes)</label>
-            <input class="number" type="number" name="arr_search_cooldown_minutes" value="{{ settings.arr_search_cooldown_minutes }}" min="0" max="525600" />
-            <div class="small">Minimum time before Grabby asks Sonarr/Radarr to <strong>search the same episode or movie</strong> again. Use <strong>0</strong> to tie cooldown to each app’s <strong>run interval</strong> (Sonarr vs Radarr can differ). Default <strong>1440</strong> (24h) avoids hammering the same missing titles every tick. Missing + upgrade in one run share this cooldown. Grabby <strong>pages through the whole wanted queue</strong> each run (like Huntarr-style batching) until it fills “max items per run” with titles that are off cooldown — not only the first API page.</div>
+            <input class="number settings-global-number" type="number" name="arr_search_cooldown_minutes" value="{{ settings.arr_search_cooldown_minutes }}" min="0" max="525600" />
+            <div class="small settings-global-hint">Minimum time before Grabby asks Sonarr/Radarr to <strong>search the same episode or movie</strong> again. Use <strong>0</strong> to tie cooldown to each app’s <strong>run interval</strong> (Sonarr vs Radarr can differ). Default <strong>1440</strong> (24h) avoids hammering the same missing titles every tick. Missing + upgrade in one run share this cooldown. Grabby <strong>pages through the whole wanted queue</strong> each run (like Huntarr-style batching) until it fills “max items per run” with titles that are off cooldown — not only the first API page.</div>
           </div>
-          <div class="field">
+          <div class="field settings-global-field">
             <label>Timezone</label>
-            <select class="input" name="timezone">
+            <select class="input settings-global-select" name="timezone">
               {% for tz in timezones %}
               <option value="{{ tz[0] }}" {% if (settings.timezone or "UTC") == tz[0] %}selected{% endif %}>{{ tz[1] }}</option>
               {% endfor %}
             </select>
-            <div class="small">Used for schedule windows and activity times.</div>
+            <div class="small settings-global-hint">Used for schedule windows and activity times.</div>
           </div>
         </div>
       </div>

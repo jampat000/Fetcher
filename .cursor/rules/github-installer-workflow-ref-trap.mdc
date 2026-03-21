@@ -1,0 +1,25 @@
+---
+description: GitHub Actions — installer workflow uses the ref’s commit; avoid stale-tag release misses
+alwaysApply: true
+---
+
+# Build installer — `workflow_dispatch` ref trap
+
+When **Build installer** (`.github/workflows/build-installer.yml`) runs via **`workflow_dispatch`** or **`gh workflow run … --ref <ref>`**, GitHub uses the **workflow YAML from the commit that `<ref>` resolves to** (same snapshot as checkout), **not** “always default branch.”
+
+## What goes wrong
+
+If **`vX.Y.Z`** points to an **older** commit than **`origin/master`** (e.g. tag created before a CI fix, or tag moved incorrectly), a manual run with **`--ref vX.Y.Z`** can still **build** but **skip** the **`release`** job (or behave like an old workflow). **Releases → Latest** then stays on the previous version even though a run is green.
+
+## Do not do
+
+- Do **not** assume **`gh workflow run build-installer.yml --ref vX.Y.Z`** is safe **only** because **`master`** has a newer workflow file.
+- Do **not** tell users or docs that manual “Run workflow” with a tag uses **`master`**’s workflow file — it does **not** work that way for this case.
+
+## Do instead
+
+1. **Normal path:** Merge **`VERSION`** / changelog → let **Tag release (from VERSION)** create **`vX.Y.Z`** on the **merge commit** (that commit should include current workflows).
+2. **Before** relying on **`gh workflow run --ref vX.Y.Z`**: `git fetch origin master --tags`, then compare SHAs. If **`vX.Y.Z`** is **not** the commit you intend to ship, **fix the tag** (delete + recreate on correct **`master`** tip, then push) **or** bump **`VERSION`** and release again.
+3. **Recovery:** Align **`vX.Y.Z`** with the **`master`** commit that has the right workflow + code, **push the tag** (triggers **`push: tags`**), **or** attach **`GrabbySetup.exe`** with **`gh release create`** from a known-good artifact (last resort).
+
+When editing **CHANGELOG “Releasing”**, **README CI**, **`docs/GITHUB-CLI.md`**, or **`.cursor/rules/bump-and-restart-workflow.mdc`**, keep this behavior consistent.

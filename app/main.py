@@ -30,9 +30,10 @@ from app.emby_rules import (
     tv_matches_selected_genres,
 )
 from app.models import ActivityLog, AppSettings, AppSnapshot, Base, JobRunLog
-from app.schemas import SetupConnTestIn, SetupEmbyTestIn, SettingsIn
+from app.schemas import ArrSearchNowIn, SetupConnTestIn, SetupEmbyTestIn, SettingsIn
 from app.setup_helpers import test_emby_connection, test_radarr_connection, test_sonarr_connection
-from app.scheduler import ServiceScheduler, compute_grabby_tick_minutes
+from app.scheduler import ServiceScheduler
+from app.service_logic import run_once
 from app.time_util import utc_now_naive
 from app import updates as app_updates
 from app.version_info import get_app_version
@@ -305,6 +306,13 @@ async def api_setup_test_emby(body: SetupEmbyTestIn) -> JSONResponse:
     return JSONResponse({"ok": ok, "message": msg})
 
 
+@app.post("/api/arr/search-now")
+async def api_arr_search_now(body: ArrSearchNowIn, session: AsyncSession = Depends(get_session)) -> JSONResponse:
+    """One-shot missing or upgrade search for Sonarr (TV) or Radarr (movies); bypasses schedule + run-interval gates."""
+    result = await run_once(session, arr_manual_scope=body.scope)
+    return JSONResponse({"ok": result.ok, "message": result.message})
+
+
 @app.get("/setup", response_class=RedirectResponse)
 async def setup_wizard_entry() -> RedirectResponse:
     return RedirectResponse("/setup/1", status_code=302)
@@ -391,13 +399,14 @@ async def setup_wizard_save(
             row.emby_api_key = (emby_api_key or "").strip()
             row.emby_user_id = (emby_user_id or "").strip()
         elif step == 4:
-            # Match SettingsIn / Grabby settings bounds
+            # Starting run interval for Sonarr, Radarr, and Emby Cleaner (no separate global scheduler base).
             try:
                 im = int(interval_minutes)
             except (TypeError, ValueError):
                 im = 60
             im = max(5, min(7 * 24 * 60, im))
-            row.interval_minutes = im
+            row.sonarr_interval_minutes = im
+            row.radarr_interval_minutes = im
             row.emby_interval_minutes = im
             row.timezone = _resolve_timezone_name(timezone)
         row.updated_at = utc_now_naive()
@@ -444,7 +453,6 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
         .scalars()
         .first()
     )
-    tz = getattr(settings, "timezone", None) or "UTC"
     suggest_setup_wizard = not (
         (settings.sonarr_url or "").strip()
         or (settings.radarr_url or "").strip()
@@ -464,8 +472,8 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
         }
     next_tick = scheduler.next_grabby_run_at()
     next_tick_local = _fmt_local(next_tick, tz) if next_tick else ""
-    interval_m = max(5, int(settings.interval_minutes or 60))
-    scheduler_tick_minutes = compute_grabby_tick_minutes(settings)
+    emby_schedule_start_display = _to_12h(getattr(settings, "emby_schedule_start", "00:00") or "00:00", "12:00 AM")
+    emby_schedule_end_display = _to_12h(getattr(settings, "emby_schedule_end", "23:59") or "23:59", "11:59 PM")
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -478,8 +486,8 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
             "suggest_setup_wizard": suggest_setup_wizard,
             "last_run": last_run_display,
             "next_scheduler_tick_local": next_tick_local,
-            "scheduler_interval_minutes": interval_m,
-            "scheduler_tick_minutes": scheduler_tick_minutes,
+            "emby_schedule_start_display": emby_schedule_start_display,
+            "emby_schedule_end_display": emby_schedule_end_display,
             "activity": activity_display,
             "sonarr": sonarr_snap,
             "radarr": radarr_snap,
@@ -846,12 +854,12 @@ async def save_settings(
     radarr_schedule_start: str = Form("00:00"),
     radarr_schedule_end: str = Form("23:59"),
     arr_search_cooldown_minutes: int = Form(1440),
-    interval_minutes: int = Form(60),
     timezone: str = Form("UTC"),
     save_scope: str = Form("all"),
     session: AsyncSession = Depends(get_session),
 ) -> RedirectResponse:
-    # Validate via Pydantic (keeps server-side constraints consistent)
+    row = await _get_or_create_settings(session)
+    # interval_minutes column is legacy / backup only — not edited in Global Settings UI.
     data = SettingsIn(
         sonarr_enabled=sonarr_enabled,
         sonarr_url=_normalize_base_url(sonarr_url),
@@ -869,10 +877,8 @@ async def save_settings(
         radarr_max_items_per_run=radarr_max_items_per_run,
         radarr_interval_minutes=radarr_interval_minutes,
         arr_search_cooldown_minutes=arr_search_cooldown_minutes,
-        interval_minutes=interval_minutes,
+        interval_minutes=max(5, min(7 * 24 * 60, int(getattr(row, "interval_minutes", 60) or 60))),
     )
-
-    row = await _get_or_create_settings(session)
     scope = (save_scope or "all").strip().lower()
     # Keep Arr + global settings isolated from Emby settings.
     if scope in ("all", "sonarr"):
@@ -902,8 +908,6 @@ async def save_settings(
         row.radarr_schedule_end = _normalize_hhmm(radarr_schedule_end, "23:59")
 
     if scope in ("all", "global"):
-        im = max(5, min(7 * 24 * 60, int(data.interval_minutes or 60)))
-        row.interval_minutes = im
         row.arr_search_cooldown_minutes = data.arr_search_cooldown_minutes
         row.timezone = _resolve_timezone_name(timezone)
 

@@ -171,6 +171,126 @@ body{
 }
 .cleaner-mode-banner{margin-bottom:14px}
 .automation-card h2{margin-top:0}
+.automation-card-lead{margin:0 0 12px}
+.automation-spec{
+  display:flex;
+  flex-direction:column;
+  gap:11px;
+}
+.automation-spec-row{
+  display:grid;
+  grid-template-columns:minmax(92px,112px) 1fr;
+  gap:8px 14px;
+  align-items:start;
+}
+@media (max-width:520px){
+  .automation-spec-row{grid-template-columns:1fr;gap:3px}
+  .automation-spec-label{padding-top:0}
+}
+.automation-spec-label{
+  font-size:12px;
+  font-weight:500;
+  color:var(--muted);
+  line-height:1.4;
+  padding-top:1px;
+}
+.automation-spec-value{
+  font-size:13px;
+  line-height:1.45;
+  color:var(--text);
+  word-break:break-word;
+}
+.automation-spec-value .status-pill{margin-left:6px;vertical-align:middle}
+.automation-spec-meta{display:block;margin-top:3px;font-size:12px;line-height:1.4;color:var(--muted)}
+.automation-run-log{
+  margin-top:6px;
+  font-size:11px;
+  line-height:1.45;
+  padding:6px 8px;
+  background:rgba(0,0,0,.12);
+  border-radius:8px;
+  border:1px solid var(--border);
+}
+.page-head-lead{
+  margin:4px 0 0;
+  font-size:13px;
+  color:var(--muted);
+  line-height:1.45;
+  max-width:42rem;
+}
+.dashboard-overview > h2{margin-bottom:2px}
+.dashboard-overview > .hint{margin-top:0;margin-bottom:12px}
+.dashboard-panel-title{
+  margin:0 0 8px;
+  font-size:13px;
+  font-weight:600;
+  letter-spacing:0;
+  color:#cbd5e1;
+}
+.dashboard-overview-row .dashboard-panel{padding:12px}
+.dashboard-quick-links{flex-wrap:wrap}
+.dashboard-activity-section > h2{margin-bottom:2px}
+.dashboard-activity-section > .hint{margin-top:0;margin-bottom:8px}
+.dashboard-activity-all{margin-top:10px;display:inline-flex}
+.dashboard-arr-triggers{
+  margin-top:10px;
+  padding-top:10px;
+  border-top:1px solid var(--border);
+  max-width:100%;
+}
+.dashboard-arr-trigger-intro{
+  margin:0 0 10px;
+  font-size:12px;
+  line-height:1.45;
+  color:var(--muted);
+  max-width:100%;
+  overflow-wrap:anywhere;
+}
+.dashboard-arr-trigger-intro strong{
+  color:#cbd5e1;
+  font-weight:600;
+}
+.dashboard-arr-trigger-row{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  width:100%;
+  align-items:stretch;
+}
+@media (max-width:380px){
+  .dashboard-arr-trigger-row{grid-template-columns:1fr}
+}
+/* Match global .btn / .btn.secondary typography; only constrain layout in the grid */
+.dashboard-arr-trigger-row .dashboard-arr-trigger-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:100%;
+  box-sizing:border-box;
+  text-align:center;
+}
+.dashboard-arr-trigger-row .dashboard-arr-trigger-btn:disabled{
+  opacity:.48;
+  cursor:not-allowed;
+  transform:none;
+  box-shadow:none;
+  filter:none;
+}
+.dashboard-arr-trigger-row .dashboard-arr-trigger-btn:disabled:hover{
+  filter:none;
+  box-shadow:none;
+  transform:none;
+}
+.dashboard-arr-search-status{
+  margin:6px 0 0;
+  font-size:12px;
+  line-height:1.4;
+  white-space:pre-wrap;
+  word-break:break-word;
+}
+.dashboard-arr-search-status-loading{color:var(--muted)}
+.dashboard-arr-search-status-ok{color:#86efac}
+.dashboard-arr-search-status-warn{color:#fcd34d}
 .monospace-ish{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
 
 .banner-warn{
@@ -532,12 +652,30 @@ dl.updates-kv dd{
 }
 @media (max-width: 980px){ .row{grid-template-columns:1fr} }
 
-/* Grabby Settings — Global: three fields balance instead of 2+1 awkward wrap */
-.settings-global-grid{
-  display:grid;
-  grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
-  gap:12px;
-  align-items:start;
+/* Grabby Settings — Global: stack cooldown + timezone so long hints and wide TZ list fit the card */
+.settings-global-stack{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+  max-width:100%;
+}
+.settings-global-field{
+  min-width:0;
+}
+/* Same width for cooldown + timezone until these move elsewhere */
+.settings-global-number,
+.settings-global-select{
+  display:block;
+  width:100%;
+  max-width:100%;
+  box-sizing:border-box;
+}
+.settings-global-hint{
+  margin-top:6px;
+  max-width:100%;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+  line-height:1.45;
 }
 .criteria-grid{
   display:grid;

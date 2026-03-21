@@ -12,9 +12,10 @@ When the user asks to **bump** (version/release) **and restart local**, or clear
 3. **Push** — `git push` to `origin` for the **current branch**. **Do not skip push** unless the user says not to or auth/network fails—report errors clearly.
    - If **`master`** is **protected** (push rejected, PR required): push **`chore/release-vX.Y.Z`**, reset local **`master`** to **`origin/master`**, give the **“Open a pull request”** URL, and **merge** when possible (`gh pr merge` if mergeable and allowed, else tell the user to merge on GitHub).
 4. **Installer build on GitHub (required)** — After **`vX.Y.Z`** exists on **`origin`** (merge to `master` updates **VERSION** → **Tag release** workflow creates the tag; may take **1–3 minutes**):
-   - `git fetch origin --tags`
+   - `git fetch origin master --tags`
    - Confirm tag: `git ls-remote origin refs/tags/vX.Y.Z` (or retry fetch after a short wait).
-   - Run **GitHub CLI** (use full path if `gh` is not on PATH: **`%ProgramFiles%\GitHub CLI\gh.exe`**):
+   - **Ref trap (read `.cursor/rules/github-installer-workflow-ref-trap.mdc`):** `gh workflow run … --ref vX.Y.Z` uses **that tag’s commit’s** `.github/workflows/build-installer.yml`. If the tag points to an **old** SHA (before a CI fix), the **release** step can be **skipped** and **Latest** won’t move. Before running **`gh`**, compare: `git rev-parse vX.Y.Z` vs `git rev-parse origin/master` — if they differ, **do not** assume a manual dispatch is enough; fix the tag to the intended **`master`** commit or bump **`VERSION`**.
+   - Run **GitHub CLI** (use full path if `gh` is not on PATH: **`%ProgramFiles%\GitHub CLI\gh.exe`**), **only** when the tag SHA matches what you intend to ship:
 
 ```powershell
 $v = (Get-Content -LiteralPath VERSION -Raw).Trim()
@@ -25,7 +26,7 @@ $gh = Join-Path $env:ProgramFiles "GitHub CLI\gh.exe"
 
    - Paste the **run URL** from `gh` output (or `gh run list --workflow=build-installer.yml --repo jampat000/Grabby -L 1`) so the user can watch **Build installer** finish and get **`GrabbySetup.exe`** on **Releases**.
    - If **`gh`** is missing or not logged in (`gh auth login`), say so and give the same command for them to run.
-   - **Duplicate runs** (Tag release also dispatches the workflow) are OK — concurrency groups limit overlap; the important part is **a build always queues**.
+   - **Duplicate runs** (Tag release also dispatches the workflow) are OK — concurrency groups limit overlap; the important part is **a build always queues** from a **correct** tag commit.
 
 5. **Restart local** — Restart the dev server (**`scripts/dev-start.ps1`** from repo root). **8766** = dev source vs **8765** = installed service.
 

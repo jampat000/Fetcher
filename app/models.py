@@ -46,7 +46,7 @@ class AppSettings(Base):
     radarr_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     radarr_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    # Scheduler: base tick + default when Sonarr/Radarr per-app run interval is 0 (Grabby Settings → Global).
+    # Legacy column (backup/export). Wake cadence = min(Sonarr, Radarr) run intervals; see app.arr_intervals.
     interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     # How often Emby Cleaner may run (Cleaner Settings only; independent of Sonarr/Radarr).
     emby_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)

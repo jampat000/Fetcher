@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 
@@ -26,7 +26,7 @@ class SettingsIn(BaseModel):
         default=60,
         ge=5,
         le=7 * 24 * 60,
-        description="Grabby scheduler base interval (wake cadence). Sonarr/Radarr run intervals are set per app above (minimum 1 minute each).",
+        description="Legacy DB column / backup import only. Wake cadence uses per-app Sonarr/Radarr run intervals (see arr_intervals.ARR_INTERVAL_FALLBACK_MINUTES when unset).",
     )
     emby_interval_minutes: int = Field(
         default=60,
@@ -77,6 +77,12 @@ class SettingsIn(BaseModel):
 
 class SettingsOut(SettingsIn):
     pass
+
+
+class ArrSearchNowIn(BaseModel):
+    """Dashboard one-shot Arr search (bypasses schedule + run-interval gates for that action)."""
+
+    scope: Literal["sonarr_missing", "sonarr_upgrade", "radarr_missing", "radarr_upgrade"]
 
 
 class SetupConnTestIn(BaseModel):

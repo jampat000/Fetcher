@@ -7,19 +7,11 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.schedulers.base import SchedulerNotRunningError
 from sqlalchemy import select
 
+from app.arr_intervals import effective_arr_interval_minutes
 from app.db import SessionLocal
 from app.models import AppSettings
 from app.service_logic import run_once
 from app.time_util import utc_now_naive
-
-
-def _effective_arr_interval_minutes(specific: object, *, global_minutes: int) -> int:
-    try:
-        v = int(specific) if specific is not None else 0
-    except (TypeError, ValueError):
-        v = 0
-    base = max(5, int(global_minutes or 60))
-    return max(5, v) if v > 0 else base
 
 
 def _sonarr_configured(settings: AppSettings) -> bool:
@@ -47,19 +39,16 @@ def _emby_configured(settings: AppSettings) -> bool:
 
 
 def compute_grabby_tick_minutes(settings: AppSettings) -> int:
-    """How often the single scheduler wakes (minimum of global + configured Arr intervals in play)."""
-    base = max(5, int(settings.interval_minutes or 60))
-    tick = base
+    """How often the Grabby scheduler wakes: minimum effective Sonarr/Radarr run intervals in play."""
+    tick: int | None = None
     if _sonarr_configured(settings):
-        s_int = _effective_arr_interval_minutes(
-            getattr(settings, "sonarr_interval_minutes", None), global_minutes=base
-        )
-        tick = min(tick, s_int)
+        s_int = effective_arr_interval_minutes(getattr(settings, "sonarr_interval_minutes", None))
+        tick = s_int if tick is None else min(tick, s_int)
     if _radarr_configured(settings):
-        r_int = _effective_arr_interval_minutes(
-            getattr(settings, "radarr_interval_minutes", None), global_minutes=base
-        )
-        tick = min(tick, r_int)
+        r_int = effective_arr_interval_minutes(getattr(settings, "radarr_interval_minutes", None))
+        tick = r_int if tick is None else min(tick, r_int)
+    if tick is None:
+        return effective_arr_interval_minutes(0)
     return max(5, tick)
 
 

@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.27] - 2026-03-20
+
+### Changed
+
+- **Dashboard (Overview):** One intro line (what the buttons do + schedule/cooldown) above **Missing** / **Upgrade** (standard **secondary** button typography) under **Sonarr** (TV) and **Radarr** (movies). Each is a **one-time** action that bypasses **schedule windows** and **run-interval** gates for that action only; **per-item cooldown** still applies. **Emby Cleaner** is not run. **`POST /api/arr/search-now`** JSON body: **`scope`** = `sonarr_missing` \| `sonarr_upgrade` \| `radarr_missing` \| `radarr_upgrade`.
+- **Grabby Settings:** Removed **scheduler base interval** from **Global Settings**; wake cadence is the **minimum** of **Sonarr** and **Radarr** **run intervals** only (legacy **`interval_minutes`** column kept for backups). **Global** layout stacks **Arr search cooldown** and **timezone** with wrapping so they fit narrow windows.
+- **Setup wizard (step 4):** The **run interval** field now seeds **Sonarr**, **Radarr**, and **Emby Cleaner** intervals together (no separate global base).
+
 ### Fixed
 
 - **CI / releases:** Pushing a tag with the default **`GITHUB_TOKEN`** does **not** start other workflows, so **v1.0.26** could exist as a **git tag** while **GitHub Releases “Latest”** stayed on **v1.0.25** with no new **`GrabbySetup.exe`**. **Tag release** now **`workflow_dispatch`es** **Build installer** for the new tag; **Build installer** also publishes a release when run **manually** with ref = that **tag** (recover a missed build).
@@ -38,7 +46,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **Scheduler vs Emby Cleaner:** **Grabby scheduler base interval** (Sonarr/Radarr wake + `0` run-interval fallback) is edited under **Grabby Settings → Global Settings**. **Emby Cleaner run interval** is its own setting under **Cleaner Settings** (`emby_interval_minutes`), migrated from the previous shared value so existing installs keep the same cadence until you change either side.
+- **Scheduler vs Emby Cleaner:** Grabby’s **wake interval** is the **minimum** of **Sonarr** and **Radarr** **run intervals** (under each app’s schedule). **Emby Cleaner** cadence is under **Cleaner Settings** (`emby_interval_minutes`). The legacy **`interval_minutes`** DB column remains for backups only — it is no longer shown in **Global Settings**.
 - **Settings UI:** Run interval layout and **Global Settings** grid; **Sonarr/Radarr** defaults **60** (model + form); `placeholder="60"` on interval fields; **`arr_interval_defaults_applied`** one-time migration flag.
 
 ## [1.0.23] - 2026-03-20
@@ -244,12 +252,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 1. Update this file: move **`[Unreleased]`** items under a new **`[X.Y.Z] - YYYY-MM-DD`** heading, then keep **`[Unreleased]`** empty (or note pending work).
 2. Bump **`VERSION`** to match the release.
-3. Open a **PR** into **`master`** (branch protection) and **merge** when checks pass. Merging a commit that changes **`VERSION`** triggers **Tag release (from VERSION)** in Actions, which pushes **`vX.Y.Z`** if missing and **dispatches Build installer** for that tag. Maintainers / Cursor agent: after **`git fetch origin --tags`** shows the tag, you may also run **`gh workflow run build-installer.yml --repo jampat000/Grabby --ref vX.Y.Z`** so a build is always queued. You do **not** need to tag locally unless you prefer to.
+3. Open a **PR** into **`master`** (branch protection) and **merge** when checks pass. Merging a commit that changes **`VERSION`** triggers **Tag release (from VERSION)** in Actions, which pushes **`vX.Y.Z`** if missing and **dispatches Build installer** for that tag. Maintainers / Cursor agent: after **`git fetch origin master --tags`**, you may also run **`gh workflow run build-installer.yml --repo jampat000/Grabby --ref vX.Y.Z`** so a build is always queued — **only** if **`vX.Y.Z`** points to the commit you intend to ship (see step **5** if the tag is stale). You do **not** need to tag locally unless you prefer to.
 4. If tagging did not run (e.g. workflow not merged yet), use **Actions → Tag release (from VERSION) → Run workflow**, or create the tag from **GitHub Releases**.
-5. If a **tag** exists but **Releases → Latest** never updated (no **`GrabbySetup.exe`** for that tag), open **Actions → Build installer → Run workflow**, set **ref** to the **tag** (e.g. **`v1.0.26`**) — the workflow file on **`master`** is used; the build checks out that tag. Maintainers with **`gh`**: `gh workflow run build-installer.yml --repo jampat000/Grabby --ref vX.Y.Z` (after **`git fetch origin --tags`** confirms the tag).
+5. If a **tag** exists but **Releases → Latest** never updated (no **`GrabbySetup.exe`** for that tag), check that **`vX.Y.Z`** points to the **`master`** commit you mean (run **`git fetch origin master --tags`**, then compare **`git rev-parse vX.Y.Z`** vs **`git rev-parse origin/master`**). **Manual** **Build installer** / **`gh workflow run … --ref vX.Y.Z`** uses the **workflow YAML from that tag’s commit**, not automatically from **`master`** — an **old** tag SHA can **build** but **skip** **release**. **Fix:** move the tag to the correct **`master`** commit and **re-push** the tag, **or** bump **`VERSION`** and release again, **or** **`gh release create`** + attach **`GrabbySetup.exe`** from a green run artifact.
 6. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 
-[Unreleased]: https://github.com/jampat000/Grabby/compare/v1.0.26...HEAD
+[Unreleased]: https://github.com/jampat000/Grabby/compare/v1.0.27...HEAD
+[1.0.27]: https://github.com/jampat000/Grabby/compare/v1.0.26...v1.0.27
 [1.0.26]: https://github.com/jampat000/Grabby/compare/v1.0.25...v1.0.26
 [1.0.25]: https://github.com/jampat000/Grabby/compare/v1.0.24...v1.0.25
 [1.0.8]: https://github.com/jampat000/Grabby/compare/v1.0.7...v1.0.8

@@ -84,6 +84,33 @@ def test_emby_settings_has_content_criteria(monkeypatch: pytest.MonkeyPatch) -> 
     assert "emby_rule_tv_people" in html
 
 
+@pytest.mark.parametrize(
+    "scope",
+    ["sonarr_missing", "sonarr_upgrade", "radarr_missing", "radarr_upgrade"],
+)
+def test_post_api_arr_search_now(monkeypatch: pytest.MonkeyPatch, scope: str) -> None:
+    from app.service_logic import RunResult
+
+    seen: dict[str, str | None] = {"scope": None}
+
+    async def _fake_run_once(session, *, arr_manual_scope=None):
+        seen["scope"] = arr_manual_scope
+        return RunResult(ok=True, message="done")
+
+    monkeypatch.setattr("app.main.run_once", _fake_run_once)
+    with _client(monkeypatch) as client:
+        resp = client.post("/api/arr/search-now", json={"scope": scope})
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "message": "done"}
+    assert seen["scope"] == scope
+
+
+def test_post_api_arr_search_now_invalid_scope_422(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        resp = client.post("/api/arr/search-now", json={"scope": "nope"})
+    assert resp.status_code == 422
+
+
 def test_post_setup_wizard_continue_redirects(monkeypatch: pytest.MonkeyPatch) -> None:
     """Wizard step 1 saves Sonarr fields and advances to step 2."""
     with _client(monkeypatch) as client:
@@ -152,7 +179,6 @@ def test_post_settings_save_redirects(monkeypatch: pytest.MonkeyPatch) -> None:
         "radarr_schedule_end": "23:59",
         "sonarr_interval_minutes": "0",
         "radarr_interval_minutes": "0",
-        "interval_minutes": "60",
         "arr_search_cooldown_minutes": "1440",
         "timezone": "UTC",
     }
@@ -240,7 +266,6 @@ def test_sonarr_schedule_all_days_stays_enabled(monkeypatch: pytest.MonkeyPatch)
         "radarr_schedule_end": "23:59",
         "sonarr_interval_minutes": "0",
         "radarr_interval_minutes": "0",
-        "interval_minutes": "60",
         "arr_search_cooldown_minutes": "1440",
         "timezone": "UTC",
         "save_scope": "sonarr",
