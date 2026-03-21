@@ -244,9 +244,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 1. Update this file: move **`[Unreleased]`** items under a new **`[X.Y.Z] - YYYY-MM-DD`** heading, then keep **`[Unreleased]`** empty (or note pending work).
 2. Bump **`VERSION`** to match the release.
-3. Open a **PR** into **`master`** (branch protection) and **merge** when checks pass. Merging a commit that changes **`VERSION`** triggers **Tag release (from VERSION)** in Actions, which pushes **`vX.Y.Z`** if it does not already exist; **Build installer** then runs on that tag. You do **not** need to tag locally unless you prefer to.
+3. Open a **PR** into **`master`** (branch protection) and **merge** when checks pass. Merging a commit that changes **`VERSION`** triggers **Tag release (from VERSION)** in Actions, which pushes **`vX.Y.Z`** if missing and **dispatches Build installer** for that tag. Maintainers / Cursor agent: after **`git fetch origin --tags`** shows the tag, you may also run **`gh workflow run build-installer.yml --repo jampat000/Grabby --ref vX.Y.Z`** so a build is always queued. You do **not** need to tag locally unless you prefer to.
 4. If tagging did not run (e.g. workflow not merged yet), use **Actions → Tag release (from VERSION) → Run workflow**, or create the tag from **GitHub Releases**.
-5. If a **tag** exists but **Releases → Latest** never updated (no **`GrabbySetup.exe`** for that tag), open **Actions → Build installer → Run workflow**, set **ref** to the **tag** (e.g. **`v1.0.26`**) — the workflow file on **`master`** is used; the build checks out that tag.
+5. If a **tag** exists but **Releases → Latest** never updated (no **`GrabbySetup.exe`** for that tag), open **Actions → Build installer → Run workflow**, set **ref** to the **tag** (e.g. **`v1.0.26`**) — the workflow file on **`master`** is used; the build checks out that tag. Maintainers with **`gh`**: `gh workflow run build-installer.yml --repo jampat000/Grabby --ref vX.Y.Z` (after **`git fetch origin --tags`** confirms the tag).
 6. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 
 [Unreleased]: https://github.com/jampat000/Grabby/compare/v1.0.26...HEAD

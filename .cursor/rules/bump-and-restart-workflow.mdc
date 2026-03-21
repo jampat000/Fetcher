@@ -5,38 +5,46 @@ alwaysApply: true
 
 # Bump + restart local (full workflow)
 
-When the user asks to **bump** (version/release) **and restart local**, or clearly means the same (e.g. “ship it”, “release bump”, “bump and restart”), do **all** of the following unless they explicitly opt out of one step:
+When the user asks to **bump** (version/release) **and restart local**, or clearly means the same (e.g. “ship it”, “release bump”, “bump and restart”, “new build on GitHub”), do **all** of the following unless they explicitly opt out of one step:
 
-1. **Bump** — Update repo `VERSION` and move `CHANGELOG.md` `[Unreleased]` into a dated `[X.Y.Z]` section (per `CHANGELOG.md` “Releasing”).
-2. **Commit** — `git add` the release-related changes (typically `VERSION`, `CHANGELOG.md`, and any code/docs in that release), write a clear message (e.g. `chore: release vX.Y.Z — …`).
+1. **Bump** — Update repo `VERSION` and move `CHANGELOG.md` `[Unreleased]` into a dated `[X.Y.Z] - YYYY-MM-DD` section (per `CHANGELOG.md` “Releasing”).
+2. **Commit** — `git add` the release-related changes (typically `VERSION`, `CHANGELOG.md`, and any code/docs in that release), write a clear message (e.g. `release vX.Y.Z` or `chore: release vX.Y.Z — …`).
 3. **Push** — `git push` to `origin` for the **current branch**. **Do not skip push** unless the user says not to or auth/network fails—report errors clearly.
-   - If **`master` (or default branch) is protected** (push rejected, “pull request” required): put the release commit on a branch **`chore/release-vX.Y.Z`**, reset local default branch to match **`origin`**, push **`chore/release-vX.Y.Z`**, and give the **GitHub “Open a pull request”** URL. The workflow still counts as “pushed” once the branch is on `origin`.
-4. **Restart local** — Restart the dev server (Windows: `scripts/dev-start.ps1` from repo root, or equivalent `uvicorn` with reload). Note **8766** = dev source vs **8765** = installed service.
+   - If **`master`** is **protected** (push rejected, PR required): push **`chore/release-vX.Y.Z`**, reset local **`master`** to **`origin/master`**, give the **“Open a pull request”** URL, and **merge** when possible (`gh pr merge` if mergeable and allowed, else tell the user to merge on GitHub).
+4. **Installer build on GitHub (required)** — After **`vX.Y.Z`** exists on **`origin`** (merge to `master` updates **VERSION** → **Tag release** workflow creates the tag; may take **1–3 minutes**):
+   - `git fetch origin --tags`
+   - Confirm tag: `git ls-remote origin refs/tags/vX.Y.Z` (or retry fetch after a short wait).
+   - Run **GitHub CLI** (use full path if `gh` is not on PATH: **`%ProgramFiles%\GitHub CLI\gh.exe`**):
 
-**Tagging:** If the project’s release process uses `v*` tags (see `CHANGELOG.md` / CI), remind the user to tag and push tags after the commit, or run `git tag vX.Y.Z && git push origin vX.Y.Z` when they want the installer workflow.
+```powershell
+$v = (Get-Content -LiteralPath VERSION -Raw).Trim()
+$tag = "v$v"
+$gh = Join-Path $env:ProgramFiles "GitHub CLI\gh.exe"
+& $gh workflow run build-installer.yml --repo jampat000/Grabby --ref $tag
+```
 
-Do **not** treat “bump and restart local” as complete without **push** (after a successful commit).
+   - Paste the **run URL** from `gh` output (or `gh run list --workflow=build-installer.yml --repo jampat000/Grabby -L 1`) so the user can watch **Build installer** finish and get **`GrabbySetup.exe`** on **Releases**.
+   - If **`gh`** is missing or not logged in (`gh auth login`), say so and give the same command for them to run.
+   - **Duplicate runs** (Tag release also dispatches the workflow) are OK — concurrency groups limit overlap; the important part is **a build always queues**.
+
+5. **Restart local** — Restart the dev server (**`scripts/dev-start.ps1`** from repo root). **8766** = dev source vs **8765** = installed service.
+
+Do **not** treat “bump / release / new build” as complete without **push** and **queuing the installer workflow** (step 4), when the user expects an installable build.
 
 ## When done — tell the user (every time)
 
-After the steps above, **briefly confirm** in your reply:
+After the steps above, **briefly confirm**:
 
-1. **Version** — `VERSION` is now **vX.Y.Z** and `CHANGELOG.md` is updated.
-2. **GitHub** — Commit is **pushed** to `origin` (branch name + PR link if `master` is protected).
-3. **Local** — The repo **`VERSION`** file matches the release; **restart** the dev server so the sidebar shows **vX.Y.Z** and migrations run **(dev: `http://127.0.0.1:8766`** unless they use port **8765** for the installed service).
-4. **Optional** — Remind them to **merge PR** and **`git tag vX.Y.Z && git push origin vX.Y.Z`** if they use tagged releases / CI.
+1. **Version** — `VERSION` = **X.Y.Z**, `CHANGELOG.md` updated.
+2. **GitHub** — Branch pushed / PR merged; **Actions → Build installer** run started (**link**).
+3. **Install** — When the run is **green**, **`GrabbySetup.exe`** is under **Releases** for **`vX.Y.Z`** (or **Latest**).
+4. **Local** — Dev URL (**8766** default) and restart if they use source.
 
-Do **not** end the task without this **short recap** so they know what to do next on GitHub and locally.
+## Full end-to-end (“new version + installer + local dev”)
 
-## Full end-to-end (“new version on GitHub + local dev ready”)
+1. Release branch → PR → **merge** to **`master`**.
+2. **`git fetch origin --tags`** → **`gh workflow run build-installer.yml --repo jampat000/Grabby --ref vX.Y.Z`** (after tag exists).
+3. **`git pull origin master`** locally.
+4. **`scripts/dev-start.ps1`**.
 
-When the user wants the **whole workflow** so they can **download the installer** and **test from source**:
-
-1. **Release branch** — Commit + push `chore/release-vX.Y.Z` as usual.
-2. **Tag** — `git tag -a vX.Y.Z -m "Release vX.Y.Z"` and `git push origin vX.Y.Z` (triggers **Build installer** on Actions).
-3. **Merge to `master`** — If **`master` is protected**, open/merge the PR on GitHub (or confirm **Merge pull request** is done). **Do not assume** `git push origin master` works from the agent shell.
-4. **Local sync** — `git fetch origin && git checkout master && git pull origin master` so **`HEAD` matches `origin/master`** and **`VERSION`** matches the release.
-5. **Installer** — After Actions finishes, **`GrabbySetup.exe`** is on the **Release** or **workflow Artifacts**. Point them to **`https://github.com/<owner>/<repo>/releases`** (or `/releases/tag/vX.Y.Z`).
-6. **Dev server** — Run **`scripts/dev-start.ps1`** (default **8766**). If the port is stuck, **`Stop-Process`** on the owning PID, or use **`-PreferredPort 8767`**.
-
-**Run these git/terminal steps for the user** when they ask for the full workflow—don’t only describe them.
+**Run** terminal steps (including **`gh workflow run`**) for the user when possible—don’t only describe them.
