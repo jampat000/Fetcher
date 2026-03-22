@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% from "macros/arr_panel.html" import arr_panel %}
 {% block content %}
 <div class="wrap">
   <div class="page-head">
@@ -79,157 +80,36 @@
     <p class="hint">Latest snapshot per app. Configure connections and schedules in <a href="/settings">Settings</a> or <a href="/emby/settings">Cleaner Settings</a>.</p>
 
     <div class="row dashboard-overview-row">
-      <div class="card dashboard-panel">
-        <h3 class="dashboard-panel-title">Sonarr</h3>
-        {% if not settings.sonarr_enabled %}
-          <div class="small muted">Off — enable Sonarr in <a href="/settings">Grabby Settings</a>.</div>
-        {% else %}
-          <div class="preview-stats dashboard-panel-stats dashboard-arr-overview-stats">
-            <div class="preview-stat">
-              <div class="label">Cutoff Unmet</div>
-              <div class="value">{{ sonarr.cutoff_unmet_total if sonarr else 0 }}</div>
-            </div>
-            <div class="preview-stat">
-              <div class="label">Missing Queue</div>
-              <div class="value">{{ sonarr.missing_total if sonarr else 0 }}</div>
-            </div>
-            <div class="preview-stat">
-              <div class="label">API</div>
-              <div class="value">
-                {% if sonarr and sonarr.ok %}
-                  <span class="status-pill status-pill-ok">OK</span>
-                {% elif sonarr %}
-                  <span class="status-pill status-pill-fail">Fail</span>
-                {% else %}
-                  <span class="muted">No data</span>
-                {% endif %}
-              </div>
-            </div>
-            <div class="preview-stat">
-              <div class="label">Run Interval</div>
-              <div class="value">{{ settings.sonarr_interval_minutes }} min</div>
-            </div>
-            <div class="preview-stat">
-              <div class="label">Max Per Run</div>
-              <div class="value">{{ settings.sonarr_max_items_per_run }}</div>
-            </div>
-            <div class="preview-stat">
-              <div class="label">Missing Search</div>
-              <div class="value preview-stat-value-stack">
-                <span class="rule-state {% if settings.sonarr_search_missing %}rule-state-enabled{% else %}rule-state-disabled{% endif %}">{% if settings.sonarr_search_missing %}On{% else %}Off{% endif %}</span>
-                <div class="preview-stat-sub">{{ sonarr.missing_total if sonarr else 0 }} in Sonarr queue</div>
-              </div>
-            </div>
-            <div class="preview-stat">
-              <div class="label">Upgrade Search</div>
-              <div class="value preview-stat-value-stack">
-                <span class="rule-state {% if settings.sonarr_search_upgrades %}rule-state-enabled{% else %}rule-state-disabled{% endif %}">{% if settings.sonarr_search_upgrades %}On{% else %}Off{% endif %}</span>
-                <div class="preview-stat-sub">{{ sonarr.cutoff_unmet_total if sonarr else 0 }} cutoff unmet</div>
-              </div>
-            </div>
-            <div class="preview-stat dashboard-arr-schedule-tile">
-              <div class="label">Schedule Window</div>
-              <div class="value preview-stat-value-stack">
-                {% if settings.sonarr_schedule_enabled %}
-                <span class="rule-state rule-state-enabled">On</span>
-                <div class="preview-stat-sub">{{ sonarr_schedule_days_display or 'No days set' }}</div>
-                <div class="preview-stat-sub muted">{{ sonarr_schedule_time_friendly }}</div>
-                {% else %}
-                <span class="rule-state rule-state-disabled">Off</span>
-                <div class="preview-stat-sub">Runs any time the tick allows</div>
-                {% endif %}
-              </div>
-            </div>
-          </div>
-          {% if sonarr and sonarr.status_message and not sonarr.status_message.startswith("Test") %}
-            <div class="section small">{{ sonarr.status_message }}</div>
-          {% endif %}
-        {% endif %}
-        <div class="dashboard-arr-triggers">
-          <p class="dashboard-arr-trigger-intro">One-off Sonarr search for <strong>TV</strong>: queue everything <strong>missing</strong>, or only <strong>cutoff-unmet</strong> (quality upgrades). Skips your usual schedule and run interval for this run; per-item cooldown still applies.</p>
-          <div class="dashboard-arr-trigger-row">
-            <button type="button" class="btn secondary dashboard-arr-trigger-btn" data-arr-search-scope="sonarr_missing" data-arr-status-target="sonarr-arr-search-status" data-starts-disabled="{% if not settings.sonarr_enabled %}1{% else %}0{% endif %}" {% if not settings.sonarr_enabled %}disabled title="Enable Sonarr in Settings"{% endif %}>Missing</button>
-            <button type="button" class="btn secondary dashboard-arr-trigger-btn" data-arr-search-scope="sonarr_upgrade" data-arr-status-target="sonarr-arr-search-status" data-starts-disabled="{% if not settings.sonarr_enabled %}1{% else %}0{% endif %}" {% if not settings.sonarr_enabled %}disabled title="Enable Sonarr in Settings"{% endif %}>Upgrade</button>
-          </div>
-          <p class="dashboard-arr-search-status" id="sonarr-arr-search-status" hidden role="status"></p>
-        </div>
-      </div>
-
-      <div class="card dashboard-panel">
-        <h3 class="dashboard-panel-title">Radarr</h3>
-        {% if not settings.radarr_enabled %}
-          <div class="small muted">Off — enable Radarr in <a href="/settings">Grabby Settings</a>.</div>
-        {% else %}
-          <div class="preview-stats dashboard-panel-stats dashboard-arr-overview-stats">
-            <div class="preview-stat">
-              <div class="label">Cutoff Unmet</div>
-              <div class="value">{{ radarr.cutoff_unmet_total if radarr else 0 }}</div>
-            </div>
-            <div class="preview-stat">
-              <div class="label">Missing Queue</div>
-              <div class="value">{{ radarr.missing_total if radarr else 0 }}</div>
-            </div>
-            <div class="preview-stat">
-              <div class="label">API</div>
-              <div class="value">
-                {% if radarr and radarr.ok %}
-                  <span class="status-pill status-pill-ok">OK</span>
-                {% elif radarr %}
-                  <span class="status-pill status-pill-fail">Fail</span>
-                {% else %}
-                  <span class="muted">No data</span>
-                {% endif %}
-              </div>
-            </div>
-            <div class="preview-stat">
-              <div class="label">Run Interval</div>
-              <div class="value">{{ settings.radarr_interval_minutes }} min</div>
-            </div>
-            <div class="preview-stat">
-              <div class="label">Max Per Run</div>
-              <div class="value">{{ settings.radarr_max_items_per_run }}</div>
-            </div>
-            <div class="preview-stat">
-              <div class="label">Missing Search</div>
-              <div class="value preview-stat-value-stack">
-                <span class="rule-state {% if settings.radarr_search_missing %}rule-state-enabled{% else %}rule-state-disabled{% endif %}">{% if settings.radarr_search_missing %}On{% else %}Off{% endif %}</span>
-                <div class="preview-stat-sub">{{ radarr.missing_total if radarr else 0 }} in Radarr queue</div>
-              </div>
-            </div>
-            <div class="preview-stat">
-              <div class="label">Upgrade Search</div>
-              <div class="value preview-stat-value-stack">
-                <span class="rule-state {% if settings.radarr_search_upgrades %}rule-state-enabled{% else %}rule-state-disabled{% endif %}">{% if settings.radarr_search_upgrades %}On{% else %}Off{% endif %}</span>
-                <div class="preview-stat-sub">{{ radarr.cutoff_unmet_total if radarr else 0 }} cutoff unmet</div>
-              </div>
-            </div>
-            <div class="preview-stat dashboard-arr-schedule-tile">
-              <div class="label">Schedule Window</div>
-              <div class="value preview-stat-value-stack">
-                {% if settings.radarr_schedule_enabled %}
-                <span class="rule-state rule-state-enabled">On</span>
-                <div class="preview-stat-sub">{{ radarr_schedule_days_display or 'No days set' }}</div>
-                <div class="preview-stat-sub muted">{{ radarr_schedule_time_friendly }}</div>
-                {% else %}
-                <span class="rule-state rule-state-disabled">Off</span>
-                <div class="preview-stat-sub">Runs any time the tick allows</div>
-                {% endif %}
-              </div>
-            </div>
-          </div>
-          {% if radarr and radarr.status_message and not radarr.status_message.startswith("Test") %}
-            <div class="section small">{{ radarr.status_message }}</div>
-          {% endif %}
-        {% endif %}
-        <div class="dashboard-arr-triggers">
-          <p class="dashboard-arr-trigger-intro">One-off Radarr search for <strong>movies</strong>: queue everything <strong>missing</strong>, or only <strong>cutoff-unmet</strong> (quality upgrades). Skips your usual schedule and run interval for this run; per-item cooldown still applies.</p>
-          <div class="dashboard-arr-trigger-row">
-            <button type="button" class="btn secondary dashboard-arr-trigger-btn" data-arr-search-scope="radarr_missing" data-arr-status-target="radarr-arr-search-status" data-starts-disabled="{% if not settings.radarr_enabled %}1{% else %}0{% endif %}" {% if not settings.radarr_enabled %}disabled title="Enable Radarr in Settings"{% endif %}>Missing</button>
-            <button type="button" class="btn secondary dashboard-arr-trigger-btn" data-arr-search-scope="radarr_upgrade" data-arr-status-target="radarr-arr-search-status" data-starts-disabled="{% if not settings.radarr_enabled %}1{% else %}0{% endif %}" {% if not settings.radarr_enabled %}disabled title="Enable Radarr in Settings"{% endif %}>Upgrade</button>
-          </div>
-          <p class="dashboard-arr-search-status" id="radarr-arr-search-status" hidden role="status"></p>
-        </div>
-      </div>
+      {{ arr_panel(
+        "Sonarr",
+        "sonarr",
+        settings.sonarr_enabled,
+        sonarr,
+        settings.sonarr_schedule_enabled,
+        sonarr_schedule_days_display,
+        sonarr_schedule_time_friendly,
+        settings.sonarr_search_missing,
+        settings.sonarr_search_upgrades,
+        settings.sonarr_interval_minutes,
+        settings.sonarr_max_items_per_run,
+        (sonarr.missing_total if sonarr else 0),
+        (sonarr.cutoff_unmet_total if sonarr else 0)
+      ) }}
+      {{ arr_panel(
+        "Radarr",
+        "radarr",
+        settings.radarr_enabled,
+        radarr,
+        settings.radarr_schedule_enabled,
+        radarr_schedule_days_display,
+        radarr_schedule_time_friendly,
+        settings.radarr_search_missing,
+        settings.radarr_search_upgrades,
+        settings.radarr_interval_minutes,
+        settings.radarr_max_items_per_run,
+        (radarr.missing_total if radarr else 0),
+        (radarr.cutoff_unmet_total if radarr else 0)
+      ) }}
     </div>
 
     <div class="section dashboard-emby-section">

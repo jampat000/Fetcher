@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.41] - 2026-03-20
+
+### Changed
+
+- **Sidebar:** Navigation uses **Lucide** icons (`data-lucide`) loaded from jsDelivr; replaces Unicode glyph placeholders. Related **`.sidebar-icon`** sizing in **`app.css`**.
+- **Dashboard:** Sonarr/Radarr overview panels share **`app/templates/macros/arr_panel.html`** to reduce duplicated template markup.
+- **Sign-in:** Login layout styles moved from inline attributes to **`.login-wrap`**, **`.login-card`**, and related classes in **`app/static/app.css`**.
+- **CI / releasing:** **`scripts/ship-release.ps1`** — ASCII hyphen in error message so **PowerShell** parses the script reliably on all locales/encodings.
+
 ## [1.0.40] - 2026-03-22
 
 ### Changed

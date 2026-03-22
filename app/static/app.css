@@ -125,15 +125,12 @@ body{
   border-left-color:var(--accent);
 }
 .sidebar-icon{
-  opacity:.85;
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  width:18px;
-  height:18px;
-  flex:0 0 18px;
-  font-size:14px;
-  line-height:1;
+  width:1.1rem;
+  height:1.1rem;
+  flex-shrink:0;
 }
 .sidebar-footer{
   padding:16px 20px 0;
@@ -1518,3 +1515,32 @@ th{text-align:left;color:#bfdbfe;font-weight:var(--dash-fw-bold)}
 }
 .setup-done-list li{margin:8px 0 0}
 .setup-done-list a{color:var(--accent2);font-weight:600}
+
+/* Login page */
+.login-wrap{
+  max-width:420px;
+  margin:3rem auto;
+  padding:0 16px;
+}
+.login-card{
+  padding:1.75rem;
+}
+.login-title{
+  margin-top:0;
+  text-align:center;
+}
+.login-hint{
+  text-align:center;
+}
+.login-card .banner{
+  margin-bottom:1rem;
+}
+.login-form{
+  margin-top:1rem;
+}
+.login-submit{
+  width:100%;
+}
+.login-footer{
+  margin-top:1.25rem;
+}
