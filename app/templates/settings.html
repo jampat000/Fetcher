@@ -16,7 +16,12 @@
   <div class="settings-page-group">
 
   <div class="card module-content">
-    <h2>Security</h2>
+    <div class="settings-collapse is-collapsed" data-settings-section="security">
+      <button type="button" class="settings-collapse-header" aria-expanded="false" aria-controls="settings-collapse-panel-security" id="settings-collapse-btn-security">
+        <span class="settings-collapse-title">Security</span>
+        <span class="settings-collapse-chevron" aria-hidden="true">▼</span>
+      </button>
+      <div class="settings-collapse-body" id="settings-collapse-panel-security" role="region" aria-labelledby="settings-collapse-btn-security">
     <p class="hint">Your account password protects this web UI. The session cookie is <strong>HTTP-only</strong> and lasts <strong>7 days</strong>.</p>
     {% if request.query_params.get('saved') == '1' %}
     <div class="banner banner-ok" role="status">Settings saved.</div>
@@ -101,6 +106,8 @@
         </div>
       </form>
     </section>
+      </div>
+    </div>
   </div>
 
   <div class="card module-content">
@@ -120,7 +127,12 @@
 
     <form method="post" action="/settings">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-      <div class="row">
+      <div class="settings-collapse" data-settings-section="sonarr">
+        <button type="button" class="settings-collapse-header" aria-expanded="true" aria-controls="settings-collapse-panel-sonarr" id="settings-collapse-btn-sonarr">
+          <span class="settings-collapse-title">Sonarr settings</span>
+          <span class="settings-collapse-chevron" aria-hidden="true">▲</span>
+        </button>
+        <div class="settings-collapse-body" id="settings-collapse-panel-sonarr" role="region" aria-labelledby="settings-collapse-btn-sonarr">
         <div class="field">
           <div class="checkline">
             <input type="checkbox" name="sonarr_enabled" {% if settings.sonarr_enabled %}checked{% endif %} />
@@ -175,7 +187,15 @@
             <button type="submit" class="btn secondary" form="test-sonarr">Test Sonarr</button>
           </div>
         </div>
+        </div>
+      </div>
 
+      <div class="settings-collapse" data-settings-section="radarr">
+        <button type="button" class="settings-collapse-header" aria-expanded="true" aria-controls="settings-collapse-panel-radarr" id="settings-collapse-btn-radarr">
+          <span class="settings-collapse-title">Radarr settings</span>
+          <span class="settings-collapse-chevron" aria-hidden="true">▲</span>
+        </button>
+        <div class="settings-collapse-body" id="settings-collapse-panel-radarr" role="region" aria-labelledby="settings-collapse-btn-radarr">
         <div class="field">
           <div class="checkline">
             <input type="checkbox" name="radarr_enabled" {% if settings.radarr_enabled %}checked{% endif %} />
@@ -230,8 +250,15 @@
             <button type="submit" class="btn secondary" form="test-radarr">Test Radarr</button>
           </div>
         </div>
+        </div>
       </div>
 
+      <div class="settings-collapse is-collapsed" data-settings-section="global">
+        <button type="button" class="settings-collapse-header" aria-expanded="false" aria-controls="settings-collapse-panel-global" id="settings-collapse-btn-global">
+          <span class="settings-collapse-title">Global Grabby settings</span>
+          <span class="settings-collapse-chevron" aria-hidden="true">▼</span>
+        </button>
+        <div class="settings-collapse-body" id="settings-collapse-panel-global" role="region" aria-labelledby="settings-collapse-btn-global">
       <div class="section">
         <h3 style="margin:0 0 8px;">Global Settings</h3>
         <p class="small muted" style="margin:0 0 12px;"><strong>Emby Cleaner</strong> cadence is under <a href="/emby/settings">Cleaner Settings</a>. The Grabby scheduler <strong>wake interval</strong> is the <strong>minimum</strong> of your Sonarr and Radarr <strong>run intervals</strong> (in each schedule section above).</p>
@@ -261,6 +288,8 @@
       <div class="btnbar">
         <button class="btn" type="submit" name="save_scope" value="global">Save Global Settings</button>
         <a class="btn secondary" href="/">Back to dashboard</a>
+      </div>
+        </div>
       </div>
     </form>
 
@@ -554,6 +583,83 @@
       })();
     </script>
   </div>
+  <script>
+    (function () {
+      var STORAGE_KEYS = {
+        sonarr: "grabby_settings_sonarr_open",
+        radarr: "grabby_settings_radarr_open",
+        global: "grabby_settings_global_open",
+        security: "grabby_settings_security_open"
+      };
+      var DEFAULTS = { sonarr: true, radarr: true, global: false, security: false };
+
+      function parseForced() {
+        var sp = new URLSearchParams(window.location.search);
+        var test = sp.get("test") || "";
+        if (test === "sonarr_ok" || test === "sonarr_fail") return { sonarr: true };
+        if (test === "radarr_ok" || test === "radarr_fail") return { radarr: true };
+        if (sp.get("saved") === "1" || sp.get("save") === "fail") {
+          var sc = (sp.get("save_scope") || "").trim().toLowerCase();
+          if (sc === "sonarr") return { sonarr: true };
+          if (sc === "radarr") return { radarr: true };
+          if (sc === "global") return { global: true };
+          return "all";
+        }
+        if (sp.get("sec")) return { security: true };
+        return null;
+      }
+
+      function setSectionOpen(section, open) {
+        var root = document.querySelector('[data-settings-section="' + section + '"]');
+        if (!root) return;
+        var btn = root.querySelector(".settings-collapse-header");
+        var chev = root.querySelector(".settings-collapse-chevron");
+        if (open) {
+          root.classList.remove("is-collapsed");
+          if (btn) btn.setAttribute("aria-expanded", "true");
+          if (chev) chev.textContent = "\u25B2";
+        } else {
+          root.classList.add("is-collapsed");
+          if (btn) btn.setAttribute("aria-expanded", "false");
+          if (chev) chev.textContent = "\u25BC";
+        }
+        try {
+          localStorage.setItem(STORAGE_KEYS[section], open ? "1" : "0");
+        } catch (e) {}
+      }
+
+      function readStored(section) {
+        try {
+          var v = localStorage.getItem(STORAGE_KEYS[section]);
+          if (v === "1") return true;
+          if (v === "0") return false;
+        } catch (e) {}
+        return DEFAULTS[section];
+      }
+
+      var forced = parseForced();
+      var sections = ["sonarr", "radarr", "global", "security"];
+      sections.forEach(function (section) {
+        var open;
+        if (forced === "all") open = true;
+        else if (forced && forced[section]) open = true;
+        else if (forced && typeof forced === "object") open = readStored(section);
+        else open = readStored(section);
+        setSectionOpen(section, open);
+      });
+
+      document.querySelectorAll(".settings-collapse").forEach(function (root) {
+        var section = root.getAttribute("data-settings-section");
+        if (!section) return;
+        var btn = root.querySelector(".settings-collapse-header");
+        if (!btn) return;
+        btn.addEventListener("click", function () {
+          var expand = root.classList.contains("is-collapsed");
+          setSectionOpen(section, expand);
+        });
+      });
+    })();
+  </script>
   </div>{# end settings-page-group #}
 </div>
 {% endblock %}

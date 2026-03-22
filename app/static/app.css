@@ -1544,3 +1544,50 @@ th{text-align:left;color:#bfdbfe;font-weight:var(--dash-fw-bold)}
 .login-footer{
   margin-top:1.25rem;
 }
+
+/* Collapsible settings sections */
+.settings-collapse{
+  margin-bottom:14px;
+}
+.settings-collapse:last-child{
+  margin-bottom:0;
+}
+.settings-collapse-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  width:100%;
+  margin:0 0 10px;
+  padding:10px 12px;
+  box-sizing:border-box;
+  text-align:left;
+  font:inherit;
+  font-size:var(--dash-fs-subtitle);
+  font-weight:var(--dash-fw-semibold);
+  color:var(--dash-strong);
+  background:rgba(0,0,0,.18);
+  border:1px solid var(--border);
+  border-radius:10px;
+  cursor:pointer;
+}
+.settings-collapse-header:hover{
+  background:rgba(0,0,0,.24);
+  border-color:rgba(255,255,255,.12);
+}
+.settings-collapse-title{
+  flex:1;
+}
+.settings-collapse-chevron{
+  flex-shrink:0;
+  margin-left:12px;
+  font-size:12px;
+  line-height:1;
+  color:var(--muted);
+}
+.settings-collapse.is-collapsed .settings-collapse-body{
+  display:none !important;
+}
+.settings-collapse-body .field:last-child,
+.settings-collapse-body .section:last-child{
+  margin-bottom:0;
+}

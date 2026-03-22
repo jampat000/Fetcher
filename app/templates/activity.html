@@ -25,7 +25,7 @@
           <span class="activity-time">{{ e.time_local }}</span>
           <span class="activity-tags">
             <span class="tag tag-{{ e.app }}">{{ e.app }}</span>
-            <span class="tag tag-{{ e.kind }}">{{ e.kind.capitalize() }}</span>
+            <span class="tag tag-{{ e.kind }}">{% if e.kind == "upgrade" %}Quality Upgrade{% elif e.kind == "cleanup" %}Cleaner{% else %}{{ e.kind.capitalize() }}{% endif %}</span>
           </span>
           <div class="activity-msg">
             {% if e.kind == "missing" %}

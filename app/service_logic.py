@@ -485,7 +485,125 @@ def _detail_from_labels(labels: list[str], *, total: int) -> str:
     return "\n".join(shown)
 
 
-async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualScope | None) -> RunResult:
+async def apply_emby_cleaner_live_deletes(
+    settings: AppSettings,
+    emby: EmbyClient,
+    candidates: list[tuple[str, str, str, dict]],
+    *,
+    son_key: str | None,
+    rad_key: str | None,
+) -> list[str]:
+    """Radarr/Sonarr sync, then delete matched Emby items (same operations as scheduled live cleaner)."""
+    actions: list[str] = []
+    movie_candidates = [raw for _, _, t, raw in candidates if t == "Movie"]
+    tv_candidates = [raw for _, _, t, raw in candidates if t in {"Series", "Season", "Episode"}]
+
+    if movie_candidates and settings.radarr_url and rad_key:
+        radarr2 = ArrClient(ArrConfig(settings.radarr_url, rad_key))
+        try:
+            catalog = await radarr2.movies()
+            movie_ids: list[int] = []
+            for item in movie_candidates:
+                mid = _match_radarr_movie_id(item, catalog)
+                if mid and mid not in movie_ids:
+                    movie_ids.append(mid)
+            if movie_ids:
+                await radarr2.unmonitor_movies(movie_ids=movie_ids)
+            actions.append(
+                f"Radarr: unmonitored {len(movie_ids)}/{len(movie_candidates)} movie(s) after Emby delete match"
+            )
+        except Exception as e:  # noqa: BLE001
+            actions.append(f"Radarr: unmonitor warning after Emby deletes: {format_http_error_detail(e)}")
+        finally:
+            await radarr2.aclose()
+
+    if tv_candidates and settings.sonarr_url and son_key:
+        sonarr2 = ArrClient(ArrConfig(settings.sonarr_url, son_key))
+        try:
+            catalog = await sonarr2.series()
+            series_by_id: dict[int, dict] = {}
+            for s in catalog:
+                sid = _safe_int(s.get("id"))
+                if sid:
+                    series_by_id[sid] = s
+
+            to_unmonitor: list[int] = []
+            to_keep_monitored: list[int] = []
+            seen_episode_ids: set[int] = set()
+            episodes_cache: dict[int, list[dict]] = {}
+            for item in tv_candidates:
+                sid = _match_sonarr_series_id(item, catalog)
+                if not sid:
+                    continue
+                if sid not in episodes_cache:
+                    episodes_cache[sid] = await sonarr2.episodes_for_series(series_id=sid)
+                series_rec = series_by_id.get(sid)
+                ended = _sonarr_series_is_ended(series_rec)
+                for eid in _episode_ids_for_emby_tv_item(item, episodes_cache[sid]):
+                    if eid in seen_episode_ids:
+                        continue
+                    seen_episode_ids.add(eid)
+                    if ended:
+                        to_unmonitor.append(eid)
+                    else:
+                        to_keep_monitored.append(eid)
+
+            to_unmonitor = list(dict.fromkeys(to_unmonitor))
+            to_keep_monitored = list(dict.fromkeys(to_keep_monitored))
+
+            episode_by_id: dict[int, dict] = {}
+            for eps in episodes_cache.values():
+                for ep in eps:
+                    eid = _safe_int(ep.get("id"))
+                    if eid:
+                        episode_by_id[eid] = ep
+
+            all_tv_episode_ids = list(dict.fromkeys(to_keep_monitored + to_unmonitor))
+            deleted_files = 0
+            if all_tv_episode_ids:
+                for eid in all_tv_episode_ids:
+                    ep = episode_by_id.get(eid) or {}
+                    efid = _sonarr_episode_file_id(ep)
+                    if efid:
+                        await sonarr2.delete_episode_file(episode_file_id=efid)
+                        deleted_files += 1
+                actions.append(
+                    f"Sonarr: deleted {deleted_files} on-disk episode file(s) "
+                    f"for {len(all_tv_episode_ids)} episode(s)"
+                )
+
+            if to_keep_monitored:
+                await sonarr2.set_episodes_monitored(episode_ids=to_keep_monitored, monitored=True)
+                actions.append(
+                    f"Sonarr: left {len(to_keep_monitored)} episode(s) monitored "
+                    f"(series still airing)"
+                )
+
+            if to_unmonitor:
+                await sonarr2.unmonitor_episodes(episode_ids=to_unmonitor)
+                actions.append(
+                    f"Sonarr: unmonitored {len(to_unmonitor)} episode(s) "
+                    f"(ended series) after delete criteria met"
+                )
+
+            if not all_tv_episode_ids:
+                actions.append("Sonarr: no episodes linked for TV delete candidate(s)")
+        except Exception as e:  # noqa: BLE001
+            actions.append(f"Sonarr: sync warning after Emby deletes: {format_http_error_detail(e)}")
+        finally:
+            await sonarr2.aclose()
+
+    for item_id, _, _, _ in candidates:
+        await emby.delete_item(item_id)
+    actions.append(f"Emby: deleted {len(candidates)} item(s)")
+    return actions
+
+
+async def _run_once_inner(
+    session: AsyncSession,
+    *,
+    arr_manual_scope: ArrManualScope | None,
+) -> RunResult:
     await prune_old_records(session)
 
     log = JobRunLog(started_at=utc_now_naive(), ok=False, message="")
@@ -931,109 +1049,11 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
                             if dry_run:
                                 actions.append(f"Emby: dry-run matched {len(candidates)} item(s)")
                             else:
-                                movie_candidates = [raw for _, _, t, raw in candidates if t == "Movie"]
-                                tv_candidates = [raw for _, _, t, raw in candidates if t in {"Series", "Season", "Episode"}]
-
-                                if movie_candidates and settings.radarr_url and rad_key:
-                                    radarr2 = ArrClient(ArrConfig(settings.radarr_url, rad_key))
-                                    try:
-                                        catalog = await radarr2.movies()
-                                        movie_ids: list[int] = []
-                                        for item in movie_candidates:
-                                            mid = _match_radarr_movie_id(item, catalog)
-                                            if mid and mid not in movie_ids:
-                                                movie_ids.append(mid)
-                                        if movie_ids:
-                                            await radarr2.unmonitor_movies(movie_ids=movie_ids)
-                                        actions.append(
-                                            f"Radarr: unmonitored {len(movie_ids)}/{len(movie_candidates)} movie(s) after Emby delete match"
-                                        )
-                                    except Exception as e:
-                                        actions.append(f"Radarr: unmonitor warning after Emby deletes: {format_http_error_detail(e)}")
-                                    finally:
-                                        await radarr2.aclose()
-
-                                if tv_candidates and settings.sonarr_url and son_key:
-                                    sonarr2 = ArrClient(ArrConfig(settings.sonarr_url, son_key))
-                                    try:
-                                        catalog = await sonarr2.series()
-                                        series_by_id: dict[int, dict] = {}
-                                        for s in catalog:
-                                            sid = _safe_int(s.get("id"))
-                                            if sid:
-                                                series_by_id[sid] = s
-
-                                        to_unmonitor: list[int] = []
-                                        to_keep_monitored: list[int] = []
-                                        seen_episode_ids: set[int] = set()
-                                        episodes_cache: dict[int, list[dict]] = {}
-                                        for item in tv_candidates:
-                                            sid = _match_sonarr_series_id(item, catalog)
-                                            if not sid:
-                                                continue
-                                            if sid not in episodes_cache:
-                                                episodes_cache[sid] = await sonarr2.episodes_for_series(series_id=sid)
-                                            series_rec = series_by_id.get(sid)
-                                            ended = _sonarr_series_is_ended(series_rec)
-                                            for eid in _episode_ids_for_emby_tv_item(item, episodes_cache[sid]):
-                                                if eid in seen_episode_ids:
-                                                    continue
-                                                seen_episode_ids.add(eid)
-                                                if ended:
-                                                    to_unmonitor.append(eid)
-                                                else:
-                                                    to_keep_monitored.append(eid)
-
-                                        to_unmonitor = list(dict.fromkeys(to_unmonitor))
-                                        to_keep_monitored = list(dict.fromkeys(to_keep_monitored))
-
-                                        episode_by_id: dict[int, dict] = {}
-                                        for eps in episodes_cache.values():
-                                            for ep in eps:
-                                                eid = _safe_int(ep.get("id"))
-                                                if eid:
-                                                    episode_by_id[eid] = ep
-
-                                        # Always remove on-disk files in Sonarr when present; monitoring differs by series status.
-                                        all_tv_episode_ids = list(dict.fromkeys(to_keep_monitored + to_unmonitor))
-                                        deleted_files = 0
-                                        if all_tv_episode_ids:
-                                            for eid in all_tv_episode_ids:
-                                                ep = episode_by_id.get(eid) or {}
-                                                efid = _sonarr_episode_file_id(ep)
-                                                if efid:
-                                                    await sonarr2.delete_episode_file(episode_file_id=efid)
-                                                    deleted_files += 1
-                                            actions.append(
-                                                f"Sonarr: deleted {deleted_files} on-disk episode file(s) "
-                                                f"for {len(all_tv_episode_ids)} episode(s)"
-                                            )
-
-                                        if to_keep_monitored:
-                                            # Keep season/show grabbing new eps (Sonarr may unmonitor on file delete).
-                                            await sonarr2.set_episodes_monitored(episode_ids=to_keep_monitored, monitored=True)
-                                            actions.append(
-                                                f"Sonarr: left {len(to_keep_monitored)} episode(s) monitored "
-                                                f"(series still airing)"
-                                            )
-
-                                        if to_unmonitor:
-                                            await sonarr2.unmonitor_episodes(episode_ids=to_unmonitor)
-                                            actions.append(
-                                                f"Sonarr: unmonitored {len(to_unmonitor)} episode(s) "
-                                                f"(ended series) after delete criteria met"
-                                            )
-
-                                        if not all_tv_episode_ids:
-                                            actions.append("Sonarr: no episodes linked for TV delete candidate(s)")
-                                    except Exception as e:
-                                        actions.append(f"Sonarr: sync warning after Emby deletes: {format_http_error_detail(e)}")
-                                    finally:
-                                        await sonarr2.aclose()
-
-                                for item_id, _, _, _ in candidates:
-                                    await emby.delete_item(item_id)
-                                actions.append(f"Emby: deleted {len(candidates)} item(s)")
+                                actions.extend(
+                                    await apply_emby_cleaner_live_deletes(
+                                        settings, emby, candidates, son_key=son_key, rad_key=rad_key
+                                    )
+                                )
 
                             session.add(
                                 AppSnapshot(
