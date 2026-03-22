@@ -14,7 +14,7 @@ def main() -> None:
     # Import the ASGI app directly so packaging tools include it.
     from app.main import app as asgi_app
 
-    uvicorn.run(asgi_app, host=args.host, port=args.port, log_level="info")
+    uvicorn.run(asgi_app, host=args.host, port=args.port, log_level="warning")
 
 
 if __name__ == "__main__":

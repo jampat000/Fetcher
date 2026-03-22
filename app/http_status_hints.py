@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import httpx
 
+from app.log_sanitize import redact_sensitive_text
+
 
 def hint_for_http_status(status: int) -> str:
     """One-line hint to append to logs or errors (no secrets)."""
@@ -31,13 +33,14 @@ def format_http_error_detail(exc: BaseException) -> str:
         text = (r.text or "").replace("\r", " ").replace("\n", " ").strip()
         if len(text) > 200:
             text = text[:197] + "..."
+        text = redact_sensitive_text(text)
         parts = [f"HTTP {code}"]
         if hint:
             parts.append(f"({hint})")
         if text:
             parts.append(f"— {text}")
         return " ".join(parts)
-    msg = str(exc).strip()
+    msg = redact_sensitive_text(str(exc).strip())
     if msg:
         return f"{type(exc).__name__}: {msg}"
     return type(exc).__name__

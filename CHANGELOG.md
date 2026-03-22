@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.31] - 2026-03-23
+
+### Security
+
+- **Logging:** Root log level defaults to **WARNING** (override with **`GRABBY_LOG_LEVEL`**). **`SensitiveLogFilter`** + **`RedactingFormatter`** redact URLs, **`api_key` / `sonarr_key` / `token`**-style values, **Bearer** tokens, and **Authorization** headers in formatted log lines (including tracebacks). **`uvicorn`** CLI uses **`log_level=warning`**. Persisted job run / activity messages from HTTP errors and generic exceptions are passed through **`redact_sensitive_text`**.
+
 ## [1.0.30] - 2026-03-22
 
 ### Fixed

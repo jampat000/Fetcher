@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+import os
+import re
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 # Query keys that often carry credentials (Emby uses api_key on the wire).
@@ -9,6 +12,8 @@ _SENSITIVE_QUERY_KEYS = frozenset(
     {
         "api_key",
         "apikey",
+        "sonarr_key",
+        "radarr_key",
         "token",
         "access_token",
         "refresh_token",
@@ -17,6 +22,23 @@ _SENSITIVE_QUERY_KEYS = frozenset(
         "secret",
     }
 )
+
+# HTTP(S) URLs in arbitrary text (logs, tracebacks, JSON snippets).
+_URL_RE = re.compile(r"https?://[^\s\)\]\}\"\'<>]+", re.IGNORECASE)
+
+# key=value / key: value forms (logs, query fragments in bodies).
+_KV_SECRET_RE = re.compile(
+    r"(?i)\b(api_key|apikey|sonarr_key|radarr_key|access_token|refresh_token|password|secret|token)\b\s*[:=]\s*"
+    r'(?:\[[^\]]+\]|"[^"]*"|\'[^\']*\'|\S+)',
+)
+
+# JSON-style "key":"value" for sensitive keys.
+_JSON_SECRET_RE = re.compile(
+    r'(?i)("(?:api_key|apikey|sonarr_key|radarr_key|access_token|refresh_token|password|secret|token)"\s*:\s*)"[^"]*"',
+)
+
+_BEARER_RE = re.compile(r"(?i)Bearer\s+[\w\-.~+/=]+")
+_AUTH_HEADER_RE = re.compile(r"(?im)^Authorization:\s*\S.*$")
 
 
 def redact_url_for_logging(url: str | object) -> str:
@@ -38,3 +60,62 @@ def redact_url_for_logging(url: str | object) -> str:
         return urlunparse((p.scheme, netloc, p.path, p.params, new_query, p.fragment))
     except Exception:
         return "<url>"
+
+
+def redact_sensitive_text(text: str | None) -> str:
+    """Redact secrets from free-form log text (URLs, JSON snippets, headers, key=value)."""
+    if text is None:
+        return ""
+    s = str(text)
+    s = _URL_RE.sub(lambda m: redact_url_for_logging(m.group(0)), s)
+    s = _KV_SECRET_RE.sub(lambda m: f"{m.group(1)}=[REDACTED]", s)
+    s = _JSON_SECRET_RE.sub(r'\1"[REDACTED]"', s)
+    s = _BEARER_RE.sub("Bearer [REDACTED]", s)
+    s = _AUTH_HEADER_RE.sub("Authorization: [REDACTED]", s)
+    return s
+
+
+class SensitiveLogFilter(logging.Filter):
+    """Redacts secrets in the message template and %-format args before formatting."""
+
+    def filter(self, record: logging.LogRecord) -> bool:  # noqa: A003 — logging API
+        try:
+            if isinstance(record.msg, str):
+                record.msg = redact_sensitive_text(record.msg)
+            if record.args:
+                record.args = tuple(
+                    redact_sensitive_text(a) if isinstance(a, str) else a for a in record.args
+                )
+        except Exception:
+            pass
+        return True
+
+
+class RedactingFormatter(logging.Formatter):
+    """Wraps another formatter so the final line (including tracebacks) is redacted."""
+
+    def __init__(self, base: logging.Formatter) -> None:
+        self._base = base
+
+    def format(self, record: logging.LogRecord) -> str:
+        return redact_sensitive_text(self._base.format(record))
+
+
+_CONFIGURED_HANDLER_IDS: set[int] = set()
+
+
+def configure_grabby_logging() -> None:
+    """Set root log level to WARNING and attach redaction to all root handlers."""
+    root = logging.getLogger()
+    level_name = (os.environ.get("GRABBY_LOG_LEVEL") or "WARNING").strip().upper()
+    root.setLevel(getattr(logging, level_name, logging.WARNING))
+
+    filt = SensitiveLogFilter()
+    for h in root.handlers:
+        hid = id(h)
+        if hid in _CONFIGURED_HANDLER_IDS:
+            continue
+        _CONFIGURED_HANDLER_IDS.add(hid)
+        h.addFilter(filt)
+        if h.formatter is not None and not isinstance(h.formatter, RedactingFormatter):
+            h.setFormatter(RedactingFormatter(h.formatter))

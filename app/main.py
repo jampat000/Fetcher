@@ -42,7 +42,9 @@ from app.service_logic import run_once
 from app.time_util import utc_now_naive
 from app import updates as app_updates
 from app.version_info import get_app_version
+from app.log_sanitize import configure_grabby_logging
 
+configure_grabby_logging()
 
 APP_NAME = "Grabby"
 APP_TAGLINE = "Never miss a release."
@@ -71,6 +73,7 @@ async def _try_commit_and_reschedule(session: AsyncSession) -> bool:
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
+    configure_grabby_logging()
     # When the Windows service holds app.db, startup can block until SQLite times out — retry a few times.
     delays_sec = (0, 2, 5, 10, 15)
     last_err: BaseException | None = None
