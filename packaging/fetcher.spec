@@ -1,6 +1,6 @@
 import os
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 # PyInstaller spec for Windows single-folder build.
 # Usage:
@@ -23,14 +23,24 @@ hiddenimports += collect_submodules("sqlalchemy")
 hiddenimports += collect_submodules("aiosqlite")
 hiddenimports += ["yaml", "app.resolvers", "app.resolvers.api_keys", "bcrypt", "itsdangerous", "_cffi_backend"]
 
+# ASGI server + uvicorn[standard] extras — PyInstaller often misses these (dynamic imports),
+# which breaks the frozen exe at `import uvicorn` (see CI smoke test /healthz).
+_uvicorn_datas, _uvicorn_binaries, _uvicorn_hidden = collect_all("uvicorn")
+hiddenimports += _uvicorn_hidden
+# uvicorn[standard] native / lazy-loaded deps (CI one-folder exe must not fail at import time).
+hiddenimports += collect_submodules("httptools")
+hiddenimports += collect_submodules("websockets")
+hiddenimports += collect_submodules("watchfiles")
+
 a = Analysis(
     [os.path.join(ROOT, "app", "cli.py")],
     pathex=[ROOT],
-    binaries=[],
+    binaries=_uvicorn_binaries,
     datas=[
         (os.path.join(ROOT, "app", "templates"), "app/templates"),
         (os.path.join(ROOT, "app", "static"), "app/static"),
         *_extra_datas,
+        *_uvicorn_datas,
     ],
     hiddenimports=hiddenimports,
     hookspath=[],
