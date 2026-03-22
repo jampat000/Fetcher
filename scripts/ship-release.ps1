@@ -44,7 +44,7 @@ $null = Get-Command gh -ErrorAction Stop
 
 $branch = git rev-parse --abbrev-ref HEAD
 if ($branch -eq "HEAD") {
-    throw "Detached HEAD — switch to a named branch (e.g. release/v1.0.40) before shipping."
+    throw "Detached HEAD - switch to a named branch (e.g. release/v1.0.40) before shipping."
 }
 
 $v = (Get-Content -LiteralPath "VERSION" -Raw).Trim()
