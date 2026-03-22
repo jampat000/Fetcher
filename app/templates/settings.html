@@ -10,27 +10,15 @@
     </div>
   </div>
 
-  <div class="settings-page-layout">
-  <nav class="settings-nav" aria-label="Settings sections">
-    <a href="#section-security" class="settings-nav-link"><span class="settings-nav-dot purple" aria-hidden="true"></span>Security</a>
-    <a href="#section-sonarr" class="settings-nav-link"><span class="settings-nav-dot blue" aria-hidden="true"></span>Sonarr</a>
-    <a href="#section-radarr" class="settings-nav-link"><span class="settings-nav-dot green" aria-hidden="true"></span>Radarr</a>
-    <a href="#section-global" class="settings-nav-link"><span class="settings-nav-dot gray" aria-hidden="true"></span>Global</a>
+  <nav class="settings-tabs" aria-label="Settings sections">
+    <a href="#section-security" class="settings-tab"><span class="settings-tab-dot purple" aria-hidden="true"></span>Security</a>
+    <a href="#section-sonarr" class="settings-tab"><span class="settings-tab-dot blue" aria-hidden="true"></span>Sonarr</a>
+    <a href="#section-radarr" class="settings-tab"><span class="settings-tab-dot green" aria-hidden="true"></span>Radarr</a>
+    <a href="#section-global" class="settings-tab"><span class="settings-tab-dot gray" aria-hidden="true"></span>Global</a>
   </nav>
-  <div class="settings-page-main">
 
-  <div class="settings-page-group">
-
-  <div class="card gc" id="section-security">
-    <div class="settings-collapse is-collapsed stripe-purple" data-settings-section="security">
-      <button type="button" class="settings-collapse-header" aria-expanded="false" aria-controls="settings-collapse-panel-security" id="settings-collapse-btn-security">
-        <span class="settings-collapse-header-text">
-          <span class="settings-collapse-title">Security</span>
-          <span class="settings-collapse-meta">Credentials &amp; access</span>
-        </span>
-        <span class="settings-collapse-chevron" aria-hidden="true">▼</span>
-      </button>
-      <div class="settings-collapse-body" id="settings-collapse-panel-security" role="region" aria-labelledby="settings-collapse-btn-security">
+  <div class="card gc stripe-purple" id="section-security">
+    <div class="gc-title">Security</div>
     <p class="hint">Your account password protects this web UI. The session cookie is <strong>HTTP-only</strong> and lasts <strong>7 days</strong>.</p>
     {% if request.query_params.get('saved') == '1' %}
     <div class="banner banner-ok" role="status">Settings saved.</div>
@@ -115,167 +103,141 @@
         </div>
       </form>
     </section>
-      </div>
-    </div>
   </div>
 
-  <div class="card gc">
-    <div class="gc-title">Fetcher Settings</div>
-    {% set im = request.query_params.get('import', '') %}
-    {% if im == 'ok' %}
-    <div class="banner banner-ok" role="status"><strong>Settings</strong> restored from backup. <strong>Restart</strong> the <strong>Fetcher</strong> Windows service (or the app) so schedules pick up changes.</div>
-    {% elif im == 'need_confirm' %}
-    <div class="banner banner-warn" role="alert"><strong>Import</strong> cancelled—check the confirmation box to replace settings.</div>
-    {% elif im == 'empty' %}
-    <div class="banner banner-warn" role="alert"><strong>Import</strong> cancelled—the file was empty.</div>
-    {% elif im == 'fail' %}
-    <div class="banner banner-warn" role="alert"><strong>Import</strong> failed: {{ request.query_params.get('reason', 'Unknown error') | e }}</div>
-    {% endif %}
-    <div class="hint">Use <span class="kbd">http://</span> for direct Sonarr/Radarr/Emby connections unless you have HTTPS configured.</div>
-    <p class="hint" style="margin-top:8px;">New here? <a href="/setup"><strong>Run the setup wizard</strong></a> to connect Sonarr, Radarr, and Emby step by step (with connection tests).</p>
+  <form method="post" action="/settings">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
 
-    <form method="post" action="/settings">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-      <div class="settings-collapse stripe-blue" id="section-sonarr" data-settings-section="sonarr">
-        <button type="button" class="settings-collapse-header" aria-expanded="true" aria-controls="settings-collapse-panel-sonarr" id="settings-collapse-btn-sonarr">
-          <span class="settings-collapse-header-text">
-            <span class="settings-collapse-title">Sonarr settings</span>
-            <span class="settings-collapse-meta">TV automation</span>
-          </span>
-          <span class="settings-collapse-chevron open" aria-hidden="true">▼</span>
-        </button>
-        <div class="settings-collapse-body" id="settings-collapse-panel-sonarr" role="region" aria-labelledby="settings-collapse-btn-sonarr">
-        <div class="field">
-          {% call toggle_checkbox("sonarr_enabled", settings.sonarr_enabled) %}<strong>Sonarr</strong>{% endcall %}
-          <label>Sonarr URL</label>
-          <div class="control">
-            <input class="input" type="text" name="sonarr_url" value="{{ settings.sonarr_url }}" placeholder="http://localhost:8989" />
-          </div>
-          <label>Sonarr API Key</label>
-          <div class="control">
-            <input class="password" id="sonarr_api_key" type="password" name="sonarr_api_key" value="{{ settings.sonarr_api_key }}" placeholder="X-Api-Key" />
-            <button class="icon-btn" data-reveal="sonarr_api_key" type="button">Show</button>
-          </div>
+    <div class="card gc stripe-blue" id="section-sonarr">
+      <div class="gc-title">Sonarr</div>
+      <p class="hint" style="margin-top:0;">TV automation — URL, API key, searches, schedule, and run interval.</p>
+      {% set im = request.query_params.get('import', '') %}
+      {% if im == 'ok' %}
+      <div class="banner banner-ok" role="status"><strong>Settings</strong> restored from backup. <strong>Restart</strong> the <strong>Fetcher</strong> Windows service (or the app) so schedules pick up changes.</div>
+      {% elif im == 'need_confirm' %}
+      <div class="banner banner-warn" role="alert"><strong>Import</strong> cancelled—check the confirmation box to replace settings.</div>
+      {% elif im == 'empty' %}
+      <div class="banner banner-warn" role="alert"><strong>Import</strong> cancelled—the file was empty.</div>
+      {% elif im == 'fail' %}
+      <div class="banner banner-warn" role="alert"><strong>Import</strong> failed: {{ request.query_params.get('reason', 'Unknown error') | e }}</div>
+      {% endif %}
+      <div class="hint">Use <span class="kbd">http://</span> for direct Sonarr/Radarr/Emby connections unless you have HTTPS configured.</div>
+      <p class="hint" style="margin-top:8px;">New here? <a href="/setup"><strong>Run the setup wizard</strong></a> to connect Sonarr, Radarr, and Emby step by step (with connection tests).</p>
 
-          <div class="section">
-            {% call toggle_checkbox("sonarr_search_missing", settings.sonarr_search_missing) %}Missing searches{% endcall %}
-            {% call toggle_checkbox("sonarr_search_upgrades", settings.sonarr_search_upgrades) %}Cutoff-unmet searches (upgrades){% endcall %}
-            <label>Max items per run</label>
-            <input class="number" type="number" name="sonarr_max_items_per_run" value="{{ settings.sonarr_max_items_per_run }}" min="1" max="1000" />
-          </div>
-
-          <div class="section">
-            {% call toggle_checkbox("sonarr_schedule_enabled", settings.sonarr_schedule_enabled) %}Enable schedule window{% endcall %}
-            <label>Days</label>
-            {{ schedule_days_checkboxes("sonarr_schedule", sonarr_schedule_days_selected) }}
-            <div class="row schedule-time-row">
-              {{ schedule_time_select("sonarr_schedule_start", "Start time", sonarr_schedule_start_hhmm, schedule_time_choices, sonarr_start_orphan) }}
-              {{ schedule_time_select("sonarr_schedule_end", "End time", sonarr_schedule_end_hhmm, schedule_time_choices, sonarr_end_orphan) }}
-            </div>
-            <div class="small">30-minute steps; times outside the list stay available as <strong>(saved)</strong>. If start is later than end, the window crosses midnight.</div>
-            <div class="row">
-              <div class="field">
-                <label>Run interval (minutes)</label>
-                <input class="number" type="number" name="sonarr_interval_minutes" value="{{ settings.sonarr_interval_minutes }}" min="1" max="10080" placeholder="60" />
-                <div class="small">Minimum time between Sonarr automation runs when this schedule window allows. Used for <strong>TV</strong> (missing searches, upgrades).</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="btn-row">
-            <button class="btn" type="submit" name="save_scope" value="sonarr">Save Sonarr Settings</button>
-            <button type="submit" class="btn secondary" form="test-sonarr">Test Sonarr</button>
-          </div>
+      <div class="field">
+        {% call toggle_checkbox("sonarr_enabled", settings.sonarr_enabled) %}<strong>Sonarr</strong>{% endcall %}
+        <label>Sonarr URL</label>
+        <div class="control">
+          <input class="input" type="text" name="sonarr_url" value="{{ settings.sonarr_url }}" placeholder="http://localhost:8989" />
         </div>
+        <label>Sonarr API Key</label>
+        <div class="control">
+          <input class="password" id="sonarr_api_key" type="password" name="sonarr_api_key" value="{{ settings.sonarr_api_key }}" placeholder="X-Api-Key" />
+          <button class="icon-btn" data-reveal="sonarr_api_key" type="button">Show</button>
+        </div>
+
+        <div class="section">
+          {% call toggle_checkbox("sonarr_search_missing", settings.sonarr_search_missing) %}Missing searches{% endcall %}
+          {% call toggle_checkbox("sonarr_search_upgrades", settings.sonarr_search_upgrades) %}Cutoff-unmet searches (upgrades){% endcall %}
+          <label>Max items per run</label>
+          <input class="number" type="number" name="sonarr_max_items_per_run" value="{{ settings.sonarr_max_items_per_run }}" min="1" max="1000" />
+        </div>
+
+        <div class="section">
+          {% call toggle_checkbox("sonarr_schedule_enabled", settings.sonarr_schedule_enabled) %}Enable schedule window{% endcall %}
+          <label>Days</label>
+          {{ schedule_days_checkboxes("sonarr_schedule", sonarr_schedule_days_selected) }}
+          <div class="row schedule-time-row">
+            {{ schedule_time_select("sonarr_schedule_start", "Start time", sonarr_schedule_start_hhmm, schedule_time_choices, sonarr_start_orphan) }}
+            {{ schedule_time_select("sonarr_schedule_end", "End time", sonarr_schedule_end_hhmm, schedule_time_choices, sonarr_end_orphan) }}
+          </div>
+          <div class="small">30-minute steps; times outside the list stay available as <strong>(saved)</strong>. If start is later than end, the window crosses midnight.</div>
+          <div class="row">
+            <div class="field">
+              <label>Run interval (minutes)</label>
+              <input class="number" type="number" name="sonarr_interval_minutes" value="{{ settings.sonarr_interval_minutes }}" min="1" max="10080" placeholder="60" />
+              <div class="small">Minimum time between Sonarr automation runs when this schedule window allows. Used for <strong>TV</strong> (missing searches, upgrades).</div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="settings-collapse stripe-green" id="section-radarr" data-settings-section="radarr">
-        <button type="button" class="settings-collapse-header" aria-expanded="true" aria-controls="settings-collapse-panel-radarr" id="settings-collapse-btn-radarr">
-          <span class="settings-collapse-header-text">
-            <span class="settings-collapse-title">Radarr settings</span>
-            <span class="settings-collapse-meta">Movie automation</span>
-          </span>
-          <span class="settings-collapse-chevron open" aria-hidden="true">▼</span>
-        </button>
-        <div class="settings-collapse-body" id="settings-collapse-panel-radarr" role="region" aria-labelledby="settings-collapse-btn-radarr">
-        <div class="field">
-          {% call toggle_checkbox("radarr_enabled", settings.radarr_enabled) %}<strong>Radarr</strong>{% endcall %}
-          <label>Radarr URL</label>
-          <div class="control">
-            <input class="input" type="text" name="radarr_url" value="{{ settings.radarr_url }}" placeholder="http://localhost:7878" />
-          </div>
-          <label>Radarr API Key</label>
-          <div class="control">
-            <input class="password" id="radarr_api_key" type="password" name="radarr_api_key" value="{{ settings.radarr_api_key }}" placeholder="X-Api-Key" />
-            <button class="icon-btn" data-reveal="radarr_api_key" type="button">Show</button>
-          </div>
+      <div class="btn-row">
+        <button class="btn" type="submit" name="save_scope" value="sonarr">Save Sonarr Settings</button>
+        <button type="submit" class="btn secondary" form="test-sonarr">Test Sonarr</button>
+      </div>
+    </div>
 
-          <div class="section">
-            {% call toggle_checkbox("radarr_search_missing", settings.radarr_search_missing) %}Missing searches{% endcall %}
-            {% call toggle_checkbox("radarr_search_upgrades", settings.radarr_search_upgrades) %}Cutoff-unmet searches (upgrades){% endcall %}
-            <label>Max items per run</label>
-            <input class="number" type="number" name="radarr_max_items_per_run" value="{{ settings.radarr_max_items_per_run }}" min="1" max="1000" />
-          </div>
+    <div class="card gc stripe-green" id="section-radarr">
+      <div class="gc-title">Radarr</div>
+      <p class="hint" style="margin-top:0;">Movie automation — URL, API key, searches, schedule, and run interval.</p>
 
-          <div class="section">
-            {% call toggle_checkbox("radarr_schedule_enabled", settings.radarr_schedule_enabled) %}Enable schedule window{% endcall %}
-            <label>Days</label>
-            {{ schedule_days_checkboxes("radarr_schedule", radarr_schedule_days_selected) }}
-            <div class="row schedule-time-row">
-              {{ schedule_time_select("radarr_schedule_start", "Start time", radarr_schedule_start_hhmm, schedule_time_choices, radarr_start_orphan) }}
-              {{ schedule_time_select("radarr_schedule_end", "End time", radarr_schedule_end_hhmm, schedule_time_choices, radarr_end_orphan) }}
-            </div>
-            <div class="small">30-minute steps; times outside the list stay available as <strong>(saved)</strong>. If start is later than end, the window crosses midnight.</div>
-            <div class="row">
-              <div class="field">
-                <label>Run interval (minutes)</label>
-                <input class="number" type="number" name="radarr_interval_minutes" value="{{ settings.radarr_interval_minutes }}" min="1" max="10080" placeholder="60" />
-                <div class="small">Minimum time between Radarr automation runs when this schedule window allows. Used for <strong>movies</strong> (missing searches, upgrades).</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="btn-row">
-            <button class="btn" type="submit" name="save_scope" value="radarr">Save Radarr Settings</button>
-            <button type="submit" class="btn secondary" form="test-radarr">Test Radarr</button>
-          </div>
+      <div class="field">
+        {% call toggle_checkbox("radarr_enabled", settings.radarr_enabled) %}<strong>Radarr</strong>{% endcall %}
+        <label>Radarr URL</label>
+        <div class="control">
+          <input class="input" type="text" name="radarr_url" value="{{ settings.radarr_url }}" placeholder="http://localhost:7878" />
         </div>
+        <label>Radarr API Key</label>
+        <div class="control">
+          <input class="password" id="radarr_api_key" type="password" name="radarr_api_key" value="{{ settings.radarr_api_key }}" placeholder="X-Api-Key" />
+          <button class="icon-btn" data-reveal="radarr_api_key" type="button">Show</button>
+        </div>
+
+        <div class="section">
+          {% call toggle_checkbox("radarr_search_missing", settings.radarr_search_missing) %}Missing searches{% endcall %}
+          {% call toggle_checkbox("radarr_search_upgrades", settings.radarr_search_upgrades) %}Cutoff-unmet searches (upgrades){% endcall %}
+          <label>Max items per run</label>
+          <input class="number" type="number" name="radarr_max_items_per_run" value="{{ settings.radarr_max_items_per_run }}" min="1" max="1000" />
+        </div>
+
+        <div class="section">
+          {% call toggle_checkbox("radarr_schedule_enabled", settings.radarr_schedule_enabled) %}Enable schedule window{% endcall %}
+          <label>Days</label>
+          {{ schedule_days_checkboxes("radarr_schedule", radarr_schedule_days_selected) }}
+          <div class="row schedule-time-row">
+            {{ schedule_time_select("radarr_schedule_start", "Start time", radarr_schedule_start_hhmm, schedule_time_choices, radarr_start_orphan) }}
+            {{ schedule_time_select("radarr_schedule_end", "End time", radarr_schedule_end_hhmm, schedule_time_choices, radarr_end_orphan) }}
+          </div>
+          <div class="small">30-minute steps; times outside the list stay available as <strong>(saved)</strong>. If start is later than end, the window crosses midnight.</div>
+          <div class="row">
+            <div class="field">
+              <label>Run interval (minutes)</label>
+              <input class="number" type="number" name="radarr_interval_minutes" value="{{ settings.radarr_interval_minutes }}" min="1" max="10080" placeholder="60" />
+              <div class="small">Minimum time between Radarr automation runs when this schedule window allows. Used for <strong>movies</strong> (missing searches, upgrades).</div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="settings-collapse is-collapsed stripe-gray" id="section-global" data-settings-section="global">
-        <button type="button" class="settings-collapse-header" aria-expanded="false" aria-controls="settings-collapse-panel-global" id="settings-collapse-btn-global">
-          <span class="settings-collapse-header-text">
-            <span class="settings-collapse-title">Global Fetcher settings</span>
-            <span class="settings-collapse-meta">Scheduler &amp; timezone</span>
-          </span>
-          <span class="settings-collapse-chevron" aria-hidden="true">▼</span>
-        </button>
-        <div class="settings-collapse-body" id="settings-collapse-panel-global" role="region" aria-labelledby="settings-collapse-btn-global">
-      <div class="section">
-        <div class="gc-title" style="margin-bottom:8px;">Global Settings</div>
-        <p class="small muted" style="margin:0 0 12px;"><strong>Emby Trimmer</strong> cadence is under <a href="/trimmer/settings">Trimmer Settings</a>. The Fetcher scheduler <strong>wake interval</strong> is the <strong>minimum</strong> of your Sonarr and Radarr <strong>run intervals</strong> (in each schedule section above).</p>
-        <div class="settings-global-stack">
-          <div class="field settings-global-field">
-            <label>Arr search cooldown (minutes)</label>
-            <input class="number settings-global-number" type="number" name="arr_search_cooldown_minutes" value="{{ settings.arr_search_cooldown_minutes }}" min="0" max="525600" />
-            <div class="small settings-global-hint">Minimum time before Fetcher asks Sonarr/Radarr to <strong>search the same episode or movie</strong> again. Use <strong>0</strong> to tie cooldown to each app’s <strong>run interval</strong> (Sonarr vs Radarr can differ). Default <strong>1440</strong> (24h) avoids hammering the same missing titles every tick. Missing + upgrade in one run share this cooldown. Fetcher <strong>pages through the whole wanted queue</strong> each run (like Huntarr-style batching) until it fills “max items per run” with titles that are off cooldown — not only the first API page.</div>
-          </div>
-          <div class="field settings-global-field">
-            <label for="log_retention_days">Log retention (days)</label>
-            <input class="number settings-global-number" id="log_retention_days" type="number" name="log_retention_days" value="{{ settings.log_retention_days|default(90, true) }}" min="7" max="3650" />
-            <div class="small settings-global-hint">How many days of activity, job logs, and snapshots to keep. Minimum 7, maximum 3650.</div>
-          </div>
-          <div class="field settings-global-field">
-            <label>Timezone</label>
-            <select class="input settings-global-select" name="timezone">
-              {% for tz in timezones %}
-              <option value="{{ tz[0] }}" {% if (settings.timezone or "UTC") == tz[0] %}selected{% endif %}>{{ tz[1] }}</option>
-              {% endfor %}
-            </select>
-            <div class="small settings-global-hint">Used for schedule windows and activity times.</div>
-          </div>
+      <div class="btn-row">
+        <button class="btn" type="submit" name="save_scope" value="radarr">Save Radarr Settings</button>
+        <button type="submit" class="btn secondary" form="test-radarr">Test Radarr</button>
+      </div>
+    </div>
+
+    <div class="card gc stripe-gray" id="section-global">
+      <div class="gc-title">Global</div>
+      <p class="small muted" style="margin:0 0 12px;"><strong>Emby Trimmer</strong> cadence is under <a href="/trimmer/settings">Trimmer Settings</a>. The Fetcher scheduler <strong>wake interval</strong> is the <strong>minimum</strong> of your Sonarr and Radarr <strong>run intervals</strong> (in each schedule section above).</p>
+      <div class="settings-global-stack">
+        <div class="field settings-global-field">
+          <label>Arr search cooldown (minutes)</label>
+          <input class="number settings-global-number" type="number" name="arr_search_cooldown_minutes" value="{{ settings.arr_search_cooldown_minutes }}" min="0" max="525600" />
+          <div class="small settings-global-hint">Minimum time before Fetcher asks Sonarr/Radarr to <strong>search the same episode or movie</strong> again. Use <strong>0</strong> to tie cooldown to each app’s <strong>run interval</strong> (Sonarr vs Radarr can differ). Default <strong>1440</strong> (24h) avoids hammering the same missing titles every tick. Missing + upgrade in one run share this cooldown. Fetcher <strong>pages through the whole wanted queue</strong> each run (like Huntarr-style batching) until it fills “max items per run” with titles that are off cooldown — not only the first API page.</div>
+        </div>
+        <div class="field settings-global-field">
+          <label for="log_retention_days">Log retention (days)</label>
+          <input class="number settings-global-number" id="log_retention_days" type="number" name="log_retention_days" value="{{ settings.log_retention_days|default(90, true) }}" min="7" max="3650" />
+          <div class="small settings-global-hint">How many days of activity, job logs, and snapshots to keep. Minimum 7, maximum 3650.</div>
+        </div>
+        <div class="field settings-global-field">
+          <label>Timezone</label>
+          <select class="input settings-global-select" name="timezone">
+            {% for tz in timezones %}
+            <option value="{{ tz[0] }}" {% if (settings.timezone or "UTC") == tz[0] %}selected{% endif %}>{{ tz[1] }}</option>
+            {% endfor %}
+          </select>
+          <div class="small settings-global-hint">Used for schedule windows and activity times.</div>
         </div>
       </div>
 
@@ -283,18 +245,15 @@
         <button class="btn" type="submit" name="save_scope" value="global">Save Global Settings</button>
         <a class="btn secondary" href="/">Back to dashboard</a>
       </div>
-        </div>
-      </div>
-    </form>
+    </div>
+  </form>
 
-    <form id="test-sonarr" method="post" action="/test/sonarr">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    </form>
-    <form id="test-radarr" method="post" action="/test/radarr">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    </form>
-
-  </div>
+  <form id="test-sonarr" method="post" action="/test/sonarr">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+  </form>
+  <form id="test-radarr" method="post" action="/test/radarr">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+  </form>
 
   <div class="card backup-restore-card gc">
     <div class="gc-title">Backup &amp; Restore</div>
@@ -577,9 +536,5 @@
       })();
     </script>
   </div>
-  </div>{# end settings-page-group #}
-  </div>{# settings-page-main #}
-  </div>{# settings-page-layout #}
 </div>
 {% endblock %}
-
