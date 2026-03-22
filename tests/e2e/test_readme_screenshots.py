@@ -51,7 +51,7 @@ def test_regenerate_readme_screenshots(e2e_server: str) -> None:
             _shot(page, "dashboard.png")
 
             page.goto(f"{e2e_server}/settings", wait_until="domcontentloaded")
-            page.wait_for_selector("text=Fetcher Settings", timeout=20000)
+            page.wait_for_selector("text=Fetcher settings", timeout=20000)
             page.wait_for_timeout(300)
             _shot(page, "settings.png")
 

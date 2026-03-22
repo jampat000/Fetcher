@@ -6,8 +6,8 @@
 <div class="wrap">
   <div class="page-head">
     <div>
-      <h1 class="ph-title">Trimmer Settings</h1>
-      <p>Configure <strong>Emby Trimmer</strong> here. <strong>Fetcher</strong> (Sonarr/Radarr) lives under <a href="/settings">Fetcher Settings</a>.</p>
+      <h1 class="ph-title">Trimmer settings</h1>
+      <p>Configure <strong>Emby Trimmer</strong> here. <strong>Fetcher</strong> (Sonarr/Radarr) lives under <a href="/settings">Fetcher settings</a>.</p>
     </div>
   </div>
 
@@ -30,7 +30,7 @@
   </div>
   {% endif %}
   {% else %}
-  <div class="banner banner-ok trimmer-mode-banner" role="status" style="opacity:.9;">
+  <div class="banner banner-ok trimmer-mode-banner banner--soft" role="status">
     <strong>Emby Trimmer off</strong> — Turn on <strong>Enable Emby Trimmer</strong> under Connection to use dry run or live mode.
   </div>
   {% endif %}
@@ -52,12 +52,13 @@
 
   <div class="card gc stripe-green trimmer-settings-anchor" id="trimmer-connection">
     <div class="gc-title">Connection</div>
-    <p class="hint" style="margin-top:0;">Emby server URL, API key, and optional user ID. Example URL: <code class="code-inline">http://192.168.1.10:8096</code> or <code class="code-inline">http://localhost:8096</code>.</p>
+    <p class="hint">Emby server URL, API key, and optional user ID. Example URL: <code class="code-inline">http://192.168.1.10:8096</code> or <code class="code-inline">http://localhost:8096</code>.</p>
     {% if emby and emby.status_message
         and not emby.status_message.startswith("Test")
+        and not emby.status_message.startswith("Connection test")
         and emby.status_message.strip()|lower != "ok" %}
     <div class="section small">
-      <div style="margin-top:6px;">{{ emby.status_message }}</div>
+      <div class="emby-status-snippet">{{ emby.status_message }}</div>
     </div>
     {% endif %}
     <form method="post" action="/trimmer/settings/connection">
@@ -71,12 +72,12 @@
           <div class="small">Required for Emby API access.</div>
         </div>
         <div class="field">
-          <label>Emby User ID (optional)</label>
+          <label>Emby user ID (optional)</label>
           <input class="input" type="text" name="emby_user_id" value="{{ settings.emby_user_id }}" placeholder="Leave blank to use first Emby user" autocomplete="off" />
         </div>
       </div>
 
-      <label>Emby API Key</label>
+      <label>Emby API key</label>
       <div class="control">
         <input class="password" id="emby_api_key" type="password" name="emby_api_key" value="{{ settings.emby_api_key }}" placeholder="X-Emby-Token" autocomplete="off" />
         <button class="icon-btn" data-reveal="emby_api_key" type="button">Show</button>
@@ -95,7 +96,7 @@
 
     <div class="card gc stripe-gray trimmer-settings-anchor" id="trimmer-schedule">
       <div class="gc-title">Schedule &amp; limits</div>
-      <p class="hint" style="margin-top:0;">How often Trimmer runs, scan/delete caps, dry run, and the time window when scheduled runs are allowed.</p>
+      <p class="hint">How often Trimmer runs, scan/delete caps, dry run, and the time window when scheduled runs are allowed.</p>
       <div class="row">
         <div class="field">
           <label>Max items to scan per run</label>
@@ -114,7 +115,7 @@
       </div>
       <div class="small">Keep this on until review looks correct.</div>
 
-      <div class="section" style="margin-top:1rem;">
+      <div class="section section--push">
         {% call toggle_checkbox("emby_schedule_enabled", settings.emby_schedule_enabled) %}Enable Emby Trimmer schedule window{% endcall %}
         <label>Days</label>
         {{ schedule_days_checkboxes("emby_schedule", emby_schedule_days_selected) }}
@@ -139,10 +140,10 @@
 
     <div class="card gc stripe-blue trimmer-settings-anchor" id="trimmer-rules">
       <div class="gc-title">TV &amp; movie rules</div>
-      <p class="hint" style="margin-top:0;">Genre and watch/rating rules. Use the buttons below to save TV or movie criteria independently.</p>
+      <p class="hint">Genre and watch/rating rules. Use the buttons below to save TV or movie criteria independently.</p>
       <div class="criteria-grid">
         <div class="criteria-panel">
-          <div class="gc-title" style="font-size:12px;">
+          <div class="gc-title gc-title--sm">
             <span class="criteria-icon criteria-icon-tv" aria-hidden="true">
               <img src="/static/icon-tv.svg" alt="" class="criteria-icon-img" />
             </span>
@@ -175,7 +176,7 @@
         </div>
 
         <div class="criteria-panel">
-          <div class="gc-title" style="font-size:12px;">
+          <div class="gc-title gc-title--sm">
             <span class="criteria-icon criteria-icon-movie" aria-hidden="true">
               <img src="/static/icon-film.svg" alt="" class="criteria-icon-img" />
             </span>
@@ -212,14 +213,14 @@
 
     <div class="card gc stripe-purple trimmer-settings-anchor" id="trimmer-people">
       <div class="gc-title">People rules</div>
-      <p class="hint" style="margin-top:0;">Match titles by credited names (substring, case-insensitive). Save TV and movie people criteria separately.</p>
+      <p class="hint">Match titles by credited names (substring, case-insensitive). Save TV and movie people criteria separately.</p>
       <div class="criteria-grid criteria-people-row">
         <div class="criteria-panel people-criteria-panel">
-          <div class="gc-title" style="font-size:12px;">
+          <div class="gc-title gc-title--sm">
             <span class="criteria-icon criteria-icon-tv" aria-hidden="true">
               <img src="/static/icon-tv.svg" alt="" class="criteria-icon-img" />
             </span>
-            <span>TV — People</span>
+            <span>TV — people</span>
           </div>
           <div class="field people-field">
             <label>Delete TV shows when these people are credited</label>
@@ -250,11 +251,11 @@
         </div>
 
         <div class="criteria-panel people-criteria-panel">
-          <div class="gc-title" style="font-size:12px;">
+          <div class="gc-title gc-title--sm">
             <span class="criteria-icon criteria-icon-movie" aria-hidden="true">
               <img src="/static/icon-film.svg" alt="" class="criteria-icon-img" />
             </span>
-            <span>Movies — People</span>
+            <span>Movies — people</span>
           </div>
           <div class="field people-field">
             <label>Delete movies when these people are credited</label>

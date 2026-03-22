@@ -6,11 +6,11 @@
         <div class="gc-title">
           {% if enabled %}
             {% if snap and snap.ok %}
-              <span class="status-dot dot-green" title="API OK"></span>
+              <span class="status-dot dot-green" title="API healthy"></span>
             {% elif snap %}
               <span class="status-dot dot-amber" title="API issue"></span>
             {% else %}
-              <span class="status-dot dot-blue" title="No snapshot"></span>
+              <span class="status-dot dot-blue" title="No snapshot yet"></span>
             {% endif %}
           {% else %}
             <span class="status-dot dot-gray" title="Disabled"></span>
@@ -53,13 +53,13 @@
         </div>
 
         {% if not enabled %}
-          <p class="small muted arr-panel-enable-hint">Enable {{ app_name }} in <a href="/settings">Fetcher Settings</a>.</p>
+          <p class="small muted arr-panel-enable-hint">Enable {{ app_name }} in <a href="/settings">Fetcher settings</a>.</p>
         {% endif %}
 
         <div class="dashboard-arr-triggers">
           <div class="dashboard-arr-trigger-row">
-            <button type="button" class="btn secondary dashboard-arr-trigger-btn" data-arr-search-scope="{{ app_key }}_missing" data-arr-status-target="{{ app_key }}-arr-search-status" data-starts-disabled="{% if not enabled %}1{% else %}0{% endif %}" {% if not enabled %}disabled title="Enable {{ app_name }} in Settings"{% endif %}>Search missing</button>
-            <button type="button" class="btn secondary dashboard-arr-trigger-btn" data-arr-search-scope="{{ app_key }}_upgrade" data-arr-status-target="{{ app_key }}-arr-search-status" data-starts-disabled="{% if not enabled %}1{% else %}0{% endif %}" {% if not enabled %}disabled title="Enable {{ app_name }} in Settings"{% endif %}>Search upgrades</button>
+            <button type="button" class="btn secondary dashboard-arr-trigger-btn" data-arr-search-scope="{{ app_key }}_missing" data-arr-status-target="{{ app_key }}-arr-search-status" data-starts-disabled="{% if not enabled %}1{% else %}0{% endif %}" {% if not enabled %}disabled title="Enable {{ app_name }} in settings"{% endif %}>Search missing</button>
+            <button type="button" class="btn secondary dashboard-arr-trigger-btn" data-arr-search-scope="{{ app_key }}_upgrade" data-arr-status-target="{{ app_key }}-arr-search-status" data-starts-disabled="{% if not enabled %}1{% else %}0{% endif %}" {% if not enabled %}disabled title="Enable {{ app_name }} in settings"{% endif %}>Search upgrades</button>
           </div>
           <p class="dashboard-arr-search-status" id="{{ app_key }}-arr-search-status" hidden role="status"></p>
         </div>

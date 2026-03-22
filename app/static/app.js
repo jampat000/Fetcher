@@ -418,12 +418,12 @@ window.addEventListener("DOMContentLoaded", () => {
 
   if (qs("saved") === "1") showToast("Settings saved");
   if (qs("ran") === "1") showToast("Run triggered");
-  if (qs("test") === "sonarr_ok") showToast("Sonarr OK");
-  if (qs("test") === "sonarr_fail") showToast("Sonarr failed");
-  if (qs("test") === "radarr_ok") showToast("Radarr OK");
-  if (qs("test") === "radarr_fail") showToast("Radarr failed");
-  if (qs("test") === "emby_ok") showToast("Emby OK");
-  if (qs("test") === "emby_fail") showToast("Emby failed");
+  if (qs("test") === "sonarr_ok") showToast("Sonarr connection succeeded");
+  if (qs("test") === "sonarr_fail") showToast("Sonarr connection failed");
+  if (qs("test") === "radarr_ok") showToast("Radarr connection succeeded");
+  if (qs("test") === "radarr_fail") showToast("Radarr connection failed");
+  if (qs("test") === "emby_ok") showToast("Emby connection succeeded");
+  if (qs("test") === "emby_fail") showToast("Emby connection failed");
 });
 
 window.addEventListener("pageshow", reapplyPendingScrollAfterPageshow);

@@ -233,17 +233,21 @@ async def _wanted_queue_total(client: ArrClient, *, kind: str) -> int:
     return int(data.get("totalRecords") or 0)
 
 
-async def prune_old_records(session: AsyncSession) -> None:
+async def prune_old_records(session: AsyncSession, settings: AppSettings | None = None) -> None:
     """Delete old log/snapshot rows in one transaction batch (committed with the next run commit).
 
     - ``arr_action_log``: older than ``arr_search_cooldown_minutes * 2`` (minutes); if cooldown is 0, use 2880 min.
     - ``activity_log``, ``job_run_log``, ``app_snapshot``: older than ``log_retention_days`` (clamped 7–3650).
 
+    Pass ``settings`` when already loaded to avoid a duplicate ``AppSettings`` query (e.g. from ``run_once``).
+
     Never raises — failures are logged at WARNING only.
     """
     try:
         now = utc_now_naive()
-        row = (await session.execute(select(AppSettings).order_by(AppSettings.id.asc()).limit(1))).scalars().first()
+        row = settings
+        if row is None:
+            row = (await session.execute(select(AppSettings).order_by(AppSettings.id.asc()).limit(1))).scalars().first()
         if row is None:
             return
 
@@ -604,7 +608,8 @@ async def _run_once_inner(
     *,
     arr_manual_scope: ArrManualScope | None,
 ) -> RunResult:
-    await prune_old_records(session)
+    settings = await _get_or_create_settings(session)
+    await prune_old_records(session, settings)
 
     log = JobRunLog(started_at=utc_now_naive(), ok=False, message="")
     session.add(log)
@@ -612,7 +617,6 @@ async def _run_once_inner(
     await session.refresh(log)
 
     try:
-        settings = await _get_or_create_settings(session)
         son_key = resolve_sonarr_api_key(settings)
         rad_key = resolve_radarr_api_key(settings)
         em_key = resolve_emby_api_key(settings)

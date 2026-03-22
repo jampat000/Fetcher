@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.3] - 2026-03-23
+
+### Added
+
+- **Fetcher settings:** Tabbed layout (**Global**, **Security**, **Sonarr**, **Radarr**) — one section visible at a time; **Global** includes backup/restore and software updates; **Security** stays on separate forms. Initial tab respects **`tab=`**, **`sec=`**, **`import=`** (opens **Global**), **`test=`**, and hash anchors.
+- **`fetch_latest_app_snapshots`** (**`app/db.py`**): single query for latest **Sonarr** / **Radarr** / **Emby** **`app_snapshot`** rows.
+
+### Changed
+
+- **UI copy:** Sentence-style capitalization for buttons, labels, and hints where it was inconsistent; aligned **Sonarr** / **Radarr** lead lines and **Dashboard** hero labels (**Sonarr** / **Radarr upgrades**); connection test snapshot messages use **Connection test succeeded** / **Connection test failed**.
+- **Spacing:** Shared **`--space-*`** scale in **`app.css`**, **`.btn-row`** alignment, **`.hint`** rhythm with **`hint + .btn-row`**, utilities (**`lead-muted`**, **`gc-title--sm`**, **`settings-security-h3`**, etc.); removed inline **`style=`** from main templates.
+- **`prune_old_records`:** Optional **`settings`** argument so **`run_once`** does not load **`AppSettings`** twice per tick.
+
+### Fixed
+
+- **Dashboard:** Removed duplicate **`AppSnapshot`** queries on the same request (HTML page + **`_build_dashboard_status`**).
+- **HTTP status hints:** **401** hint uses lowercase **settings** in running text.
+
 ## [2.0.2] - 2026-03-23
 
 ### Added
@@ -475,7 +493,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 7. If a **tag** exists but **Releases → Latest** never updated (no **`FetcherSetup.exe`** for that tag), check that **`vX.Y.Z`** points to the commit you mean — run **`git fetch origin master --tags`**, then compare **`git rev-parse vX.Y.Z`** vs **`git rev-parse origin/master`**. **Manual** **Build installer** / **`gh workflow run … --ref vX.Y.Z`** uses the **workflow YAML from that tag’s commit** — an **old** tag SHA can **build** but **skip** **release**. **Fix:** move the tag to the correct commit and **re-push** the tag, **or** bump **`VERSION`** and release again, **or** **`gh release create`** + attach **`FetcherSetup.exe`** from a green run artifact.
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.2...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.3...HEAD
+[2.0.3]: https://github.com/jampat000/Fetcher/compare/v2.0.2...v2.0.3
 [2.0.2]: https://github.com/jampat000/Fetcher/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/jampat000/Fetcher/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/jampat000/Fetcher/compare/v1.0.44...v2.0.0

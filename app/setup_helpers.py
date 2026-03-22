@@ -81,7 +81,7 @@ async def test_emby_connection(url: str, api_key: str, user_id: str) -> tuple[bo
             if uid:
                 users = await c.users()
                 if not any(str(x.get("Id", "")) == uid for x in users):
-                    return False, "Emby User ID not found. Leave it blank unless you use per-user libraries."
+                    return False, "Emby user ID not found. Leave it blank unless you use per-user libraries."
         finally:
             await c.aclose()
         return True, "Emby responded OK."
