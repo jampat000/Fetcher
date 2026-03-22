@@ -36,6 +36,7 @@ def _init_grabby_test_database() -> None:
             row.auth_password_hash = hash_password("testpass12")
             row.auth_session_secret = "0123456789abcdef" * 4
             row.auth_username = "admin"
+            row.auth_ip_allowlist = ""
             row.updated_at = utc_now_naive()
             await session.commit()
 

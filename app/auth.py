@@ -1,4 +1,4 @@
-"""Grabby web UI authentication: bcrypt passwords, TimestampSigner session cookie, LAN bypass."""
+"""Grabby web UI authentication: bcrypt passwords, TimestampSigner session cookie, optional IP allowlist."""
 
 from __future__ import annotations
 
@@ -61,6 +61,51 @@ def request_prefers_json(request: Request) -> bool:
     return _wants_json(request)
 
 
+def is_ip_allowed(ip_str: str, allowlist_text: str) -> bool:
+    """True if ``ip_str`` matches a single IP or falls in a CIDR line in ``allowlist_text``."""
+    if not (allowlist_text or "").strip():
+        return False
+    try:
+        client = ipaddress.ip_address((ip_str or "").strip())
+    except ValueError:
+        return False
+    for raw_line in allowlist_text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        try:
+            addr = ipaddress.ip_address(line)
+        except ValueError:
+            try:
+                net = ipaddress.ip_network(line, strict=False)
+            except ValueError:
+                continue
+            else:
+                if client in net:
+                    return True
+        else:
+            if client == addr or (client.is_loopback and addr.is_loopback):
+                return True
+    return False
+
+
+def normalize_auth_ip_allowlist_input(raw: str) -> str:
+    """Strip whole value and each line; validate each non-empty non-comment line; rejoin with ``\\n``."""
+    entire = (raw or "").strip()
+    out: list[str] = []
+    for raw_line in entire.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        try:
+            ipaddress.ip_address(line)
+        except ValueError:
+            try:
+                ipaddress.ip_network(line, strict=False)
+            except ValueError as e:
+                raise ValueError(f"invalid allowlist entry: {line!r}") from e
+        out.append(line)
+    return "\n".join(out)
 
 
 def _signer_for_secret(secret: str) -> TimestampSigner:
@@ -161,6 +206,16 @@ async def bootstrap_auth_on_startup() -> None:
             settings.updated_at = utc_now_naive()
             await session.commit()
 
+        settings = await _get_or_create_settings(session)
+        if settings.auth_bypass_lan:
+            log.warning(
+                "auth_bypass_lan has been migrated to an explicit IP allowlist. The following ranges were added: "
+                "10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16. Review your Access Control settings to confirm."
+            )
+            settings.auth_bypass_lan = False
+            settings.updated_at = utc_now_naive()
+            await session.commit()
+
 
 async def require_auth(
     request: Request,
@@ -169,7 +224,7 @@ async def require_auth(
     settings = await _get_or_create_settings(session)
 
     # New installs and upgrades after adding auth: no password yet. Send everyone here
-    # first (LAN bypass does not apply — avoids an open LAN UI without choosing a password).
+    # first (IP allowlist does not apply — avoids an open UI without choosing a password).
     if not (settings.auth_password_hash or "").strip():
         if _wants_json(request):
             raise HTTPException(
@@ -181,14 +236,9 @@ async def require_auth(
             )
         raise GrabbyAuthRequired(RedirectResponse(url="/setup/0", status_code=303))
 
-    if settings.auth_bypass_lan:
-        ip_str = get_client_ip(request)
-        try:
-            ip_obj = ipaddress.ip_address(ip_str)
-        except ValueError:
-            ip_obj = None
-        if ip_obj is not None and ip_obj.is_private:
-            return
+    allow_txt = (settings.auth_ip_allowlist or "").strip()
+    if allow_txt and is_ip_allowed(get_client_ip(request), settings.auth_ip_allowlist):
+        return
 
     secret = (settings.auth_session_secret or "").strip()
     if not secret:

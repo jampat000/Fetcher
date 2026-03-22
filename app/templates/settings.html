@@ -17,13 +17,16 @@
 
   <div class="card module-content">
     <h2>Security</h2>
-    <p class="hint">Web UI sign-in. Session cookie is HTTP-only (7 days). Use <strong>Bypass auth on local LAN</strong> only on trusted private networks.</p>
+    <p class="hint">Web UI sign-in. Session cookie is HTTP-only (7 days). Optional <strong>Access Control</strong> below lets listed IPs or CIDR ranges reach Grabby without a password—use only on trusted networks.</p>
+    {% if request.query_params.get('saved') == '1' %}
+    <div class="banner banner-ok" role="status">Settings saved.</div>
+    {% elif request.query_params.get('save') == 'fail' and request.query_params.get('reason') == 'invalid_ip' %}
+    <div class="banner banner-warn" role="alert">Invalid IP or CIDR in allowlist — nothing was saved.</div>
+    {% endif %}
     {% if sec_notice == "user_ok" %}
     <div class="banner banner-ok" role="status">Username updated.</div>
     {% elif sec_notice == "pass_ok" %}
     <div class="banner banner-ok" role="status">Password updated. Sign in again on other browsers if needed.</div>
-    {% elif sec_notice == "lan_ok" %}
-    <div class="banner banner-ok" role="status">LAN bypass setting saved.</div>
     {% elif sec_notice == "bad_current" %}
     <div class="banner banner-warn" role="alert">Current password is incorrect.</div>
     {% elif sec_notice == "user_empty" %}
@@ -66,15 +69,13 @@
       </div>
     </form>
 
-    <h3 class="section" style="margin-top:1.5rem;">Local network</h3>
-    <form method="post" action="/settings/auth/lan">
-      <input type="hidden" name="auth_bypass_lan" value="0" />
-      <div class="checkline">
-        <input type="checkbox" name="auth_bypass_lan" id="auth_bypass_lan" value="1" {% if settings.auth_bypass_lan %}checked{% endif %} />
-        <label for="auth_bypass_lan"><strong>Bypass auth on local LAN</strong> (requests from <a href="https://docs.python.org/3/library/ipaddress.html#ipaddress.IPv4Address.is_private" rel="noopener noreferrer">private</a> IP ranges only)</label>
-      </div>
+    <h3 class="section" style="margin-top:1.5rem;">Access Control</h3>
+    <form method="post" action="/settings/auth/access_control" class="section">
+      <label for="auth_ip_allowlist">IP allowlist (optional)</label>
+      <textarea class="input" id="auth_ip_allowlist" name="auth_ip_allowlist" rows="6" style="font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; width: 100%; box-sizing: border-box;" placeholder="One IP or CIDR range per line, e.g.:&#10;192.168.1.50&#10;192.168.1.0/24&#10;10.0.0.0/8">{{ settings.auth_ip_allowlist or '' }}</textarea>
+      <p class="hint" style="margin-top:0.5rem;">Devices matching these IPs or ranges will access Grabby without a password. Supports individual IPs (192.168.1.50) and CIDR ranges (192.168.1.0/24). Leave empty to require login from all devices.</p>
       <div class="btnbar" style="margin-top:8px;">
-        <button class="btn secondary" type="submit">Save LAN setting</button>
+        <button class="btn secondary" type="submit">Save Access Control</button>
       </div>
     </form>
   </div>

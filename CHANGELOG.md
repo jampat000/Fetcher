@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.36] - 2026-03-22
+
+### Changed
+
+- **Access control:** Replaced **Bypass auth on local LAN** with an explicit **`auth_ip_allowlist`** (newline-separated IPs/CIDRs, validated with **`ipaddress`**). **`POST /settings/auth/access_control`** saves the list; invalid entries redirect with **`reason=invalid_ip`**. Migration **`_migrate_019`** converts **`auth_bypass_lan = 1`** to the three private IPv4 ranges and clears the flag. Startup still logs a warning if **`auth_bypass_lan`** is somehow **True** after migration.
+- **IP allowlist:** Single-address loopback entries treat **IPv4 and IPv6 loopback** as equivalent (e.g. **`127.0.0.1`** matches a **`::1`** client and vice versa).
+
+### Documentation
+
+- **`SECURITY.md`:** New **Access control** section on **`X-Forwarded-For`** substitution (private/loopback peers only), spoofing risk behind a reverse proxy, and leaving the allowlist empty when using proxy auth.
+
 ## [1.0.35] - 2026-03-22
 
 ### Changed
