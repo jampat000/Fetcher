@@ -2,7 +2,19 @@
 
 from __future__ import annotations
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import Page, sync_playwright
+
+from tests.e2e.constants import E2E_AUTH_PASSWORD, E2E_AUTH_USERNAME
+
+
+def _e2e_sign_in(page: Page, base: str) -> None:
+    """Session cookie for protected routes (matches seeded DB in e2e conftest)."""
+    root = base.rstrip("/") + "/"
+    page.goto(f"{base}/login")
+    page.locator("#username").fill(E2E_AUTH_USERNAME)
+    page.locator("#password").fill(E2E_AUTH_PASSWORD)
+    page.get_by_role("button", name="Sign in").click()
+    page.wait_for_url(root, timeout=15000)
 
 
 def test_healthz_visible(e2e_server: str) -> None:
@@ -35,6 +47,7 @@ def test_cleaner_fast_path(e2e_server: str) -> None:
         browser = p.chromium.launch()
         page = browser.new_page()
         try:
+            _e2e_sign_in(page, e2e_server)
             page.goto(f"{e2e_server}/cleaner")
             assert page.locator("text=Cleaner").first.is_visible()
             assert page.locator("text=Scan Emby for matches").first.is_visible()

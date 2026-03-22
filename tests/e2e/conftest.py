@@ -14,13 +14,17 @@ from pathlib import Path
 
 import pytest
 
+from tests.e2e.constants import E2E_AUTH_PASSWORD, E2E_AUTH_USERNAME
+
 REPO_ROOT: Path = Path(__file__).resolve().parents[2]
 BASE = "http://127.0.0.1:8767"
 
 
 def _init_e2e_database(db_path: Path) -> None:
-    """Create schema + seed password so /setup/1 is reachable (matches typical dev DB)."""
+    """Create schema + seed password so /setup/1 and authenticated routes work."""
     path_json = json.dumps(str(db_path.resolve()))
+    user_json = json.dumps(E2E_AUTH_USERNAME)
+    pass_json = json.dumps(E2E_AUTH_PASSWORD)
     script = f"""
 import asyncio
 import os
@@ -37,9 +41,9 @@ async def main():
     await migrate(engine)
     async with SessionLocal() as s:
         r = await _get_or_create_settings(s)
-        r.auth_password_hash = hash_password("e2e-pass-12")
+        r.auth_password_hash = hash_password({pass_json})
         r.auth_session_secret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-        r.auth_username = "admin"
+        r.auth_username = {user_json}
         r.updated_at = utc_now_naive()
         await s.commit()
 
