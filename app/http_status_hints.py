@@ -11,7 +11,7 @@ def hint_for_http_status(status: int) -> str:
     """One-line hint to append to logs or errors (no secrets)."""
     hints: dict[int, str] = {
         400: "Bad request — check URL and API version (Sonarr/Radarr v3).",
-        401: "Unauthorized — wrong or missing API key in Settings.",
+        401: "Unauthorized — wrong or missing API key in settings.",
         403: "Forbidden — API key may lack permission for this action.",
         404: "Not found — wrong base URL or API path (confirm Sonarr/Radarr v3 and port).",
         408: "Server reported timeout — try again; library or disk may be busy.",

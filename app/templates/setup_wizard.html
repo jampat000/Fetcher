@@ -8,7 +8,7 @@
     </div>
     <div class="setup-wizard-actions-top">
       {% if step > 0 %}
-      <a class="btn ghost" href="/settings">Skip wizard — open Settings</a>
+      <a class="btn ghost" href="/settings">Skip wizard — open settings</a>
       {% endif %}
     </div>
   </div>
@@ -52,7 +52,7 @@
       {% endif %}
       {% if step == 0 %}
       <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Sign in for Fetcher</h2>
-      <p class="hint">Set the <strong>username</strong> and <strong>password</strong> for this install (minimum 8 characters for the password). You’ll use these on every visit; you can change them later under <strong>Fetcher Settings</strong> → Security.</p>
+      <p class="hint">Set the <strong>username</strong> and <strong>password</strong> for this install (minimum 8 characters for the password). You’ll use these on every visit; you can change them later under <strong>Fetcher settings</strong> → Security.</p>
       <label for="setup_auth_username">Username</label>
       <input class="input" id="setup_auth_username" name="setup_auth_username" type="text" value="{{ settings.auth_username|default('admin', true) }}" autocomplete="username" />
       <label for="setup_auth_password">Password</label>
@@ -61,7 +61,7 @@
       {% elif step == 1 %}
       <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Sonarr</h2>
       <p class="hint">Base URL and API key from Sonarr → Settings → General. You can test the connection before saving.</p>
-      <p class="small muted" style="margin-top:0;">Example URL: <code class="code-inline">http://192.168.1.10:8989</code> · <code class="code-inline">http://localhost:8989</code> · reverse proxy: <code class="code-inline">https://sonarr.example.com</code></p>
+      <p class="small muted small--flush-top">Example URL: <code class="code-inline">http://192.168.1.10:8989</code> · <code class="code-inline">http://localhost:8989</code> · reverse proxy: <code class="code-inline">https://sonarr.example.com</code></p>
       <div class="checkline">
         <input type="checkbox" name="sonarr_enabled" id="sonarr_enabled" {% if settings.sonarr_enabled %}checked{% endif %} />
         <label for="sonarr_enabled"><strong>Enable</strong> Sonarr automation</label>
@@ -80,7 +80,7 @@
       {% elif step == 2 %}
       <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Radarr</h2>
       <p class="hint">Base URL and API key from Radarr → Settings → General.</p>
-      <p class="small muted" style="margin-top:0;">Example URL: <code class="code-inline">http://192.168.1.10:7878</code> · <code class="code-inline">http://localhost:7878</code> · reverse proxy: <code class="code-inline">https://radarr.example.com</code></p>
+      <p class="small muted small--flush-top">Example URL: <code class="code-inline">http://192.168.1.10:7878</code> · <code class="code-inline">http://localhost:7878</code> · reverse proxy: <code class="code-inline">https://radarr.example.com</code></p>
       <div class="checkline">
         <input type="checkbox" name="radarr_enabled" id="radarr_enabled" {% if settings.radarr_enabled %}checked{% endif %} />
         <label for="radarr_enabled"><strong>Enable</strong> Radarr automation</label>
@@ -99,7 +99,7 @@
       {% elif step == 3 %}
       <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Emby (Trimmer)</h2>
       <p class="hint">Optional. Server URL, API key (Emby → API Keys), and your user ID if required by your server policy.</p>
-      <p class="small muted" style="margin-top:0;">Example URL: <code class="code-inline">http://192.168.1.10:8096</code> · <code class="code-inline">http://localhost:8096</code> · reverse proxy: <code class="code-inline">https://emby.example.com</code></p>
+      <p class="small muted small--flush-top">Example URL: <code class="code-inline">http://192.168.1.10:8096</code> · <code class="code-inline">http://localhost:8096</code> · reverse proxy: <code class="code-inline">https://emby.example.com</code></p>
       <div class="checkline">
         <input type="checkbox" name="emby_enabled" id="emby_enabled" {% if settings.emby_enabled %}checked{% endif %} />
         <label for="emby_enabled"><strong>Enable</strong> Emby Trimmer</label>
@@ -119,7 +119,7 @@
 
       {% elif step == 4 %}
       <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Schedule &amp; timezone</h2>
-      <p class="hint">Set <strong>run intervals</strong> the same way as in the full app: <strong>Sonarr</strong> and <strong>Radarr</strong> each have their own minutes-between-runs (TV vs movies). <strong>Emby Trimmer</strong> has its own cadence. You can change these anytime under <strong>Fetcher Settings</strong> (Sonarr/Radarr cards) and <strong>Trimmer Settings</strong>. Times below use your timezone.</p>
+      <p class="hint">Set <strong>run intervals</strong> the same way as in the full app: <strong>Sonarr</strong> and <strong>Radarr</strong> each have their own minutes-between-runs (TV vs movies). <strong>Emby Trimmer</strong> has its own cadence. You can change these anytime under <strong>Fetcher settings</strong> (Sonarr/Radarr cards) and <strong>Trimmer settings</strong>. Times below use your timezone.</p>
       <label for="sonarr_interval_minutes">Sonarr run interval (minutes)</label>
       <input class="number" id="sonarr_interval_minutes" name="sonarr_interval_minutes" type="number" value="{{ settings.sonarr_interval_minutes | default(60, true) }}" min="5" max="10080" />
       <div class="small">Minimum time between Sonarr automation runs when its schedule window allows.</div>
@@ -128,7 +128,7 @@
       <div class="small">Minimum time between Radarr automation runs when its schedule window allows.</div>
       <label for="emby_interval_minutes">Emby Trimmer run interval (minutes)</label>
       <input class="number" id="emby_interval_minutes" name="emby_interval_minutes" type="number" value="{{ settings.emby_interval_minutes | default(60, true) }}" min="5" max="10080" />
-      <div class="small">Minimum time between Trimmer runs when Trimmer’s schedule and rules allow (same field as <strong>Trimmer Settings</strong>).</div>
+      <div class="small">Minimum time between Trimmer runs when Trimmer’s schedule and rules allow (same field as <strong>Trimmer settings</strong>).</div>
       <label for="timezone">Timezone</label>
       <select class="input" id="timezone" name="timezone">
         {% for val, label in timezone_choices %}
@@ -152,13 +152,13 @@
       <h2>Step {{ setup_steps_total }} of {{ setup_steps_total }} — You’re all set</h2>
       <p class="hint">Setup is complete. Use the links below when you want to fine-tune automation, Trimmer rules, or run a library match scan.</p>
       <ul class="small setup-done-list">
-        <li><a href="/settings"><strong>Fetcher Settings</strong></a> — Sonarr/Radarr search options, per-app schedules, max items, backups</li>
-        <li><a href="/trimmer/settings"><strong>Trimmer Settings</strong></a> — Emby Trimmer rules, dry-run vs live, scan limits, schedule</li>
+        <li><a href="/settings"><strong>Fetcher settings</strong></a> — Sonarr/Radarr search options, per-app schedules, max items, backups</li>
+        <li><a href="/trimmer/settings"><strong>Trimmer settings</strong></a> — Emby Trimmer rules, dry-run vs live, scan limits, schedule</li>
         <li><a href="/trimmer"><strong>Trimmer</strong></a> — <strong>Scan Emby for matches</strong> to preview what your rules would target (on-demand)</li>
       </ul>
       <div class="setup-wizard-footer">
         <a class="btn" href="/?setup=complete">Open dashboard</a>
-        <a class="btn ghost" href="/settings">Open Fetcher Settings</a>
+        <a class="btn ghost" href="/settings">Open Fetcher settings</a>
       </div>
     {% endif %}
   </div>

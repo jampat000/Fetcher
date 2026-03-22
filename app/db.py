@@ -4,10 +4,10 @@ import os
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
-from app.models import AppSettings
+from app.models import AppSettings, AppSnapshot
 
 
 def default_data_dir() -> Path:
@@ -52,4 +52,31 @@ async def _get_or_create_settings(session: AsyncSession) -> AppSettings:
     await session.commit()
     await session.refresh(row)
     return row
+
+
+async def fetch_latest_app_snapshots(session: AsyncSession) -> dict[str, AppSnapshot | None]:
+    """Latest AppSnapshot row per app in one query (sonarr / radarr / emby)."""
+    subq = (
+        select(AppSnapshot.app, func.max(AppSnapshot.id).label("mx"))
+        .where(AppSnapshot.app.in_(("sonarr", "radarr", "emby")))
+        .group_by(AppSnapshot.app)
+        .subquery()
+    )
+    rows = (
+        (
+            await session.execute(
+                select(AppSnapshot).join(
+                    subq,
+                    (AppSnapshot.app == subq.c.app) & (AppSnapshot.id == subq.c.mx),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    out: dict[str, AppSnapshot | None] = {"sonarr": None, "radarr": None, "emby": None}
+    for row in rows:
+        if row.app in out:
+            out[row.app] = row
+    return out
 

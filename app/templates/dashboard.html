@@ -16,25 +16,25 @@
     {% set upg_mov = (radarr.cutoff_unmet_total if radarr else 0) %}
     <div class="hero-stat hs-tv">
       <div class="hs-glow" aria-hidden="true"></div>
-      <div class="hs-lbl">TV Missing</div>
+      <div class="hs-lbl">TV missing</div>
       <div class="hs-val" data-target="{{ tv_miss }}">0</div>
       <div class="hs-sub">Episodes in Sonarr queue</div>
     </div>
     <div class="hero-stat hs-mov">
       <div class="hs-glow" aria-hidden="true"></div>
-      <div class="hs-lbl">Movies Missing</div>
+      <div class="hs-lbl">Movies missing</div>
       <div class="hs-val" data-target="{{ mov_miss }}">0</div>
       <div class="hs-sub">In Radarr queue</div>
     </div>
     <div class="hero-stat hs-upg-tv">
       <div class="hs-glow" aria-hidden="true"></div>
-      <div class="hs-lbl">TV Upgrades</div>
+      <div class="hs-lbl">Sonarr upgrades</div>
       <div class="hs-val" data-target="{{ upg_tv }}">0</div>
       <div class="hs-sub">Sonarr cutoff unmet</div>
     </div>
     <div class="hero-stat hs-upg-mov">
       <div class="hs-glow" aria-hidden="true"></div>
-      <div class="hs-lbl">Movie Upgrades</div>
+      <div class="hs-lbl">Radarr upgrades</div>
       <div class="hs-val" data-target="{{ upg_mov }}">0</div>
       <div class="hs-sub">Radarr cutoff unmet</div>
     </div>
@@ -44,7 +44,7 @@
   <div class="banner banner-ok setup-complete-banner dashboard-dismissible gc card" role="status" data-dismiss-storage="fetcher_v1_dismiss_setup_complete_banner">
     <div class="dashboard-dismissible-inner">
       <div>
-        <strong>Setup complete.</strong> You can fine-tune Sonarr, Radarr, Emby, and schedules anytime in <a href="/settings">Settings</a>.
+        <strong>Setup complete.</strong> You can fine-tune Sonarr, Radarr, Emby, and schedules anytime in <a href="/settings">settings</a>.
       </div>
       <button type="button" class="dashboard-dismiss-btn" data-dismiss-btn aria-label="Dismiss">×</button>
     </div>
@@ -57,7 +57,7 @@
       <div>
         <div class="gc-title">Connect your stack</div>
         <p class="hint">Sonarr, Radarr, and Emby are not configured yet. Run the guided wizard to add URLs, API keys, and test each connection.</p>
-        <p style="margin:0;"><a class="btn" href="/setup">Run setup wizard</a></p>
+        <p class="dashboard-cta"><a class="btn" href="/setup">Run setup wizard</a></p>
       </div>
       <button type="button" class="dashboard-dismiss-btn" data-dismiss-btn aria-label="Dismiss suggestion">×</button>
     </div>
@@ -72,7 +72,7 @@
         <div class="automation-spec-label">Last run</div>
         <div class="automation-spec-value" id="dash-automation-last">
           <span id="dash-last-started">{{ last_run.started_local }}</span>
-          {% if last_run.ok %}<span class="status-pill status-pill-ok">OK</span>{% else %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
+          {% if last_run.ok %}<span class="status-pill status-pill-ok">Succeeded</span>{% else %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
         </div>
       </div>
       {% else %}
@@ -140,7 +140,7 @@
           <div class="small muted emby-trimmer-disabled-summary">
             <span class="badge {% if settings.emby_dry_run %}b-off{% else %}b-live{% endif %}">{{ "Dry run" if settings.emby_dry_run else "Live delete" }}</span>
             <span class="badge {% if emby_matched_n > 0 %}b-warn{% else %}b-off{% endif %}">{{ emby_matched_n }} matched</span>
-            <a href="/trimmer/settings">Trimmer Settings</a>
+            <a href="/trimmer/settings">Trimmer settings</a>
           </div>
         {% else %}
           <div class="m-grid dashboard-emby-summary-grid">
@@ -160,8 +160,8 @@
     </div>
 
     <div class="btn-row dashboard-quick-links">
-      <a class="btn" href="/settings">Fetcher Settings</a>
-      <a class="btn secondary" href="/trimmer/settings">Trimmer Settings</a>
+      <a class="btn" href="/settings">Fetcher settings</a>
+      <a class="btn secondary" href="/trimmer/settings">Trimmer settings</a>
       <a class="btn secondary" href="/trimmer">Scan library</a>
       <a class="btn secondary" href="/logs">Run logs</a>
     </div>

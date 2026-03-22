@@ -82,7 +82,7 @@ def test_settings_page_has_forms(monkeypatch: pytest.MonkeyPatch) -> None:
     assert b"sonarr_url" in r.content
     assert b"radarr_url" in r.content
     assert b"section-trimmer" not in r.content
-    assert b"Trimmer Settings" in r.content
+    assert b"Trimmer settings" in r.content
 
 
 def test_trimmer_settings_has_content_criteria(monkeypatch: pytest.MonkeyPatch) -> None:

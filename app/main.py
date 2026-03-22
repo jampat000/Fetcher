@@ -18,7 +18,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import _get_or_create_settings, db_path, engine, get_session
+from app.db import _get_or_create_settings, db_path, engine, fetch_latest_app_snapshots, get_session
 from app.migrations import migrate
 import httpx
 
@@ -565,7 +565,12 @@ async def setup_wizard_save(
     return RedirectResponse(f"/setup/{nxt}", status_code=303)
 
 
-async def _build_dashboard_status(session: AsyncSession, tz: str) -> dict[str, Any]:
+async def _build_dashboard_status(
+    session: AsyncSession,
+    tz: str,
+    *,
+    snapshots: dict[str, AppSnapshot | None] | None = None,
+) -> dict[str, Any]:
     """Shared JSON payload for dashboard live polling and server-rendered page."""
     last_run = (
         (await session.execute(select(JobRunLog).order_by(desc(JobRunLog.id)).limit(1))).scalars().first()
@@ -581,21 +586,10 @@ async def _build_dashboard_status(session: AsyncSession, tz: str) -> dict[str, A
         }
     next_tick = scheduler.next_fetcher_run_at()
     next_tick_local = _fmt_local(next_tick, tz) if next_tick else ""
-    sonarr_snap = (
-        (await session.execute(select(AppSnapshot).where(AppSnapshot.app == "sonarr").order_by(desc(AppSnapshot.id)).limit(1)))
-        .scalars()
-        .first()
-    )
-    radarr_snap = (
-        (await session.execute(select(AppSnapshot).where(AppSnapshot.app == "radarr").order_by(desc(AppSnapshot.id)).limit(1)))
-        .scalars()
-        .first()
-    )
-    emby_snap = (
-        (await session.execute(select(AppSnapshot).where(AppSnapshot.app == "emby").order_by(desc(AppSnapshot.id)).limit(1)))
-        .scalars()
-        .first()
-    )
+    snaps = snapshots if snapshots is not None else await fetch_latest_app_snapshots(session)
+    sonarr_snap = snaps.get("sonarr")
+    radarr_snap = snaps.get("radarr")
+    emby_snap = snaps.get("emby")
     return {
         "last_run": last_run_display,
         "next_scheduler_tick_local": next_tick_local,
@@ -635,29 +629,18 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
         }
         for e in activity
     ]
-    sonarr_snap = (
-        (await session.execute(select(AppSnapshot).where(AppSnapshot.app == "sonarr").order_by(desc(AppSnapshot.id)).limit(1)))
-        .scalars()
-        .first()
-    )
-    radarr_snap = (
-        (await session.execute(select(AppSnapshot).where(AppSnapshot.app == "radarr").order_by(desc(AppSnapshot.id)).limit(1)))
-        .scalars()
-        .first()
-    )
-    emby_snap = (
-        (await session.execute(select(AppSnapshot).where(AppSnapshot.app == "emby").order_by(desc(AppSnapshot.id)).limit(1)))
-        .scalars()
-        .first()
-    )
     suggest_setup_wizard = not (
         (settings.sonarr_url or "").strip()
         or (settings.radarr_url or "").strip()
         or (settings.emby_url or "").strip()
     )
-    dash_status = await _build_dashboard_status(session, tz)
+    snapshots = await fetch_latest_app_snapshots(session)
+    dash_status = await _build_dashboard_status(session, tz, snapshots=snapshots)
     last_run_display = dash_status["last_run"]
     next_tick_local = dash_status["next_scheduler_tick_local"]
+    sonarr_snap = snapshots.get("sonarr")
+    radarr_snap = snapshots.get("radarr")
+    emby_snap = snapshots.get("emby")
     emby_schedule_start_display = _to_12h(settings.emby_schedule_start or "00:00", "12:00 AM")
     emby_schedule_end_display = _to_12h(settings.emby_schedule_end or "23:59", "11:59 PM")
     sonarr_schedule_start_display = _to_12h(settings.sonarr_schedule_start or "00:00", "12:00 AM")
@@ -776,8 +759,8 @@ async def activity_page(request: Request, session: AsyncSession = Depends(get_se
         {
             "app_name": APP_NAME,
             "app_tagline": APP_TAGLINE,
-            "title": f"{APP_NAME} — Grabbed",
-            "subtitle": "What was grabbed",
+            "title": f"{APP_NAME} — Activity",
+            "subtitle": "What Fetcher grabbed",
             "activity": activity_display,
             "now": utc_now_naive(),
             "now_local": _now_local(tz),
@@ -790,16 +773,9 @@ async def activity_page(request: Request, session: AsyncSession = Depends(get_se
 @app.get("/settings", response_class=HTMLResponse, dependencies=_AUTH_DEPS)
 async def settings_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await _get_or_create_settings(session)
-    sonarr_snap = (
-        (await session.execute(select(AppSnapshot).where(AppSnapshot.app == "sonarr").order_by(desc(AppSnapshot.id)).limit(1)))
-        .scalars()
-        .first()
-    )
-    radarr_snap = (
-        (await session.execute(select(AppSnapshot).where(AppSnapshot.app == "radarr").order_by(desc(AppSnapshot.id)).limit(1)))
-        .scalars()
-        .first()
-    )
+    snaps = await fetch_latest_app_snapshots(session)
+    sonarr_snap = snaps.get("sonarr")
+    radarr_snap = snaps.get("radarr")
     tz = settings.timezone or "UTC"
     time_choices = schedule_time_dropdown_choices(step_minutes=30)
     time_choice_keys = {v for v, _ in time_choices}
@@ -816,7 +792,7 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
         {
             "app_name": APP_NAME,
             "app_tagline": APP_TAGLINE,
-            "title": f"{APP_NAME} — Fetcher Settings",
+            "title": f"{APP_NAME} — Fetcher settings",
             "subtitle": "Configure connections, schedules, and limits",
             "settings": settings,
             "sec_notice": sec_notice,
@@ -947,11 +923,7 @@ async def settings_backup_import(
 @app.get("/trimmer/settings", response_class=HTMLResponse, dependencies=_AUTH_DEPS)
 async def trimmer_settings_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await _get_or_create_settings(session)
-    emby_snap = (
-        (await session.execute(select(AppSnapshot).where(AppSnapshot.app == "emby").order_by(desc(AppSnapshot.id)).limit(1)))
-        .scalars()
-        .first()
-    )
+    emby_snap = (await fetch_latest_app_snapshots(session)).get("emby")
     tz = settings.timezone or "UTC"
     time_choices = schedule_time_dropdown_choices(step_minutes=30)
     time_choice_keys = {v for v, _ in time_choices}
@@ -964,7 +936,7 @@ async def trimmer_settings_page(request: Request, session: AsyncSession = Depend
         {
             "app_name": APP_NAME,
             "app_tagline": APP_TAGLINE,
-            "title": f"{APP_NAME} — Trimmer Settings",
+            "title": f"{APP_NAME} — Trimmer settings",
             "subtitle": "Configure Emby Trimmer and schedule",
             "settings": settings,
             "emby": emby_snap,
@@ -1034,7 +1006,7 @@ async def trimmer_page(request: Request, session: AsyncSession = Depends(get_ses
     if not settings.emby_url or not _emby_key:
         error = "Emby URL and API key are required."
     elif movie_rating_below <= 0 and movie_unwatched_days <= 0 and (not tv_delete_watched) and tv_unwatched_days <= 0:
-        error = "No rules are enabled. Set at least one Emby Trimmer rule in Trimmer Settings."
+        error = "No rules are enabled. Set at least one Emby Trimmer rule in Trimmer settings."
     elif not run_emby_scan:
         # Fast path: sidebar / default navigation should not scan the whole library.
         scan_prompt = True
@@ -1460,11 +1432,11 @@ async def test_sonarr(session: AsyncSession = Depends(get_session)) -> RedirectR
             await c.health()
         finally:
             await c.aclose()
-        session.add(AppSnapshot(app="sonarr", ok=True, status_message="Test OK", missing_total=0, cutoff_unmet_total=0))
+        session.add(AppSnapshot(app="sonarr", ok=True, status_message="Connection test succeeded.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
         return RedirectResponse("/settings?test=sonarr_ok", status_code=303)
     except httpx.HTTPError as e:
-        session.add(AppSnapshot(app="sonarr", ok=False, status_message=f"Test failed: {type(e).__name__}: {e}", missing_total=0, cutoff_unmet_total=0))
+        session.add(AppSnapshot(app="sonarr", ok=False, status_message=f"Connection test failed: {type(e).__name__}: {e}", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
         return RedirectResponse("/settings?test=sonarr_fail", status_code=303)
 
@@ -1478,11 +1450,11 @@ async def test_radarr(session: AsyncSession = Depends(get_session)) -> RedirectR
             await c.health()
         finally:
             await c.aclose()
-        session.add(AppSnapshot(app="radarr", ok=True, status_message="Test OK", missing_total=0, cutoff_unmet_total=0))
+        session.add(AppSnapshot(app="radarr", ok=True, status_message="Connection test succeeded.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
         return RedirectResponse("/settings?test=radarr_ok", status_code=303)
     except httpx.HTTPError as e:
-        session.add(AppSnapshot(app="radarr", ok=False, status_message=f"Test failed: {type(e).__name__}: {e}", missing_total=0, cutoff_unmet_total=0))
+        session.add(AppSnapshot(app="radarr", ok=False, status_message=f"Connection test failed: {type(e).__name__}: {e}", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
         return RedirectResponse("/settings?test=radarr_fail", status_code=303)
 
@@ -1493,11 +1465,11 @@ async def test_emby(session: AsyncSession = Depends(get_session)) -> RedirectRes
     emby_url = _normalize_base_url(settings.emby_url)
     emby_token = resolve_emby_api_key(settings)
     if not emby_url:
-        session.add(AppSnapshot(app="emby", ok=False, status_message="Test failed: Emby URL is required.", missing_total=0, cutoff_unmet_total=0))
+        session.add(AppSnapshot(app="emby", ok=False, status_message="Connection test failed: Emby URL is required.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
         return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
     if not emby_token:
-        session.add(AppSnapshot(app="emby", ok=False, status_message="Test failed: Emby API key is required.", missing_total=0, cutoff_unmet_total=0))
+        session.add(AppSnapshot(app="emby", ok=False, status_message="Connection test failed: Emby API key is required.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
         return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
     if _looks_like_url(emby_token):
@@ -1505,7 +1477,7 @@ async def test_emby(session: AsyncSession = Depends(get_session)) -> RedirectRes
             AppSnapshot(
                 app="emby",
                 ok=False,
-                status_message="Test failed: Emby API key looks like a URL. Paste the key from Emby Dashboard -> Advanced -> API Keys.",
+                status_message="Connection test failed: Emby API key looks like a URL. Paste the key from Emby Dashboard → Advanced → API keys.",
                 missing_total=0,
                 cutoff_unmet_total=0,
             )
@@ -1520,21 +1492,21 @@ async def test_emby(session: AsyncSession = Depends(get_session)) -> RedirectRes
                 users = await c.users()
                 ok = any(str(u.get("Id", "")) == settings.emby_user_id for u in users)
                 if not ok:
-                    raise ValueError("Configured Emby User ID was not found.")
+                    raise ValueError("Configured Emby user ID was not found.")
         finally:
             await c.aclose()
-        session.add(AppSnapshot(app="emby", ok=True, status_message="Test OK", missing_total=0, cutoff_unmet_total=0))
+        session.add(AppSnapshot(app="emby", ok=True, status_message="Connection test succeeded.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
         return RedirectResponse("/trimmer/settings?test=emby_ok", status_code=303)
     except httpx.HTTPStatusError as e:
         detail = f"HTTP {e.response.status_code}: {e}"
         if e.response.status_code in (401, 403):
             detail += " | Check Emby API key permissions and base URL."
-        session.add(AppSnapshot(app="emby", ok=False, status_message=f"Test failed: {detail}", missing_total=0, cutoff_unmet_total=0))
+        session.add(AppSnapshot(app="emby", ok=False, status_message=f"Connection test failed: {detail}", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
         return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
     except (httpx.HTTPError, ValueError) as e:
-        session.add(AppSnapshot(app="emby", ok=False, status_message=f"Test failed: {type(e).__name__}: {e}", missing_total=0, cutoff_unmet_total=0))
+        session.add(AppSnapshot(app="emby", ok=False, status_message=f"Connection test failed: {type(e).__name__}: {e}", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
         return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
 
@@ -1552,13 +1524,13 @@ async def test_emby_from_form(
     emby_api_key_n = (emby_api_key or "").strip()
     emby_user_id_n = (emby_user_id or "").strip()
     if not emby_url_n:
-        session.add(AppSnapshot(app="emby", ok=False, status_message="Test failed: Emby URL is required.", missing_total=0, cutoff_unmet_total=0))
+        session.add(AppSnapshot(app="emby", ok=False, status_message="Connection test failed: Emby URL is required.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
         return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
     row = await _get_or_create_settings(session)
     emby_token_n = resolve_emby_api_key(row, form=emby_api_key)
     if not emby_token_n:
-        session.add(AppSnapshot(app="emby", ok=False, status_message="Test failed: Emby API key is required.", missing_total=0, cutoff_unmet_total=0))
+        session.add(AppSnapshot(app="emby", ok=False, status_message="Connection test failed: Emby API key is required.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
         return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
     if _looks_like_url(emby_token_n):
@@ -1566,7 +1538,7 @@ async def test_emby_from_form(
             AppSnapshot(
                 app="emby",
                 ok=False,
-                status_message="Test failed: Emby API key looks like a URL. Paste the key from Emby Dashboard -> Advanced -> API Keys.",
+                status_message="Connection test failed: Emby API key looks like a URL. Paste the key from Emby Dashboard → Advanced → API keys.",
                 missing_total=0,
                 cutoff_unmet_total=0,
             )
@@ -1588,21 +1560,21 @@ async def test_emby_from_form(
                 users = await c.users()
                 ok = any(str(u.get("Id", "")) == emby_user_id_n for u in users)
                 if not ok:
-                    raise ValueError("Configured Emby User ID was not found.")
+                    raise ValueError("Configured Emby user ID was not found.")
         finally:
             await c.aclose()
-        session.add(AppSnapshot(app="emby", ok=True, status_message="Test OK", missing_total=0, cutoff_unmet_total=0))
+        session.add(AppSnapshot(app="emby", ok=True, status_message="Connection test succeeded.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
         return RedirectResponse("/trimmer/settings?test=emby_ok", status_code=303)
     except httpx.HTTPStatusError as e:
         detail = f"HTTP {e.response.status_code}: {e}"
         if e.response.status_code in (401, 403):
             detail += " | Check Emby API key permissions and base URL."
-        session.add(AppSnapshot(app="emby", ok=False, status_message=f"Test failed: {detail}", missing_total=0, cutoff_unmet_total=0))
+        session.add(AppSnapshot(app="emby", ok=False, status_message=f"Connection test failed: {detail}", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
         return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
     except (httpx.HTTPError, ValueError) as e:
-        session.add(AppSnapshot(app="emby", ok=False, status_message=f"Test failed: {type(e).__name__}: {e}", missing_total=0, cutoff_unmet_total=0))
+        session.add(AppSnapshot(app="emby", ok=False, status_message=f"Connection test failed: {type(e).__name__}: {e}", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
         return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
 

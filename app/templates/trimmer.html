@@ -5,14 +5,14 @@
   <div class="page-head">
     <div>
       <h1 class="ph-title">Trimmer</h1>
-      <p>Review <strong>Emby Trimmer</strong> candidates clearly before scheduled delete runs. Rules and schedules live under <a href="/trimmer/settings">Trimmer Settings</a>.</p>
+      <p>Review <strong>Emby Trimmer</strong> candidates clearly before scheduled delete runs. Rules and schedules live under <a href="/trimmer/settings">Trimmer settings</a>.</p>
     </div>
   </div>
 
   {{ trimmer_area_tabs('review') }}
 
   <div class="card gc">
-      <div class="gc-title">Trimmer Review</div>
+      <div class="gc-title">Trimmer review</div>
       <div class="hint">
         See <strong>which titles in Emby match your Emby Trimmer rules</strong> — same checks the scheduler uses.
         <strong>Scan Emby for matches</strong> loads from Emby; with <strong>dry run</strong> on you get a preview only, with <strong>dry run</strong> off matched items are removed during that scan (up to max rows). Opening <strong>Trimmer</strong> without scanning stays fast.
@@ -25,7 +25,7 @@
       </div>
       <div class="m">
         <div class="label">Mode</div>
-        <div class="value {% if dry_run %}mode-safe{% else %}mode-live{% endif %}">{{ "DRY RUN" if dry_run else "LIVE DELETE" }}</div>
+        <div class="value {% if dry_run %}mode-safe{% else %}mode-live{% endif %}">{{ "Dry run" if dry_run else "Live delete" }}</div>
       </div>
       <div class="m">
         <div class="label">User</div>
@@ -40,7 +40,7 @@
 
     {% if not dry_run %}
       <div class="section">
-        <p class="preview-warning">Live delete mode is enabled in Trimmer Settings. Scheduled runs can delete matching items.</p>
+        <p class="preview-warning">Live delete mode is enabled in Trimmer settings. Scheduled runs can delete matching items.</p>
       </div>
     {% endif %}
 
