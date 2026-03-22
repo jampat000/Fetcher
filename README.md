@@ -89,6 +89,8 @@ You **do not** need a **`dev`** branch on GitHub — keep “dev” **local** (y
 
 **Habit:** on a **named branch** (e.g. **`release/v1.0.40`** from **`origin/master`**), bump **`VERSION`** + **`CHANGELOG.md`**, commit, then:
 
+**Date:** For each **`## [X.Y.Z] - YYYY-MM-DD`** line, use the machine **system date** at ship time (Windows PowerShell: **`Get-Date -Format yyyy-MM-dd`**). Do not guess the calendar day.
+
 ```powershell
 .\scripts\ship-release.ps1
 ```

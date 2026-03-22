@@ -6,7 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [1.0.43] - 2026-03-23
+## [1.0.44] - 2026-03-22
+
+### Fixed
+
+- **CHANGELOG:** **1.0.43** release header dated **2026-03-22** (maintainer **system date** on ship day), replacing an incorrect **2026-03-23** in published history.
+
+## [1.0.43] - 2026-03-22
 
 ### Fixed
 
@@ -422,7 +428,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Releasing (maintainers)
 
-1. Update this file: move **`[Unreleased]`** items under a new **`[X.Y.Z] - YYYY-MM-DD`** heading, then keep **`[Unreleased]`** empty (or note pending work).
+1. Update this file: move **`[Unreleased]`** items under a new **`[X.Y.Z] - YYYY-MM-DD`** heading (**use the machine system date at ship time** — Windows PowerShell: **`Get-Date -Format yyyy-MM-dd`**; do not guess), then keep **`[Unreleased]`** empty (or note pending work).
 2. Bump **`VERSION`** to match the release.
 3. **Bump and ship (shortcut):** On a **release branch** (e.g. **`release/vX.Y.Z`**), run **`.\scripts\ship-release.ps1`** — pushes that branch to **`origin`** and dispatches **Tag release (from VERSION)** (creates **`vX.Y.Z`** if missing + **Build installer**). You do **not** need a **`dev`** branch on GitHub; local dev is **`dev-start.ps1`** only. Then open a **PR `release/v…` → `master`** so the default branch matches (**`master`** is protected).
 4. **Classic path (merge first):** Commit on **`release/vX.Y.Z`** from **`origin/master`**, open **PR → `master`**, merge when checks pass. A push to **`master`** that changes **`VERSION`** also auto-runs **Tag release**. After merge: **`git switch master && git pull --ff-only`**, delete the release branch as needed.
