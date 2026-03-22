@@ -487,7 +487,9 @@ async def setup_wizard_save(
     emby_url: str = Form(""),
     emby_api_key: str = Form(""),
     emby_user_id: str = Form(""),
-    run_interval_minutes: int = Form(60),
+    sonarr_interval_minutes: int = Form(60),
+    radarr_interval_minutes: int = Form(60),
+    emby_interval_minutes: int = Form(60),
     timezone: str = Form("UTC"),
     session: AsyncSession = Depends(get_session),
 ) -> RedirectResponse:
@@ -541,15 +543,17 @@ async def setup_wizard_save(
             row.emby_api_key = (emby_api_key or "").strip()
             row.emby_user_id = (emby_user_id or "").strip()
         elif step == 4:
-            # Starting run interval for Sonarr, Radarr, and Emby Trimmer (no separate global scheduler base).
-            try:
-                im = int(run_interval_minutes)
-            except (TypeError, ValueError):
-                im = 60
-            im = max(5, min(7 * 24 * 60, im))
-            row.sonarr_interval_minutes = im
-            row.radarr_interval_minutes = im
-            row.emby_interval_minutes = im
+            # Per-app intervals (same as Fetcher Settings / Trimmer Settings).
+            def _clamp_interval(raw: object) -> int:
+                try:
+                    v = int(raw)  # type: ignore[arg-type]
+                except (TypeError, ValueError):
+                    v = 60
+                return max(5, min(7 * 24 * 60, v))
+
+            row.sonarr_interval_minutes = _clamp_interval(sonarr_interval_minutes)
+            row.radarr_interval_minutes = _clamp_interval(radarr_interval_minutes)
+            row.emby_interval_minutes = _clamp_interval(emby_interval_minutes)
             row.timezone = _resolve_timezone_name(timezone)
         row.updated_at = utc_now_naive()
         if not await _try_commit_and_reschedule(session):

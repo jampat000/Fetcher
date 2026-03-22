@@ -21,9 +21,17 @@ def _resolve_timezone_name(raw: str) -> str:
     return _TZ_ALIASES.get(v.upper(), v)
 
 
+# Whole-field autofill mistakes (e.g. browser puts sign-in username into "URL").
+_AMBIGUOUS_URL_TOKENS = frozenset(
+    {"admin", "user", "root", "password", "login", "username", "email", "name"}
+)
+
+
 def _normalize_base_url(raw: str) -> str:
     raw = (raw or "").strip()
     if not raw:
+        return ""
+    if raw.lower() in _AMBIGUOUS_URL_TOKENS:
         return ""
     # If user enters "10.0.0.5:8989", assume http://
     if "://" not in raw:

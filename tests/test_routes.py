@@ -75,6 +75,7 @@ def test_cleaner_default_skips_emby_client_when_ready(monkeypatch) -> None:
     assert resp.status_code == 200
     assert b"No scan yet" in resp.content
     assert b"Scan Emby for matches" in resp.content
+    assert b"trimmer-area-tabs" in resp.content
 
 
 def test_cleaner_preview_query_does_not_trigger_scan(monkeypatch) -> None:

@@ -1,0 +1,13 @@
+{# Top tabs when working in the Trimmer feature (review vs settings). #}
+{% macro trimmer_area_tabs(active) %}
+<nav class="settings-tabs trimmer-area-tabs" aria-label="Trimmer">
+  <a href="/trimmer" class="settings-tab {% if active == 'review' %}is-active{% endif %}">
+    <span class="settings-tab-dot green" aria-hidden="true"></span>
+    Review
+  </a>
+  <a href="/trimmer/settings" class="settings-tab {% if active == 'settings' %}is-active{% endif %}">
+    <span class="settings-tab-dot amber" aria-hidden="true"></span>
+    Settings
+  </a>
+</nav>
+{% endmacro %}
