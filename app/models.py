@@ -84,6 +84,8 @@ class AppSettings(Base):
     auth_username: Mapped[str] = mapped_column(Text, default="admin")
     auth_password_hash: Mapped[str] = mapped_column(Text, default="")
     auth_bypass_lan: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Newline-separated IPs and CIDR ranges; empty = no IP-based bypass.
+    auth_ip_allowlist: Mapped[str] = mapped_column(Text, default="")
     auth_session_secret: Mapped[str] = mapped_column(Text, default="")
 
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)

@@ -321,6 +321,23 @@ async def _migrate_018_auth_columns(engine: AsyncEngine) -> None:
         await _add_column(engine, table=table, ddl="auth_session_secret TEXT NOT NULL DEFAULT ''")
 
 
+_MIGRATE_019_PRIVATE_LAN_RANGES = "10.0.0.0/8\n172.16.0.0/12\n192.168.0.0/16"
+
+
+async def _migrate_019_auth_ip_allowlist(engine: AsyncEngine) -> None:
+    table = "app_settings"
+    if not await _has_column(engine, table=table, column="auth_ip_allowlist"):
+        await _add_column(engine, table=table, ddl="auth_ip_allowlist TEXT NOT NULL DEFAULT ''")
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                f"UPDATE {table} SET auth_ip_allowlist = :ranges, auth_bypass_lan = 0 "
+                f"WHERE auth_bypass_lan = 1"
+            ),
+            {"ranges": _MIGRATE_019_PRIVATE_LAN_RANGES},
+        )
+
+
 async def migrate(engine: AsyncEngine) -> None:
     await _migrate_001_sonarr_per_app_columns(engine)
     await _migrate_002_radarr_per_app_columns(engine)
@@ -340,3 +357,4 @@ async def migrate(engine: AsyncEngine) -> None:
     await _migrate_016_create_arr_action_log(engine)
     await _migrate_017_drop_removed_global_arr_columns(engine)
     await _migrate_018_auth_columns(engine)
+    await _migrate_019_auth_ip_allowlist(engine)

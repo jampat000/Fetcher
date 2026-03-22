@@ -5,11 +5,11 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-
-pytestmark = pytest.mark.no_auth_override
 from fastapi.testclient import TestClient
 
 from app.auth import hash_password
+
+pytestmark = pytest.mark.no_auth_override
 from app.db import SessionLocal, _get_or_create_settings
 from app.main import app
 from app.time_util import utc_now_naive
@@ -33,6 +33,7 @@ async def _restore_seeded_auth_state() -> None:
         r.auth_password_hash = hash_password("testpass12")
         r.auth_username = "admin"
         r.auth_bypass_lan = False
+        r.auth_ip_allowlist = ""
         r.sonarr_url = ""
         r.updated_at = utc_now_naive()
         await s.commit()
@@ -54,6 +55,7 @@ async def _clear_password_and_bypass() -> None:
         r = await _get_or_create_settings(s)
         r.auth_password_hash = ""
         r.auth_bypass_lan = False
+        r.auth_ip_allowlist = ""
         r.updated_at = utc_now_naive()
         await s.commit()
 
@@ -90,18 +92,35 @@ def test_no_password_json_home_returns_401_with_setup_path(client_real_auth: Tes
     assert "password" in (detail.get("message") or "").lower()
 
 
-def test_lan_bypass_does_not_skip_setup_when_no_password(client_real_auth: TestClient) -> None:
-    async def enable_bypass() -> None:
+def test_ip_allowlist_does_not_skip_setup_when_no_password(client_real_auth: TestClient) -> None:
+    async def set_allowlist() -> None:
         async with SessionLocal() as s:
             r = await _get_or_create_settings(s)
-            r.auth_bypass_lan = True
+            r.auth_ip_allowlist = "127.0.0.1"
             r.updated_at = utc_now_naive()
             await s.commit()
 
-    asyncio.run(enable_bypass())
+    asyncio.run(set_allowlist())
     r = client_real_auth.get("/", follow_redirects=False)
     assert r.status_code == 303
     assert r.headers.get("location", "").endswith("/setup/0")
+
+
+def test_ip_allowlist_bypasses_when_password_set_and_ip_matches(
+    client_real_auth: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def password_plus_allowlist() -> None:
+        async with SessionLocal() as s:
+            r = await _get_or_create_settings(s)
+            r.auth_password_hash = hash_password("testpass12")
+            r.auth_ip_allowlist = "127.0.0.1"
+            r.updated_at = utc_now_naive()
+            await s.commit()
+
+    asyncio.run(password_plus_allowlist())
+    monkeypatch.setattr("app.auth.get_client_ip", lambda _request: "127.0.0.1")
+    r = client_real_auth.get("/", follow_redirects=False)
+    assert r.status_code == 200
 
 
 def test_setup_zero_upgrade_banner_when_sonarr_configured(client_real_auth: TestClient) -> None:

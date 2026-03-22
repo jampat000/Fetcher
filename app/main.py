@@ -76,6 +76,7 @@ from app.auth import (
     get_client_ip,
     hash_password,
     login_rate_limited,
+    normalize_auth_ip_allowlist_input,
     record_login_failure,
     request_prefers_json,
     require_auth,
@@ -834,17 +835,21 @@ async def settings_auth_credentials(
     return RedirectResponse("/settings?sec=invalid", status_code=303)
 
 
-@app.post("/settings/auth/lan", dependencies=_AUTH_DEPS)
-async def settings_auth_lan(
-    auth_bypass_lan: str = Form("0"),
+@app.post("/settings/auth/access_control", dependencies=_AUTH_DEPS)
+async def settings_auth_access_control(
+    auth_ip_allowlist: str = Form(""),
     session: AsyncSession = Depends(get_session),
 ) -> RedirectResponse:
     row = await _get_or_create_settings(session)
-    row.auth_bypass_lan = auth_bypass_lan.strip().lower() in ("1", "on", "true", "yes")
+    try:
+        normalized = normalize_auth_ip_allowlist_input(auth_ip_allowlist)
+    except ValueError:
+        return RedirectResponse("/settings?save=fail&reason=invalid_ip", status_code=303)
+    row.auth_ip_allowlist = normalized
     row.updated_at = utc_now_naive()
     if not await _try_commit_and_reschedule(session):
         return RedirectResponse("/settings?sec=save_fail", status_code=303)
-    return RedirectResponse("/settings?sec=lan_ok", status_code=303)
+    return RedirectResponse("/settings?saved=1", status_code=303)
 
 
 @app.post("/settings/backup/import", dependencies=_AUTH_DEPS)

@@ -19,7 +19,7 @@ We aim to acknowledge reports within a few days and coordinate disclosure after 
 - **API keys** (Sonarr, Radarr, Emby, etc.) belong in the app **Settings** / database—not in git, logs, or screenshots you share publicly.  
 - A **settings backup** (`.json` from **Settings** → **Backup & Restore**) contains the same secrets as the database—store it **encrypted** or **offline**; never commit it or post it publicly.  
 - When sharing **logs** or **bug reports**, redact URLs, tokens, hostnames, and paths you consider private.  
-- The **shipped WinSW service** listens on **`0.0.0.0`** (all interfaces) so you can open the Web UI from other PCs on your **LAN** (e.g. `http://YOUR-SERVER:8765`). The Web UI uses **username + password** (bcrypt-hashed in SQLite). Optional **“Bypass auth on local LAN”** (private IPs only, via Python’s `ipaddress` rules) is for trusted home LANs only—do not rely on it if the port is reachable from untrusted networks. Prefer **`127.0.0.1`** or a **reverse proxy with TLS + auth** for remote access. Use **Windows Firewall** to limit who can reach the port.
+- The **shipped WinSW service** listens on **`0.0.0.0`** (all interfaces) so you can open the Web UI from other PCs on your **LAN** (e.g. `http://YOUR-SERVER:8765`). The Web UI uses **username + password** (bcrypt-hashed in SQLite). Optional **IP allowlist** (Settings → Security → Access Control: explicit IPs/CIDRs via Python’s **`ipaddress`** module) can skip sign-in for listed clients only—do not rely on it if the port is reachable from untrusted networks. Prefer **`127.0.0.1`** or a **reverse proxy with TLS + auth** for remote access. Use **Windows Firewall** to limit who can reach the port.
 - **HTTP error lines** persisted in **Job history / logs** show the failing URL with **credential-like query parameters redacted** (for example Emby’s `api_key` on the query string). Still treat full log exports as sensitive.
 
 ## Threat model (what “secure enough” means here)
@@ -28,12 +28,16 @@ Grabby targets a **single trusted operator** on the **same machine** or a **priv
 
 | Area | In the intended model (localhost / trusted LAN) | If you expose the API/UI to the internet or untrusted networks |
 |------|--------------------------------------------------|------------------------------------------------------------------|
-| **Access control** | Sign-in + session cookie (or LAN bypass for private IPs only if enabled). | **Do not** expose the app to the internet without **extra** authentication (e.g. reverse proxy) and narrow **firewall** rules. |
+| **Access control** | Sign-in + session cookie (or optional IP allowlist if you configure it). | **Do not** expose the app to the internet without **extra** authentication (e.g. reverse proxy) and narrow **firewall** rules. |
 | **SSRF** | Setup / “test connection” endpoints request **URLs you supply** (Sonarr, Radarr, Emby, etc.). Abuse requires reaching those API routes. | High risk: an attacker could probe internal URLs. Keep Grabby **off** public networks or **block** those routes at the proxy. |
 | **CSRF** | Forms use POST **without CSRF tokens**; the session cookie is **HttpOnly** and **SameSite=Lax**. Risk is lower on a private LAN; for broader exposure use **network isolation** or **proxy auth**. |
 | **In-app upgrade** | **`POST /api/updates/apply`** downloads the release **`GrabbySetup.exe`** from GitHub and runs a **silent** Inno install (stops/restarts the Windows service). Treat like any admin installer: only use on **trusted networks**; do not expose the Web UI to the internet without proxy auth. Forks can set **`GRABBY_UPDATES_REPO`** (`owner/repo`). The **update check** calls GitHub’s API; if you see **403** (rate limits or policy), set **`GRABBY_GITHUB_TOKEN`** (or **`GITHUB_TOKEN`**) to a **read-only** PAT with minimal scope—never commit it. |
 | **Injection** | Data access uses **SQLAlchemy** ORM/API for normal queries; migrations use fixed table names. | Keep dependencies updated (`pip-audit` in CI). |
 | **Secrets in storage** | Keys live in **SQLite** and **backup JSON** (documented above). | Encrypt backups, restrict file permissions. |
+
+## Access control
+
+Grabby’s **`get_client_ip()`** only substitutes the **`X-Forwarded-For`** header when the **direct TCP peer** is already a **private** or **loopback** address; that is meant for trusted local or LAN paths, not for proving identity on the public internet. If Grabby is reachable **through a reverse proxy**, a client may be able to send a **forged `X-Forwarded-For`** and appear to match the **IP allowlist**, bypassing that check. **If you run Grabby behind a reverse proxy, leave the IP allowlist empty** and use the **proxy’s own authentication** (and tight network rules) instead of relying on Grabby’s allowlist for security.
 
 ## Default branch (`master`) on GitHub
 
