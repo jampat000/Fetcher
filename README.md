@@ -59,6 +59,7 @@ GitHub Actions runs **pip-audit** on dependencies for the default branch. **Prot
 - `service/`: WinSW (Windows Service Wrapper) config for running the packaged app as a Windows service
 - `installer/`: Inno Setup script to produce `GrabbySetup.exe`
 - `VERSION`: current release version (semver) for the app + installer metadata
+- **`config.example.yaml`** → copy to **`config.yaml`** (gitignored) to supply **Sonarr / Radarr / Emby API keys** without storing them in SQLite; optional **YAML values override** DB for outbound API calls (see **`app/config.py`** / **`services/api_keys.py`**). Packaged builds look for **`config.yaml`** next to **`Grabby.exe`** first.
 - `docs/`: maintainer guides — **[public repo checklist](docs/PUBLIC-REPO-CHECKLIST.md)**, **[audit log after local checks](docs/PUBLIC-REPO-AUDIT.md)**
 
 ## License
@@ -80,6 +81,7 @@ See [`CHANGELOG.md`](CHANGELOG.md), including maintainer **Releasing** steps.
 ## Prereqs (dev)
 
 - Python (via the `py` launcher)
+- **SQLite 3.35+** (bundled with current CPython builds) — migrations use **`ALTER TABLE … DROP COLUMN`** to remove obsolete settings columns.
 - **E2E tests** (`tests/e2e/`): install dev deps, then **once** download Chromium:  
   `pip install -r requirements-dev.txt` → `py -m playwright install chromium`  
   (GitHub Actions uses `playwright install --with-deps chromium` on Ubuntu.)
@@ -94,6 +96,8 @@ py -m venv .venv
 ```
 
 Then open the URL printed by the script (default `http://127.0.0.1:8766`).
+
+**Development database:** `scripts/dev-start.ps1` sets **`GRABBY_DEV_DB_PATH`** to **`%TEMP%\grabby-dev.sqlite3`** by default (`app/db.py`) so the dev server does not lock the same **`app.db`** as the installed service. Use **`-SharedAppDb`** only when you intentionally want **`%LocalAppData%\Grabby\app.db`**—**stop the Grabby service first** to avoid SQLite “database is locked” errors.
 
 ### Port **8765** vs **8766** (Simple Browser)
 

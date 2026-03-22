@@ -3,7 +3,9 @@ param(
   [int]$PreferredPort = 8766,
   [switch]$Reload = $true,
   # Offer UAC once if normal kill failed (helps when another user/admin owns the listener).
-  [switch]$TryElevatedKill
+  [switch]$TryElevatedKill,
+  # Use the same SQLite file as the installed service (%LocalAppData%\Grabby\app.db). Stop the service first to avoid locks.
+  [switch]$SharedAppDb
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,6 +14,17 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $RepoRoot
 Write-Host "Repo: $RepoRoot" -ForegroundColor DarkGray
+Write-Host ""
+
+# Isolated dev DB by default so uvicorn does not compete with the Windows service for the same app.db.
+if ($SharedAppDb) {
+  Remove-Item Env:\GRABBY_DEV_DB_PATH -ErrorAction SilentlyContinue
+  Write-Host "Dev DB: (shared) default — %LocalAppData%\Grabby\app.db  [stop Grabby service if SQLite is busy]" -ForegroundColor DarkYellow
+} else {
+  $devDb = Join-Path ([System.IO.Path]::GetTempPath()) "grabby-dev.sqlite3"
+  $env:GRABBY_DEV_DB_PATH = $devDb
+  Write-Host "Dev DB: $devDb  (GRABBY_DEV_DB_PATH)  [use -SharedAppDb for installed app database]" -ForegroundColor DarkGray
+}
 Write-Host ""
 
 function Get-ProcessNameByPid {

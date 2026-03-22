@@ -19,8 +19,8 @@ def test_normalize_schedule_days_empty_means_no_days() -> None:
     assert normalize_schedule_days_csv("   ") == ""
 
 
-def test_normalize_schedule_days_commas_only_still_full_week_legacy() -> None:
-    """Comma-only input: no valid tokens → legacy full-week fallback."""
+def test_normalize_schedule_days_commas_only_full_week_fallback() -> None:
+    """Comma-only input: no valid tokens → full-week fallback."""
     assert normalize_schedule_days_csv(",,,") == "Mon,Tue,Wed,Thu,Fri,Sat,Sun"
 
 

@@ -33,7 +33,7 @@ def normalize_schedule_days_csv(raw: str) -> str:
     Canonicalize stored weekday CSV to Mon,Tue,... order.
     Unknown tokens are dropped.
     If the string is empty/whitespace-only, return "" (no days — matches “uncheck all” in the UI).
-    If the string had comma-separated tokens but none were valid weekdays, return all seven days (legacy typo recovery).
+    If the string had comma-separated tokens but none were valid weekdays, return all seven days (invalid-token fallback).
     """
     s = (raw or "").strip()
     if s == "":

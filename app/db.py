@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -13,6 +14,16 @@ def default_data_dir() -> Path:
 
 
 def db_path() -> Path:
+    """SQLite file path. Set ``GRABBY_DEV_DB_PATH`` before importing ``app.db`` for a separate dev database."""
+    override = (os.environ.get("GRABBY_DEV_DB_PATH") or "").strip()
+    if override:
+        p = Path(override).expanduser()
+        try:
+            p = p.resolve()
+        except OSError:
+            p = Path(override).expanduser()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
     return default_data_dir() / "app.db"
 
 

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import AppSettings
 
 BACKUP_MAGIC = "grabby_settings_v1"
-BACKUP_FORMAT_VERSION = 1
+BACKUP_FORMAT_VERSION = 2
 
 # Human-readable timestamps in JSON (import accepts ISO from older backups too).
 BACKUP_DATETIME_FMT = "%d-%m-%Y %H:%M:%S"
@@ -29,7 +29,7 @@ def format_backup_datetime(dt: datetime) -> str:
 
 
 def parse_backup_datetime_string(s: str) -> datetime:
-    """Parse datetime from backup JSON: ISO (legacy) or dd-mm-yyyy [HH:MM:SS]."""
+    """Parse datetime from backup JSON: ISO-8601 (older exports) or dd-mm-yyyy [HH:MM:SS]."""
     raw = str(s).strip().replace("Z", "+00:00")
     try:
         dt = datetime.fromisoformat(raw)
@@ -95,12 +95,29 @@ def parse_and_validate_settings_dict(raw: bytes) -> dict[str, Any]:
     if data.get("grabby_backup") != BACKUP_MAGIC:
         raise ValueError("This file is not a Grabby settings backup (wrong or missing grabby_backup).")
     fv = data.get("format_version")
-    if fv != BACKUP_FORMAT_VERSION:
-        raise ValueError(f"Unsupported format_version: {fv!r} (expected {BACKUP_FORMAT_VERSION})")
+    if fv not in (1, BACKUP_FORMAT_VERSION):
+        raise ValueError(f"Unsupported format_version: {fv!r} (expected 1 or {BACKUP_FORMAT_VERSION})")
     settings = data.get("settings")
     if not isinstance(settings, dict):
         raise ValueError("Backup is missing a settings object")
+    _merge_removed_global_keys_into_per_app(settings)
     return settings
+
+
+def _merge_removed_global_keys_into_per_app(settings: dict[str, Any]) -> None:
+    """Older exports included global Arr keys we no longer store; map them if per-app keys are absent."""
+    if "sonarr_search_missing" not in settings and "search_missing" in settings:
+        settings["sonarr_search_missing"] = settings["search_missing"]
+    if "radarr_search_missing" not in settings and "search_missing" in settings:
+        settings["radarr_search_missing"] = settings["search_missing"]
+    if "sonarr_search_upgrades" not in settings and "search_upgrades" in settings:
+        settings["sonarr_search_upgrades"] = settings["search_upgrades"]
+    if "radarr_search_upgrades" not in settings and "search_upgrades" in settings:
+        settings["radarr_search_upgrades"] = settings["search_upgrades"]
+    if "sonarr_max_items_per_run" not in settings and "max_items_per_run" in settings:
+        settings["sonarr_max_items_per_run"] = settings["max_items_per_run"]
+    if "radarr_max_items_per_run" not in settings and "max_items_per_run" in settings:
+        settings["radarr_max_items_per_run"] = settings["max_items_per_run"]
 
 
 def _coerce_for_column(col: Any, raw: Any) -> Any:

@@ -34,6 +34,7 @@ from app.emby_rules import (
     parse_movie_people_phrases,
     tv_matches_selected_genres,
 )
+from services.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
 
 
 @dataclass(frozen=True)
@@ -468,9 +469,12 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
 
     try:
         settings = await _get_or_create_settings(session)
+        son_key = resolve_sonarr_api_key(settings)
+        rad_key = resolve_radarr_api_key(settings)
+        em_key = resolve_emby_api_key(settings)
 
         actions: list[str] = []
-        default_limit = max(1, int(settings.max_items_per_run or 50))
+        default_limit = 50
 
         tz = (getattr(settings, "timezone", None) or "UTC").strip() or "UTC"
         sonarr_tick_m = effective_arr_interval_minutes(getattr(settings, "sonarr_interval_minutes", None))
@@ -499,13 +503,13 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
         do_sonarr_block = bool(
             settings.sonarr_enabled
             and (settings.sonarr_url or "").strip()
-            and (settings.sonarr_api_key or "").strip()
+            and son_key
             and (arr_manual_scope is None or arr_manual_scope in ("sonarr_missing", "sonarr_upgrade"))
         )
         do_radarr_block = bool(
             settings.radarr_enabled
             and (settings.radarr_url or "").strip()
-            and (settings.radarr_api_key or "").strip()
+            and rad_key
             and (arr_manual_scope is None or arr_manual_scope in ("radarr_missing", "radarr_upgrade"))
         )
 
@@ -537,7 +541,7 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
                         )
                         skip_sonarr = True
             if not skip_sonarr:
-                sonarr = ArrClient(ArrConfig(settings.sonarr_url, settings.sonarr_api_key))
+                sonarr = ArrClient(ArrConfig(settings.sonarr_url, son_key))
                 try:
                     await sonarr.health()
                     sonarr_series_title_map: dict[int, str] = {}
@@ -552,8 +556,8 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
                         sonarr_series_title_map = {}
 
                     sonarr_limit = max(1, int((settings.sonarr_max_items_per_run or 0) or default_limit))
-                    sonarr_missing_enabled = bool(getattr(settings, "sonarr_search_missing", settings.search_missing))
-                    sonarr_upgrades_enabled = bool(getattr(settings, "sonarr_search_upgrades", settings.search_upgrades))
+                    sonarr_missing_enabled = bool(settings.sonarr_search_missing)
+                    sonarr_upgrades_enabled = bool(settings.sonarr_search_upgrades)
                     if arr_manual_scope == "sonarr_missing":
                         want_missing, want_upgrade = True, False
                     elif arr_manual_scope == "sonarr_upgrade":
@@ -699,13 +703,13 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
                         )
                         skip_radarr = True
             if not skip_radarr:
-                radarr = ArrClient(ArrConfig(settings.radarr_url, settings.radarr_api_key))
+                radarr = ArrClient(ArrConfig(settings.radarr_url, rad_key))
                 try:
                     await radarr.health()
 
                     radarr_limit = max(1, int((settings.radarr_max_items_per_run or 0) or default_limit))
-                    radarr_missing_enabled = bool(getattr(settings, "radarr_search_missing", settings.search_missing))
-                    radarr_upgrades_enabled = bool(getattr(settings, "radarr_search_upgrades", settings.search_upgrades))
+                    radarr_missing_enabled = bool(settings.radarr_search_missing)
+                    radarr_upgrades_enabled = bool(settings.radarr_search_upgrades)
                     if arr_manual_scope == "radarr_missing":
                         want_missing, want_upgrade = True, False
                     elif arr_manual_scope == "radarr_upgrade":
@@ -810,7 +814,7 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
                     await radarr.aclose()
 
         # Emby Cleaner (not part of manual Arr “search now”)
-        if arr_manual_scope is None and settings.emby_enabled and settings.emby_url and settings.emby_api_key:
+        if arr_manual_scope is None and settings.emby_enabled and settings.emby_url and em_key:
             if not in_window(
                 schedule_enabled=getattr(settings, "emby_schedule_enabled", False),
                 schedule_days=getattr(settings, "emby_schedule_days", "") or "",
@@ -828,7 +832,7 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
                         + ")"
                     )
                 else:
-                    emby = EmbyClient(EmbyConfig(settings.emby_url, settings.emby_api_key))
+                    emby = EmbyClient(EmbyConfig(settings.emby_url, em_key))
                     try:
                         await emby.health()
                         users = await emby.users()
@@ -905,8 +909,8 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
                                 movie_candidates = [raw for _, _, t, raw in candidates if t == "Movie"]
                                 tv_candidates = [raw for _, _, t, raw in candidates if t in {"Series", "Season", "Episode"}]
 
-                                if movie_candidates and settings.radarr_url and settings.radarr_api_key:
-                                    radarr2 = ArrClient(ArrConfig(settings.radarr_url, settings.radarr_api_key))
+                                if movie_candidates and settings.radarr_url and rad_key:
+                                    radarr2 = ArrClient(ArrConfig(settings.radarr_url, rad_key))
                                     try:
                                         catalog = await radarr2.movies()
                                         movie_ids: list[int] = []
@@ -924,8 +928,8 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
                                     finally:
                                         await radarr2.aclose()
 
-                                if tv_candidates and settings.sonarr_url and settings.sonarr_api_key:
-                                    sonarr2 = ArrClient(ArrConfig(settings.sonarr_url, settings.sonarr_api_key))
+                                if tv_candidates and settings.sonarr_url and son_key:
+                                    sonarr2 = ArrClient(ArrConfig(settings.sonarr_url, son_key))
                                     try:
                                         catalog = await sonarr2.series()
                                         series_by_id: dict[int, dict] = {}

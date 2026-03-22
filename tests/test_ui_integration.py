@@ -144,7 +144,7 @@ def test_post_setup_wizard_step4_redirects_to_step5(monkeypatch: pytest.MonkeyPa
             "/setup/4",
             data={
                 "wizard_action": "continue",
-                "interval_minutes": "60",
+                "run_interval_minutes": "60",
                 "timezone": "UTC",
             },
             follow_redirects=False,

@@ -22,12 +22,6 @@ class SettingsIn(BaseModel):
     radarr_max_items_per_run: int = Field(default=50, ge=1, le=1000)
     radarr_interval_minutes: int = Field(default=60, ge=1, le=7 * 24 * 60)
 
-    interval_minutes: int = Field(
-        default=60,
-        ge=5,
-        le=7 * 24 * 60,
-        description="Legacy DB column / backup import only. Wake cadence uses per-app Sonarr/Radarr run intervals (see arr_intervals.ARR_INTERVAL_FALLBACK_MINUTES when unset).",
-    )
     emby_interval_minutes: int = Field(
         default=60,
         ge=5,
@@ -55,15 +49,10 @@ class SettingsIn(BaseModel):
     emby_rule_tv_delete_watched: bool = False
     emby_rule_tv_unwatched_days: int = Field(default=0, ge=0, le=36500)
 
-    # Back-compat (older UI/DB); if used, service_logic will fall back to these
-    search_missing: bool = True
-    search_upgrades: bool = True
-    max_items_per_run: int = Field(default=50, ge=1, le=1000)
-
     @field_validator("sonarr_interval_minutes", "radarr_interval_minutes", mode="before")
     @classmethod
     def _coerce_arr_run_interval(cls, v: Any) -> int:
-        """Legacy DB/UI used 0; treat as 60 so stored values match real cadence."""
+        """Coerce invalid/low stored values to 60 minutes."""
         try:
             if v is None or v == "":
                 return 60

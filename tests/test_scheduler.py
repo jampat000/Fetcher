@@ -13,7 +13,6 @@ def _arr_settings(**kwargs: object) -> SimpleNamespace:
         radarr_api_key="",
         sonarr_interval_minutes=60,
         radarr_interval_minutes=60,
-        interval_minutes=9999,
     )
     base.update(kwargs)
     return SimpleNamespace(**base)
@@ -38,13 +37,12 @@ def test_compute_grabby_tick_minutes_fallback_when_no_arr_configured() -> None:
     assert compute_grabby_tick_minutes(s) == 60
 
 
-def test_compute_grabby_tick_minutes_ignores_legacy_interval_minutes_column() -> None:
+def test_compute_grabby_tick_minutes_uses_sonarr_interval() -> None:
     s = _arr_settings(
         sonarr_enabled=True,
         sonarr_url="http://127.0.0.1:8989",
         sonarr_api_key="k",
         sonarr_interval_minutes=45,
-        interval_minutes=5,
     )
     assert compute_grabby_tick_minutes(s) == 45
 
