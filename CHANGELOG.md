@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.35] - 2026-03-22
+
+### Changed
+
+- **Auth (critical):** **`require_auth`** now raises **`GrabbyAuthRequired`** with a **`RedirectResponse`** instead of returning it — FastAPI ignores **`Response`** objects returned from **`dependencies=[Depends(...)]`**, so Sign-in redirects previously did not run for protected routes.
+- **Auth UX (upgrades + new installs):** Until **`auth_password_hash`** is set, protected pages and **`/login`** redirect to **`/setup/0`** instead of a non-working Sign-in. **LAN bypass** does not skip account setup (no passwordless LAN after migration). **`/logout`** sends you to **`/setup/0`** when no password is set. JSON/API requests without a password return **401** with **`setup_path`**. Setup wizard **step 0** shows an upgrade-specific banner when Sonarr/Radarr/Emby already look configured; **“Skip wizard → Settings”** is hidden on step 0 (Settings required sign-in).
+- **E2E:** Playwright server uses a **temp SQLite** via **`GRABBY_DEV_DB_PATH`** and a one-shot DB init so **`/setup/1`** tests are reproducible.
+
+### Documentation
+
+- **README.md:** Install & first-run flow with **sign-in** and **Setup** (account + Arr/Emby); **dev** section for testing auth (`/setup/0`, reset dev DB, **`GRABBY_RESET_AUTH`**, **`pytest`** vs browser); **Backup** sensitivity; **`/healthz`** / **`/api/version`** noted as unauthenticated; **upgrade** note (first visit → account setup, Arr settings kept).
+- **`service/README.md`**, **`HOWTO-RESTORE.md`**, **`SECURITY.md`:** Align with password flow and lockout recovery.
+
 ## [1.0.34] - 2026-03-26
 
 ### Changed

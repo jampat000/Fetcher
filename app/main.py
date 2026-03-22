@@ -65,6 +65,24 @@ from app.resolvers.api_keys import (
     resolve_setup_api_key,
     resolve_sonarr_api_key,
 )
+from app.auth import (
+    GrabbyAuthRequired,
+    INVALID_LOGIN_MESSAGE,
+    TOO_MANY_ATTEMPTS_MESSAGE,
+    attach_session_cookie,
+    bootstrap_auth_on_startup,
+    clear_login_failures,
+    clear_session_cookie,
+    get_client_ip,
+    hash_password,
+    login_rate_limited,
+    record_login_failure,
+    request_prefers_json,
+    require_auth,
+    verify_password,
+)
+
+_AUTH_DEPS = [Depends(require_auth)]
 
 configure_grabby_logging()
 
@@ -74,6 +92,18 @@ APP_TAGLINE = "Never miss a release."
 logger = logging.getLogger(__name__)
 
 scheduler = ServiceScheduler()
+
+
+def _settings_looks_like_existing_grabby_install(settings: AppSettings) -> bool:
+    """True when Sonarr/Radarr/Emby were already configured — tailors setup step 0 for upgrades."""
+    return bool(
+        (settings.sonarr_url or "").strip()
+        or (settings.radarr_url or "").strip()
+        or (settings.emby_url or "").strip()
+        or settings.sonarr_enabled
+        or settings.radarr_enabled
+        or settings.emby_enabled
+    )
 
 
 async def _try_commit_and_reschedule(session: AsyncSession) -> bool:
@@ -125,12 +155,19 @@ async def _lifespan(_app: FastAPI):
         )
         raise last_err
 
+    await bootstrap_auth_on_startup()
     await scheduler.start()
     yield
     scheduler.shutdown()
 
 
 app = FastAPI(title=APP_NAME, lifespan=_lifespan)
+
+
+@app.exception_handler(GrabbyAuthRequired)
+async def _grabby_auth_redirect_handler(_request: Request, exc: GrabbyAuthRequired) -> Response:
+    """Depends(require_auth) cannot return RedirectResponse — FastAPI would ignore it."""
+    return exc.response
 
 
 @app.exception_handler(RequestValidationError)
@@ -140,6 +177,8 @@ async def _form_validation_redirect(request: Request, exc: RequestValidationErro
         return RedirectResponse("/settings?save=fail&reason=invalid", status_code=303)
     if request.method == "POST" and request.url.path == "/emby/settings/cleaner":
         return RedirectResponse("/emby/settings?save=fail&reason=invalid", status_code=303)
+    if request.method == "POST" and request.url.path.startswith("/settings/auth"):
+        return RedirectResponse("/settings?save=fail&reason=invalid", status_code=303)
     return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
 
@@ -150,6 +189,93 @@ static_dir = Path(__file__).parent / "static"
 static_dir.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 app.include_router(app_updates.router)
+
+
+@app.get("/login", response_class=HTMLResponse, response_model=None)
+async def login_get(
+    request: Request,
+    error: str = "",
+    session: AsyncSession = Depends(get_session),
+) -> HTMLResponse | RedirectResponse:
+    settings = await _get_or_create_settings(session)
+    if not (settings.auth_password_hash or "").strip():
+        return RedirectResponse("/setup/0", status_code=302)
+    return templates.TemplateResponse(
+        request,
+        "login.html",
+        {
+            "app_name": APP_NAME,
+            "app_tagline": APP_TAGLINE,
+            "title": f"{APP_NAME} — Sign in",
+            "subtitle": "Sign in to continue",
+            "error": (error or "").strip(),
+        },
+    )
+
+
+@app.post("/login", response_model=None)
+async def login_post(
+    request: Request,
+    username: str = Form(""),
+    password: str = Form(""),
+    session: AsyncSession = Depends(get_session),
+) -> HTMLResponse | RedirectResponse | JSONResponse:
+    settings = await _get_or_create_settings(session)
+    if not (settings.auth_password_hash or "").strip():
+        if request_prefers_json(request):
+            return JSONResponse(
+                status_code=401,
+                content={"message": "Set a password in the setup wizard first.", "setup_path": "/setup/0"},
+            )
+        return RedirectResponse("/setup/0", status_code=303)
+
+    ip = get_client_ip(request)
+    if login_rate_limited(ip):
+        if request_prefers_json(request):
+            return JSONResponse(status_code=429, content={"message": TOO_MANY_ATTEMPTS_MESSAGE})
+        return HTMLResponse(TOO_MANY_ATTEMPTS_MESSAGE, status_code=429)
+    expected_user = (settings.auth_username or "admin").strip() or "admin"
+    u = (username or "").strip()
+    p = password or ""
+    ok = u == expected_user and verify_password(password=p, stored_hash=(settings.auth_password_hash or ""))
+    if ok:
+        clear_login_failures(ip)
+        secret = (settings.auth_session_secret or "").strip()
+        if not secret:
+            if request_prefers_json(request):
+                return JSONResponse(status_code=500, content={"message": "Server misconfiguration"})
+            return HTMLResponse("Server misconfiguration", status_code=500)
+        resp = RedirectResponse("/", status_code=303)
+        attach_session_cookie(resp, secret=secret, username=expected_user)
+        return resp
+
+    record_login_failure(ip)
+    if request_prefers_json(request):
+        return JSONResponse(status_code=401, content={"message": INVALID_LOGIN_MESSAGE})
+    return templates.TemplateResponse(
+        request,
+        "login.html",
+        {
+            "app_name": APP_NAME,
+            "app_tagline": APP_TAGLINE,
+            "title": f"{APP_NAME} — Sign in",
+            "subtitle": "Sign in to continue",
+            "error": INVALID_LOGIN_MESSAGE,
+        },
+    )
+
+
+@app.get("/logout", response_class=RedirectResponse)
+async def logout_get(session: AsyncSession = Depends(get_session)) -> RedirectResponse:
+    settings = await _get_or_create_settings(session)
+    dest = (
+        "/setup/0"
+        if not (settings.auth_password_hash or "").strip()
+        else "/login"
+    )
+    resp = RedirectResponse(dest, status_code=303)
+    clear_session_cookie(resp)
+    return resp
 
 
 def _movie_credit_types_summary(types: frozenset[str]) -> str:
@@ -224,28 +350,28 @@ async def api_version() -> dict[str, str]:
     return {"app": APP_NAME, "version": get_app_version()}
 
 
-@app.post("/api/setup/test-sonarr")
+@app.post("/api/setup/test-sonarr", dependencies=_AUTH_DEPS)
 async def api_setup_test_sonarr(body: SetupConnTestIn) -> JSONResponse:
     key = resolve_setup_api_key(body.api_key, "sonarr")
     ok, msg = await test_sonarr_connection(body.url, key)
     return JSONResponse({"ok": ok, "message": msg})
 
 
-@app.post("/api/setup/test-radarr")
+@app.post("/api/setup/test-radarr", dependencies=_AUTH_DEPS)
 async def api_setup_test_radarr(body: SetupConnTestIn) -> JSONResponse:
     key = resolve_setup_api_key(body.api_key, "radarr")
     ok, msg = await test_radarr_connection(body.url, key)
     return JSONResponse({"ok": ok, "message": msg})
 
 
-@app.post("/api/setup/test-emby")
+@app.post("/api/setup/test-emby", dependencies=_AUTH_DEPS)
 async def api_setup_test_emby(body: SetupEmbyTestIn) -> JSONResponse:
     key = resolve_setup_api_key(body.api_key, "emby")
     ok, msg = await test_emby_connection(body.url, key, body.user_id)
     return JSONResponse({"ok": ok, "message": msg})
 
 
-@app.post("/api/arr/search-now")
+@app.post("/api/arr/search-now", dependencies=_AUTH_DEPS)
 async def api_arr_search_now(body: ArrSearchNowIn, session: AsyncSession = Depends(get_session)) -> JSONResponse:
     """One-shot missing or upgrade search for Sonarr (TV) or Radarr (movies); bypasses schedule + run-interval gates."""
     result = await run_once(session, arr_manual_scope=body.scope)
@@ -253,15 +379,21 @@ async def api_arr_search_now(body: ArrSearchNowIn, session: AsyncSession = Depen
 
 
 @app.get("/setup", response_class=RedirectResponse)
-async def setup_wizard_entry() -> RedirectResponse:
+async def setup_wizard_entry(session: AsyncSession = Depends(get_session)) -> RedirectResponse:
+    settings = await _get_or_create_settings(session)
+    if not (settings.auth_password_hash or "").strip():
+        return RedirectResponse("/setup/0", status_code=302)
     return RedirectResponse("/setup/1", status_code=302)
 
 
-_SETUP_WIZARD_STEPS = 5
+# Total wizard screens (0 .. _WIZARD_LAST_STEP_INDEX inclusive). Last index is the "done" page.
+_SETUP_WIZARD_STEPS = 6
+_WIZARD_LAST_STEP_INDEX = _SETUP_WIZARD_STEPS - 1
 
 
 def _setup_wizard_step_title(step: int) -> str:
     return {
+        0: "Account",
         1: "Sonarr",
         2: "Radarr",
         3: "Emby",
@@ -274,27 +406,47 @@ def _setup_wizard_step_title(step: int) -> str:
 async def setup_wizard_page(
     step: int, request: Request, session: AsyncSession = Depends(get_session)
 ) -> HTMLResponse | RedirectResponse:
-    if step < 1 or step > _SETUP_WIZARD_STEPS:
-        return RedirectResponse("/setup/1", status_code=302)
     settings = await _get_or_create_settings(session)
+    if not (settings.auth_password_hash or "").strip():
+        if step != 0:
+            return RedirectResponse("/setup/0", status_code=302)
+    elif step == 0:
+        return RedirectResponse("/setup/1", status_code=302)
+
+    if step < 0 or step > _WIZARD_LAST_STEP_INDEX:
+        if not (settings.auth_password_hash or "").strip():
+            return RedirectResponse("/setup/0", status_code=302)
+        return RedirectResponse("/setup/1", status_code=302)
+
     tz = settings.timezone or "UTC"
+    setup_error = (request.query_params.get("error") or "").strip()
+    setup_save_fail = (request.query_params.get("save") or "").strip().lower() == "fail"
+    if step == 0:
+        setup_account_intro = (
+            "upgrade" if _settings_looks_like_existing_grabby_install(settings) else "new"
+        )
+    else:
+        setup_account_intro = ""
     return templates.TemplateResponse(
         request,
         "setup_wizard.html",
         {
             "app_name": APP_NAME,
             "app_tagline": APP_TAGLINE,
-            "title": f"{APP_NAME} — Setup (step {step} of {_SETUP_WIZARD_STEPS})",
+            "title": f"{APP_NAME} — Setup (step {step + 1} of {_SETUP_WIZARD_STEPS})",
             "subtitle": "Connect your apps",
             "settings": settings,
             "step": step,
             "setup_steps_total": _SETUP_WIZARD_STEPS,
             "step_title": _setup_wizard_step_title(step),
-            "setup_step_labels": ["Sonarr", "Radarr", "Emby", "Schedule", "Next steps"],
+            "setup_step_labels": ["Account", "Sonarr", "Radarr", "Emby", "Schedule", "Next steps"],
             "timezone_choices": _TIMEZONE_CHOICES,
             "now": utc_now_naive(),
             "now_local": _now_local(tz),
             "timezone": tz,
+            "setup_error": setup_error,
+            "setup_save_fail": setup_save_fail,
+            "setup_account_intro": setup_account_intro,
         },
     )
 
@@ -303,6 +455,8 @@ async def setup_wizard_page(
 async def setup_wizard_save(
     step: int,
     wizard_action: str = Form("continue"),
+    setup_auth_username: str = Form("admin"),
+    setup_auth_password: str = Form(""),
     sonarr_enabled: bool = Form(False),
     sonarr_url: str = Form(""),
     sonarr_api_key: str = Form(""),
@@ -317,13 +471,38 @@ async def setup_wizard_save(
     timezone: str = Form("UTC"),
     session: AsyncSession = Depends(get_session),
 ) -> RedirectResponse:
-    if step < 1 or step > _SETUP_WIZARD_STEPS:
+    row0 = await _get_or_create_settings(session)
+    if not (row0.auth_password_hash or "").strip():
+        if step != 0:
+            return RedirectResponse("/setup/0", status_code=303)
+    else:
+        if step == 0:
+            return RedirectResponse("/setup/1", status_code=303)
+
+    if step < 0 or step > _WIZARD_LAST_STEP_INDEX:
+        if not (row0.auth_password_hash or "").strip():
+            return RedirectResponse("/setup/0", status_code=303)
         return RedirectResponse("/setup/1", status_code=303)
-    if step == 5:
+    if step == _WIZARD_LAST_STEP_INDEX:
         return RedirectResponse("/?setup=complete", status_code=303)
+
     skip = (wizard_action or "").strip().lower() == "skip"
+    if skip and step == 0:
+        return RedirectResponse("/setup/0?error=account_required", status_code=303)
+
     if not skip:
         row = await _get_or_create_settings(session)
+        if step == 0:
+            u = (setup_auth_username or "admin").strip() or "admin"
+            pw = (setup_auth_password or "").strip()
+            if len(pw) < 8:
+                return RedirectResponse("/setup/0?error=short_password", status_code=303)
+            row.auth_username = u
+            row.auth_password_hash = hash_password(pw)
+            row.updated_at = utc_now_naive()
+            if not await _try_commit_and_reschedule(session):
+                return RedirectResponse("/setup/0?save=fail&reason=db_busy", status_code=303)
+            return RedirectResponse("/setup/1", status_code=303)
         if step == 1:
             row.sonarr_enabled = sonarr_enabled
             row.sonarr_url = _normalize_base_url(sonarr_url)
@@ -353,12 +532,12 @@ async def setup_wizard_save(
             return RedirectResponse(f"/setup/{step}?save=fail&reason=db_busy", status_code=303)
 
     nxt = step + 1
-    if nxt > _SETUP_WIZARD_STEPS:
+    if nxt > _WIZARD_LAST_STEP_INDEX:
         return RedirectResponse("/?setup=complete", status_code=303)
     return RedirectResponse(f"/setup/{nxt}", status_code=303)
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse, dependencies=_AUTH_DEPS)
 async def dashboard(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await _get_or_create_settings(session)
     activity = (
@@ -477,7 +656,7 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
     )
 
 
-@app.get("/logs", response_class=HTMLResponse)
+@app.get("/logs", response_class=HTMLResponse, dependencies=_AUTH_DEPS)
 async def logs_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await _get_or_create_settings(session)
     logs = (await session.execute(select(JobRunLog).order_by(desc(JobRunLog.id)).limit(200))).scalars().all()
@@ -502,7 +681,7 @@ async def logs_page(request: Request, session: AsyncSession = Depends(get_sessio
     )
 
 
-@app.get("/activity", response_class=HTMLResponse)
+@app.get("/activity", response_class=HTMLResponse, dependencies=_AUTH_DEPS)
 async def activity_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await _get_or_create_settings(session)
     activity = (
@@ -537,7 +716,7 @@ async def activity_page(request: Request, session: AsyncSession = Depends(get_se
     )
 
 
-@app.get("/settings", response_class=HTMLResponse)
+@app.get("/settings", response_class=HTMLResponse, dependencies=_AUTH_DEPS)
 async def settings_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await _get_or_create_settings(session)
     sonarr_snap = (
@@ -559,6 +738,7 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
     se = _normalize_hhmm(settings.sonarr_schedule_end, "23:59")
     rs = _normalize_hhmm(settings.radarr_schedule_start, "00:00")
     re = _normalize_hhmm(settings.radarr_schedule_end, "23:59")
+    sec_notice = (request.query_params.get("sec") or "").strip()
     response = templates.TemplateResponse(
         request,
         "settings.html",
@@ -568,6 +748,7 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
             "title": f"{APP_NAME} — Grabby Settings",
             "subtitle": "Configure connections, schedules, and limits",
             "settings": settings,
+            "sec_notice": sec_notice,
             "sonarr": sonarr_snap,
             "radarr": radarr_snap,
             "now": utc_now_naive(),
@@ -599,7 +780,7 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
     return response
 
 
-@app.get("/settings/backup/export")
+@app.get("/settings/backup/export", dependencies=_AUTH_DEPS)
 async def settings_backup_export(session: AsyncSession = Depends(get_session)) -> Response:
     row = await _get_or_create_settings(session)
     body = export_json_bytes(row)
@@ -612,7 +793,61 @@ async def settings_backup_export(session: AsyncSession = Depends(get_session)) -
     )
 
 
-@app.post("/settings/backup/import")
+@app.post("/settings/auth/credentials", dependencies=_AUTH_DEPS)
+async def settings_auth_credentials(
+    auth_form: str = Form(""),
+    current_password: str = Form(""),
+    new_username: str = Form(""),
+    new_password: str = Form(""),
+    confirm_new_password: str = Form(""),
+    session: AsyncSession = Depends(get_session),
+) -> RedirectResponse:
+    row = await _get_or_create_settings(session)
+    cp = current_password or ""
+    if not verify_password(password=cp, stored_hash=(row.auth_password_hash or "")):
+        return RedirectResponse("/settings?sec=bad_current", status_code=303)
+
+    form = (auth_form or "").strip().lower()
+    if form == "username":
+        nu = (new_username or "").strip()
+        if not nu:
+            return RedirectResponse("/settings?sec=user_empty", status_code=303)
+        row.auth_username = nu
+        row.updated_at = utc_now_naive()
+        if not await _try_commit_and_reschedule(session):
+            return RedirectResponse("/settings?sec=save_fail", status_code=303)
+        return RedirectResponse("/settings?sec=user_ok", status_code=303)
+
+    if form == "password":
+        np = (new_password or "").strip()
+        cf = (confirm_new_password or "").strip()
+        if not np or len(np) < 8:
+            return RedirectResponse("/settings?sec=pass_short", status_code=303)
+        if np != cf:
+            return RedirectResponse("/settings?sec=pass_mismatch", status_code=303)
+        row.auth_password_hash = hash_password(np)
+        row.updated_at = utc_now_naive()
+        if not await _try_commit_and_reschedule(session):
+            return RedirectResponse("/settings?sec=save_fail", status_code=303)
+        return RedirectResponse("/settings?sec=pass_ok", status_code=303)
+
+    return RedirectResponse("/settings?sec=invalid", status_code=303)
+
+
+@app.post("/settings/auth/lan", dependencies=_AUTH_DEPS)
+async def settings_auth_lan(
+    auth_bypass_lan: str = Form("0"),
+    session: AsyncSession = Depends(get_session),
+) -> RedirectResponse:
+    row = await _get_or_create_settings(session)
+    row.auth_bypass_lan = auth_bypass_lan.strip().lower() in ("1", "on", "true", "yes")
+    row.updated_at = utc_now_naive()
+    if not await _try_commit_and_reschedule(session):
+        return RedirectResponse("/settings?sec=save_fail", status_code=303)
+    return RedirectResponse("/settings?sec=lan_ok", status_code=303)
+
+
+@app.post("/settings/backup/import", dependencies=_AUTH_DEPS)
 async def settings_backup_import(
     session: AsyncSession = Depends(get_session),
     file: UploadFile = File(...),
@@ -633,7 +868,7 @@ async def settings_backup_import(
     return RedirectResponse("/settings?import=ok", status_code=303)
 
 
-@app.get("/emby/settings", response_class=HTMLResponse)
+@app.get("/emby/settings", response_class=HTMLResponse, dependencies=_AUTH_DEPS)
 async def emby_settings_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await _get_or_create_settings(session)
     emby_snap = (
@@ -683,8 +918,8 @@ async def emby_settings_page(request: Request, session: AsyncSession = Depends(g
     )
 
 
-@app.get("/cleaner", response_class=HTMLResponse)
-@app.get("/emby/preview", response_class=HTMLResponse)
+@app.get("/cleaner", response_class=HTMLResponse, dependencies=_AUTH_DEPS)
+@app.get("/emby/preview", response_class=HTMLResponse, dependencies=_AUTH_DEPS)
 async def emby_preview_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await _get_or_create_settings(session)
     tz = settings.timezone or "UTC"
@@ -824,7 +1059,7 @@ async def emby_preview_page(request: Request, session: AsyncSession = Depends(ge
     )
 
 
-@app.post("/settings")
+@app.post("/settings", dependencies=_AUTH_DEPS)
 async def save_settings(
     sonarr_enabled: bool = Form(False),
     sonarr_url: str = Form(""),
@@ -946,7 +1181,7 @@ async def save_settings(
         return RedirectResponse("/settings?save=fail&reason=error", status_code=303)
 
 
-@app.post("/emby/settings")
+@app.post("/emby/settings", dependencies=_AUTH_DEPS)
 async def save_emby_settings(
     emby_enabled: bool = Form(False),
     emby_url: str = Form(""),
@@ -974,7 +1209,7 @@ async def save_emby_settings(
         return RedirectResponse("/emby/settings?save=fail&reason=error", status_code=303)
 
 
-@app.post("/emby/settings/connection")
+@app.post("/emby/settings/connection", dependencies=_AUTH_DEPS)
 async def save_emby_connection_settings(
     emby_enabled: bool = Form(False),
     emby_url: str = Form(""),
@@ -1001,7 +1236,7 @@ async def save_emby_connection_settings(
         return RedirectResponse("/emby/settings?save=fail&reason=error", status_code=303)
 
 
-@app.post("/emby/settings/cleaner")
+@app.post("/emby/settings/cleaner", dependencies=_AUTH_DEPS)
 async def save_cleaner_settings(
     emby_interval_minutes: int = Form(60),
     emby_dry_run: bool = Form(False),
@@ -1093,7 +1328,7 @@ async def save_cleaner_settings(
         return RedirectResponse("/emby/settings?save=fail&reason=error", status_code=303)
 
 
-@app.post("/test/sonarr")
+@app.post("/test/sonarr", dependencies=_AUTH_DEPS)
 async def test_sonarr(session: AsyncSession = Depends(get_session)) -> RedirectResponse:
     settings = await _get_or_create_settings(session)
     try:
@@ -1111,7 +1346,7 @@ async def test_sonarr(session: AsyncSession = Depends(get_session)) -> RedirectR
         return RedirectResponse("/settings?test=sonarr_fail", status_code=303)
 
 
-@app.post("/test/radarr")
+@app.post("/test/radarr", dependencies=_AUTH_DEPS)
 async def test_radarr(session: AsyncSession = Depends(get_session)) -> RedirectResponse:
     settings = await _get_or_create_settings(session)
     try:
@@ -1129,7 +1364,7 @@ async def test_radarr(session: AsyncSession = Depends(get_session)) -> RedirectR
         return RedirectResponse("/settings?test=radarr_fail", status_code=303)
 
 
-@app.post("/test/emby")
+@app.post("/test/emby", dependencies=_AUTH_DEPS)
 async def test_emby(session: AsyncSession = Depends(get_session)) -> RedirectResponse:
     settings = await _get_or_create_settings(session)
     emby_url = _normalize_base_url(settings.emby_url)
@@ -1181,7 +1416,7 @@ async def test_emby(session: AsyncSession = Depends(get_session)) -> RedirectRes
         return RedirectResponse("/emby/settings?test=emby_fail", status_code=303)
 
 
-@app.post("/test/emby-form")
+@app.post("/test/emby-form", dependencies=_AUTH_DEPS)
 async def test_emby_from_form(
     emby_enabled: bool = Form(False),
     emby_url: str = Form(""),

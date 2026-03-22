@@ -16,7 +16,9 @@ from typing import Any
 from urllib.parse import unquote
 
 import httpx
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+
+from app.auth import require_auth
 from packaging.version import InvalidVersion, Version
 from starlette.responses import JSONResponse
 
@@ -24,7 +26,7 @@ from app.version_info import get_app_version
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/updates", tags=["updates"])
+router = APIRouter(prefix="/api/updates", tags=["updates"], dependencies=[Depends(require_auth)])
 
 DEFAULT_RELEASES_REPO = "jampat000/Grabby"
 SETUP_ASSET_NAME = "GrabbySetup.exe"

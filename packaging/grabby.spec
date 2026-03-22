@@ -21,7 +21,7 @@ hiddenimports = []
 hiddenimports += collect_submodules("apscheduler")
 hiddenimports += collect_submodules("sqlalchemy")
 hiddenimports += collect_submodules("aiosqlite")
-hiddenimports += ["yaml", "app.resolvers", "app.resolvers.api_keys"]
+hiddenimports += ["yaml", "app.resolvers", "app.resolvers.api_keys", "bcrypt", "itsdangerous", "_cffi_backend"]
 
 a = Analysis(
     [os.path.join(ROOT, "app", "cli.py")],

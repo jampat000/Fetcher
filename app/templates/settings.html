@@ -14,6 +14,71 @@
   </div>
 
   <div class="settings-page-group">
+
+  <div class="card module-content">
+    <h2>Security</h2>
+    <p class="hint">Web UI sign-in. Session cookie is HTTP-only (7 days). Use <strong>Bypass auth on local LAN</strong> only on trusted private networks.</p>
+    {% if sec_notice == "user_ok" %}
+    <div class="banner banner-ok" role="status">Username updated.</div>
+    {% elif sec_notice == "pass_ok" %}
+    <div class="banner banner-ok" role="status">Password updated. Sign in again on other browsers if needed.</div>
+    {% elif sec_notice == "lan_ok" %}
+    <div class="banner banner-ok" role="status">LAN bypass setting saved.</div>
+    {% elif sec_notice == "bad_current" %}
+    <div class="banner banner-warn" role="alert">Current password is incorrect.</div>
+    {% elif sec_notice == "user_empty" %}
+    <div class="banner banner-warn" role="alert">Username cannot be empty.</div>
+    {% elif sec_notice == "pass_short" %}
+    <div class="banner banner-warn" role="alert">New password must be at least 8 characters.</div>
+    {% elif sec_notice == "pass_mismatch" %}
+    <div class="banner banner-warn" role="alert">New password and confirmation do not match.</div>
+    {% elif sec_notice == "save_fail" %}
+    <div class="banner banner-warn" role="alert">Could not save — database may be busy. Try again.</div>
+    {% elif sec_notice == "invalid" %}
+    <div class="banner banner-warn" role="alert">Invalid security form submission.</div>
+    {% endif %}
+
+    <p><strong>Current username:</strong> {{ settings.auth_username|default('admin', true)|e }}</p>
+
+    <h3 class="section" style="margin-top:1rem;">Change username</h3>
+    <form method="post" action="/settings/auth/credentials" class="section">
+      <input type="hidden" name="auth_form" value="username" />
+      <label>Current password</label>
+      <input class="password" type="password" name="current_password" autocomplete="current-password" required />
+      <label>New username</label>
+      <input class="input" type="text" name="new_username" value="{{ settings.auth_username|default('admin', true) }}" autocomplete="username" required />
+      <div class="btnbar" style="margin-top:8px;">
+        <button class="btn secondary" type="submit">Save username</button>
+      </div>
+    </form>
+
+    <h3 class="section" style="margin-top:1.5rem;">Change password</h3>
+    <form method="post" action="/settings/auth/credentials" class="section">
+      <input type="hidden" name="auth_form" value="password" />
+      <label>Current password</label>
+      <input class="password" type="password" name="current_password" autocomplete="current-password" required />
+      <label>New password</label>
+      <input class="password" type="password" name="new_password" autocomplete="new-password" minlength="8" required />
+      <label>Confirm new password</label>
+      <input class="password" type="password" name="confirm_new_password" autocomplete="new-password" minlength="8" required />
+      <div class="btnbar" style="margin-top:8px;">
+        <button class="btn secondary" type="submit">Save password</button>
+      </div>
+    </form>
+
+    <h3 class="section" style="margin-top:1.5rem;">Local network</h3>
+    <form method="post" action="/settings/auth/lan">
+      <input type="hidden" name="auth_bypass_lan" value="0" />
+      <div class="checkline">
+        <input type="checkbox" name="auth_bypass_lan" id="auth_bypass_lan" value="1" {% if settings.auth_bypass_lan %}checked{% endif %} />
+        <label for="auth_bypass_lan"><strong>Bypass auth on local LAN</strong> (requests from <a href="https://docs.python.org/3/library/ipaddress.html#ipaddress.IPv4Address.is_private" rel="noopener noreferrer">private</a> IP ranges only)</label>
+      </div>
+      <div class="btnbar" style="margin-top:8px;">
+        <button class="btn secondary" type="submit">Save LAN setting</button>
+      </div>
+    </form>
+  </div>
+
   <div class="card module-content">
     <h2>Grabby Settings</h2>
     {% set im = request.query_params.get('import', '') %}

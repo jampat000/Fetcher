@@ -4,18 +4,20 @@
   <div class="page-head">
     <div>
       <h1>First-run setup</h1>
-      <p>Step {{ step }} of {{ setup_steps_total }} — <strong>{{ step_title }}</strong></p>
+      <p>Step {{ step + 1 }} of {{ setup_steps_total }} — <strong>{{ step_title }}</strong></p>
     </div>
     <div class="setup-wizard-actions-top">
+      {% if step > 0 %}
       <a class="btn ghost" href="/settings">Skip wizard — open Settings</a>
+      {% endif %}
     </div>
   </div>
 
   <nav class="setup-stepper" aria-label="Setup steps">
     {% for label in setup_step_labels %}
       {% set s = loop.index %}
-      <span class="setup-step {% if s == step %}setup-step-current{% elif s < step %}setup-step-done{% endif %}">
-        <span class="setup-step-num">{{ s }}</span>
+      <span class="setup-step {% if s == step + 1 %}setup-step-current{% elif s < step + 1 %}setup-step-done{% endif %}" {% if s == step + 1 %}aria-current="step"{% endif %}>
+        <span class="setup-step-num" title="Step {{ s }} of {{ setup_steps_total }}">{{ s }}</span>
         <span class="setup-step-label">{{ label }}</span>
       </span>
       {% if not loop.last %}<span class="setup-step-join" aria-hidden="true"></span>{% endif %}
@@ -25,10 +27,36 @@
   <div class="card module-content setup-wizard-card">
     <div id="setup-test-result" class="setup-test-result" role="status" hidden></div>
 
+    {% if step == 0 and setup_account_intro == "upgrade" %}
+    <div class="banner banner-info" role="status">
+      <strong>Welcome back.</strong> Grabby now protects the web UI with a sign-in password. Create one here — your Sonarr, Radarr, and Emby settings are unchanged. After this step you can use <strong>Sign in</strong> as usual.
+    </div>
+    {% elif step == 0 and setup_account_intro == "new" %}
+    <div class="banner banner-info" role="status">
+      Choose a <strong>username</strong> and <strong>password</strong> for this Grabby install. You’ll use them whenever you open the app in your browser.
+    </div>
+    {% endif %}
+
+    {% if setup_error == "short_password" %}
+    <div class="banner banner-warn" role="alert">Password must be at least 8 characters.</div>
+    {% elif setup_error == "account_required" %}
+    <div class="banner banner-warn" role="alert">Create an account password to continue (cannot skip this step).</div>
+    {% elif setup_save_fail %}
+    <div class="banner banner-warn" role="alert">Could not save — try again.</div>
+    {% endif %}
+
     {% if step < 5 %}
     <form method="post" action="/setup/{{ step }}" class="setup-wizard-form">
-      {% if step == 1 %}
-      <h2>Sonarr</h2>
+      {% if step == 0 %}
+      <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Sign in for Grabby</h2>
+      <p class="hint">Set the <strong>username</strong> and <strong>password</strong> for this install (minimum 8 characters for the password). You’ll use these on every visit; you can change them later under <strong>Grabby Settings</strong> → Security.</p>
+      <label for="setup_auth_username">Username</label>
+      <input class="input" id="setup_auth_username" name="setup_auth_username" type="text" value="{{ settings.auth_username|default('admin', true) }}" autocomplete="username" />
+      <label for="setup_auth_password">Password</label>
+      <input class="password" id="setup_auth_password" name="setup_auth_password" type="password" autocomplete="new-password" minlength="8" required />
+      <p class="small">Minimum 8 characters.</p>
+      {% elif step == 1 %}
+      <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Sonarr</h2>
       <p class="hint">Base URL and API key from Sonarr → Settings → General. You can test the connection before saving.</p>
       <div class="checkline">
         <input type="checkbox" name="sonarr_enabled" id="sonarr_enabled" {% if settings.sonarr_enabled %}checked{% endif %} />
@@ -46,7 +74,7 @@
       </div>
 
       {% elif step == 2 %}
-      <h2>Radarr</h2>
+      <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Radarr</h2>
       <p class="hint">Base URL and API key from Radarr → Settings → General.</p>
       <div class="checkline">
         <input type="checkbox" name="radarr_enabled" id="radarr_enabled" {% if settings.radarr_enabled %}checked{% endif %} />
@@ -64,7 +92,7 @@
       </div>
 
       {% elif step == 3 %}
-      <h2>Emby (Cleaner)</h2>
+      <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Emby (Cleaner)</h2>
       <p class="hint">Optional. Server URL, API key (Emby → API Keys), and your user ID if required by your server policy.</p>
       <div class="checkline">
         <input type="checkbox" name="emby_enabled" id="emby_enabled" {% if settings.emby_enabled %}checked{% endif %} />
@@ -84,7 +112,7 @@
       </div>
 
       {% elif step == 4 %}
-      <h2>Schedule &amp; timezone</h2>
+      <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Schedule &amp; timezone</h2>
       <p class="hint">Starting <strong>run interval</strong> for <strong>Sonarr</strong>, <strong>Radarr</strong>, and <strong>Emby Cleaner</strong> (minutes between runs when schedules allow). You can change each later under <strong>Grabby Settings</strong> and <strong>Cleaner Settings</strong>. Times below use your timezone.</p>
       <label for="run_interval_minutes">Run interval (minutes)</label>
       <input class="number" id="run_interval_minutes" name="run_interval_minutes" type="number" value="{{ settings.sonarr_interval_minutes | default(60, true) }}" min="5" max="10080" />
@@ -97,13 +125,19 @@
       {% endif %}
 
       <div class="setup-wizard-footer">
-        <button class="btn" type="submit" name="wizard_action" value="continue">Continue</button>
+        {% if step < 4 %}
+        <button class="btn" type="submit" name="wizard_action" value="continue">Continue to step {{ step + 2 }} of {{ setup_steps_total }}</button>
+        {% else %}
+        <button class="btn" type="submit" name="wizard_action" value="continue">Continue to step {{ setup_steps_total }} of {{ setup_steps_total }}</button>
+        {% endif %}
+        {% if step != 0 %}
         <button class="btn ghost" type="submit" name="wizard_action" value="skip" formnovalidate>Skip for now</button>
+        {% endif %}
       </div>
     </form>
     {% else %}
-      <h2>You're all set</h2>
-      <p class="hint">Basics are saved. Use the links below when you want to fine-tune automation, Cleaner rules, or run a library match scan.</p>
+      <h2>Step {{ setup_steps_total }} of {{ setup_steps_total }} — You’re all set</h2>
+      <p class="hint">Setup is complete. Use the links below when you want to fine-tune automation, Cleaner rules, or run a library match scan.</p>
       <ul class="small setup-done-list">
         <li><a href="/settings"><strong>Grabby Settings</strong></a> — Sonarr/Radarr search options, per-app schedules, max items, backups</li>
         <li><a href="/emby/settings"><strong>Cleaner Settings</strong></a> — Emby Cleaner rules, dry-run vs live, scan limits, schedule</li>
@@ -119,7 +153,7 @@
 <script>
 (function () {
   const step = {{ step }};
-  if (step >= 5) return;
+  if (step >= 5 || step === 0) return;
   const el = document.getElementById("setup-test-result");
   function show(msg, ok) {
     if (!el) return;

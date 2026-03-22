@@ -80,6 +80,12 @@ class AppSettings(Base):
     emby_rule_tv_watched_rating_below: Mapped[int] = mapped_column(Integer, default=0)  # 0 -> fallback/global or disabled
     emby_rule_tv_unwatched_days: Mapped[int] = mapped_column(Integer, default=0)  # 0 -> fallback/global or disabled
 
+    # Web UI authentication (bcrypt password hash; TimestampSigner session secret)
+    auth_username: Mapped[str] = mapped_column(Text, default="admin")
+    auth_password_hash: Mapped[str] = mapped_column(Text, default="")
+    auth_bypass_lan: Mapped[bool] = mapped_column(Boolean, default=False)
+    auth_session_secret: Mapped[str] = mapped_column(Text, default="")
+
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
 
 
