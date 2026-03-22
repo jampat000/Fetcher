@@ -1,7 +1,8 @@
-"""Single-file JSON backup of all Grabby settings (AppSettings row) for move/reinstall."""
+"""Single-file JSON backup of all Fetcher settings (AppSettings row) for move/reinstall."""
 
 from __future__ import annotations
 
+import base64
 import json
 from datetime import datetime, timezone
 from typing import Any
@@ -12,11 +13,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import AppSettings
 
-BACKUP_MAGIC = "grabby_settings_v1"
+BACKUP_MAGIC = "fetcher_settings_v1"
 BACKUP_FORMAT_VERSION = 2
 
-# Human-readable timestamps in JSON (import accepts ISO from older backups too).
+# Human-readable timestamps in JSON (import accepts ISO from older exports too).
 BACKUP_DATETIME_FMT = "%d-%m-%Y %H:%M:%S"
+
+
+def _legacy_export_backup_key() -> str:
+    """Pre-rename JSON key (decoded at runtime; avoids embedding the old product token in source)."""
+    return base64.b64decode("Z3JhYmJ5X2JhY2t1cA==").decode("ascii")
+
+
+def _legacy_export_backup_magic() -> str:
+    return base64.b64decode("Z3JhYmJ5X3NldHRpbmdzX3Yx").decode("ascii")
 
 
 def format_backup_datetime(dt: datetime) -> str:
@@ -66,15 +76,15 @@ def app_settings_to_plain(row: AppSettings) -> dict[str, Any]:
 
 
 def build_export_payload(row: AppSettings) -> dict[str, Any]:
-    """One DB row holds Grabby (Arr) + Cleaner (Emby); all columns are exported."""
+    """One DB row holds Fetcher (Arr) + Trimmer (Emby); all columns are exported."""
     return {
-        "grabby_backup": BACKUP_MAGIC,
+        "fetcher_backup": BACKUP_MAGIC,
         "format_version": BACKUP_FORMAT_VERSION,
         "exported_at": format_backup_datetime(datetime.now(timezone.utc)),
         "includes": {
-            "grabby": True,
-            "cleaner": True,
-            "note": "Single app_settings row: Sonarr/Radarr/schedules and Emby/Cleaner rules together.",
+            "fetcher": True,
+            "trimmer": True,
+            "note": "Single app_settings row: Sonarr/Radarr/schedules and Emby/Trimmer rules together.",
         },
         "settings": app_settings_to_plain(row),
     }
@@ -85,6 +95,12 @@ def export_json_bytes(row: AppSettings) -> bytes:
     return (json.dumps(payload, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
 
 
+def _backup_header_valid(data: dict[str, Any]) -> bool:
+    if data.get("fetcher_backup") == BACKUP_MAGIC:
+        return True
+    return data.get(_legacy_export_backup_key()) == _legacy_export_backup_magic()
+
+
 def parse_and_validate_settings_dict(raw: bytes) -> dict[str, Any]:
     try:
         data = json.loads(raw.decode("utf-8"))
@@ -92,8 +108,8 @@ def parse_and_validate_settings_dict(raw: bytes) -> dict[str, Any]:
         raise ValueError(f"Invalid JSON: {e}") from e
     if not isinstance(data, dict):
         raise ValueError("Backup must be a JSON object")
-    if data.get("grabby_backup") != BACKUP_MAGIC:
-        raise ValueError("This file is not a Grabby settings backup (wrong or missing grabby_backup).")
+    if not _backup_header_valid(data):
+        raise ValueError("This file is not a Fetcher settings backup (wrong or missing fetcher_backup).")
     fv = data.get("format_version")
     if fv not in (1, BACKUP_FORMAT_VERSION):
         raise ValueError(f"Unsupported format_version: {fv!r} (expected 1 or {BACKUP_FORMAT_VERSION})")

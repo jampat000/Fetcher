@@ -3,21 +3,21 @@
 <div class="wrap">
   <div class="page-head">
     <div>
-      <h1>Cleaner</h1>
-      <p>Review <strong>Emby Cleaner</strong> candidates clearly before scheduled delete runs.</p>
+      <h1>Trimmer</h1>
+      <p>Review <strong>Emby Trimmer</strong> candidates clearly before scheduled delete runs.</p>
     </div>
   </div>
 
   <div class="module-tabs">
-    <a href="/cleaner" class="module-tab active">Cleaner</a>
-    <a href="/emby/settings" class="module-tab">Cleaner Settings</a>
+    <a href="/trimmer" class="module-tab active">Trimmer</a>
+    <a href="/trimmer/settings" class="module-tab">Trimmer Settings</a>
   </div>
 
   <div class="card module-content">
-      <h2>Cleaner Review</h2>
+      <h2>Trimmer Review</h2>
       <div class="hint">
-        See <strong>which titles in Emby match your Emby Cleaner rules</strong> — same checks the scheduler uses.
-        <strong>Scan Emby for matches</strong> loads from Emby; with <strong>dry run</strong> on you get a preview only, with <strong>dry run</strong> off matched items are removed during that scan (up to max rows). Opening <strong>Cleaner</strong> without scanning stays fast.
+        See <strong>which titles in Emby match your Emby Trimmer rules</strong> — same checks the scheduler uses.
+        <strong>Scan Emby for matches</strong> loads from Emby; with <strong>dry run</strong> on you get a preview only, with <strong>dry run</strong> off matched items are removed during that scan (up to max rows). Opening <strong>Trimmer</strong> without scanning stays fast.
       </div>
 
     <div class="preview-stats">
@@ -36,8 +36,8 @@
     </div>
 
     <div class="btnbar">
-      <a class="btn" href="/cleaner?scan=1">Scan Emby for matches</a>
-      <a class="btn secondary" href="/cleaner" title="Clear the list and stop until you scan again">Clear results</a>
+      <a class="btn" href="/trimmer?scan=1">Scan Emby for matches</a>
+      <a class="btn secondary" href="/trimmer" title="Clear the list and stop until you scan again">Clear results</a>
     </div>
 
     <div class="section small">
@@ -57,7 +57,7 @@
 
     {% if not dry_run %}
       <div class="section">
-        <p class="preview-warning">Live delete mode is enabled in Cleaner Settings. Scheduled runs can delete matching items.</p>
+        <p class="preview-warning">Live delete mode is enabled in Trimmer Settings. Scheduled runs can delete matching items.</p>
       </div>
     {% endif %}
 
@@ -68,7 +68,7 @@
       {% elif scan_prompt %}
         <div class="section">
           <div class="banner banner-warn" role="status">
-            <strong>No scan yet.</strong> Click <a href="/cleaner?scan=1"><strong>Scan Emby for matches</strong></a> above to load your library from Emby and list titles that match your rules <em>right now</em>.
+            <strong>No scan yet.</strong> Click <a href="/trimmer?scan=1"><strong>Scan Emby for matches</strong></a> above to load your library from Emby and list titles that match your rules <em>right now</em>.
             Large libraries may take a minute.
           </div>
         </div>

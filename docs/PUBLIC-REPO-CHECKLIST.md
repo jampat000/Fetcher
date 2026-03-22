@@ -10,8 +10,8 @@ Work through the steps **in order**. Check each box when done.
 
 ## Step 1 — Decide what “public” means
 
-- [ ] **Code + Releases public** — Anyone can see source and download `GrabbySetup.exe` from Releases. *(Typical for open source.)*
-- [ ] **Code private, updates from another repo** — Keep coding private; use a **separate public repo** (or org repo) only for releases, and set **`GRABBY_UPDATES_REPO=owner/repo`** for shipped builds.
+- [ ] **Code + Releases public** — Anyone can see source and download `FetcherSetup.exe` from Releases. *(Typical for open source.)*
+- [ ] **Code private, updates from another repo** — Keep coding private; use a **separate public repo** (or org repo) only for releases, and set **`FETCHER_UPDATES_REPO=owner/repo`** for shipped builds.
 
 *Pick one path; the steps below assume “code + releases public.”*
 
@@ -22,7 +22,7 @@ Work through the steps **in order**. Check each box when done.
 In your repo root:
 
 ```powershell
-cd C:\Users\User\grabby
+cd C:\Users\User\fetcher
 ```
 
 - [ ] Search working tree for obvious secrets (pick one tool):
@@ -85,13 +85,13 @@ On GitHub: **Settings** for the repository (and org if applicable).
 
 ## Step 6 — Create at least one public Release
 
-The in-app updater looks for **`GrabbySetup.exe`** on the **latest Release**.
+The in-app updater looks for **`FetcherSetup.exe`** on the **latest Release**.
 
 - [ ] Build the installer (your usual pipeline, e.g. `packaging/build.ps1` + Inno).
 
 - [ ] On GitHub: **Releases → Draft a new release** — tag (e.g. `v1.0.9`), title, short notes.
 
-- [ ] **Attach** `GrabbySetup.exe` (exact name the app expects).
+- [ ] **Attach** `FetcherSetup.exe` (exact name the app expects).
 
 - [ ] Publish the release.
 
@@ -111,7 +111,7 @@ GitHub: **Settings → General → Danger Zone → Change repository visibility 
 
 - [ ] Open **`https://github.com/YOUR_USER/YOUR_REPO/releases/latest`** in a browser (logged out or incognito). You should see the release and asset.
 
-- [ ] On a PC with Grabby: **Settings → Software Updates** should no longer show a **404** for that repo (if you use the default or set **`GRABBY_UPDATES_REPO`** correctly).
+- [ ] On a PC with Fetcher: **Settings → Software Updates** should no longer show a **404** for that repo (if you use the default or set **`FETCHER_UPDATES_REPO`** correctly).
 
 - [ ] Optional: add a **README** badge or “Download” link pointing at latest release.
 
@@ -125,7 +125,7 @@ GitHub: **Settings → General → Danger Zone → Change repository visibility 
 | `SECURITY.md`, issue templates | Settings backup JSON with keys |
 | Public CI logs (avoid printing secrets) | Personal tokens in workflows (use **secrets**) |
 
-**Grabby** stores operator keys in its **local database** on each machine — that stays off GitHub as long as you don’t commit backups or screenshots of Settings.
+**Fetcher** stores operator keys in its **local database** on each machine — that stays off GitHub as long as you don’t commit backups or screenshots of Settings.
 
 ---
 

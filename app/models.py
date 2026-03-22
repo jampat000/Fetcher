@@ -46,17 +46,17 @@ class AppSettings(Base):
     radarr_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     radarr_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    # How often Emby Cleaner may run (Cleaner Settings only; independent of Sonarr/Radarr).
+    # How often Emby Trimmer may run (Trimmer Settings only; independent of Sonarr/Radarr).
     emby_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     emby_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    # Min minutes before Grabby will ask Sonarr/Radarr to search the same episode/movie again.
+    # Min minutes before Fetcher will ask Sonarr/Radarr to search the same episode/movie again.
     # 0 = tie cooldown to each app’s run interval (Sonarr vs Radarr may differ). Default 1440 = 24h.
     arr_search_cooldown_minutes: Mapped[int] = mapped_column(Integer, default=1440)
     # Activity, job_run_log, app_snapshot pruning window (days); clamped 7–3650 when pruning.
     log_retention_days: Mapped[int] = mapped_column(Integer, default=90)
     timezone: Mapped[str] = mapped_column(String(64), default="UTC")  # IANA e.g. America/New_York
 
-    # Emby Cleaner
+    # Emby Trimmer
     emby_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     emby_url: Mapped[str] = mapped_column(String(512), default="")
     emby_api_key: Mapped[str] = mapped_column(String(256), default="")

@@ -55,11 +55,11 @@ from app.schemas import ArrSearchNowIn, SetupConnTestIn, SetupEmbyTestIn, Settin
 from app.setup_helpers import test_emby_connection, test_radarr_connection, test_sonarr_connection
 from app.scheduler import ServiceScheduler
 from app.schedule import DAY_NAMES, normalize_schedule_days_csv, schedule_time_dropdown_choices
-from app.service_logic import apply_emby_cleaner_live_deletes, run_once
+from app.service_logic import apply_emby_trimmer_live_deletes, run_once
 from app.time_util import utc_now_naive
 from app import updates as app_updates
 from app.version_info import get_app_version
-from app.log_sanitize import configure_grabby_logging
+from app.log_sanitize import configure_fetcher_logging
 from app.resolvers.api_keys import (
     resolve_emby_api_key,
     resolve_radarr_api_key,
@@ -67,7 +67,7 @@ from app.resolvers.api_keys import (
     resolve_sonarr_api_key,
 )
 from app.auth import (
-    GrabbyAuthRequired,
+    FetcherAuthRequired,
     INVALID_LOGIN_MESSAGE,
     TOO_MANY_ATTEMPTS_MESSAGE,
     attach_session_cookie,
@@ -90,9 +90,9 @@ from app.auth import (
 _AUTH_DEPS = [Depends(require_auth)]
 _AUTH_FORM_DEPS = [Depends(require_auth), Depends(require_csrf)]
 
-configure_grabby_logging()
+configure_fetcher_logging()
 
-APP_NAME = "Grabby"
+APP_NAME = "Fetcher"
 APP_TAGLINE = "Never miss a release."
 
 logger = logging.getLogger(__name__)
@@ -100,7 +100,7 @@ logger = logging.getLogger(__name__)
 scheduler = ServiceScheduler()
 
 
-def _settings_looks_like_existing_grabby_install(settings: AppSettings) -> bool:
+def _settings_looks_like_existing_fetcher_install(settings: AppSettings) -> bool:
     """True when Sonarr/Radarr/Emby were already configured — tailors setup step 0 for upgrades."""
     return bool(
         (settings.sonarr_url or "").strip()
@@ -131,8 +131,8 @@ async def _try_commit_and_reschedule(session: AsyncSession) -> bool:
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
-    configure_grabby_logging()
-    # When the Windows service holds app.db, startup can block until SQLite times out — retry a few times.
+    configure_fetcher_logging()
+    # When the Windows service holds fetcher.db, startup can block until SQLite times out — retry a few times.
     delays_sec = (0, 2, 5, 10, 15)
     last_err: BaseException | None = None
     for attempt, delay in enumerate(delays_sec):
@@ -154,8 +154,8 @@ async def _lifespan(_app: FastAPI):
             )
     if last_err is not None:
         logger.error(
-            "Grabby could not finish database setup. If the Windows service is running, run "
-            "scripts/dev-start.ps1 (uses GRABBY_DEV_DB_PATH / %%TEMP%%\\grabby-dev.sqlite3 by default) "
+            "Fetcher could not finish database setup. If the Windows service is running, run "
+            "scripts/dev-start.ps1 (uses FETCHER_DEV_DB_PATH / %%TEMP%%\\fetcher-dev.sqlite3 by default) "
             "or stop the service. DB path: %s",
             db_path(),
         )
@@ -170,8 +170,8 @@ async def _lifespan(_app: FastAPI):
 app = FastAPI(title=APP_NAME, lifespan=_lifespan)
 
 
-@app.exception_handler(GrabbyAuthRequired)
-async def _grabby_auth_redirect_handler(_request: Request, exc: GrabbyAuthRequired) -> Response:
+@app.exception_handler(FetcherAuthRequired)
+async def _fetcher_auth_redirect_handler(_request: Request, exc: FetcherAuthRequired) -> Response:
     """Depends(require_auth) cannot return RedirectResponse — FastAPI would ignore it."""
     return exc.response
 
@@ -181,8 +181,8 @@ async def _form_validation_redirect(request: Request, exc: RequestValidationErro
     """Browser form posts expect a redirect/HTML — avoid a raw 422 JSON body ('page isn't working')."""
     if request.method == "POST" and request.url.path == "/settings":
         return RedirectResponse("/settings?save=fail&reason=invalid", status_code=303)
-    if request.method == "POST" and request.url.path == "/emby/settings/cleaner":
-        return RedirectResponse("/emby/settings?save=fail&reason=invalid", status_code=303)
+    if request.method == "POST" and request.url.path == "/trimmer/settings/cleaner":
+        return RedirectResponse("/trimmer/settings?save=fail&reason=invalid", status_code=303)
     if request.method == "POST" and request.url.path.startswith("/settings/auth"):
         return RedirectResponse("/settings?save=fail&reason=invalid", status_code=303)
     return JSONResponse(status_code=422, content={"detail": exc.errors()})
@@ -435,7 +435,7 @@ async def setup_wizard_page(
     setup_save_fail = (request.query_params.get("save") or "").strip().lower() == "fail"
     if step == 0:
         setup_account_intro = (
-            "upgrade" if _settings_looks_like_existing_grabby_install(settings) else "new"
+            "upgrade" if _settings_looks_like_existing_fetcher_install(settings) else "new"
         )
     else:
         setup_account_intro = ""
@@ -534,7 +534,7 @@ async def setup_wizard_save(
             row.emby_api_key = (emby_api_key or "").strip()
             row.emby_user_id = (emby_user_id or "").strip()
         elif step == 4:
-            # Starting run interval for Sonarr, Radarr, and Emby Cleaner (no separate global scheduler base).
+            # Starting run interval for Sonarr, Radarr, and Emby Trimmer (no separate global scheduler base).
             try:
                 im = int(run_interval_minutes)
             except (TypeError, ValueError):
@@ -605,7 +605,7 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
             "ok": last_run.ok,
             "message": _truncate_display(last_run.message or ""),
         }
-    next_tick = scheduler.next_grabby_run_at()
+    next_tick = scheduler.next_fetcher_run_at()
     next_tick_local = _fmt_local(next_tick, tz) if next_tick else ""
     emby_schedule_start_display = _to_12h(settings.emby_schedule_start or "00:00", "12:00 AM")
     emby_schedule_end_display = _to_12h(settings.emby_schedule_end or "23:59", "11:59 PM")
@@ -765,7 +765,7 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
         {
             "app_name": APP_NAME,
             "app_tagline": APP_TAGLINE,
-            "title": f"{APP_NAME} — Grabby Settings",
+            "title": f"{APP_NAME} — Fetcher Settings",
             "subtitle": "Configure connections, schedules, and limits",
             "settings": settings,
             "sec_notice": sec_notice,
@@ -806,7 +806,7 @@ async def settings_backup_export(session: AsyncSession = Depends(get_session)) -
     row = await _get_or_create_settings(session)
     body = export_json_bytes(row)
     d = datetime.now(timezone.utc).strftime("%d-%m-%Y")
-    fname = f"grabby-settings-backup-{d}.json"
+    fname = f"fetcher-settings-backup-{d}.json"
     return Response(
         content=body,
         media_type="application/json; charset=utf-8",
@@ -893,8 +893,8 @@ async def settings_backup_import(
     return RedirectResponse("/settings?import=ok", status_code=303)
 
 
-@app.get("/emby/settings", response_class=HTMLResponse, dependencies=_AUTH_DEPS)
-async def emby_settings_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
+@app.get("/trimmer/settings", response_class=HTMLResponse, dependencies=_AUTH_DEPS)
+async def trimmer_settings_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await _get_or_create_settings(session)
     emby_snap = (
         (await session.execute(select(AppSnapshot).where(AppSnapshot.app == "emby").order_by(desc(AppSnapshot.id)).limit(1)))
@@ -909,12 +909,12 @@ async def emby_settings_page(request: Request, session: AsyncSession = Depends(g
     ee = _normalize_hhmm(settings.emby_schedule_end, "23:59")
     return templates.TemplateResponse(
         request,
-        "emby_settings.html",
+        "trimmer_settings.html",
         {
             "app_name": APP_NAME,
             "app_tagline": APP_TAGLINE,
-            "title": f"{APP_NAME} — Cleaner Settings",
-            "subtitle": "Configure Emby Cleaner and schedule",
+            "title": f"{APP_NAME} — Trimmer Settings",
+            "subtitle": "Configure Emby Trimmer and schedule",
             "settings": settings,
             "emby": emby_snap,
             "now": utc_now_naive(),
@@ -944,9 +944,8 @@ async def emby_settings_page(request: Request, session: AsyncSession = Depends(g
     )
 
 
-@app.get("/cleaner", response_class=HTMLResponse, dependencies=_AUTH_DEPS)
-@app.get("/emby/preview", response_class=HTMLResponse, dependencies=_AUTH_DEPS)
-async def emby_preview_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
+@app.get("/trimmer", response_class=HTMLResponse, dependencies=_AUTH_DEPS)
+async def trimmer_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await _get_or_create_settings(session)
     tz = settings.timezone or "UTC"
     rows: list[dict] = []
@@ -984,7 +983,7 @@ async def emby_preview_page(request: Request, session: AsyncSession = Depends(ge
     if not settings.emby_url or not _emby_key:
         error = "Emby URL and API key are required."
     elif movie_rating_below <= 0 and movie_unwatched_days <= 0 and (not tv_delete_watched) and tv_unwatched_days <= 0:
-        error = "No rules are enabled. Set at least one Emby Cleaner rule in Cleaner Settings."
+        error = "No rules are enabled. Set at least one Emby Trimmer rule in Trimmer Settings."
     elif not run_emby_scan:
         # Fast path: sidebar / default navigation should not scan the whole library.
         scan_prompt = True
@@ -1050,7 +1049,7 @@ async def emby_preview_page(request: Request, session: AsyncSession = Depends(ge
                 if candidates and not settings.emby_dry_run:
                     sk = resolve_sonarr_api_key(settings)
                     rk = resolve_radarr_api_key(settings)
-                    await apply_emby_cleaner_live_deletes(
+                    await apply_emby_trimmer_live_deletes(
                         settings, client, candidates, son_key=sk, rad_key=rk
                     )
                     settings.emby_last_run_at = utc_now_naive()
@@ -1063,12 +1062,12 @@ async def emby_preview_page(request: Request, session: AsyncSession = Depends(ge
 
     return templates.TemplateResponse(
         request,
-        "cleaner.html",
+        "trimmer.html",
         {
             "app_name": APP_NAME,
             "app_tagline": APP_TAGLINE,
-            "title": f"{APP_NAME} — Cleaner",
-            "subtitle": "Review exact titles matching Emby Cleaner rules",
+            "title": f"{APP_NAME} — Trimmer",
+            "subtitle": "Review exact titles matching Emby Trimmer rules",
             "settings": settings,
             "rows": rows,
             "error": error,
@@ -1225,12 +1224,12 @@ async def save_settings(
             await session.rollback()
         except Exception:
             pass
-        if (os.environ.get("GRABBY_LOG_LEVEL") or "").strip().upper() == "DEBUG":
+        if (os.environ.get("FETCHER_LOG_LEVEL") or "").strip().upper() == "DEBUG":
             raise
         return RedirectResponse("/settings?save=fail&reason=error", status_code=303)
 
 
-@app.post("/emby/settings", dependencies=_AUTH_FORM_DEPS)
+@app.post("/trimmer/settings", dependencies=_AUTH_FORM_DEPS)
 async def save_emby_settings(
     emby_enabled: bool = Form(False),
     emby_url: str = Form(""),
@@ -1247,26 +1246,26 @@ async def save_emby_settings(
         row.emby_user_id = emby_user_id.strip()
         row.updated_at = utc_now_naive()
         if not await _try_commit_and_reschedule(session):
-            return RedirectResponse("/emby/settings?save=fail&reason=db_busy", status_code=303)
-        return RedirectResponse("/emby/settings?saved=1", status_code=303)
+            return RedirectResponse("/trimmer/settings?save=fail&reason=db_busy", status_code=303)
+        return RedirectResponse("/trimmer/settings?saved=1", status_code=303)
     except SQLAlchemyError:
-        logger.exception("POST /emby/settings SQLAlchemyError")
-        return RedirectResponse("/emby/settings?save=fail&reason=db_error", status_code=303)
+        logger.exception("POST /trimmer/settings SQLAlchemyError")
+        return RedirectResponse("/trimmer/settings?save=fail&reason=db_error", status_code=303)
     except ValueError:
-        logger.exception("POST /emby/settings ValueError")
-        return RedirectResponse("/emby/settings?save=fail&reason=invalid", status_code=303)
+        logger.exception("POST /trimmer/settings ValueError")
+        return RedirectResponse("/trimmer/settings?save=fail&reason=invalid", status_code=303)
     except Exception:
-        logger.exception("POST /emby/settings failed")
+        logger.exception("POST /trimmer/settings failed")
         try:
             await session.rollback()
         except Exception:
             pass
-        if (os.environ.get("GRABBY_LOG_LEVEL") or "").strip().upper() == "DEBUG":
+        if (os.environ.get("FETCHER_LOG_LEVEL") or "").strip().upper() == "DEBUG":
             raise
-        return RedirectResponse("/emby/settings?save=fail&reason=error", status_code=303)
+        return RedirectResponse("/trimmer/settings?save=fail&reason=error", status_code=303)
 
 
-@app.post("/emby/settings/connection", dependencies=_AUTH_FORM_DEPS)
+@app.post("/trimmer/settings/connection", dependencies=_AUTH_FORM_DEPS)
 async def save_emby_connection_settings(
     emby_enabled: bool = Form(False),
     emby_url: str = Form(""),
@@ -1282,27 +1281,27 @@ async def save_emby_connection_settings(
         row.emby_user_id = emby_user_id.strip()
         row.updated_at = utc_now_naive()
         if not await _try_commit_and_reschedule(session):
-            return RedirectResponse("/emby/settings?save=fail&reason=db_busy", status_code=303)
-        return RedirectResponse("/emby/settings?saved=1", status_code=303)
+            return RedirectResponse("/trimmer/settings?save=fail&reason=db_busy", status_code=303)
+        return RedirectResponse("/trimmer/settings?saved=1", status_code=303)
     except SQLAlchemyError:
-        logger.exception("POST /emby/settings/connection SQLAlchemyError")
-        return RedirectResponse("/emby/settings?save=fail&reason=db_error", status_code=303)
+        logger.exception("POST /trimmer/settings/connection SQLAlchemyError")
+        return RedirectResponse("/trimmer/settings?save=fail&reason=db_error", status_code=303)
     except ValueError:
-        logger.exception("POST /emby/settings/connection ValueError")
-        return RedirectResponse("/emby/settings?save=fail&reason=invalid", status_code=303)
+        logger.exception("POST /trimmer/settings/connection ValueError")
+        return RedirectResponse("/trimmer/settings?save=fail&reason=invalid", status_code=303)
     except Exception:
-        logger.exception("POST /emby/settings/connection failed")
+        logger.exception("POST /trimmer/settings/connection failed")
         try:
             await session.rollback()
         except Exception:
             pass
-        if (os.environ.get("GRABBY_LOG_LEVEL") or "").strip().upper() == "DEBUG":
+        if (os.environ.get("FETCHER_LOG_LEVEL") or "").strip().upper() == "DEBUG":
             raise
-        return RedirectResponse("/emby/settings?save=fail&reason=error", status_code=303)
+        return RedirectResponse("/trimmer/settings?save=fail&reason=error", status_code=303)
 
 
-@app.post("/emby/settings/cleaner", dependencies=_AUTH_FORM_DEPS)
-async def save_cleaner_settings(
+@app.post("/trimmer/settings/cleaner", dependencies=_AUTH_FORM_DEPS)
+async def save_trimmer_settings(
     emby_interval_minutes: int = Form(60),
     emby_dry_run: bool = Form(False),
     emby_schedule_enabled: bool = Form(False),
@@ -1333,7 +1332,7 @@ async def save_cleaner_settings(
     try:
         row = await _get_or_create_settings(session)
         scope = (save_scope or "all").strip().lower()
-        # One shared form: persist Emby Cleaner cadence on any save (independent of Grabby / Arr scheduler base).
+        # One shared form: persist Emby Trimmer cadence on any save (independent of Fetcher / Arr scheduler base).
         eim = max(5, min(7 * 24 * 60, int(emby_interval_minutes or 60)))
         row.emby_interval_minutes = eim
         # One shared HTML form: schedule / dry run / scan limits are always posted; persist on any save button.
@@ -1382,23 +1381,23 @@ async def save_cleaner_settings(
         )
         row.updated_at = utc_now_naive()
         if not await _try_commit_and_reschedule(session):
-            return RedirectResponse("/emby/settings?save=fail&reason=db_busy", status_code=303)
-        return RedirectResponse("/emby/settings?saved=1", status_code=303)
+            return RedirectResponse("/trimmer/settings?save=fail&reason=db_busy", status_code=303)
+        return RedirectResponse("/trimmer/settings?saved=1", status_code=303)
     except SQLAlchemyError:
-        logger.exception("POST /emby/settings/cleaner SQLAlchemyError")
-        return RedirectResponse("/emby/settings?save=fail&reason=db_error", status_code=303)
+        logger.exception("POST /trimmer/settings/cleaner SQLAlchemyError")
+        return RedirectResponse("/trimmer/settings?save=fail&reason=db_error", status_code=303)
     except ValueError:
-        logger.exception("POST /emby/settings/cleaner ValueError")
-        return RedirectResponse("/emby/settings?save=fail&reason=invalid", status_code=303)
+        logger.exception("POST /trimmer/settings/cleaner ValueError")
+        return RedirectResponse("/trimmer/settings?save=fail&reason=invalid", status_code=303)
     except Exception:
-        logger.exception("POST /emby/settings/cleaner failed")
+        logger.exception("POST /trimmer/settings/cleaner failed")
         try:
             await session.rollback()
         except Exception:
             pass
-        if (os.environ.get("GRABBY_LOG_LEVEL") or "").strip().upper() == "DEBUG":
+        if (os.environ.get("FETCHER_LOG_LEVEL") or "").strip().upper() == "DEBUG":
             raise
-        return RedirectResponse("/emby/settings?save=fail&reason=error", status_code=303)
+        return RedirectResponse("/trimmer/settings?save=fail&reason=error", status_code=303)
 
 
 @app.post("/test/sonarr", dependencies=_AUTH_FORM_DEPS)
@@ -1445,11 +1444,11 @@ async def test_emby(session: AsyncSession = Depends(get_session)) -> RedirectRes
     if not emby_url:
         session.add(AppSnapshot(app="emby", ok=False, status_message="Test failed: Emby URL is required.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
-        return RedirectResponse("/emby/settings?test=emby_fail", status_code=303)
+        return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
     if not emby_token:
         session.add(AppSnapshot(app="emby", ok=False, status_message="Test failed: Emby API key is required.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
-        return RedirectResponse("/emby/settings?test=emby_fail", status_code=303)
+        return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
     if _looks_like_url(emby_token):
         session.add(
             AppSnapshot(
@@ -1461,7 +1460,7 @@ async def test_emby(session: AsyncSession = Depends(get_session)) -> RedirectRes
             )
         )
         await session.commit()
-        return RedirectResponse("/emby/settings?test=emby_fail", status_code=303)
+        return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
     try:
         c = EmbyClient(EmbyConfig(emby_url, emby_token))
         try:
@@ -1475,18 +1474,18 @@ async def test_emby(session: AsyncSession = Depends(get_session)) -> RedirectRes
             await c.aclose()
         session.add(AppSnapshot(app="emby", ok=True, status_message="Test OK", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
-        return RedirectResponse("/emby/settings?test=emby_ok", status_code=303)
+        return RedirectResponse("/trimmer/settings?test=emby_ok", status_code=303)
     except httpx.HTTPStatusError as e:
         detail = f"HTTP {e.response.status_code}: {e}"
         if e.response.status_code in (401, 403):
             detail += " | Check Emby API key permissions and base URL."
         session.add(AppSnapshot(app="emby", ok=False, status_message=f"Test failed: {detail}", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
-        return RedirectResponse("/emby/settings?test=emby_fail", status_code=303)
+        return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
     except (httpx.HTTPError, ValueError) as e:
         session.add(AppSnapshot(app="emby", ok=False, status_message=f"Test failed: {type(e).__name__}: {e}", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
-        return RedirectResponse("/emby/settings?test=emby_fail", status_code=303)
+        return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
 
 
 @app.post("/test/emby-form", dependencies=_AUTH_FORM_DEPS)
@@ -1504,13 +1503,13 @@ async def test_emby_from_form(
     if not emby_url_n:
         session.add(AppSnapshot(app="emby", ok=False, status_message="Test failed: Emby URL is required.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
-        return RedirectResponse("/emby/settings?test=emby_fail", status_code=303)
+        return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
     row = await _get_or_create_settings(session)
     emby_token_n = resolve_emby_api_key(row, form=emby_api_key)
     if not emby_token_n:
         session.add(AppSnapshot(app="emby", ok=False, status_message="Test failed: Emby API key is required.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
-        return RedirectResponse("/emby/settings?test=emby_fail", status_code=303)
+        return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
     if _looks_like_url(emby_token_n):
         session.add(
             AppSnapshot(
@@ -1522,7 +1521,7 @@ async def test_emby_from_form(
             )
         )
         await session.commit()
-        return RedirectResponse("/emby/settings?test=emby_fail", status_code=303)
+        return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
     # Persist entered connection values so users don't lose them after testing.
     row.emby_enabled = emby_enabled
     row.emby_url = emby_url_n
@@ -1543,16 +1542,16 @@ async def test_emby_from_form(
             await c.aclose()
         session.add(AppSnapshot(app="emby", ok=True, status_message="Test OK", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
-        return RedirectResponse("/emby/settings?test=emby_ok", status_code=303)
+        return RedirectResponse("/trimmer/settings?test=emby_ok", status_code=303)
     except httpx.HTTPStatusError as e:
         detail = f"HTTP {e.response.status_code}: {e}"
         if e.response.status_code in (401, 403):
             detail += " | Check Emby API key permissions and base URL."
         session.add(AppSnapshot(app="emby", ok=False, status_message=f"Test failed: {detail}", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
-        return RedirectResponse("/emby/settings?test=emby_fail", status_code=303)
+        return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
     except (httpx.HTTPError, ValueError) as e:
         session.add(AppSnapshot(app="emby", ok=False, status_message=f"Test failed: {type(e).__name__}: {e}", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
-        return RedirectResponse("/emby/settings?test=emby_fail", status_code=303)
+        return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
 

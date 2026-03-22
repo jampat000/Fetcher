@@ -50,7 +50,7 @@ function applyScrollY(y) {
 function persistScrollForAfterRedirect() {
   try {
     sessionStorage.setItem(
-      "grabby_restore_scroll",
+      "fetcher_restore_scroll",
       JSON.stringify({
         path: normPathname(window.location.pathname),
         y: grabScrollY(),
@@ -75,7 +75,7 @@ function shouldRestoreAfterRedirect() {
 }
 
 /** Keeps main-column scroll across redirect + late layout (pageshow / fonts). */
-let grabbyPendingMainScroll = null;
+let fetcherPendingMainScroll = null;
 
 /** Remember scroll when saving (303 redirect reloads at top). */
 function bindScrollRestoreOnFormSubmit() {
@@ -91,7 +91,7 @@ function bindScrollRestoreOnFormSubmit() {
 
 function restoreScrollAfterFormRedirect() {
   const fromReturn = shouldRestoreAfterRedirect();
-  const raw = sessionStorage.getItem("grabby_restore_scroll");
+  const raw = sessionStorage.getItem("fetcher_restore_scroll");
 
   // Only take over scroll restoration when we're actually restoring after a save/test redirect.
   // Setting "manual" on every page breaks some embedded browsers (e.g. VS Code / Cursor Simple Browser).
@@ -104,17 +104,17 @@ function restoreScrollAfterFormRedirect() {
   }
 
   if (!fromReturn) {
-    if (raw) sessionStorage.removeItem("grabby_restore_scroll");
-    grabbyPendingMainScroll = null;
+    if (raw) sessionStorage.removeItem("fetcher_restore_scroll");
+    fetcherPendingMainScroll = null;
     return;
   }
 
   if (!raw) {
-    if (grabbyPendingMainScroll != null) applyScrollY(grabbyPendingMainScroll);
+    if (fetcherPendingMainScroll != null) applyScrollY(fetcherPendingMainScroll);
     return;
   }
 
-  sessionStorage.removeItem("grabby_restore_scroll");
+  sessionStorage.removeItem("fetcher_restore_scroll");
 
   let path;
   let y;
@@ -127,18 +127,18 @@ function restoreScrollAfterFormRedirect() {
   }
   if (path !== normPathname(window.location.pathname)) return;
 
-  grabbyPendingMainScroll = y;
-  const apply = () => applyScrollY(grabbyPendingMainScroll);
+  fetcherPendingMainScroll = y;
+  const apply = () => applyScrollY(fetcherPendingMainScroll);
   requestAnimationFrame(apply);
   [0, 50, 100, 200, 400, 600].forEach((ms) => window.setTimeout(apply, ms));
   window.setTimeout(() => {
-    grabbyPendingMainScroll = null;
+    fetcherPendingMainScroll = null;
   }, 3000);
 }
 
 function reapplyPendingScrollAfterPageshow() {
-  if (!shouldRestoreAfterRedirect() || grabbyPendingMainScroll == null) return;
-  applyScrollY(grabbyPendingMainScroll);
+  if (!shouldRestoreAfterRedirect() || fetcherPendingMainScroll == null) return;
+  applyScrollY(fetcherPendingMainScroll);
 }
 
 /** Helps embedded / webview panels (Simple Browser) where default navigation can stick. */

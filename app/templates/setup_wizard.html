@@ -29,11 +29,11 @@
 
     {% if step == 0 and setup_account_intro == "upgrade" %}
     <div class="banner banner-info" role="status">
-      <strong>Welcome back.</strong> Grabby now protects the web UI with a sign-in password. Create one here — your Sonarr, Radarr, and Emby settings are unchanged. After this step you can use <strong>Sign in</strong> as usual.
+      <strong>Welcome back.</strong> Fetcher now protects the web UI with a sign-in password. Create one here — your Sonarr, Radarr, and Emby settings are unchanged. After this step you can use <strong>Sign in</strong> as usual.
     </div>
     {% elif step == 0 and setup_account_intro == "new" %}
     <div class="banner banner-info" role="status">
-      Choose a <strong>username</strong> and <strong>password</strong> for this Grabby install. You’ll use them whenever you open the app in your browser.
+      Choose a <strong>username</strong> and <strong>password</strong> for this Fetcher install. You’ll use them whenever you open the app in your browser.
     </div>
     {% endif %}
 
@@ -51,8 +51,8 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       {% endif %}
       {% if step == 0 %}
-      <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Sign in for Grabby</h2>
-      <p class="hint">Set the <strong>username</strong> and <strong>password</strong> for this install (minimum 8 characters for the password). You’ll use these on every visit; you can change them later under <strong>Grabby Settings</strong> → Security.</p>
+      <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Sign in for Fetcher</h2>
+      <p class="hint">Set the <strong>username</strong> and <strong>password</strong> for this install (minimum 8 characters for the password). You’ll use these on every visit; you can change them later under <strong>Fetcher Settings</strong> → Security.</p>
       <label for="setup_auth_username">Username</label>
       <input class="input" id="setup_auth_username" name="setup_auth_username" type="text" value="{{ settings.auth_username|default('admin', true) }}" autocomplete="username" />
       <label for="setup_auth_password">Password</label>
@@ -95,11 +95,11 @@
       </div>
 
       {% elif step == 3 %}
-      <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Emby (Cleaner)</h2>
+      <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Emby (Trimmer)</h2>
       <p class="hint">Optional. Server URL, API key (Emby → API Keys), and your user ID if required by your server policy.</p>
       <div class="checkline">
         <input type="checkbox" name="emby_enabled" id="emby_enabled" {% if settings.emby_enabled %}checked{% endif %} />
-        <label for="emby_enabled"><strong>Enable</strong> Emby Cleaner</label>
+        <label for="emby_enabled"><strong>Enable</strong> Emby Trimmer</label>
       </div>
       <label for="emby_url">Emby URL</label>
       <input class="input" id="emby_url" name="emby_url" type="text" value="{{ settings.emby_url }}" placeholder="http://localhost:8096" autocomplete="off" />
@@ -116,7 +116,7 @@
 
       {% elif step == 4 %}
       <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Schedule &amp; timezone</h2>
-      <p class="hint">Starting <strong>run interval</strong> for <strong>Sonarr</strong>, <strong>Radarr</strong>, and <strong>Emby Cleaner</strong> (minutes between runs when schedules allow). You can change each later under <strong>Grabby Settings</strong> and <strong>Cleaner Settings</strong>. Times below use your timezone.</p>
+      <p class="hint">Starting <strong>run interval</strong> for <strong>Sonarr</strong>, <strong>Radarr</strong>, and <strong>Emby Trimmer</strong> (minutes between runs when schedules allow). You can change each later under <strong>Fetcher Settings</strong> and <strong>Trimmer Settings</strong>. Times below use your timezone.</p>
       <label for="run_interval_minutes">Run interval (minutes)</label>
       <input class="number" id="run_interval_minutes" name="run_interval_minutes" type="number" value="{{ settings.sonarr_interval_minutes | default(60, true) }}" min="5" max="10080" />
       <label for="timezone">Timezone</label>
@@ -140,15 +140,15 @@
     </form>
     {% else %}
       <h2>Step {{ setup_steps_total }} of {{ setup_steps_total }} — You’re all set</h2>
-      <p class="hint">Setup is complete. Use the links below when you want to fine-tune automation, Cleaner rules, or run a library match scan.</p>
+      <p class="hint">Setup is complete. Use the links below when you want to fine-tune automation, Trimmer rules, or run a library match scan.</p>
       <ul class="small setup-done-list">
-        <li><a href="/settings"><strong>Grabby Settings</strong></a> — Sonarr/Radarr search options, per-app schedules, max items, backups</li>
-        <li><a href="/emby/settings"><strong>Cleaner Settings</strong></a> — Emby Cleaner rules, dry-run vs live, scan limits, schedule</li>
-        <li><a href="/cleaner"><strong>Cleaner</strong></a> — <strong>Scan Emby for matches</strong> to preview what your rules would target (on-demand)</li>
+        <li><a href="/settings"><strong>Fetcher Settings</strong></a> — Sonarr/Radarr search options, per-app schedules, max items, backups</li>
+        <li><a href="/trimmer/settings"><strong>Trimmer Settings</strong></a> — Emby Trimmer rules, dry-run vs live, scan limits, schedule</li>
+        <li><a href="/trimmer"><strong>Trimmer</strong></a> — <strong>Scan Emby for matches</strong> to preview what your rules would target (on-demand)</li>
       </ul>
       <div class="setup-wizard-footer">
         <a class="btn" href="/?setup=complete">Open dashboard</a>
-        <a class="btn ghost" href="/settings">Open Grabby Settings</a>
+        <a class="btn ghost" href="/settings">Open Fetcher Settings</a>
       </div>
     {% endif %}
   </div>

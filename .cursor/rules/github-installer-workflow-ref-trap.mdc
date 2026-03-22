@@ -20,6 +20,6 @@ If **`vX.Y.Z`** points to an **older** commit than **`origin/master`** (e.g. tag
 
 1. **Normal path:** Merge **`VERSION`** / changelog → let **Tag release (from VERSION)** create **`vX.Y.Z`** on the **merge commit** (that commit should include current workflows).
 2. **Before** relying on **`gh workflow run --ref vX.Y.Z`**: `git fetch origin master --tags`, then compare SHAs. If **`vX.Y.Z`** is **not** the commit you intend to ship, **fix the tag** (delete + recreate on correct **`master`** tip, then push) **or** bump **`VERSION`** and release again.
-3. **Recovery:** Align **`vX.Y.Z`** with the **`master`** commit that has the right workflow + code, **push the tag** (triggers **`push: tags`**), **or** attach **`GrabbySetup.exe`** with **`gh release create`** from a known-good artifact (last resort).
+3. **Recovery:** Align **`vX.Y.Z`** with the **`master`** commit that has the right workflow + code, **push the tag** (triggers **`push: tags`**), **or** attach **`FetcherSetup.exe`** with **`gh release create`** from a known-good artifact (last resort).
 
 When editing **CHANGELOG “Releasing”**, **README CI**, **`docs/GITHUB-CLI.md`**, or **`.cursor/rules/bump-and-restart-workflow.mdc`**, keep this behavior consistent.

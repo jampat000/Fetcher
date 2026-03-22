@@ -39,10 +39,10 @@ def _client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
         "/settings",
         "/settings?saved=1",
         "/settings?save=fail&reason=db_busy",
-        "/emby/settings",
-        "/emby/settings?saved=1",
-        "/emby/settings?save=fail&reason=db_busy",
-        "/cleaner",
+        "/trimmer/settings",
+        "/trimmer/settings?saved=1",
+        "/trimmer/settings?save=fail&reason=db_busy",
+        "/trimmer",
         "/healthz",
         "/settings?import=ok",
         "/settings/backup/export",
@@ -64,7 +64,7 @@ def test_healthz_json(monkeypatch: pytest.MonkeyPatch) -> None:
         resp = client.get("/healthz")
     data = resp.json()
     assert data["status"] == "ok"
-    assert data["app"] == "Grabby"
+    assert data["app"] == "Fetcher"
 
 
 def test_dashboard_has_module_tabs(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -83,9 +83,9 @@ def test_settings_page_has_forms(monkeypatch: pytest.MonkeyPatch) -> None:
     assert b"radarr_url" in r.content
 
 
-def test_emby_settings_has_content_criteria(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_trimmer_settings_has_content_criteria(monkeypatch: pytest.MonkeyPatch) -> None:
     with _client(monkeypatch) as client:
-        r = client.get("/emby/settings")
+        r = client.get("/trimmer/settings")
     assert r.status_code == 200
     html = r.text
     assert "Content Criteria" in html
@@ -210,7 +210,7 @@ def test_post_settings_validation_error_redirects_not_422(monkeypatch: pytest.Mo
 
 
 def test_post_settings_save_redirects(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Minimal Grabby settings form post."""
+    """Minimal Fetcher settings form post."""
     payload = {
         "sonarr_enabled": "false",
         "sonarr_url": "",
@@ -254,7 +254,7 @@ def test_post_settings_save_redirects(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_post_emby_connection_save(monkeypatch: pytest.MonkeyPatch) -> None:
     with _client(monkeypatch) as client:
         resp = client.post(
-            "/emby/settings/connection",
+            "/trimmer/settings/connection",
             data={
                 "emby_enabled": "false",
                 "emby_url": "http://localhost:8096",
@@ -264,11 +264,11 @@ def test_post_emby_connection_save(monkeypatch: pytest.MonkeyPatch) -> None:
             follow_redirects=False,
         )
     assert resp.status_code == 303
-    assert "/emby/settings" in resp.headers.get("location", "")
+    assert "/trimmer/settings" in resp.headers.get("location", "")
 
 
-def test_post_cleaner_settings_full(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Cleaner form: genres (multi), People credits, schedules."""
+def test_post_trimmer_settings_full(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Trimmer form: genres (multi), People credits, schedules."""
     # Use URL-encoded body so duplicate keys (genres, credit types) parse like a real browser.
     pairs: list[tuple[str, str]] = [
         ("emby_dry_run", "true"),
@@ -294,7 +294,7 @@ def test_post_cleaner_settings_full(monkeypatch: pytest.MonkeyPatch) -> None:
     encoded = urlencode(pairs)
     with _client(monkeypatch) as client:
         resp = client.post(
-            "/emby/settings/cleaner",
+            "/trimmer/settings/cleaner",
             content=encoded,
             headers={"Content-Type": "application/x-www-form-urlencoded"},
             follow_redirects=True,
@@ -364,7 +364,7 @@ def test_sonarr_schedule_all_days_stays_enabled(monkeypatch: pytest.MonkeyPatch)
     assert "schedule-days-native" in html
 
 
-def test_cleaner_schedule_all_days_stays_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_trimmer_schedule_all_days_stays_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     pairs: list[tuple[str, str]] = [
         ("emby_dry_run", "true"),
         ("emby_schedule_enabled", "true"),
@@ -378,13 +378,13 @@ def test_cleaner_schedule_all_days_stays_enabled(monkeypatch: pytest.MonkeyPatch
     encoded = urlencode(pairs)
     with _client(monkeypatch) as client:
         resp = client.post(
-            "/emby/settings/cleaner",
+            "/trimmer/settings/cleaner",
             content=encoded,
             headers={"Content-Type": "application/x-www-form-urlencoded"},
             follow_redirects=False,
         )
         assert resp.status_code == 303
-        page = client.get("/emby/settings")
+        page = client.get("/trimmer/settings")
     html = page.text
     assert 'name="emby_schedule_enabled" checked' in html
     assert len(re.findall(r'name="emby_schedule_(Mon|Tue|Wed|Thu|Fri|Sat|Sun)"', html)) == 7

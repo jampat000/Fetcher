@@ -4,29 +4,29 @@
 <div class="wrap">
   <div class="page-head">
     <div>
-      <h1>Cleaner Settings</h1>
-      <p>Dedicated <strong>Emby Cleaner</strong> configuration, fully separate from Arr settings.</p>
+      <h1>Trimmer Settings</h1>
+      <p>Dedicated <strong>Emby Trimmer</strong> configuration, fully separate from Arr settings.</p>
     </div>
   </div>
 
   <div class="module-tabs">
-    <a href="/cleaner" class="module-tab">Cleaner</a>
-    <a href="/emby/settings" class="module-tab active">Cleaner Settings</a>
+    <a href="/trimmer" class="module-tab">Trimmer</a>
+    <a href="/trimmer/settings" class="module-tab active">Trimmer Settings</a>
   </div>
 
   {% if settings.emby_enabled %}
   {% if settings.emby_dry_run %}
-  <div class="banner banner-ok cleaner-mode-banner" role="status">
-    <strong>Dry run (safe)</strong> — Grabby will <em>not</em> delete anything in Emby. Review matches under <a href="/logs">Logs</a> or <a href="/cleaner?scan=1">Cleaner</a>; uncheck dry run only when you intend real deletes.
+  <div class="banner banner-ok trimmer-mode-banner" role="status">
+    <strong>Dry run (safe)</strong> — Fetcher will <em>not</em> delete anything in Emby. Review matches under <a href="/logs">Logs</a> or <a href="/trimmer?scan=1">Trimmer</a>; uncheck dry run only when you intend real deletes.
   </div>
   {% else %}
-  <div class="banner banner-warn cleaner-mode-banner" role="alert">
-    <strong>Live delete</strong> — Matching items can be <em>removed</em> from Emby on schedule or when you run Cleaner. Re‑enable <strong>Dry run</strong> below if you only want previews.
+  <div class="banner banner-warn trimmer-mode-banner" role="alert">
+    <strong>Live delete</strong> — Matching items can be <em>removed</em> from Emby on schedule or when you run Trimmer. Re‑enable <strong>Dry run</strong> below if you only want previews.
   </div>
   {% endif %}
   {% else %}
-  <div class="banner banner-ok cleaner-mode-banner" role="status" style="opacity:.9;">
-    <strong>Emby Cleaner off</strong> — Turn on <strong>Enable Emby Cleaner</strong> below to use dry run or live mode.
+  <div class="banner banner-ok trimmer-mode-banner" role="status" style="opacity:.9;">
+    <strong>Emby Trimmer off</strong> — Turn on <strong>Enable Emby Trimmer</strong> below to use dry run or live mode.
   </div>
   {% endif %}
 
@@ -40,12 +40,12 @@
       {% endif %}
 
       <div class="section">
-      <h3>Emby Cleaner Settings</h3>
-      <form method="post" action="/emby/settings/connection">
+      <h3>Emby Trimmer Settings</h3>
+      <form method="post" action="/trimmer/settings/connection">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
         <div class="checkline">
           <input type="checkbox" name="emby_enabled" {% if settings.emby_enabled %}checked{% endif %} />
-          <strong>Enable Emby Cleaner</strong>
+          <strong>Enable Emby Trimmer</strong>
         </div>
 
         <div class="row">
@@ -68,17 +68,17 @@
         <div class="small">Required. Generate in Emby Dashboard - Advanced - API Keys. Do not paste your Emby URL here.</div>
 
         <div class="btnbar">
-          <button class="btn" type="submit">Save Cleaner Emby Settings</button>
+          <button class="btn" type="submit">Save Trimmer Emby Settings</button>
           <button type="submit" class="btn secondary" formaction="/test/emby-form">Test Emby</button>
         </div>
       </form>
       </div>
 
       <div class="section">
-      <form method="post" action="/emby/settings/cleaner">
+      <form method="post" action="/trimmer/settings/cleaner">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
         <div class="section">
-          <h3>Global Cleaner Settings</h3>
+          <h3>Global Trimmer Settings</h3>
           <div class="row">
             <div class="field">
               <label>Max items to scan per run</label>
@@ -100,7 +100,7 @@
           <div class="section">
             <div class="checkline">
               <input type="checkbox" name="emby_schedule_enabled" {% if settings.emby_schedule_enabled %}checked{% endif %} />
-              Enable Emby Cleaner schedule window
+              Enable Emby Trimmer schedule window
             </div>
             <label>Days</label>
             {{ schedule_days_checkboxes("emby_schedule", emby_schedule_days_selected) }}
@@ -113,13 +113,13 @@
               <div class="field">
                 <label>Run interval (minutes)</label>
                 <input class="number" type="number" name="emby_interval_minutes" value="{{ settings.emby_interval_minutes | default(60, true) }}" min="5" max="10080" placeholder="60" />
-                <div class="small">Minimum time between Cleaner runs when this window and your rules allow. Applies to <strong>movies</strong> and <strong>TV</strong> in Emby.</div>
+                <div class="small">Minimum time between Trimmer runs when this window and your rules allow. Applies to <strong>movies</strong> and <strong>TV</strong> in Emby.</div>
               </div>
             </div>
           </div>
 
           <div class="btnbar">
-            <button class="btn" type="submit" name="save_scope" value="global">Save Cleaner Global Settings</button>
+            <button class="btn" type="submit" name="save_scope" value="global">Save Trimmer Global Settings</button>
           </div>
         </div>
 

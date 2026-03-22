@@ -1,14 +1,14 @@
 # Windows Service (WinSW)
 
-This project uses **WinSW** (Windows Service Wrapper) to run the packaged `Grabby` executable as a Windows Service.
+This project uses **WinSW** (Windows Service Wrapper) to run the packaged `Fetcher` executable as a Windows Service.
 
 ## Get WinSW
 
 Download WinSW (x64) and name it `winsw.exe`, then place it in the same folder as:
 
 - `winsw.exe`
-- `GrabbyService.xml`
-- `Grabby.exe` (your packaged app)
+- `FetcherService.xml`
+- `Fetcher.exe` (your packaged app)
 
 WinSW releases are available on GitHub (search “WinSW releases”).
 
@@ -21,7 +21,7 @@ WinSW releases are available on GitHub (search “WinSW releases”).
 
 ## Listen address (LAN vs localhost)
 
-`GrabbyService.xml` passes **`--host`** to `Grabby.exe`. **`0.0.0.0`** listens on all interfaces so you can use **`http://<this-pc-ip>:8765`** from other devices on your network. Use **`127.0.0.1`** if you want the Web UI only on this machine. Open **TCP 8765** in Windows Firewall when using `0.0.0.0`. The Web UI uses **username + password** (and optional **IP allowlist** in Settings); see root **`SECURITY.md`**.
+`FetcherService.xml` passes **`--host`** to `Fetcher.exe`. **`0.0.0.0`** listens on all interfaces so you can use **`http://<this-pc-ip>:8765`** from other devices on your network. Use **`127.0.0.1`** if you want the Web UI only on this machine. Open **TCP 8765** in Windows Firewall when using `0.0.0.0`. The Web UI uses **username + password** (and optional **IP allowlist** in Settings); see root **`SECURITY.md`**.
 
 ## Stop / Uninstall
 

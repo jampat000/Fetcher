@@ -13,7 +13,7 @@ from app.auth import build_session_cookie_value, generate_csrf_token
 from app.db import SessionLocal, _get_or_create_settings
 from app.main import app
 
-# Must match ``tests/conftest.py`` seed after ``_init_grabby_test_database``.
+# Must match ``tests/conftest.py`` seed after ``_init_fetcher_test_database``.
 _TEST_SESSION_SECRET = "0123456789abcdef" * 4
 
 pytestmark = pytest.mark.real_csrf
@@ -30,10 +30,10 @@ def _scheduler_noop(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("app.main.scheduler.shutdown", _noop_shutdown)
 
 
-def _set_grabby_session_cookie(client: TestClient) -> None:
+def _set_fetcher_session_cookie(client: TestClient) -> None:
     """Attach session cookie on the client (avoids per-request ``cookies=`` deprecation)."""
     client.cookies.set(
-        "grabby_session",
+        "fetcher_session",
         build_session_cookie_value(secret=_TEST_SESSION_SECRET, username="admin"),
     )
 
@@ -45,7 +45,7 @@ def _csrf_value() -> str:
 def test_post_protected_form_without_csrf_returns_403(monkeypatch: pytest.MonkeyPatch) -> None:
     _scheduler_noop(monkeypatch)
     with TestClient(app) as client:
-        _set_grabby_session_cookie(client)
+        _set_fetcher_session_cookie(client)
         r = client.post(
             "/settings/auth/access_control",
             data={"auth_ip_allowlist": "127.0.0.1"},
@@ -59,7 +59,7 @@ def test_post_protected_form_with_valid_csrf_succeeds(monkeypatch: pytest.Monkey
     _scheduler_noop(monkeypatch)
     try:
         with TestClient(app) as client:
-            _set_grabby_session_cookie(client)
+            _set_fetcher_session_cookie(client)
             r = client.post(
                 "/settings/auth/access_control",
                 data={
@@ -117,7 +117,7 @@ def test_expired_csrf_token_returns_403(monkeypatch: pytest.MonkeyPatch) -> None
     with patch("app.auth.TimestampSigner") as MockSigner:
         MockSigner.return_value.unsign.side_effect = SignatureExpired("expired", payload=b"x")
         with TestClient(app) as client:
-            client.cookies.set("grabby_session", session_cookie_value)
+            client.cookies.set("fetcher_session", session_cookie_value)
             r = client.post(
                 "/settings/auth/access_control",
                 data={

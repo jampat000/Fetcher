@@ -45,7 +45,7 @@ def test_tag_to_version_invalid() -> None:
 
 
 def test_apply_eligible_allows_dev_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GRABBY_ALLOW_DEV_UPGRADE", "1")
+    monkeypatch.setenv("FETCHER_ALLOW_DEV_UPGRADE", "1")
     monkeypatch.setattr("app.updates.sys", types.SimpleNamespace(platform="win32", frozen=False))
     assert _apply_eligible() is True
 
@@ -54,11 +54,11 @@ def test_api_updates_check_fresh_release(monkeypatch: pytest.MonkeyPatch) -> Non
     async def _fake_fetch(_repo: str, include_token: bool = True) -> dict[str, Any]:
         return {
             "tag_name": "v2.0.0",
-            "html_url": "https://github.com/jampat000/Grabby/releases/tag/v2.0.0",
+            "html_url": "https://github.com/jampat000/Fetcher/releases/tag/v2.0.0",
             "assets": [
                 {
-                    "name": "GrabbySetup.exe",
-                    "browser_download_url": "https://github.com/jampat000/Grabby/releases/download/v2.0.0/GrabbySetup.exe",
+                    "name": "FetcherSetup.exe",
+                    "browser_download_url": "https://github.com/jampat000/Fetcher/releases/download/v2.0.0/FetcherSetup.exe",
                 }
             ],
         }
@@ -74,7 +74,7 @@ def test_api_updates_check_fresh_release(monkeypatch: pytest.MonkeyPatch) -> Non
     assert data["ok"] is True
     assert data["update_available"] is True
     assert data["latest_version"] == "2.0.0"
-    assert "GrabbySetup.exe" in (data.get("download_url") or "")
+    assert "FetcherSetup.exe" in (data.get("download_url") or "")
 
 
 def test_api_updates_check_falls_back_when_api_rate_limited(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -88,11 +88,11 @@ def test_api_updates_check_falls_back_when_api_rate_limited(monkeypatch: pytest.
     async def _web_ok(_repo: str) -> dict[str, Any]:
         return {
             "tag_name": "v2.0.0",
-            "html_url": "https://github.com/jampat000/Grabby/releases/tag/v2.0.0",
+            "html_url": "https://github.com/jampat000/Fetcher/releases/tag/v2.0.0",
             "assets": [
                 {
-                    "name": "GrabbySetup.exe",
-                    "browser_download_url": "https://github.com/jampat000/Grabby/releases/download/v2.0.0/GrabbySetup.exe",
+                    "name": "FetcherSetup.exe",
+                    "browser_download_url": "https://github.com/jampat000/Fetcher/releases/download/v2.0.0/FetcherSetup.exe",
                 }
             ],
         }
@@ -121,11 +121,11 @@ def test_api_updates_check_retries_api_without_token_on_401(monkeypatch: pytest.
             raise err401
         return {
             "tag_name": "v2.0.0",
-            "html_url": "https://github.com/jampat000/Grabby/releases/tag/v2.0.0",
+            "html_url": "https://github.com/jampat000/Fetcher/releases/tag/v2.0.0",
             "assets": [
                 {
-                    "name": "GrabbySetup.exe",
-                    "browser_download_url": "https://github.com/jampat000/Grabby/releases/download/v2.0.0/GrabbySetup.exe",
+                    "name": "FetcherSetup.exe",
+                    "browser_download_url": "https://github.com/jampat000/Fetcher/releases/download/v2.0.0/FetcherSetup.exe",
                 }
             ],
         }
@@ -144,7 +144,7 @@ def test_api_updates_check_retries_api_without_token_on_401(monkeypatch: pytest.
 
 def test_installer_download_headers_skip_auth_for_github_releases_download() -> None:
     h = updates_mod._installer_download_headers(
-        "https://github.com/jampat000/Grabby/releases/download/v1.0.27/GrabbySetup.exe"
+        "https://github.com/jampat000/Fetcher/releases/download/v1.0.27/FetcherSetup.exe"
     )
     assert "Authorization" not in h
     assert h.get("Accept") == "application/octet-stream"
@@ -156,7 +156,7 @@ def test_api_updates_check_synthetic_download_when_api_assets_empty(monkeypatch:
     async def _fake(_repo: str, include_token: bool = True) -> dict[str, Any]:
         return {
             "tag_name": "v2.0.0",
-            "html_url": "https://github.com/jampat000/Grabby/releases/tag/v2.0.0",
+            "html_url": "https://github.com/jampat000/Fetcher/releases/tag/v2.0.0",
             "assets": [],
         }
 
@@ -171,7 +171,7 @@ def test_api_updates_check_synthetic_download_when_api_assets_empty(monkeypatch:
     assert data["ok"] is True
     assert data["update_available"] is True
     assert data["asset_missing"] is False
-    assert "releases/download/v2.0.0/GrabbySetup.exe" in (data.get("download_url") or "")
+    assert "releases/download/v2.0.0/FetcherSetup.exe" in (data.get("download_url") or "")
 
 
 def test_api_updates_check_refresh_bypasses_cache(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -181,11 +181,11 @@ def test_api_updates_check_refresh_bypasses_cache(monkeypatch: pytest.MonkeyPatc
         calls["n"] += 1
         return {
             "tag_name": "v2.0.0",
-            "html_url": "https://github.com/jampat000/Grabby/releases/tag/v2.0.0",
+            "html_url": "https://github.com/jampat000/Fetcher/releases/tag/v2.0.0",
             "assets": [
                 {
-                    "name": "GrabbySetup.exe",
-                    "browser_download_url": "https://github.com/jampat000/Grabby/releases/download/v2.0.0/GrabbySetup.exe",
+                    "name": "FetcherSetup.exe",
+                    "browser_download_url": "https://github.com/jampat000/Fetcher/releases/download/v2.0.0/FetcherSetup.exe",
                 }
             ],
         }
@@ -207,7 +207,7 @@ def test_api_updates_check_up_to_date(monkeypatch: pytest.MonkeyPatch) -> None:
         return {
             "tag_name": "v1.0.0",
             "html_url": "https://github.com/x/y",
-            "assets": [{"name": "GrabbySetup.exe", "browser_download_url": "https://example.com/a.exe"}],
+            "assets": [{"name": "FetcherSetup.exe", "browser_download_url": "https://example.com/a.exe"}],
         }
 
     monkeypatch.setattr("app.updates._fetch_latest_release_payload", _fake_fetch)
@@ -224,7 +224,7 @@ def test_api_updates_check_up_to_date(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_api_updates_apply_rejects_when_not_frozen(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("app.updates.sys", types.SimpleNamespace(platform="win32", frozen=False))
-    monkeypatch.delenv("GRABBY_ALLOW_DEV_UPGRADE", raising=False)
+    monkeypatch.delenv("FETCHER_ALLOW_DEV_UPGRADE", raising=False)
 
     with _build_client(monkeypatch) as client:
         r = client.post("/api/updates/apply")

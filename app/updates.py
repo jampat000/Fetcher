@@ -28,8 +28,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/updates", tags=["updates"], dependencies=[Depends(require_auth)])
 
-DEFAULT_RELEASES_REPO = "jampat000/Grabby"
-SETUP_ASSET_NAME = "GrabbySetup.exe"
+DEFAULT_RELEASES_REPO = "jampat000/Fetcher"
+SETUP_ASSET_NAME = "FetcherSetup.exe"
 
 GITHUB_API_VERSION = "2022-11-28"
 
@@ -38,7 +38,7 @@ def _github_headers(*, accept: str | None = None, include_token: bool = True) ->
     """Headers for GitHub API and (some) release-asset downloads.
 
     GitHub rejects many requests without a descriptive User-Agent (403). Optional
-    ``GRABBY_GITHUB_TOKEN`` or ``GITHUB_TOKEN`` raises rate limits and allows
+    ``FETCHER_GITHUB_TOKEN`` or ``GITHUB_TOKEN`` raises rate limits and allows
     private-repo release checks.
 
     A **bad or expired** token in the environment yields **401** on the API and can
@@ -49,12 +49,12 @@ def _github_headers(*, accept: str | None = None, include_token: bool = True) ->
     contact = f"https://github.com/{repo}"
     ver = get_app_version()
     h: dict[str, str] = {
-        "User-Agent": f"Grabby/{ver} (+{contact})",
+        "User-Agent": f"Fetcher/{ver} (+{contact})",
         "X-GitHub-Api-Version": GITHUB_API_VERSION,
         "Accept": accept or "application/vnd.github+json",
     }
     if include_token:
-        token = (os.environ.get("GRABBY_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN") or "").strip()
+        token = (os.environ.get("FETCHER_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN") or "").strip()
         if token:
             h["Authorization"] = f"Bearer {token}"
     return h
@@ -72,7 +72,7 @@ def _github_error_message(response: httpx.Response) -> str:
 _apply_lock = threading.Lock()
 
 # Short cache so Settings / repeated checks do not burn GitHub REST API quota (60/hr per IP unauthenticated).
-_RELEASE_CACHE_TTL_SEC = max(60, int(os.environ.get("GRABBY_UPDATES_CACHE_SECONDS", "900")))
+_RELEASE_CACHE_TTL_SEC = max(60, int(os.environ.get("FETCHER_UPDATES_CACHE_SECONDS", "900")))
 _release_payload_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _release_cache_lock = threading.Lock()
 
@@ -86,11 +86,11 @@ def _no_store_json(body: dict[str, Any]) -> JSONResponse:
 
 
 def _releases_repo() -> str:
-    return (os.environ.get("GRABBY_UPDATES_REPO") or DEFAULT_RELEASES_REPO).strip().strip("/")
+    return (os.environ.get("FETCHER_UPDATES_REPO") or DEFAULT_RELEASES_REPO).strip().strip("/")
 
 
 def _allow_apply_in_dev() -> bool:
-    return os.environ.get("GRABBY_ALLOW_DEV_UPGRADE", "").strip().lower() in ("1", "true", "yes")
+    return os.environ.get("FETCHER_ALLOW_DEV_UPGRADE", "").strip().lower() in ("1", "true", "yes")
 
 
 def _tag_to_version(tag: str) -> Version | None:
@@ -127,7 +127,7 @@ def _web_headers() -> dict[str, str]:
     """Headers for github.com pages / Atom (not api.github.com); avoids REST API rate limits."""
     repo = _releases_repo()
     ver = get_app_version()
-    return {"User-Agent": f"Grabby/{ver} (+https://github.com/{repo})"}
+    return {"User-Agent": f"Fetcher/{ver} (+https://github.com/{repo})"}
 
 
 def _tag_from_releases_url(url: str) -> str | None:
@@ -227,7 +227,7 @@ async def _resolve_latest_release_payload(repo: str) -> dict[str, Any]:
         payload = await _fetch_latest_release_payload(repo, include_token=True)
     except httpx.HTTPStatusError as e:
         code = e.response.status_code
-        # Bad GITHUB_TOKEN / GRABBY_GITHUB_TOKEN in env: retry API anonymously for public repos.
+        # Bad GITHUB_TOKEN / FETCHER_GITHUB_TOKEN in env: retry API anonymously for public repos.
         if code == 401:
             try:
                 payload = await _fetch_latest_release_payload(repo, include_token=False)
@@ -251,7 +251,7 @@ async def _resolve_latest_release_payload(repo: str) -> dict[str, Any]:
 
 
 def _installer_download_headers(url: str) -> dict[str, str]:
-    """Headers for downloading GrabbySetup.exe.
+    """Headers for downloading FetcherSetup.exe.
 
     ``https://github.com/.../releases/download/...`` must not send a bad ``Authorization``
     header (common when ``GITHUB_TOKEN`` is set globally for other tools).
@@ -360,17 +360,17 @@ async def _compute_updates_check_payload() -> dict[str, Any]:
         if code == 404:
             err = (
                 "No GitHub releases found for this repository (404). "
-                "If you use a fork, set GRABBY_UPDATES_REPO to owner/repo."
+                "If you use a fork, set FETCHER_UPDATES_REPO to owner/repo."
             )
         elif code == 403:
             err = (
                 "GitHub denied access (403). This is often rate limiting or a missing/invalid token. "
-                "Wait a few minutes and retry. If it persists, set GRABBY_GITHUB_TOKEN to a read-only "
+                "Wait a few minutes and retry. If it persists, set FETCHER_GITHUB_TOKEN to a read-only "
                 f"personal access token (see GitHub docs).{suffix}"
             )
         elif code == 401:
             err = (
-                "GitHub returned 401 (unauthorized). If GITHUB_TOKEN or GRABBY_GITHUB_TOKEN is set on "
+                "GitHub returned 401 (unauthorized). If GITHUB_TOKEN or FETCHER_GITHUB_TOKEN is set on "
                 "this machine, it may be expired or wrong — remove it or fix it, then retry."
                 f"{suffix}"
             )
@@ -448,7 +448,7 @@ async def api_updates_apply() -> dict[str, Any]:
         return {
             "ok": False,
             "error": "Automatic upgrade runs only in the installed (frozen) Windows build. "
-            "Download GrabbySetup.exe from GitHub, or set GRABBY_ALLOW_DEV_UPGRADE=1 for testing.",
+            "Download FetcherSetup.exe from GitHub, or set FETCHER_ALLOW_DEV_UPGRADE=1 for testing.",
         }
 
     if not _apply_lock.acquire(blocking=False):
@@ -463,9 +463,9 @@ async def api_updates_apply() -> dict[str, Any]:
             return {"ok": False, "error": "No newer release available (or installer asset missing)."}
         url = check.get("download_url")
         if not url or not isinstance(url, str):
-            return {"ok": False, "error": "Release has no GrabbySetup.exe asset."}
+            return {"ok": False, "error": "Release has no FetcherSetup.exe asset."}
 
-        fd, name = tempfile.mkstemp(suffix=".exe", prefix="GrabbyUpgrade-")
+        fd, name = tempfile.mkstemp(suffix=".exe", prefix="FetcherUpgrade-")
         os.close(fd)
         tmp_path = Path(name)
 
@@ -484,5 +484,5 @@ async def api_updates_apply() -> dict[str, Any]:
 
     return {
         "ok": True,
-        "message": "Installer started. The Grabby service will stop briefly during upgrade, then start again.",
+        "message": "Installer started. The Fetcher service will stop briefly during upgrade, then start again.",
     }

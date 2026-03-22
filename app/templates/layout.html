@@ -19,8 +19,8 @@
       <aside class="sidebar">
         <a href="/" class="sidebar-brand">
           <span class="sidebar-brand-row">
-            <img src="/static/grabby-logo.svg" alt="Grabby" class="sidebar-brand-mark" />
-            <span class="sidebar-logo">Grabby</span>
+            <img src="/static/fetcher-logo.svg" alt="Fetcher" class="sidebar-brand-mark" />
+            <span class="sidebar-logo">Fetcher</span>
           </span>
           <span class="sidebar-tagline">{{ app_tagline|default("Never miss a release.", true) }}</span>
         </a>
@@ -45,9 +45,9 @@
             <i data-lucide="wand-2" class="sidebar-icon"></i>
             <span>Setup</span>
           </a>
-          <a href="/cleaner" class="sidebar-link {% if request.url.path in ['/cleaner', '/emby/preview', '/emby/settings'] %}active{% endif %}">
+          <a href="/trimmer" class="sidebar-link {% if request.url.path in ['/trimmer', '/trimmer/settings'] %}active{% endif %}">
             <i data-lucide="sparkles" class="sidebar-icon"></i>
-            <span>Cleaner</span>
+            <span>Trimmer</span>
           </a>
           <a href="/logout" class="sidebar-link">
             <i data-lucide="log-out" class="sidebar-icon"></i>
@@ -58,7 +58,7 @@
           <div class="sidebar-time" title="Your timezone: {{ timezone|default('UTC', true) }}">
             {{ now_local|default('—', true) }}
           </div>
-          <div class="sidebar-version" title="Grabby version">v{{ app_version|default('?', true) }}</div>
+          <div class="sidebar-version" title="Fetcher version">v{{ app_version|default('?', true) }}</div>
         </div>
       </aside>
       <main class="main">

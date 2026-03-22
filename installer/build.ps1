@@ -6,7 +6,7 @@ param(
   [string]$Version = ""
 )
 
-function Resolve-GrabbyAppVersion {
+function Resolve-FetcherAppVersion {
   param(
     [string]$Explicit,
     [string]$Root
@@ -44,10 +44,10 @@ if ($Clean) {
 Write-Host "1) Building app (PyInstaller)..."
 .\packaging\build.ps1
 
-$distApp = Join-Path $root "dist\Grabby"
-$distExe = Join-Path $distApp "Grabby.exe"
+$distApp = Join-Path $root "dist\Fetcher"
+$distExe = Join-Path $distApp "Fetcher.exe"
 if (-not (Test-Path -LiteralPath $distExe)) {
-  throw "PyInstaller output missing: $distExe (is packaging\grabby.spec committed and present on this machine/CI?)"
+  throw "PyInstaller output missing: $distExe (is packaging\fetcher.spec committed and present on this machine/CI?)"
 }
 
 Write-Host "2) Staging WinSW (bundled installer/bin/WinSW.exe)..."
@@ -131,10 +131,10 @@ if (-not $iscc) {
   throw "Inno Setup compiler (ISCC.exe) not found. Re-run with -IsccPath 'C:\path\to\ISCC.exe', or pass -InstallInnoSetupIfMissing to auto-install it."
 }
 
-$appVersion = Resolve-GrabbyAppVersion -Explicit $Version -Root $root
+$appVersion = Resolve-FetcherAppVersion -Explicit $Version -Root $root
 Write-Host "Inno AppVersion: $appVersion"
-& $iscc "/DMyAppVersion=$appVersion" ".\\installer\\Grabby.iss"
+& $iscc "/DMyAppVersion=$appVersion" ".\\installer\\Fetcher.iss"
 
 Write-Host ""
-Write-Host "Installer built under: installer\\output\\GrabbySetup.exe"
+Write-Host "Installer built under: installer\\output\\FetcherSetup.exe"
 

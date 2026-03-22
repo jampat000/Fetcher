@@ -10,8 +10,8 @@ Branch protection is **not** stored in git—you turn it on in the GitHub UI (or
 
 Use **classic branch protection**, not rulesets (rulesets often don’t enforce on free private repos).
 
-1. Open **[Add branch protection rule](https://github.com/jampat000/Grabby/settings/branch_protection_rules/new)**  
-   (or **Grabby → Settings → Branches → Add branch protection rule**).
+1. Open **[Add branch protection rule](https://github.com/jampat000/Fetcher/settings/branch_protection_rules/new)**  
+   (or **Fetcher → Settings → Branches → Add branch protection rule**).
 
 2. **Branch name pattern:** `master`
 
@@ -48,7 +48,7 @@ From the repo root on your PC (needs **git** + **PowerShell**):
 2. Run:
 
 ```powershell
-cd C:\path\to\grabby
+cd C:\path\to\fetcher
 $env:GITHUB_TOKEN = 'paste_token_here'
 & .\scripts\protect-master-branch.ps1
 ```

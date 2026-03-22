@@ -4,7 +4,7 @@
   <div class="page-head">
     <div>
       <h1>Activity</h1>
-      <p>Recent actions triggered by Grabby and Cleaner.</p>
+      <p>Recent actions triggered by Fetcher and Trimmer.</p>
     </div>
   </div>
 
@@ -16,7 +16,7 @@
 
   <div class="card module-content">
     <h2>Activity</h2>
-    <div class="hint">What Grabby triggered: missing, upgrade, and <strong>Emby Cleaner</strong> actions. Times in your chosen timezone.</div>
+    <div class="hint">What Fetcher triggered: missing, upgrade, and <strong>Emby Trimmer</strong> actions. Times in your chosen timezone.</div>
     <div class="section">
       {% if activity %}
       <div class="activity-list">
@@ -25,13 +25,13 @@
           <span class="activity-time">{{ e.time_local }}</span>
           <span class="activity-tags">
             <span class="tag tag-{{ e.app }}">{{ e.app }}</span>
-            <span class="tag tag-{{ e.kind }}">{% if e.kind == "upgrade" %}Quality Upgrade{% elif e.kind == "cleanup" %}Cleaner{% else %}{{ e.kind.capitalize() }}{% endif %}</span>
+            <span class="tag tag-{{ e.kind }}">{% if e.kind == "upgrade" %}Quality Upgrade{% elif e.kind == "trimmed" %}Trimmer{% else %}{{ e.kind.capitalize() }}{% endif %}</span>
           </span>
           <div class="activity-msg">
             {% if e.kind == "missing" %}
               {{ e.count }} {{ "episode" if e.app == "sonarr" else "movie" }}{{ "s" if e.count != 1 else "" }} searched
-            {% elif e.kind == "cleanup" %}
-              {{ e.count }} item{{ "s" if e.count != 1 else "" }} matched Emby Cleaner rules
+            {% elif e.kind == "trimmed" %}
+              {{ e.count }} item{{ "s" if e.count != 1 else "" }} matched Emby Trimmer rules
             {% else %}
               {{ e.count }} {{ "episode" if e.app == "sonarr" else "movie" }}{{ "s" if e.count != 1 else "" }} upgrade search
             {% endif %}

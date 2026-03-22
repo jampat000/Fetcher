@@ -39,8 +39,8 @@ def _emby_configured(settings: AppSettings) -> bool:
     )
 
 
-def compute_grabby_tick_minutes(settings: AppSettings) -> int:
-    """How often the Grabby scheduler wakes: minimum effective Sonarr/Radarr run intervals in play."""
+def compute_fetcher_tick_minutes(settings: AppSettings) -> int:
+    """How often the Fetcher scheduler wakes: minimum effective Sonarr/Radarr run intervals in play."""
     tick: int | None = None
     if _sonarr_configured(settings):
         s_int = effective_arr_interval_minutes(getattr(settings, "sonarr_interval_minutes", None))
@@ -57,14 +57,14 @@ class ServiceScheduler:
     def __init__(self) -> None:
         self._sched = AsyncIOScheduler()
         self._lock = asyncio.Lock()
-        self._job_id = "grabby"
+        self._job_id = "fetcher"
 
     async def _current_tick_minutes(self) -> int:
         async with SessionLocal() as session:
             settings = (await session.execute(select(AppSettings).order_by(AppSettings.id.asc()).limit(1))).scalars().first()
             if not settings:
                 return 60
-            return compute_grabby_tick_minutes(settings)
+            return compute_fetcher_tick_minutes(settings)
 
     async def _job(self) -> None:
         if self._lock.locked():
@@ -97,7 +97,7 @@ class ServiceScheduler:
             replace_existing=True,
         )
 
-    def next_grabby_run_at(self) -> datetime | None:
+    def next_fetcher_run_at(self) -> datetime | None:
         """Next scheduled tick for the main automation job (naive UTC if job uses naive)."""
         if not self._sched.running:
             return None

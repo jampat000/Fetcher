@@ -26,7 +26,7 @@ class SettingsIn(BaseModel):
         default=60,
         ge=5,
         le=7 * 24 * 60,
-        description="Emby Cleaner run cadence only (Cleaner Settings).",
+        description="Emby Trimmer run cadence only (Trimmer Settings).",
     )
     arr_search_cooldown_minutes: int = Field(
         default=1440,

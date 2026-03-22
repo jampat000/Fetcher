@@ -1,4 +1,4 @@
-"""Grabby web UI authentication: bcrypt passwords, TimestampSigner session cookie, optional IP allowlist."""
+"""Fetcher web UI authentication: bcrypt passwords, TimestampSigner session cookie, optional IP allowlist."""
 
 from __future__ import annotations
 
@@ -15,10 +15,10 @@ from starlette.responses import RedirectResponse, Response
 from app.db import SessionLocal, _get_or_create_settings, get_session
 from app.models import AppSettings
 
-SESSION_COOKIE_NAME = "grabby_session"
+SESSION_COOKIE_NAME = "fetcher_session"
 SESSION_MAX_AGE_SEC = 604800
-SIGNER_SALT = "grabby-session"
-CSRF_SIGNER_SALT = "grabby-csrf"
+SIGNER_SALT = "fetcher-session"
+CSRF_SIGNER_SALT = "fetcher-csrf"
 CSRF_MAX_AGE_SEC = 3600
 
 LOGIN_WINDOW_SEC = 600
@@ -29,7 +29,7 @@ INVALID_LOGIN_MESSAGE = "Invalid username or password"
 TOO_MANY_ATTEMPTS_MESSAGE = "Too many attempts, try again later."
 
 
-class GrabbyAuthRequired(Exception):
+class FetcherAuthRequired(Exception):
     """FastAPI ignores ``Response`` objects returned from ``dependencies=[Depends(...)]`` — raise this instead."""
 
     __slots__ = ("response",)
@@ -298,7 +298,7 @@ def login_url_with_next(*, request: Request) -> str:
 
 
 async def bootstrap_auth_on_startup() -> None:
-    """GRABBY_RESET_AUTH=1 clears credentials; ensure session signing secret exists."""
+    """FETCHER_RESET_AUTH=1 clears credentials; ensure session signing secret exists."""
     import os
     import secrets
 
@@ -307,13 +307,13 @@ async def bootstrap_auth_on_startup() -> None:
     log = logging.getLogger(__name__)
     async with SessionLocal() as session:
         settings = await _get_or_create_settings(session)
-        if os.environ.get("GRABBY_RESET_AUTH", "").strip() == "1":
+        if os.environ.get("FETCHER_RESET_AUTH", "").strip() == "1":
             settings.auth_username = "admin"
             settings.auth_password_hash = ""
             settings.updated_at = utc_now_naive()
             await session.commit()
             log.warning(
-                "Auth credentials reset via GRABBY_RESET_AUTH. Visit /setup/0 to set a new password."
+                "Auth credentials reset via FETCHER_RESET_AUTH. Visit /setup/0 to set a new password."
             )
         if not (settings.auth_session_secret or "").strip():
             settings.auth_session_secret = secrets.token_hex(32)
@@ -348,7 +348,7 @@ async def require_auth(
                     "setup_path": "/setup/0",
                 },
             )
-        raise GrabbyAuthRequired(RedirectResponse(url="/setup/0", status_code=303))
+        raise FetcherAuthRequired(RedirectResponse(url="/setup/0", status_code=303))
 
     allow_txt = (settings.auth_ip_allowlist or "").strip()
     if allow_txt and is_ip_allowed(get_client_ip(request), settings.auth_ip_allowlist):
@@ -358,11 +358,11 @@ async def require_auth(
     if not secret:
         if _wants_json(request):
             raise HTTPException(status_code=401, detail={"message": "Unauthorized"})
-        raise GrabbyAuthRequired(RedirectResponse(url=login_url_with_next(request=request), status_code=303))
+        raise FetcherAuthRequired(RedirectResponse(url=login_url_with_next(request=request), status_code=303))
 
     raw = request.cookies.get(SESSION_COOKIE_NAME) or ""
     expected = (settings.auth_username or "admin").strip() or "admin"
     if not verify_session_cookie(secret=secret, cookie_value=raw, expected_username=expected):
         if _wants_json(request):
             raise HTTPException(status_code=401, detail={"message": "Unauthorized"})
-        raise GrabbyAuthRequired(RedirectResponse(url=login_url_with_next(request=request), status_code=303))
+        raise FetcherAuthRequired(RedirectResponse(url=login_url_with_next(request=request), status_code=303))

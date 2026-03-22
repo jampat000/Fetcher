@@ -39,7 +39,7 @@ def copy_winsw(*, force: bool = False) -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="Stage WinSW for Grabby installer build.")
+    p = argparse.ArgumentParser(description="Stage WinSW for Fetcher installer build.")
     p.add_argument(
         "--force",
         action="store_true",

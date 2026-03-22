@@ -118,7 +118,7 @@ async def _filter_ids_by_cooldown(
     """Return ids that are not triggered again inside the cooldown window; record those triggers.
 
     Cooldown is keyed by (app, item_type, item_id) only — not by ``action``. That way a movie
-    cannot be hit twice in one Grabby run (e.g. both missing + cutoff-unmet), and Sonarr
+    cannot be hit twice in one Fetcher run (e.g. both missing + cutoff-unmet), and Sonarr
     episodes are not double-triggered the same way. The ``action`` field is still stored for logs.
 
     If ``max_apply`` is set, only the first N passing ids are logged/returned (for paginated
@@ -485,7 +485,7 @@ def _detail_from_labels(labels: list[str], *, total: int) -> str:
     return "\n".join(shown)
 
 
-async def apply_emby_cleaner_live_deletes(
+async def apply_emby_trimmer_live_deletes(
     settings: AppSettings,
     emby: EmbyClient,
     candidates: list[tuple[str, str, str, dict]],
@@ -493,7 +493,7 @@ async def apply_emby_cleaner_live_deletes(
     son_key: str | None,
     rad_key: str | None,
 ) -> list[str]:
-    """Radarr/Sonarr sync, then delete matched Emby items (same operations as scheduled live cleaner)."""
+    """Radarr/Sonarr sync, then delete matched Emby items (same operations as scheduled live trimmer)."""
     actions: list[str] = []
     movie_candidates = [raw for _, _, t, raw in candidates if t == "Movie"]
     tv_candidates = [raw for _, _, t, raw in candidates if t in {"Series", "Season", "Episode"}]
@@ -728,7 +728,7 @@ async def _run_once_inner(
                         if allowed_ids:
                             # Tagging is best-effort; it should not block the search trigger.
                             try:
-                                tag_id = await sonarr.ensure_tag("grabby-missing")
+                                tag_id = await sonarr.ensure_tag("fetcher-missing")
                                 series_ids = _sonarr_series_ids_for_episode_batch(
                                     allowed_records,
                                     "episodeId",
@@ -737,7 +737,7 @@ async def _run_once_inner(
                                 )
                                 await sonarr.add_tags_to_series(series_ids=series_ids, tag_ids=[tag_id])
                             except Exception as e:  # noqa: BLE001
-                                actions.append(f"Sonarr: tag apply warning (grabby-missing): {format_http_error_detail(e)}")
+                                actions.append(f"Sonarr: tag apply warning (fetcher-missing): {format_http_error_detail(e)}")
 
                             await trigger_sonarr_missing_search(sonarr, episode_ids=allowed_ids)
                             actions.append(f"Sonarr: missing search for {len(allowed_ids)} episode(s)")
@@ -774,7 +774,7 @@ async def _run_once_inner(
                         )
                         if allowed_ids:
                             try:
-                                tag_id = await sonarr.ensure_tag("grabby-upgrade")
+                                tag_id = await sonarr.ensure_tag("fetcher-upgrade")
                                 series_ids = _sonarr_series_ids_for_episode_batch(
                                     allowed_records,
                                     "episodeId",
@@ -783,7 +783,7 @@ async def _run_once_inner(
                                 )
                                 await sonarr.add_tags_to_series(series_ids=series_ids, tag_ids=[tag_id])
                             except Exception as e:  # noqa: BLE001
-                                actions.append(f"Sonarr: tag apply warning (grabby-upgrade): {format_http_error_detail(e)}")
+                                actions.append(f"Sonarr: tag apply warning (fetcher-upgrade): {format_http_error_detail(e)}")
 
                             await trigger_sonarr_cutoff_search(sonarr, episode_ids=allowed_ids)
                             actions.append(f"Sonarr: cutoff-unmet search for {len(allowed_ids)} episode(s)")
@@ -879,10 +879,10 @@ async def _run_once_inner(
                         )
                         if allowed_ids:
                             try:
-                                tag_id = await radarr.ensure_tag("grabby-missing")
+                                tag_id = await radarr.ensure_tag("fetcher-missing")
                                 await radarr.add_tags_to_movies(movie_ids=allowed_ids, tag_ids=[tag_id])
                             except Exception as e:  # noqa: BLE001
-                                actions.append(f"Radarr: tag apply warning (grabby-missing): {format_http_error_detail(e)}")
+                                actions.append(f"Radarr: tag apply warning (fetcher-missing): {format_http_error_detail(e)}")
 
                             await trigger_radarr_missing_search(radarr, movie_ids=allowed_ids)
                             actions.append(f"Radarr: missing search for {len(allowed_ids)} movie(s)")
@@ -916,10 +916,10 @@ async def _run_once_inner(
                         )
                         if allowed_ids:
                             try:
-                                tag_id = await radarr.ensure_tag("grabby-upgrade")
+                                tag_id = await radarr.ensure_tag("fetcher-upgrade")
                                 await radarr.add_tags_to_movies(movie_ids=allowed_ids, tag_ids=[tag_id])
                             except Exception as e:  # noqa: BLE001
-                                actions.append(f"Radarr: tag apply warning (grabby-upgrade): {format_http_error_detail(e)}")
+                                actions.append(f"Radarr: tag apply warning (fetcher-upgrade): {format_http_error_detail(e)}")
 
                             await trigger_radarr_cutoff_search(radarr, movie_ids=allowed_ids)
                             actions.append(f"Radarr: cutoff-unmet search for {len(allowed_ids)} movie(s)")
@@ -956,7 +956,7 @@ async def _run_once_inner(
                 finally:
                     await radarr.aclose()
 
-        # Emby Cleaner (not part of manual Arr “search now”)
+        # Emby Trimmer (not part of manual Arr “search now”)
         if arr_manual_scope is None and settings.emby_enabled and settings.emby_url and em_key:
             if not in_window(
                 schedule_enabled=settings.emby_schedule_enabled,
@@ -1011,7 +1011,7 @@ async def _run_once_inner(
                         dry_run = bool(settings.emby_dry_run)
 
                         if movie_rating_below <= 0 and movie_unwatched_days <= 0 and (not tv_delete_watched) and tv_unwatched_days <= 0:
-                            actions.append("Emby: skipped (no Emby Cleaner rules enabled)")
+                            actions.append("Emby: skipped (no Emby Trimmer rules enabled)")
                         else:
                             items = await emby.items_for_user(user_id=effective_user_id, limit=scan_limit)
                             candidates: list[tuple[str, str, str, dict]] = []
@@ -1050,7 +1050,7 @@ async def _run_once_inner(
                                 actions.append(f"Emby: dry-run matched {len(candidates)} item(s)")
                             else:
                                 actions.extend(
-                                    await apply_emby_cleaner_live_deletes(
+                                    await apply_emby_trimmer_live_deletes(
                                         settings, emby, candidates, son_key=son_key, rad_key=rad_key
                                     )
                                 )
@@ -1068,7 +1068,7 @@ async def _run_once_inner(
                                 ActivityLog(
                                     job_run_id=log.id,
                                     app="emby",
-                                    kind="cleanup",
+                                    kind="trimmed",
                                     count=len(candidates),
                                     detail=_detail_from_labels([name for _, name, _, _ in candidates], total=len(candidates)),
                                 )

@@ -1,7 +1,7 @@
-# Build Grabby PyInstaller bundle + Inno Setup installer on Windows.
-# Produces installer/output/GrabbySetup.exe as a workflow artifact.
+# Build Fetcher PyInstaller bundle + Inno Setup installer on Windows.
+# Produces installer/output/FetcherSetup.exe as a workflow artifact.
 # Runs only when you push a version tag (v*) or run this workflow manually — not on every branch/PR push.
-# Tag push v* also runs the release job (GitHub Release + GrabbySetup.exe).
+# Tag push v* also runs the release job (GitHub Release + FetcherSetup.exe).
 
 name: Build installer
 
@@ -43,19 +43,19 @@ jobs:
             python -m venv .venv
           }
 
-      - name: Build GrabbySetup.exe
+      - name: Build FetcherSetup.exe
         shell: pwsh
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
           & "${{ github.workspace }}\installer\build.ps1" -Clean -InstallInnoSetupIfMissing
 
-      - name: Smoke test packaged Grabby.exe
+      - name: Smoke test packaged Fetcher.exe
         shell: pwsh
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
-          $exe = "${{ github.workspace }}\dist\Grabby\Grabby.exe"
+          $exe = "${{ github.workspace }}\dist\Fetcher\Fetcher.exe"
           if (-not (Test-Path -LiteralPath $exe)) { throw "Missing packaged exe: $exe" }
           & $exe --help
           $port = 28765
@@ -78,7 +78,7 @@ jobs:
             if (-not $ok) { throw "Packaged app did not respond OK at /healthz on port $port" }
           } finally {
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-            Get-Process -Name "Grabby" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Get-Process -Name "Fetcher" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
           }
 
       # Repo Settings → Variables: ENABLE_CODE_SIGNING = true
@@ -92,16 +92,16 @@ jobs:
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
-          & "${{ github.workspace }}\scripts\sign-installer.ps1" -InstallerPath "${{ github.workspace }}\installer\output\GrabbySetup.exe"
+          & "${{ github.workspace }}\scripts\sign-installer.ps1" -InstallerPath "${{ github.workspace }}\installer\output\FetcherSetup.exe"
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v7
         with:
-          name: GrabbySetup
-          path: installer/output/GrabbySetup.exe
+          name: FetcherSetup
+          path: installer/output/FetcherSetup.exe
           if-no-files-found: error
 
-  # Creates the GitHub Release + attaches GrabbySetup.exe (no deployment Environment gate — those often
+  # Creates the GitHub Release + attaches FetcherSetup.exe (no deployment Environment gate — those often
   # stall on “Review deployments” and leave tags without a Latest release).
   release:
     # Tag push (PAT or rare cases) OR manual "Run workflow" with ref = tag (recover missed releases).
@@ -114,13 +114,13 @@ jobs:
       - name: Download installer
         uses: actions/download-artifact@v8
         with:
-          name: GrabbySetup
+          name: FetcherSetup
           path: release-asset
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2.6.1
         with:
-          files: release-asset/GrabbySetup.exe
+          files: release-asset/FetcherSetup.exe
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

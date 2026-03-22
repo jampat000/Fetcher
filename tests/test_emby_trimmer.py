@@ -1,4 +1,4 @@
-"""Unit tests for Emby Cleaner rule evaluation (plain API-shaped dicts)."""
+"""Unit tests for Emby Trimmer rule evaluation (plain API-shaped dicts)."""
 
 from __future__ import annotations
 

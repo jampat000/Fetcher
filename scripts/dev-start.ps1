@@ -4,7 +4,7 @@ param(
   [switch]$Reload = $true,
   # Offer UAC once if normal kill failed (helps when another user/admin owns the listener).
   [switch]$TryElevatedKill,
-  # Use the same SQLite file as the installed service (%LocalAppData%\Grabby\app.db). Stop the service first to avoid locks.
+  # Use the same SQLite file as the installed service (%LocalAppData%\Fetcher\fetcher.db). Stop the service first to avoid locks.
   [switch]$SharedAppDb
 )
 
@@ -16,14 +16,14 @@ Set-Location -LiteralPath $RepoRoot
 Write-Host "Repo: $RepoRoot" -ForegroundColor DarkGray
 Write-Host ""
 
-# Isolated dev DB by default so uvicorn does not compete with the Windows service for the same app.db.
+# Isolated dev DB by default so uvicorn does not compete with the Windows service for the same fetcher.db.
 if ($SharedAppDb) {
-  Remove-Item Env:\GRABBY_DEV_DB_PATH -ErrorAction SilentlyContinue
-  Write-Host 'Dev DB: (shared) default - %LocalAppData%\Grabby\app.db  [stop Grabby service if SQLite is busy]' -ForegroundColor DarkYellow
+  Remove-Item Env:\FETCHER_DEV_DB_PATH -ErrorAction SilentlyContinue
+  Write-Host 'Dev DB: (shared) default - %LocalAppData%\Fetcher\fetcher.db  [stop Fetcher service if SQLite is busy]' -ForegroundColor DarkYellow
 } else {
-  $devDb = Join-Path ([System.IO.Path]::GetTempPath()) "grabby-dev.sqlite3"
-  $env:GRABBY_DEV_DB_PATH = $devDb
-  Write-Host "Dev DB: $devDb  (GRABBY_DEV_DB_PATH)  `[use -SharedAppDb for installed app database`]" -ForegroundColor DarkGray
+  $devDb = Join-Path ([System.IO.Path]::GetTempPath()) "fetcher-dev.sqlite3"
+  $env:FETCHER_DEV_DB_PATH = $devDb
+  Write-Host "Dev DB: $devDb  (FETCHER_DEV_DB_PATH)  `[use -SharedAppDb for installed app database`]" -ForegroundColor DarkGray
 }
 Write-Host ""
 
@@ -98,7 +98,7 @@ function Stop-ListenerProcesses {
   if (Test-PortListening -Port $Port) {
     Write-Host ""
     Write-Host "Port $Port is still in use. Common fixes:" -ForegroundColor Yellow
-    Write-Host "  1) Close the other terminal running uvicorn / Grabby dev, or reboot once." -ForegroundColor Yellow
+    Write-Host "  1) Close the other terminal running uvicorn / Fetcher dev, or reboot once." -ForegroundColor Yellow
     Write-Host "  2) Admin PowerShell: Get-NetTCPConnection -LocalPort $Port -State Listen | Stop-NetTCPConnection -Confirm:`$false" -ForegroundColor Yellow
     Write-Host "  3) Re-run: .\scripts\dev-start.ps1 -TryElevatedKill   (UAC prompt to kill the owning process)" -ForegroundColor Yellow
     Write-Host ""
@@ -117,13 +117,13 @@ if ($Reload) {
   $reloadArgs = @("--reload")
 }
 
-Write-Host "Starting Grabby dev server..."
+Write-Host "Starting Fetcher dev server..."
 Write-Host "Open: http://$BindHost`:$PreferredPort"
 Write-Host ""
 Write-Host "TIP: Use this exact host in the browser. If http://localhost:$PreferredPort fails or sign-in works but Settings looks logged out, use 127.0.0.1 (cookies differ per host; localhost may use IPv6 only)."
 Write-Host ""
-Write-Host "NOTE: Port 8765 = installed Windows service (Grabby.exe). Port 8766 = this dev server (source)."
-Write-Host "      To use 8765 for dev: stop the Grabby service first, then: .\scripts\dev-start.ps1 -PreferredPort 8765"
+Write-Host "NOTE: Port 8765 = installed Windows service (Fetcher.exe). Port 8766 = this dev server (source)."
+Write-Host "      To use 8765 for dev: stop the Fetcher service first, then: .\scripts\dev-start.ps1 -PreferredPort 8765"
 Write-Host ""
 
 & .\.venv\Scripts\python.exe -m uvicorn app.main:app --host $BindHost --port $PreferredPort @reloadArgs

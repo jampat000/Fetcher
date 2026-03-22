@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve Grabby.
+Thanks for helping improve Fetcher.
 
 ## Workflow (protected `master`)
 

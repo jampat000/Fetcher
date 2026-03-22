@@ -79,7 +79,7 @@ def test_setup_step0_sets_session_cookie_for_api_tests(client_real_auth: TestCli
     assert r.status_code == 303
     assert r.headers.get("location", "").endswith("/setup/1")
     set_cookie = r.headers.get("set-cookie") or ""
-    assert "grabby_session=" in set_cookie
+    assert "fetcher_session=" in set_cookie
 
 
 def test_no_password_login_redirects_to_setup(client_real_auth: TestClient) -> None:

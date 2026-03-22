@@ -22,7 +22,7 @@ def test_healthz_ok(monkeypatch) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "ok"
-    assert data["app"] == "Grabby"
+    assert data["app"] == "Fetcher"
     assert "version" in data and len(data["version"]) > 0
 
 
@@ -31,7 +31,7 @@ def test_api_version_ok(monkeypatch) -> None:
         resp = client.get("/api/version")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["app"] == "Grabby"
+    assert body["app"] == "Fetcher"
     assert "version" in body and len(body["version"]) > 0
 
 
@@ -42,7 +42,7 @@ def test_dashboard_route_smoke(monkeypatch) -> None:
 
 
 def test_cleaner_default_skips_emby_client_when_ready(monkeypatch) -> None:
-    """Sidebar /cleaner must not scan Emby until ?scan=1 (fast navigation)."""
+    """Sidebar /trimmer must not scan Emby until ?scan=1 (fast navigation)."""
 
     async def _fake_settings(_session):
         return AppSettings(
@@ -57,7 +57,7 @@ def test_cleaner_default_skips_emby_client_when_ready(monkeypatch) -> None:
     monkeypatch.setattr("app.main._get_or_create_settings", _fake_settings)
     monkeypatch.setattr("app.main.EmbyClient", _emby_should_not_construct)
     with _build_client(monkeypatch) as client:
-        resp = client.get("/cleaner")
+        resp = client.get("/trimmer")
     assert resp.status_code == 200
     assert b"No scan yet" in resp.content
     assert b"Scan Emby for matches" in resp.content
@@ -94,7 +94,7 @@ def test_cleaner_preview_query_does_not_trigger_scan(monkeypatch) -> None:
     monkeypatch.setattr("app.main._get_or_create_settings", _fake_settings)
     monkeypatch.setattr("app.main.EmbyClient", _StubClient)
     with _build_client(monkeypatch) as client:
-        resp = client.get("/cleaner?preview=1")
+        resp = client.get("/trimmer?preview=1")
     assert resp.status_code == 200
     assert constructed == []
 

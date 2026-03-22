@@ -10,17 +10,17 @@ from pathlib import Path
 import pytest
 
 # Before any test module does `from app.main import app` / `from app.db import engine`.
-_fd, _TEST_DB_PATH = tempfile.mkstemp(prefix="grabby-pytest-", suffix=".sqlite")
+_fd, _TEST_DB_PATH = tempfile.mkstemp(prefix="fetcher-pytest-", suffix=".sqlite")
 os.close(_fd)
 try:
     Path(_TEST_DB_PATH).unlink(missing_ok=True)
 except OSError:
     pass
-os.environ["GRABBY_DEV_DB_PATH"] = _TEST_DB_PATH
+os.environ["FETCHER_DEV_DB_PATH"] = _TEST_DB_PATH
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _init_grabby_test_database() -> None:
+def _init_fetcher_test_database() -> None:
     from app.auth import hash_password
     from app.db import SessionLocal, _get_or_create_settings, engine
     from app.migrations import migrate

@@ -1,10 +1,10 @@
 <service>
-  <id>Grabby</id>
-  <name>Grabby</name>
+  <id>Fetcher</id>
+  <name>Fetcher</name>
   <description>Never miss a release. Sonarr/Radarr missing + upgrade automation with web UI.</description>
 
   <!-- Point this at your packaged exe path -->
-  <executable>%BASE%\Grabby.exe</executable>
+  <executable>%BASE%\Fetcher.exe</executable>
   <!-- 0.0.0.0 = listen on all interfaces (LAN access). Use 127.0.0.1 to restrict to this machine. -->
   <arguments>--host 0.0.0.0 --port 8765</arguments>
 

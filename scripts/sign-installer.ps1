@@ -1,10 +1,10 @@
-# Optional: Authenticode-sign GrabbySetup.exe (SmartScreen / enterprise trust).
+# Optional: Authenticode-sign FetcherSetup.exe (SmartScreen / enterprise trust).
 # Prereqs: Windows SDK signtool.exe, a code-signing PFX.
 #
 # Usage (interactive):
 #   $env:INSTALLER_SIGN_PFX = "C:\certs\code.pfx"
 #   $env:INSTALLER_SIGN_PASSWORD = "secret"
-#   .\scripts\sign-installer.ps1 -InstallerPath ".\installer\output\GrabbySetup.exe"
+#   .\scripts\sign-installer.ps1 -InstallerPath ".\installer\output\FetcherSetup.exe"
 #
 # CI: set secrets WINDOWS_PFX_BASE64 (base64 of PFX bytes) and WINDOWS_PFX_PASSWORD.
 # Workflow decodes to a temp file and sets INSTALLER_SIGN_PFX.
@@ -22,7 +22,7 @@ if (-not $pfxPass) { $pfxPass = $env:WINDOWS_PFX_PASSWORD }
 
 if ($env:WINDOWS_PFX_BASE64 -and -not $pfxPath) {
   $bytes = [Convert]::FromBase64String($env:WINDOWS_PFX_BASE64)
-  $pfxPath = Join-Path $env:TEMP ("grabby-sign-" + [Guid]::NewGuid().ToString("n") + ".pfx")
+  $pfxPath = Join-Path $env:TEMP ("fetcher-sign-" + [Guid]::NewGuid().ToString("n") + ".pfx")
   [IO.File]::WriteAllBytes($pfxPath, $bytes)
   Write-Host "Wrote temporary PFX for signing."
 }
@@ -55,6 +55,6 @@ Write-Host "Signing with $($signtool.FullName) ..."
 & $signtool.FullName sign /fd SHA256 /tr $TimestampUrl /td SHA256 /f $pfxPath /p $pfxPass $InstallerPath
 Write-Host "Done."
 
-if ($env:WINDOWS_PFX_BASE64 -and $pfxPath -like "*grabby-sign-*") {
+if ($env:WINDOWS_PFX_BASE64 -and $pfxPath -like "*fetcher-sign-*") {
   Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
 }

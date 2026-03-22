@@ -16,7 +16,7 @@
   </div>
 
   {% if request.query_params.get('setup') == 'complete' %}
-  <div class="banner banner-ok setup-complete-banner dashboard-dismissible" role="status" data-dismiss-storage="grabby_v1_dismiss_setup_complete_banner">
+  <div class="banner banner-ok setup-complete-banner dashboard-dismissible" role="status" data-dismiss-storage="fetcher_v1_dismiss_setup_complete_banner">
     <div class="dashboard-dismissible-inner">
       <div>
         <strong>Setup complete.</strong> You can fine-tune Sonarr, Radarr, Emby, and schedules anytime in <a href="/settings">Settings</a>.
@@ -27,7 +27,7 @@
   {% endif %}
 
   {% if suggest_setup_wizard %}
-  <div class="card setup-cta-card dashboard-dismissible" data-dismiss-storage="grabby_v1_dismiss_setup_wizard_cta">
+  <div class="card setup-cta-card dashboard-dismissible" data-dismiss-storage="fetcher_v1_dismiss_setup_wizard_cta">
     <div class="dashboard-dismissible-inner setup-cta-inner">
       <div>
         <h2>Connect your stack</h2>
@@ -41,7 +41,7 @@
 
   <div class="card module-content automation-card">
     <h2>Automation</h2>
-    <p class="hint automation-card-lead">When Grabby runs; per-app intervals and schedules are in <strong>Overview</strong>.</p>
+    <p class="hint automation-card-lead">When Fetcher runs; per-app intervals and schedules are in <strong>Overview</strong>.</p>
     <div class="automation-spec">
       {% if last_run %}
       <div class="automation-spec-row">
@@ -77,7 +77,7 @@
 
   <div class="card module-content dashboard-overview">
     <h2>Overview</h2>
-    <p class="hint">Latest snapshot per app. Configure connections and schedules in <a href="/settings">Settings</a> or <a href="/emby/settings">Cleaner Settings</a>.</p>
+    <p class="hint">Latest snapshot per app. Configure connections and schedules in <a href="/settings">Settings</a> or <a href="/trimmer/settings">Trimmer Settings</a>.</p>
 
     <div class="row dashboard-overview-row">
       {{ arr_panel(
@@ -114,9 +114,9 @@
 
     <div class="section dashboard-emby-section">
       <div class="card dashboard-panel">
-        <h3 class="dashboard-panel-title">Emby Cleaner</h3>
+        <h3 class="dashboard-panel-title">Emby Trimmer</h3>
         {% if not settings.emby_enabled %}
-          <div class="small muted">Off — enable in <a href="/emby/settings">Cleaner Settings</a>.</div>
+          <div class="small muted">Off — enable in <a href="/trimmer/settings">Trimmer Settings</a>.</div>
         {% else %}
           <div class="preview-stats dashboard-panel-stats">
             <div class="preview-stat">
@@ -253,15 +253,15 @@
     </div>
 
     <div class="btnbar dashboard-quick-links">
-      <a class="btn" href="/settings">Grabby Settings</a>
-      <a class="btn secondary" href="/emby/settings">Cleaner Settings</a>
-      <a class="btn secondary" href="/cleaner">Scan library</a>
+      <a class="btn" href="/settings">Fetcher Settings</a>
+      <a class="btn secondary" href="/trimmer/settings">Trimmer Settings</a>
+      <a class="btn secondary" href="/trimmer">Scan library</a>
       <a class="btn secondary" href="/logs">Run logs</a>
     </div>
 
     <div class="section dashboard-activity-section">
       <h2>Recent activity</h2>
-      <p class="hint">Searches and Cleaner actions. Open <a href="/activity">Activity</a> for the full list.</p>
+      <p class="hint">Searches and Trimmer actions. Open <a href="/activity">Activity</a> for the full list.</p>
       {% if activity %}
       <div class="activity-list">
         {% for e in activity %}
@@ -269,13 +269,13 @@
           <span class="activity-time">{{ e.time_local }}</span>
           <span class="activity-tags">
             <span class="tag tag-{{ e.app }}">{{ e.app }}</span>
-            <span class="tag tag-{{ e.kind }}">{% if e.kind == "upgrade" %}Quality Upgrade{% elif e.kind == "cleanup" %}Cleaner{% else %}{{ e.kind.capitalize() }}{% endif %}</span>
+            <span class="tag tag-{{ e.kind }}">{% if e.kind == "upgrade" %}Quality Upgrade{% elif e.kind == "trimmed" %}Trimmer{% else %}{{ e.kind.capitalize() }}{% endif %}</span>
           </span>
           <div class="activity-msg">
             {% if e.kind == "missing" %}
               {{ e.count }} {% if e.app == "sonarr" %}{{ "Episode" if e.count == 1 else "Episodes" }}{% else %}{{ "Movie" if e.count == 1 else "Movies" }}{% endif %} searched
-            {% elif e.kind == "cleanup" %}
-              {{ e.count }} item{{ "s" if e.count != 1 else "" }} matched Emby Cleaner rules
+            {% elif e.kind == "trimmed" %}
+              {{ e.count }} item{{ "s" if e.count != 1 else "" }} matched Emby Trimmer rules
             {% else %}
               {{ e.count }} {% if e.app == "sonarr" %}{{ "Episode" if e.count == 1 else "Episodes" }}{% else %}{{ "Movie" if e.count == 1 else "Movies" }}{% endif %} upgrade search
             {% endif %}
@@ -329,7 +329,7 @@
           })
           .catch(function () {
             statusEl.className = "dashboard-arr-search-status dashboard-arr-search-status-warn";
-            statusEl.textContent = "Network error — could not reach Grabby.";
+            statusEl.textContent = "Network error — could not reach Fetcher.";
           })
           .finally(function () {
             document.querySelectorAll(".dashboard-arr-trigger-btn").forEach(function (b) {

@@ -79,7 +79,7 @@ async def _migrate_006_arr_last_run_at_columns(engine: AsyncEngine) -> None:
 
 
 async def _migrate_007_emby_interval_minutes(engine: AsyncEngine) -> None:
-    """Emby Cleaner run cadence (seed from interval_minutes on older DBs that still have that column)."""
+    """Emby Trimmer run cadence (seed from interval_minutes on older DBs that still have that column)."""
     table = "app_settings"
     if not await _has_column(engine, table=table, column="emby_interval_minutes"):
         await _add_column(engine, table=table, ddl="emby_interval_minutes INTEGER NOT NULL DEFAULT 60")
@@ -121,7 +121,7 @@ async def _migrate_010_arr_search_cooldown_minutes(engine: AsyncEngine) -> None:
         )
 
 
-async def _migrate_011_emby_cleaner_columns(engine: AsyncEngine) -> None:
+async def _migrate_011_emby_trimmer_columns(engine: AsyncEngine) -> None:
     table = "app_settings"
     if not await _has_column(engine, table=table, column="emby_enabled"):
         await _add_column(engine, table=table, ddl="emby_enabled BOOLEAN NOT NULL DEFAULT 0")
@@ -344,6 +344,18 @@ async def _migrate_020_log_retention_days(engine: AsyncEngine) -> None:
         await _add_column(engine, table=table, ddl="log_retention_days INTEGER NOT NULL DEFAULT 90")
 
 
+async def _migrate_021_activity_trimmed_kind(engine: AsyncEngine) -> None:
+    """Rename stored activity kind from pre-rename value to ``trimmed`` (data-only)."""
+    import base64
+
+    old = base64.b64decode("Y2xlYW51cA==").decode("ascii")
+    async with engine.begin() as conn:
+        await conn.execute(
+            text("UPDATE activity_log SET kind = :new WHERE kind = :old"),
+            {"new": "trimmed", "old": old},
+        )
+
+
 async def migrate(engine: AsyncEngine) -> None:
     await _migrate_001_sonarr_per_app_columns(engine)
     await _migrate_002_radarr_per_app_columns(engine)
@@ -355,7 +367,7 @@ async def migrate(engine: AsyncEngine) -> None:
     await _migrate_008_arr_interval_defaults_applied(engine)
     await _migrate_009_timezone(engine)
     await _migrate_010_arr_search_cooldown_minutes(engine)
-    await _migrate_011_emby_cleaner_columns(engine)
+    await _migrate_011_emby_trimmer_columns(engine)
     await _migrate_012_widen_schedule_days_columns(engine)
     await _migrate_013_coerce_zero_arr_intervals(engine)
     await _migrate_014_create_snapshot_and_activity_tables(engine)
@@ -365,3 +377,4 @@ async def migrate(engine: AsyncEngine) -> None:
     await _migrate_018_auth_columns(engine)
     await _migrate_019_auth_ip_allowlist(engine)
     await _migrate_020_log_retention_days(engine)
+    await _migrate_021_activity_trimmed_kind(engine)

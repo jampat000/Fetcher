@@ -17,7 +17,7 @@ Also read **[`CONTRIBUTING.md`](../CONTRIBUTING.md)** for day-to-day PR workflow
 ```powershell
 $env:GITHUB_TOKEN = 'your_token_with_repo_admin_scope'
 $json = Get-Content -Raw .github/rulesets/master-middle-ground.json
-Invoke-RestMethod -Method Post -Uri 'https://api.github.com/repos/jampat000/Grabby/rulesets' `
+Invoke-RestMethod -Method Post -Uri 'https://api.github.com/repos/jampat000/Fetcher/rulesets' `
   -Headers @{
     Authorization = "Bearer $env:GITHUB_TOKEN"
     Accept = 'application/vnd.github+json'
@@ -25,7 +25,7 @@ Invoke-RestMethod -Method Post -Uri 'https://api.github.com/repos/jampat000/Grab
   } -Body $json -ContentType 'application/json'
 ```
 
-Replace `jampat000/Grabby` if needed. Token needs **classic `repo` scope** or fine-grained **Administration: Read and write** on this repository.
+Replace `jampat000/Fetcher` if needed. Token needs **classic `repo` scope** or fine-grained **Administration: Read and write** on this repository.
 
 ## Apply classic protection (API — recommended on free private)
 
@@ -33,7 +33,7 @@ Replace `jampat000/Grabby` if needed. Token needs **classic `repo` scope** or fi
 $env:GITHUB_TOKEN = 'your_token'
 $json = Get-Content -Raw .github/branch-protection-classic-master.json
 Invoke-RestMethod -Method Put `
-  -Uri 'https://api.github.com/repos/jampat000/Grabby/branches/master/protection' `
+  -Uri 'https://api.github.com/repos/jampat000/Fetcher/branches/master/protection' `
   -Headers @{
     Authorization = "Bearer $env:GITHUB_TOKEN"
     Accept = 'application/vnd.github+json'

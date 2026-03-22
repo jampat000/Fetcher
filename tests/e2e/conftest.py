@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -17,7 +18,13 @@ import pytest
 from tests.e2e.constants import E2E_AUTH_PASSWORD, E2E_AUTH_USERNAME
 
 REPO_ROOT: Path = Path(__file__).resolve().parents[2]
-BASE = "http://127.0.0.1:8767"
+
+
+def _pick_loopback_port() -> int:
+    """Ephemeral port so E2E does not attach to an unrelated process on a fixed dev port."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
 
 
 def _init_e2e_database(db_path: Path) -> None:
@@ -28,7 +35,7 @@ def _init_e2e_database(db_path: Path) -> None:
     script = f"""
 import asyncio
 import os
-os.environ["GRABBY_DEV_DB_PATH"] = {path_json}
+os.environ["FETCHER_DEV_DB_PATH"] = {path_json}
 from app.auth import hash_password
 from app.db import SessionLocal, _get_or_create_settings, engine
 from app.migrations import migrate
@@ -59,7 +66,7 @@ asyncio.run(main())
 
 @pytest.fixture(scope="session")
 def e2e_server() -> str:
-    fd, raw = tempfile.mkstemp(prefix="grabby-e2e-", suffix=".sqlite3")
+    fd, raw = tempfile.mkstemp(prefix="fetcher-e2e-", suffix=".sqlite3")
     os.close(fd)
     db_path = Path(raw)
     try:
@@ -69,7 +76,15 @@ def e2e_server() -> str:
 
     _init_e2e_database(db_path)
 
-    env = {**os.environ, "GRABBY_DEV_DB_PATH": str(db_path.resolve())}
+    port = _pick_loopback_port()
+    base = f"http://127.0.0.1:{port}"
+
+    # Do not inherit FETCHER_RESET_AUTH=1 from the developer shell — startup would clear the seeded password.
+    env = {
+        **os.environ,
+        "FETCHER_DEV_DB_PATH": str(db_path.resolve()),
+        "FETCHER_RESET_AUTH": "0",
+    }
     proc = subprocess.Popen(
         [
             sys.executable,
@@ -79,7 +94,7 @@ def e2e_server() -> str:
             "--host",
             "127.0.0.1",
             "--port",
-            "8767",
+            str(port),
             "--log-level",
             "warning",
         ],
@@ -93,16 +108,19 @@ def e2e_server() -> str:
         last_exc: BaseException | None = None
         while time.time() < deadline:
             try:
-                with urllib.request.urlopen(f"{BASE}/healthz", timeout=1) as r:
-                    if r.status == 200:
+                with urllib.request.urlopen(f"{base}/healthz", timeout=1) as r:
+                    if r.status != 200:
+                        continue
+                    payload = json.loads(r.read().decode("utf-8", errors="replace"))
+                    if payload.get("app") == "Fetcher" and (payload.get("status") or "").lower() == "ok":
                         break
-            except (urllib.error.URLError, TimeoutError, OSError) as e:
+            except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError, ValueError) as e:
                 last_exc = e
                 time.sleep(0.25)
         else:
             proc.terminate()
             pytest.fail(f"E2E server did not become ready: {last_exc!r}")
-        yield BASE
+        yield base
     finally:
         proc.terminate()
         try:

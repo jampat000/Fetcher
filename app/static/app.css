@@ -14,7 +14,7 @@
   --bad:#fb7185;
   --shadow: 0 12px 40px rgba(0,0,0,.35);
   --sidebar-w: 220px;
-  /* App UI typography: main content (.main), dashboard, settings, cleaner, forms */
+  /* App UI typography: main content (.main), dashboard, settings, trimmer, forms */
   --dash-fs-overline:11px;
   --dash-fs-caption:11px;
   --dash-fs-body:12px;
@@ -184,7 +184,7 @@ body{
   background:rgba(52,211,153,.12);
   border-color:rgba(52,211,153,.35);
 }
-.cleaner-mode-banner{margin-bottom:14px}
+.trimmer-mode-banner{margin-bottom:14px}
 /* Dashboard cards: color only — body size comes from .main */
 .automation-card,
 .dashboard-overview,
@@ -642,7 +642,7 @@ h3.settings-security-anchor:target{
   margin-top:10px;
 }
 
-/* Settings: one continuous panel (Grabby Settings + Backup & Restore) */
+/* Settings: one continuous panel (Fetcher Settings + Backup & Restore) */
 .settings-page-group{
   border:1px solid var(--border);
   border-radius:16px;
@@ -809,7 +809,7 @@ dl.updates-kv dd{
 }
 @media (max-width: 980px){ .row{grid-template-columns:1fr} }
 
-/* Grabby Settings — Global: stack cooldown + timezone so long hints and wide TZ list fit the card */
+/* Fetcher Settings — Global: stack cooldown + timezone so long hints and wide TZ list fit the card */
 .settings-global-stack{
   display:flex;
   flex-direction:column;
@@ -1206,7 +1206,7 @@ th{text-align:left;color:#bfdbfe;font-weight:var(--dash-fw-bold)}
 .tag-emby{background:rgba(244,114,182,.18);color:#f9a8d4}
 .tag-missing{background:rgba(251,191,36,.2);color:#fcd34d}
 .tag-upgrade{background:rgba(56,189,248,.2);color:#7dd3fc}
-.tag-cleanup{background:rgba(167,139,250,.2);color:#c4b5fd}
+.tag-trimmed{background:rgba(167,139,250,.2);color:#c4b5fd}
 .tag-error{background:rgba(239,68,68,.2);color:#fca5a5}
 .tag-service{background:rgba(148,163,184,.25);color:#cbd5e1}
 .tag-ok{background:rgba(34,197,94,.2);color:#86efac}

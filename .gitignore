@@ -16,7 +16,7 @@ installer/_innosetup-*.exe
 service/winsw.exe
 # Ignore stray PyInstaller specs; keep the real one for CI/local builds
 *.spec
-!packaging/grabby.spec
+!packaging/fetcher.spec
 
 # IDE / OS
 .idea/
@@ -32,5 +32,5 @@ tmp/
 config.yaml
 .env
 .env.*
-grabby-settings-backup*.json
+fetcher-settings-backup*.json
 *settings-backup*.json

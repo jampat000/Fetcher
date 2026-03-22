@@ -5,7 +5,7 @@ from PyInstaller.utils.hooks import collect_submodules
 # PyInstaller spec for Windows single-folder build.
 # Usage:
 #   py -m pip install pyinstaller
-#   py -m PyInstaller packaging/grabby.spec
+#   py -m PyInstaller packaging/fetcher.spec
 
 block_cipher = None
 
@@ -50,7 +50,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="Grabby",
+    name="Fetcher",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -70,5 +70,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="Grabby",
+    name="Fetcher",
 )

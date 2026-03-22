@@ -8,12 +8,12 @@
 
   Token (pick one):
   - Classic PAT: repo scope (repo owner) or full repo access.
-  - Fine-grained PAT: Repository access to Grabby + Administration: Read and write.
+  - Fine-grained PAT: Repository access to Fetcher + Administration: Read and write.
 
   Create: GitHub avatar → Settings → Developer settings → Personal access tokens
 
 .EXAMPLE
-  cd C:\path\to\grabby
+  cd C:\path\to\fetcher
   $env:GITHUB_TOKEN = 'ghp_....'   # MUST be in quotes — fine-grained tokens start with github_pat_
   & .\scripts\protect-master-branch.ps1
 
@@ -53,7 +53,7 @@ if (-not $Owner -or -not $Repo) {
 }
 
 if (-not $Owner -or -not $Repo) {
-    Write-Error "Could not infer Owner/Repo from git. Pass -Owner jampat000 -Repo Grabby"
+    Write-Error "Could not infer Owner/Repo from git. Pass -Owner jampat000 -Repo Fetcher"
 }
 
 $api = "https://api.github.com/repos/$Owner/$Repo/branches/$Branch/protection"

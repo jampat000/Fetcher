@@ -104,10 +104,10 @@ class RedactingFormatter(logging.Formatter):
 _CONFIGURED_HANDLER_IDS: set[int] = set()
 
 
-def configure_grabby_logging() -> None:
+def configure_fetcher_logging() -> None:
     """Set root log level to WARNING and attach redaction to all root handlers."""
     root = logging.getLogger()
-    level_name = (os.environ.get("GRABBY_LOG_LEVEL") or "WARNING").strip().upper()
+    level_name = (os.environ.get("FETCHER_LOG_LEVEL") or "WARNING").strip().upper()
     root.setLevel(getattr(logging, level_name, logging.WARNING))
 
     filt = SensitiveLogFilter()

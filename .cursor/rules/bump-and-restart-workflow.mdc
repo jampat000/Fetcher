@@ -25,7 +25,7 @@ When the user asks to **bump** (version/release) **and restart local**, or clear
 
 1. **Bump** — Update repo `VERSION` and move `CHANGELOG.md` `[Unreleased]` into a dated `[X.Y.Z] - YYYY-MM-DD` section (per `CHANGELOG.md` “Releasing”).
 2. **Commit** — On a **release branch only** (see below), `git add` the release-related changes (typically `VERSION`, `CHANGELOG.md`, and any code/docs in that release), message e.g. `Release vX.Y.Z` or `chore: release vX.Y.Z — …`.
-3. **Branch + push (avoid local `master` mess)** — **`master`** is **protected** on **`jampat000/Grabby`**: **never** commit the release directly on local **`master`** (that leaves you **ahead of `origin/master`** and duplicate history vs the PR).
+3. **Branch + push (avoid local `master` mess)** — **`master`** is **protected** on **`jampat000/Fetcher`**: **never** commit the release directly on local **`master`** (that leaves you **ahead of `origin/master`** and duplicate history vs the PR).
    - **Do:** `git fetch origin && git switch -c release/vX.Y.Z origin/master` (or `chore/release-vX.Y.Z` if you prefer that naming), then bump/commit on **that** branch, `git push -u origin release/vX.Y.Z`, open PR → merge on GitHub.
    - **After merge:** `git fetch origin && git switch master && git reset --hard origin/master` (or `git pull --ff-only`), then `git branch -d release/vX.Y.Z`. If the remote branch still exists, `git push origin --delete release/vX.Y.Z`.
    - **If push to `master` was rejected:** Do **not** leave local **`master`** carrying the release commit; create **`release/vX.Y.Z`** from **`origin/master`**, cherry-pick or re-apply the bump commit if needed, push the branch, then **`git switch master && git reset --hard origin/master`**.
@@ -40,10 +40,10 @@ When the user asks to **bump** (version/release) **and restart local**, or clear
 $v = (Get-Content -LiteralPath VERSION -Raw).Trim()
 $tag = "v$v"
 $gh = Join-Path $env:ProgramFiles "GitHub CLI\gh.exe"
-& $gh workflow run build-installer.yml --repo jampat000/Grabby --ref $tag
+& $gh workflow run build-installer.yml --repo jampat000/Fetcher --ref $tag
 ```
 
-   - Paste the **run URL** from `gh` output (or `gh run list --workflow=build-installer.yml --repo jampat000/Grabby -L 1`) so the user can watch **Build installer** finish and get **`GrabbySetup.exe`** on **Releases**.
+   - Paste the **run URL** from `gh` output (or `gh run list --workflow=build-installer.yml --repo jampat000/Fetcher -L 1`) so the user can watch **Build installer** finish and get **`FetcherSetup.exe`** on **Releases**.
    - If **`gh`** is missing or not logged in (`gh auth login`), say so and give the same command for them to run.
    - **Duplicate runs** (Tag release also dispatches the workflow) are OK — concurrency groups limit overlap; the important part is **a build always queues** from a **correct** tag commit.
 
@@ -57,13 +57,13 @@ After the steps above, **briefly confirm**:
 
 1. **Version** — `VERSION` = **X.Y.Z**, `CHANGELOG.md` updated.
 2. **GitHub** — Branch pushed / PR merged; **Actions → Build installer** run started (**link**).
-3. **Install** — When the run is **green**, **`GrabbySetup.exe`** is under **Releases** for **`vX.Y.Z`** (or **Latest**).
+3. **Install** — When the run is **green**, **`FetcherSetup.exe`** is under **Releases** for **`vX.Y.Z`** (or **Latest**).
 4. **Local** — Dev URL (**8766** default) and restart if they use source.
 
 ## Full end-to-end (“new version + installer + local dev”)
 
 1. Release branch → PR → **merge** to **`master`**.
-2. **`git fetch origin --tags`** → **`gh workflow run build-installer.yml --repo jampat000/Grabby --ref vX.Y.Z`** (after tag exists).
+2. **`git fetch origin --tags`** → **`gh workflow run build-installer.yml --repo jampat000/Fetcher --ref vX.Y.Z`** (after tag exists).
 3. **`git pull origin master`** locally.
 4. **`scripts/dev-start.ps1`**.
 

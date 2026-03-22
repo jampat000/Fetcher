@@ -11,14 +11,14 @@ from app.models import AppSettings
 
 
 def default_data_dir() -> Path:
-    base = Path.home() / "AppData" / "Local" / "Grabby"
+    base = Path.home() / "AppData" / "Local" / "Fetcher"
     base.mkdir(parents=True, exist_ok=True)
     return base
 
 
 def db_path() -> Path:
-    """SQLite file path. Set ``GRABBY_DEV_DB_PATH`` before importing ``app.db`` for a separate dev database."""
-    override = (os.environ.get("GRABBY_DEV_DB_PATH") or "").strip()
+    """SQLite file path. Set ``FETCHER_DEV_DB_PATH`` before importing ``app.db`` for a separate dev database."""
+    override = (os.environ.get("FETCHER_DEV_DB_PATH") or "").strip()
     if override:
         p = Path(override).expanduser()
         try:
@@ -27,7 +27,7 @@ def db_path() -> Path:
             p = Path(override).expanduser()
         p.parent.mkdir(parents=True, exist_ok=True)
         return p
-    return default_data_dir() / "app.db"
+    return default_data_dir() / "fetcher.db"
 
 
 def create_engine() -> AsyncEngine:

@@ -1,4 +1,4 @@
-# Copy to config.yaml in the project root (or next to Grabby.exe) and fill in real keys.
+# Copy to config.yaml in the project root (or next to Fetcher.exe) and fill in real keys.
 # config.yaml is gitignored — do not commit secrets.
 
 SONARR_API_KEY: "YOUR_SONARR_API_KEY"
