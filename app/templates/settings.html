@@ -1,5 +1,6 @@
 {% extends "layout.html" %}
 {% from "macros/schedule.html" import schedule_time_select, schedule_days_checkboxes %}
+{% from "macros/toggle.html" import toggle_checkbox %}
 {% block content %}
 <div class="wrap">
   <div class="page-head">
@@ -13,12 +14,24 @@
     <a href="/settings" class="module-tab active">Fetcher Settings</a>
   </div>
 
+  <div class="settings-page-layout">
+  <nav class="settings-nav" aria-label="Settings sections">
+    <a href="#section-security" class="settings-nav-link"><span class="settings-nav-dot purple" aria-hidden="true"></span>Security</a>
+    <a href="#section-sonarr" class="settings-nav-link"><span class="settings-nav-dot blue" aria-hidden="true"></span>Sonarr</a>
+    <a href="#section-radarr" class="settings-nav-link"><span class="settings-nav-dot green" aria-hidden="true"></span>Radarr</a>
+    <a href="#section-global" class="settings-nav-link"><span class="settings-nav-dot gray" aria-hidden="true"></span>Global</a>
+  </nav>
+  <div class="settings-page-main">
+
   <div class="settings-page-group">
 
-  <div class="card module-content">
-    <div class="settings-collapse is-collapsed" data-settings-section="security">
+  <div class="card module-content gc" id="section-security">
+    <div class="settings-collapse is-collapsed stripe-purple" data-settings-section="security">
       <button type="button" class="settings-collapse-header" aria-expanded="false" aria-controls="settings-collapse-panel-security" id="settings-collapse-btn-security">
-        <span class="settings-collapse-title">Security</span>
+        <span class="settings-collapse-header-text">
+          <span class="settings-collapse-title">Security</span>
+          <span class="settings-collapse-meta">Credentials &amp; access</span>
+        </span>
         <span class="settings-collapse-chevron" aria-hidden="true">▼</span>
       </button>
       <div class="settings-collapse-body" id="settings-collapse-panel-security" role="region" aria-labelledby="settings-collapse-btn-security">
@@ -110,7 +123,7 @@
     </div>
   </div>
 
-  <div class="card module-content">
+  <div class="card module-content gc">
     <h2>Fetcher Settings</h2>
     {% set im = request.query_params.get('import', '') %}
     {% if im == 'ok' %}
@@ -127,17 +140,17 @@
 
     <form method="post" action="/settings">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-      <div class="settings-collapse" data-settings-section="sonarr">
+      <div class="settings-collapse stripe-blue" id="section-sonarr" data-settings-section="sonarr">
         <button type="button" class="settings-collapse-header" aria-expanded="true" aria-controls="settings-collapse-panel-sonarr" id="settings-collapse-btn-sonarr">
-          <span class="settings-collapse-title">Sonarr settings</span>
-          <span class="settings-collapse-chevron" aria-hidden="true">▲</span>
+          <span class="settings-collapse-header-text">
+            <span class="settings-collapse-title">Sonarr settings</span>
+            <span class="settings-collapse-meta">TV automation</span>
+          </span>
+          <span class="settings-collapse-chevron open" aria-hidden="true">▼</span>
         </button>
         <div class="settings-collapse-body" id="settings-collapse-panel-sonarr" role="region" aria-labelledby="settings-collapse-btn-sonarr">
         <div class="field">
-          <div class="checkline">
-            <input type="checkbox" name="sonarr_enabled" {% if settings.sonarr_enabled %}checked{% endif %} />
-            <strong>Sonarr</strong>
-          </div>
+          {% call toggle_checkbox("sonarr_enabled", settings.sonarr_enabled) %}<strong>Sonarr</strong>{% endcall %}
           <label>Sonarr URL</label>
           <div class="control">
             <input class="input" type="text" name="sonarr_url" value="{{ settings.sonarr_url }}" placeholder="http://localhost:8989" />
@@ -149,23 +162,14 @@
           </div>
 
           <div class="section">
-            <div class="checkline">
-              <input type="checkbox" name="sonarr_search_missing" {% if settings.sonarr_search_missing %}checked{% endif %} />
-              Missing searches
-            </div>
-            <div class="checkline">
-              <input type="checkbox" name="sonarr_search_upgrades" {% if settings.sonarr_search_upgrades %}checked{% endif %} />
-              Cutoff-unmet searches (upgrades)
-            </div>
+            {% call toggle_checkbox("sonarr_search_missing", settings.sonarr_search_missing) %}Missing searches{% endcall %}
+            {% call toggle_checkbox("sonarr_search_upgrades", settings.sonarr_search_upgrades) %}Cutoff-unmet searches (upgrades){% endcall %}
             <label>Max items per run</label>
             <input class="number" type="number" name="sonarr_max_items_per_run" value="{{ settings.sonarr_max_items_per_run }}" min="1" max="1000" />
           </div>
 
           <div class="section">
-            <div class="checkline">
-              <input type="checkbox" name="sonarr_schedule_enabled" {% if settings.sonarr_schedule_enabled %}checked{% endif %} />
-              Enable schedule window
-            </div>
+            {% call toggle_checkbox("sonarr_schedule_enabled", settings.sonarr_schedule_enabled) %}Enable schedule window{% endcall %}
             <label>Days</label>
             {{ schedule_days_checkboxes("sonarr_schedule", sonarr_schedule_days_selected) }}
             <div class="row schedule-time-row">
@@ -190,17 +194,17 @@
         </div>
       </div>
 
-      <div class="settings-collapse" data-settings-section="radarr">
+      <div class="settings-collapse stripe-green" id="section-radarr" data-settings-section="radarr">
         <button type="button" class="settings-collapse-header" aria-expanded="true" aria-controls="settings-collapse-panel-radarr" id="settings-collapse-btn-radarr">
-          <span class="settings-collapse-title">Radarr settings</span>
-          <span class="settings-collapse-chevron" aria-hidden="true">▲</span>
+          <span class="settings-collapse-header-text">
+            <span class="settings-collapse-title">Radarr settings</span>
+            <span class="settings-collapse-meta">Movie automation</span>
+          </span>
+          <span class="settings-collapse-chevron open" aria-hidden="true">▼</span>
         </button>
         <div class="settings-collapse-body" id="settings-collapse-panel-radarr" role="region" aria-labelledby="settings-collapse-btn-radarr">
         <div class="field">
-          <div class="checkline">
-            <input type="checkbox" name="radarr_enabled" {% if settings.radarr_enabled %}checked{% endif %} />
-            <strong>Radarr</strong>
-          </div>
+          {% call toggle_checkbox("radarr_enabled", settings.radarr_enabled) %}<strong>Radarr</strong>{% endcall %}
           <label>Radarr URL</label>
           <div class="control">
             <input class="input" type="text" name="radarr_url" value="{{ settings.radarr_url }}" placeholder="http://localhost:7878" />
@@ -212,23 +216,14 @@
           </div>
 
           <div class="section">
-            <div class="checkline">
-              <input type="checkbox" name="radarr_search_missing" {% if settings.radarr_search_missing %}checked{% endif %} />
-              Missing searches
-            </div>
-            <div class="checkline">
-              <input type="checkbox" name="radarr_search_upgrades" {% if settings.radarr_search_upgrades %}checked{% endif %} />
-              Cutoff-unmet searches (upgrades)
-            </div>
+            {% call toggle_checkbox("radarr_search_missing", settings.radarr_search_missing) %}Missing searches{% endcall %}
+            {% call toggle_checkbox("radarr_search_upgrades", settings.radarr_search_upgrades) %}Cutoff-unmet searches (upgrades){% endcall %}
             <label>Max items per run</label>
             <input class="number" type="number" name="radarr_max_items_per_run" value="{{ settings.radarr_max_items_per_run }}" min="1" max="1000" />
           </div>
 
           <div class="section">
-            <div class="checkline">
-              <input type="checkbox" name="radarr_schedule_enabled" {% if settings.radarr_schedule_enabled %}checked{% endif %} />
-              Enable schedule window
-            </div>
+            {% call toggle_checkbox("radarr_schedule_enabled", settings.radarr_schedule_enabled) %}Enable schedule window{% endcall %}
             <label>Days</label>
             {{ schedule_days_checkboxes("radarr_schedule", radarr_schedule_days_selected) }}
             <div class="row schedule-time-row">
@@ -253,9 +248,12 @@
         </div>
       </div>
 
-      <div class="settings-collapse is-collapsed" data-settings-section="global">
+      <div class="settings-collapse is-collapsed stripe-gray" id="section-global" data-settings-section="global">
         <button type="button" class="settings-collapse-header" aria-expanded="false" aria-controls="settings-collapse-panel-global" id="settings-collapse-btn-global">
-          <span class="settings-collapse-title">Global Fetcher settings</span>
+          <span class="settings-collapse-header-text">
+            <span class="settings-collapse-title">Global Fetcher settings</span>
+            <span class="settings-collapse-meta">Scheduler &amp; timezone</span>
+          </span>
           <span class="settings-collapse-chevron" aria-hidden="true">▼</span>
         </button>
         <div class="settings-collapse-body" id="settings-collapse-panel-global" role="region" aria-labelledby="settings-collapse-btn-global">
@@ -302,7 +300,7 @@
 
   </div>
 
-  <div class="card module-content backup-restore-card">
+  <div class="card module-content backup-restore-card gc">
     <h2>Backup &amp; Restore</h2>
     <p class="hint backup-restore-lead">Saves <strong>everything in Settings</strong> to one file: <strong>Fetcher</strong> (Sonarr, Radarr, schedules) and <strong>Trimmer</strong> (Emby connection, rules, schedules). <strong>Activity</strong> history is <em>not</em> included. Treat the file as secret—it contains your API keys.</p>
 
@@ -351,7 +349,7 @@
     </script>
   </div>
 
-  <div class="card module-content updates-card" id="updates-card">
+  <div class="card module-content updates-card gc" id="updates-card">
     <h2>Software Updates</h2>
     <p class="hint updates-lead">Compares this PC with the latest <strong>GitHub</strong> release. You can run <code class="code-inline">FetcherSetup.exe</code> silently; the <strong>Fetcher</strong> Windows service stops briefly, then starts again.</p>
 
@@ -583,84 +581,9 @@
       })();
     </script>
   </div>
-  <script>
-    (function () {
-      var STORAGE_KEYS = {
-        sonarr: "fetcher_settings_sonarr_open",
-        radarr: "fetcher_settings_radarr_open",
-        global: "fetcher_settings_global_open",
-        security: "fetcher_settings_security_open"
-      };
-      var DEFAULTS = { sonarr: true, radarr: true, global: false, security: false };
-
-      function parseForced() {
-        var sp = new URLSearchParams(window.location.search);
-        var test = sp.get("test") || "";
-        if (test === "sonarr_ok" || test === "sonarr_fail") return { sonarr: true };
-        if (test === "radarr_ok" || test === "radarr_fail") return { radarr: true };
-        if (sp.get("saved") === "1" || sp.get("save") === "fail") {
-          var sc = (sp.get("save_scope") || "").trim().toLowerCase();
-          if (sc === "sonarr") return { sonarr: true };
-          if (sc === "radarr") return { radarr: true };
-          if (sc === "global") return { global: true };
-          return "all";
-        }
-        if (sp.get("sec")) return { security: true };
-        return null;
-      }
-
-      function setSectionOpen(section, open) {
-        var root = document.querySelector('[data-settings-section="' + section + '"]');
-        if (!root) return;
-        var btn = root.querySelector(".settings-collapse-header");
-        var chev = root.querySelector(".settings-collapse-chevron");
-        if (open) {
-          root.classList.remove("is-collapsed");
-          if (btn) btn.setAttribute("aria-expanded", "true");
-          if (chev) chev.textContent = "\u25B2";
-        } else {
-          root.classList.add("is-collapsed");
-          if (btn) btn.setAttribute("aria-expanded", "false");
-          if (chev) chev.textContent = "\u25BC";
-        }
-        try {
-          localStorage.setItem(STORAGE_KEYS[section], open ? "1" : "0");
-        } catch (e) {}
-      }
-
-      function readStored(section) {
-        try {
-          var v = localStorage.getItem(STORAGE_KEYS[section]);
-          if (v === "1") return true;
-          if (v === "0") return false;
-        } catch (e) {}
-        return DEFAULTS[section];
-      }
-
-      var forced = parseForced();
-      var sections = ["sonarr", "radarr", "global", "security"];
-      sections.forEach(function (section) {
-        var open;
-        if (forced === "all") open = true;
-        else if (forced && forced[section]) open = true;
-        else if (forced && typeof forced === "object") open = readStored(section);
-        else open = readStored(section);
-        setSectionOpen(section, open);
-      });
-
-      document.querySelectorAll(".settings-collapse").forEach(function (root) {
-        var section = root.getAttribute("data-settings-section");
-        if (!section) return;
-        var btn = root.querySelector(".settings-collapse-header");
-        if (!btn) return;
-        btn.addEventListener("click", function () {
-          var expand = root.classList.contains("is-collapsed");
-          setSectionOpen(section, expand);
-        });
-      });
-    })();
-  </script>
   </div>{# end settings-page-group #}
+  </div>{# settings-page-main #}
+  </div>{# settings-page-layout #}
 </div>
 {% endblock %}
 

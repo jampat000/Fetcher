@@ -67,11 +67,11 @@ def test_healthz_json(monkeypatch: pytest.MonkeyPatch) -> None:
     assert data["app"] == "Fetcher"
 
 
-def test_dashboard_has_module_tabs(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_dashboard_renders_main_sections(monkeypatch: pytest.MonkeyPatch) -> None:
     with _client(monkeypatch) as client:
         r = client.get("/")
     assert r.status_code == 200
-    assert b"module-tab" in r.content
+    assert b"dashboard-overview" in r.content
     assert b"Dashboard" in r.content
 
 

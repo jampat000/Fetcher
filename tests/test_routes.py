@@ -35,6 +35,20 @@ def test_api_version_ok(monkeypatch) -> None:
     assert "version" in body and len(body["version"]) > 0
 
 
+def test_api_dashboard_status_ok(monkeypatch) -> None:
+    with _build_client(monkeypatch) as client:
+        resp = client.get("/api/dashboard/status")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "last_run" in data
+    assert "next_scheduler_tick_local" in data
+    assert data["sonarr_missing"] == 0
+    assert data["radarr_missing"] == 0
+    assert data["sonarr_upgrades"] == 0
+    assert data["radarr_upgrades"] == 0
+    assert data["emby_matched"] == 0
+
+
 def test_dashboard_route_smoke(monkeypatch) -> None:
     with _build_client(monkeypatch) as client:
         resp = client.get("/")

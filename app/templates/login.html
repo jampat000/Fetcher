@@ -2,6 +2,10 @@
 {% block content %}
 <div class="login-wrap">
   <div class="card module-content login-card">
+    <div class="login-brand">
+      <img src="/static/fetcher-logo.svg" alt="" class="login-brand-mark" width="58" height="58" />
+      <span class="login-brand-name">Fetcher</span>
+    </div>
     <h1 class="login-title">Sign in</h1>
     <p class="hint login-hint">{{ app_name }} — enter your credentials to continue.</p>
     {% if error %}
