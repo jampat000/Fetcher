@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.30] - 2026-03-22
+
 ### Fixed
 
 - **Software updates (Settings):** Update check is more resilient when GitHub’s API omits **`assets`** (still builds the conventional **`/releases/download/<tag>/GrabbySetup.exe`** URL). Asset name matching is **case-insensitive**. **Manual “Check for Updates”** sends **`?refresh=1`** to skip the 15‑minute in-memory cache. Failures log a warning server-side; the browser shows **HTTP status / non‑JSON** hints instead of a generic “could not reach” when the app returns an error page.
