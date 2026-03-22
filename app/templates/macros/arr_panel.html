@@ -1,70 +1,49 @@
 {% macro arr_panel(app_name, app_key, enabled, snap, schedule_enabled, schedule_days_display, schedule_time_friendly, search_missing, search_upgrades, interval_minutes, max_items_per_run, missing_total, cutoff_unmet_total, stripe_class="") %}
-      <div class="card dashboard-panel gc {{ stripe_class }}">
-        <h3 class="dashboard-panel-title">
-          {% if snap and snap.ok %}
-            <span class="status-dot dot-green" title="API OK"></span>
-          {% elif snap %}
-            <span class="status-dot dot-amber" title="API issue"></span>
-          {% else %}
-            <span class="status-dot dot-blue" title="No snapshot"></span>
-          {% endif %}
-          {{ app_name }}
-        </h3>
+      <div class="card dashboard-panel gc {{ stripe_class }}{% if not enabled %} arr-panel-disabled{% endif %}">
         {% if not enabled %}
-          <div class="small muted">Off — enable {{ app_name }} in <a href="/settings">Fetcher Settings</a>.</div>
-        {% else %}
-          <div class="metric-grid-2x2 dashboard-panel-stats dashboard-arr-overview-stats">
-            <div class="preview-stat metric-tile" data-metric="{{ app_key }}-missing">
-              <div class="label">Missing</div>
-              <div class="value">{{ missing_total }}</div>
-            </div>
-            <div class="preview-stat metric-tile" data-metric="{{ app_key }}-upgrades">
-              <div class="label">Upgrades</div>
-              <div class="value">{{ cutoff_unmet_total }}</div>
-            </div>
-            <div class="preview-stat metric-tile" data-metric="{{ app_key }}-interval">
-              <div class="label">Interval</div>
-              <div class="value">{{ interval_minutes }} min</div>
-            </div>
-            <div class="preview-stat metric-tile" data-metric="{{ app_key }}-max">
-              <div class="label">Max per run</div>
-              <div class="value">{{ max_items_per_run }}</div>
-            </div>
-          </div>
-          <div class="arr-panel-meta">
-            <div class="arr-panel-meta-line">
-              <strong>API</strong>
-              {% if snap and snap.ok %}
-                <span class="badge badge-ok">OK</span>
-              {% elif snap %}
-                <span class="badge badge-warn">Fail</span>
-              {% else %}
-                <span class="muted">No data</span>
-              {% endif %}
-            </div>
-            <div class="arr-panel-meta-line">
-              <strong>Schedule</strong>
-              {% if schedule_enabled %}
-                <span class="rule-state rule-state-enabled">On</span>
-                <span>{{ schedule_days_display or 'No days set' }}</span>
-                <span class="muted">{{ schedule_time_friendly }}</span>
-              {% else %}
-                <span class="rule-state rule-state-disabled">Off</span>
-                <span class="muted">Runs any time the tick allows</span>
-              {% endif %}
-            </div>
-            <div class="arr-panel-meta-line">
-              <strong>Missing search</strong>
-              <span class="rule-state {% if search_missing %}rule-state-enabled{% else %}rule-state-disabled{% endif %}">{% if search_missing %}On{% else %}Off{% endif %}</span>
-              <span class="arr-panel-meta-sep">·</span>
-              <strong>Upgrade search</strong>
-              <span class="rule-state {% if search_upgrades %}rule-state-enabled{% else %}rule-state-disabled{% endif %}">{% if search_upgrades %}On{% else %}Off{% endif %}</span>
-            </div>
-          </div>
-          {% if snap and snap.status_message and not snap.status_message.startswith("Test") %}
-            <div class="section small">{{ snap.status_message }}</div>
-          {% endif %}
+        <div class="arr-panel-disabled-veil" aria-hidden="true"></div>
         {% endif %}
+        <h3 class="dashboard-panel-title">
+          {% if enabled %}
+            {% if snap and snap.ok %}
+              <span class="status-dot dot-green" title="API OK"></span>
+            {% elif snap %}
+              <span class="status-dot dot-amber" title="API issue"></span>
+            {% else %}
+              <span class="status-dot dot-blue" title="No snapshot"></span>
+            {% endif %}
+          {% else %}
+            <span class="status-dot dot-gray" title="Disabled"></span>
+          {% endif %}
+          <span>{{ app_name }}</span>
+          {% if not enabled %}
+            <span class="badge badge-off">Off</span>
+          {% endif %}
+        </h3>
+
+        <div class="metric-grid-2x2 dashboard-panel-stats dashboard-arr-overview-stats">
+          <div class="preview-stat metric-tile" data-metric="{{ app_key }}-missing">
+            <div class="label">Missing</div>
+            <div class="value">{% if enabled %}{{ missing_total }}{% else %}0{% endif %}</div>
+          </div>
+          <div class="preview-stat metric-tile" data-metric="{{ app_key }}-upgrades">
+            <div class="label">Upgrades</div>
+            <div class="value">{% if enabled %}{{ cutoff_unmet_total }}{% else %}0{% endif %}</div>
+          </div>
+          <div class="preview-stat metric-tile" data-metric="{{ app_key }}-interval">
+            <div class="label">Interval</div>
+            <div class="value">{% if enabled %}{{ interval_minutes }} min{% else %}0 min{% endif %}</div>
+          </div>
+          <div class="preview-stat metric-tile" data-metric="{{ app_key }}-max">
+            <div class="label">Max per run</div>
+            <div class="value">{% if enabled %}{{ max_items_per_run }}{% else %}0{% endif %}</div>
+          </div>
+        </div>
+
+        {% if not enabled %}
+          <p class="small muted arr-panel-enable-hint">Enable {{ app_name }} in <a href="/settings">Fetcher Settings</a>.</p>
+        {% endif %}
+
         <div class="dashboard-arr-triggers">
           <div class="dashboard-arr-trigger-row">
             <button type="button" class="btn secondary dashboard-arr-trigger-btn" data-arr-search-scope="{{ app_key }}_missing" data-arr-status-target="{{ app_key }}-arr-search-status" data-starts-disabled="{% if not enabled %}1{% else %}0{% endif %}" {% if not enabled %}disabled title="Enable {{ app_name }} in Settings"{% endif %}>Search missing</button>

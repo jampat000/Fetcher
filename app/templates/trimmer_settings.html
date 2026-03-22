@@ -10,11 +10,6 @@
     </div>
   </div>
 
-  <div class="module-tabs">
-    <a href="/trimmer" class="module-tab">Trimmer</a>
-    <a href="/trimmer/settings" class="module-tab active">Trimmer Settings</a>
-  </div>
-
   {% if settings.emby_enabled %}
   {% if settings.emby_dry_run %}
   <div class="banner banner-ok trimmer-mode-banner" role="status">
@@ -31,7 +26,7 @@
   </div>
   {% endif %}
 
-  <div class="card module-content gc card-stripe-green card-green">
+  <div class="card gc card-stripe-green card-green">
       {% if emby and emby.status_message
           and not emby.status_message.startswith("Test")
           and emby.status_message.strip()|lower != "ok" %}

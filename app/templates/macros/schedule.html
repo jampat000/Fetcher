@@ -1,14 +1,12 @@
-{# Native visible checkboxes (same names as POST handler: prefix_Mon … value=1). days_selected: dict[str,bool]. #}
+{# Native checkboxes (same names as POST handler: prefix_Mon … value=1). days_selected: dict[str,bool]. #}
 {% macro schedule_days_checkboxes(field_prefix, days_selected) %}
-<div class="schedule-days-wrap">
-  <div class="schedule-days-native" role="group" aria-label="Weekdays">
-    {% for day in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] %}
-    <label class="checkline schedule-day-check">
-      <input type="checkbox" name="{{ field_prefix }}_{{ day }}" value="1" {% if days_selected.get(day) %}checked{% endif %} />
-      <span>{{ day }}</span>
-    </label>
-    {% endfor %}
-  </div>
+<div class="schedule-days-wrap day-checkbox-pills schedule-days-native" role="group" aria-label="Weekdays">
+  {% for day in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] %}
+  <label class="day-checkbox-pill">
+    <input type="checkbox" name="{{ field_prefix }}_{{ day }}" value="1" {% if days_selected.get(day) %}checked{% endif %} />
+    {{ day }}
+  </label>
+  {% endfor %}
 </div>
 {% endmacro %}
 

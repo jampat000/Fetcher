@@ -8,28 +8,23 @@
     </div>
   </div>
 
-  <div class="module-tabs">
-    <a href="/trimmer" class="module-tab active">Trimmer</a>
-    <a href="/trimmer/settings" class="module-tab">Trimmer Settings</a>
-  </div>
-
-  <div class="card module-content gc">
-      <h2>Trimmer Review</h2>
+  <div class="card gc">
+      <div class="gc-title">Trimmer Review</div>
       <div class="hint">
         See <strong>which titles in Emby match your Emby Trimmer rules</strong> — same checks the scheduler uses.
         <strong>Scan Emby for matches</strong> loads from Emby; with <strong>dry run</strong> on you get a preview only, with <strong>dry run</strong> off matched items are removed during that scan (up to max rows). Opening <strong>Trimmer</strong> without scanning stays fast.
       </div>
 
-    <div class="preview-stats">
-      <div class="preview-stat">
+    <div class="m-grid">
+      <div class="m">
         <div class="label">Matched now</div>
         <div class="value">{{ matched_count }}</div>
       </div>
-      <div class="preview-stat">
+      <div class="m">
         <div class="label">Mode</div>
         <div class="value {% if dry_run %}mode-safe{% else %}mode-live{% endif %}">{{ "DRY RUN" if dry_run else "LIVE DELETE" }}</div>
       </div>
-      <div class="preview-stat">
+      <div class="m">
         <div class="label">User</div>
         <div class="value">{{ used_user_name or "-" }}</div>
       </div>
@@ -38,21 +33,6 @@
     <div class="btnbar">
       <a class="btn" href="/trimmer?scan=1">Scan Emby for matches</a>
       <a class="btn secondary" href="/trimmer" title="Clear the list and stop until you scan again">Clear results</a>
-    </div>
-
-    <div class="section small">
-      <strong>User ID:</strong> {{ used_user_id or "-" }} |
-      <strong>User name:</strong> {{ used_user_name or "-" }} |
-      <strong>Movie rating rule:</strong> {% if movie_rating_below > 0 %}Watched &lt; {{ movie_rating_below }}{% else %}Disabled{% endif %} |
-      <strong>Movie unwatched rule:</strong> {% if movie_unwatched_days > 0 %}{{ movie_unwatched_days }} days{% else %}Disabled{% endif %} |
-      <strong>Movie genres:</strong> {% if selected_movie_genres_display %}{{ selected_movie_genres_display | join(", ") }}{% else %}All{% endif %} |
-      <strong>Movie People:</strong> {% if selected_movie_people_display %}{{ selected_movie_people_display | length }} listed ({{ movie_people_credit_summary }}){% else %}Any{% endif %} |
-      <strong>TV People:</strong> {% if selected_tv_people_display %}{{ selected_tv_people_display | length }} listed ({{ tv_people_credit_summary }}){% else %}Any{% endif %} |
-      <strong>TV watched delete:</strong> {% if tv_delete_watched %}Enabled{% else %}Disabled{% endif %} |
-      <strong>TV unwatched rule:</strong> {% if tv_unwatched_days > 0 %}{{ tv_unwatched_days }} days{% else %}Disabled{% endif %} |
-      <strong>TV genres:</strong> {% if selected_tv_genres_display %}{{ selected_tv_genres_display | join(", ") }}{% else %}All{% endif %} |
-      <strong>Scan limit:</strong> {% if scan_limit <= 0 %}Entire library{% else %}{{ scan_limit }}{% endif %} |
-      <strong>Max rows:</strong> {{ max_deletes }}
     </div>
 
     {% if not dry_run %}

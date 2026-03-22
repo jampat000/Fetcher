@@ -5,13 +5,9 @@
 <div class="wrap">
   <div class="page-head">
     <div>
-      <h1>Fetcher Settings</h1>
+      <h1 class="ph-title">Fetcher Settings</h1>
       <p>Full Sonarr &amp; Radarr automation: behavior, schedules, backup — not just first-time connection.</p>
     </div>
-  </div>
-
-  <div class="module-tabs">
-    <a href="/settings" class="module-tab active">Fetcher Settings</a>
   </div>
 
   <div class="settings-page-layout">
@@ -25,7 +21,7 @@
 
   <div class="settings-page-group">
 
-  <div class="card module-content gc" id="section-security">
+  <div class="card gc" id="section-security">
     <div class="settings-collapse is-collapsed stripe-purple" data-settings-section="security">
       <button type="button" class="settings-collapse-header" aria-expanded="false" aria-controls="settings-collapse-panel-security" id="settings-collapse-btn-security">
         <span class="settings-collapse-header-text">
@@ -123,7 +119,7 @@
     </div>
   </div>
 
-  <div class="card module-content gc">
+  <div class="card gc">
     <h2>Fetcher Settings</h2>
     {% set im = request.query_params.get('import', '') %}
     {% if im == 'ok' %}
@@ -300,7 +296,7 @@
 
   </div>
 
-  <div class="card module-content backup-restore-card gc">
+  <div class="card backup-restore-card gc">
     <h2>Backup &amp; Restore</h2>
     <p class="hint backup-restore-lead">Saves <strong>everything in Settings</strong> to one file: <strong>Fetcher</strong> (Sonarr, Radarr, schedules) and <strong>Trimmer</strong> (Emby connection, rules, schedules). <strong>Activity</strong> history is <em>not</em> included. Treat the file as secret—it contains your API keys.</p>
 
@@ -349,7 +345,7 @@
     </script>
   </div>
 
-  <div class="card module-content updates-card gc" id="updates-card">
+  <div class="card updates-card gc" id="updates-card">
     <h2>Software Updates</h2>
     <p class="hint updates-lead">Compares this PC with the latest <strong>GitHub</strong> release. You can run <code class="code-inline">FetcherSetup.exe</code> silently; the <strong>Fetcher</strong> Windows service stops briefly, then starts again.</p>
 

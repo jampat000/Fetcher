@@ -17,7 +17,7 @@
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
     <link rel="stylesheet" href="/static/app.css?v={{ app_version|default('1', true) }}" />
   </head>
-  <body>
+  <body class="{% block body_class %}{% endblock %}">
     {# Mesh + noise first so gradient orbs sit behind .app-layout (z-index); also visible before app.js loads #}
     <div id="mesh" aria-hidden="true">
       <div class="orb orb1"></div>

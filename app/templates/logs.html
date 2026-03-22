@@ -8,14 +8,8 @@
     </div>
   </div>
 
-  <div class="module-tabs">
-    <a href="/" class="module-tab">Dashboard</a>
-    <a href="/activity" class="module-tab">Activity</a>
-    <a href="/logs" class="module-tab active">Logs</a>
-  </div>
-
-  <div class="card module-content gc">
-    <h2>Logs</h2>
+  <div class="card gc">
+    <div class="gc-title">Logs</div>
     <div class="hint">Recent service runs and outcomes.</div>
     {% if logs %}
     <div class="log-list" role="list">
