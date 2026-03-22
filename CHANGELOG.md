@@ -6,9 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.40] - 2026-03-22
+
 ### Changed
 
-- **CI:** **Tag release (from VERSION)** auto-runs only on **`VERSION`** changes pushed to **`master`** or **`main`** (no **`dev`** branch on GitHub required). Use **`.\scripts\ship-release.ps1`** to push your current branch (e.g. **`release/vX.Y.Z`**) and dispatch tagging + **Build installer**.
+- **CI / releasing:** **`scripts/ship-release.ps1`** — push your current branch and dispatch **Tag release (from VERSION)**; auto-tag on push only for **`master`** / **`main`** (no remote **`dev`** required). Includes merge of **#55** so the packaged build matches **`master`** tip.
 
 ## [1.0.39] - 2026-03-24
 
