@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from typing import Any
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -99,6 +100,34 @@ APP_TAGLINE = "Never miss a release."
 logger = logging.getLogger(__name__)
 
 scheduler = ServiceScheduler()
+
+# Activity list shows 5 title lines + “+N more”; full list is stored in ``ActivityLog.detail``.
+ACTIVITY_DETAIL_PREVIEW_LINES = 5
+_ACTIVITY_LOG_LEGACY_MORE = re.compile(r"^\+\d+ more$")
+
+
+def _activity_log_title_lines(detail: str) -> list[str]:
+    """Split stored detail into display lines; drop legacy synthetic ``+N more`` rows."""
+    lines: list[str] = []
+    for raw in (detail or "").splitlines():
+        s = raw.strip()
+        if not s or _ACTIVITY_LOG_LEGACY_MORE.match(s):
+            continue
+        lines.append(s)
+    return lines
+
+
+def _activity_display_row(e: ActivityLog, tz: str) -> dict[str, Any]:
+    raw_detail = (getattr(e, "detail", "") or "").strip()
+    return {
+        "id": e.id,
+        "time_local": _fmt_local(e.created_at, tz),
+        "app": e.app,
+        "kind": e.kind,
+        "status": (getattr(e, "status", "") or "ok").strip().lower(),
+        "count": e.count,
+        "detail_lines": _activity_log_title_lines(raw_detail),
+    }
 
 
 def _settings_looks_like_existing_fetcher_install(settings: AppSettings) -> bool:
@@ -618,17 +647,7 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
         .scalars().all()
     )
     tz = settings.timezone or "UTC"
-    activity_display = [
-        {
-            "time_local": _fmt_local(e.created_at, tz),
-            "app": e.app,
-            "kind": e.kind,
-            "status": (getattr(e, "status", "") or "ok").strip().lower(),
-            "count": e.count,
-            "detail": (getattr(e, "detail", "") or "").strip(),
-        }
-        for e in activity
-    ]
+    activity_display = [_activity_display_row(e, tz) for e in activity]
     suggest_setup_wizard = not (
         (settings.sonarr_url or "").strip()
         or (settings.radarr_url or "").strip()
@@ -680,6 +699,7 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
             "radarr_schedule_days_display": radarr_schedule_days_display,
             "radarr_schedule_time_friendly": radarr_schedule_time_friendly,
             "activity": activity_display,
+            "activity_detail_preview": ACTIVITY_DETAIL_PREVIEW_LINES,
             "sonarr": sonarr_snap,
             "radarr": radarr_snap,
             "emby": emby_snap,
@@ -742,17 +762,7 @@ async def activity_page(request: Request, session: AsyncSession = Depends(get_se
         .scalars().all()
     )
     tz = settings.timezone or "UTC"
-    activity_display = [
-        {
-            "time_local": _fmt_local(e.created_at, tz),
-            "app": e.app,
-            "kind": e.kind,
-            "status": (getattr(e, "status", "") or "ok").strip().lower(),
-            "count": e.count,
-            "detail": (getattr(e, "detail", "") or "").strip(),
-        }
-        for e in activity
-    ]
+    activity_display = [_activity_display_row(e, tz) for e in activity]
     return templates.TemplateResponse(
         request,
         "activity.html",
@@ -762,6 +772,7 @@ async def activity_page(request: Request, session: AsyncSession = Depends(get_se
             "title": f"{APP_NAME} — Activity",
             "subtitle": "What Fetcher grabbed",
             "activity": activity_display,
+            "activity_detail_preview": ACTIVITY_DETAIL_PREVIEW_LINES,
             "now": utc_now_naive(),
             "now_local": _now_local(tz),
             "timezone": tz,

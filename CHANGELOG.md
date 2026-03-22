@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.6] - 2026-03-23
+
+### Added
+
+- **Activity / dashboard:** Expandable title lists — preview shows **5** lines then **+N more**; **click the row** or **+N more** / **Show less** to reveal the full list stored for that entry. Shared **`macros/activity_row.html`** for both pages.
+
+### Changed
+
+- **Activity log storage:** **`ActivityLog.detail`** stores **all** non-empty titles for a run (one per line), with a large safety cap only (~400k chars). Removed per-run line truncation in **`_detail_from_labels`** so new runs retain full titles for the expand UI.
+
+### Fixed
+
+- **Activity detail parsing:** Legacy synthetic **`+N more`** lines in stored detail are ignored when building the list so they are not shown as titles.
+
 ## [2.0.5] - 2026-03-23
 
 ### Changed
@@ -506,7 +520,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 7. If a **tag** exists but **Releases → Latest** never updated (no **`FetcherSetup.exe`** for that tag), check that **`vX.Y.Z`** points to the commit you mean — run **`git fetch origin master --tags`**, then compare **`git rev-parse vX.Y.Z`** vs **`git rev-parse origin/master`**. **Manual** **Build installer** / **`gh workflow run … --ref vX.Y.Z`** uses the **workflow YAML from that tag’s commit** — an **old** tag SHA can **build** but **skip** **release**. **Fix:** move the tag to the correct commit and **re-push** the tag, **or** bump **`VERSION`** and release again, **or** **`gh release create`** + attach **`FetcherSetup.exe`** from a green run artifact.
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.5...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.6...HEAD
+[2.0.6]: https://github.com/jampat000/Fetcher/compare/v2.0.5...v2.0.6
 [2.0.5]: https://github.com/jampat000/Fetcher/compare/v2.0.4...v2.0.5
 [2.0.4]: https://github.com/jampat000/Fetcher/compare/v2.0.3...v2.0.4
 [2.0.3]: https://github.com/jampat000/Fetcher/compare/v2.0.2...v2.0.3

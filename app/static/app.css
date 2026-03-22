@@ -1182,6 +1182,43 @@ h2.gc-title,
   color: var(--text2);
   margin-top: 4px;
 }
+.activity-detail-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.activity-detail-line {
+  line-height: 1.35;
+  word-break: break-word;
+}
+.activity-row--expandable {
+  cursor: pointer;
+}
+.activity-row--expandable .activity-meta {
+  cursor: default;
+}
+.activity-detail-toggle {
+  display: inline-block;
+  margin-top: var(--space-2);
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent, #8b5cf6);
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.activity-detail-toggle:hover {
+  color: var(--text);
+}
+.activity-detail-toggle:focus-visible {
+  outline: 2px solid var(--accent, #8b5cf6);
+  outline-offset: 2px;
+}
 .activity-meta {
   text-align: right;
   flex-shrink: 0;

@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% from "macros/activity_row.html" import activity_row %}
 {% block content %}
 <div class="wrap">
   <div class="page-head">
@@ -10,7 +11,7 @@
 
   <div class="card gc">
     <div class="gc-title">Activity</div>
-    <div class="hint">What Fetcher triggered: missing, upgrade, and <strong>Emby Trimmer</strong> actions. Times in your chosen timezone.</div>
+    <div class="hint">What Fetcher triggered: missing, upgrade, and <strong>Emby Trimmer</strong> actions. Times in your chosen timezone. Entries with <strong>+N more</strong> store the full title list — click the row or the control to expand.</div>
     <div class="activity-filters" role="tablist" aria-label="Filter by app">
       <span class="pill active" data-pill-filter="all" role="tab" tabindex="0">All</span>
       <span class="pill" data-pill-filter="sonarr" role="tab" tabindex="0">TV</span>
@@ -21,33 +22,7 @@
       {% if activity %}
       <div class="activity-list">
         {% for e in activity %}
-        <div class="activity-row" data-activity-app="{{ e.app }}" data-activity-kind="{{ e.kind }}">
-          {% if e.app == "sonarr" %}
-            <div class="activity-icon icon-sonarr" aria-hidden="true">TV</div>
-          {% elif e.app == "radarr" %}
-            <div class="activity-icon icon-radarr" aria-hidden="true">M</div>
-          {% else %}
-            <div class="activity-icon icon-emby" aria-hidden="true">E</div>
-          {% endif %}
-          <div class="activity-body">
-            <div class="activity-title-line">
-            {% if e.kind == "missing" %}
-              Missing search for {{ e.count }} {{ "episode" if e.app == "sonarr" else "movie" }}{{ "s" if e.count != 1 else "" }}
-            {% elif e.kind == "trimmed" %}
-              {{ e.count }} item{{ "s" if e.count != 1 else "" }} matched Emby Trimmer rules
-            {% else %}
-              Upgrade search for {{ e.count }} {{ "episode" if e.app == "sonarr" else "movie" }}{{ "s" if e.count != 1 else "" }}
-            {% endif %}
-            </div>
-            {% if e.detail %}
-              <div class="activity-detail-sub">{{ e.detail }}</div>
-            {% endif %}
-          </div>
-          <div class="activity-meta">
-            <span class="activity-count">{{ e.count }}</span>
-            <span class="activity-time">{{ e.time_local }}</span>
-          </div>
-        </div>
+        {{ activity_row(e, activity_detail_preview) }}
         {% endfor %}
       </div>
       {% else %}
