@@ -6,7 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [1.0.42] - 2026-03-20
+## [1.0.43] - 2026-03-23
+
+### Fixed
+
+- **CHANGELOG:** **1.0.42** release header date corrected to **2026-03-22**.
+
+## [1.0.42] - 2026-03-22
 
 ### Added
 
