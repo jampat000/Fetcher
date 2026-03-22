@@ -212,6 +212,31 @@ function runHeroCountUp() {
   });
 }
 
+function initActivityDetailExpand() {
+  document.querySelectorAll(".activity-detail-toggle").forEach((btn) => {
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const sub = btn.closest(".activity-detail-sub--expandable");
+      if (!sub) return;
+      const rest = sub.querySelector(".activity-detail-rest");
+      const expanded = btn.getAttribute("aria-expanded") === "true";
+      const next = !expanded;
+      btn.setAttribute("aria-expanded", next ? "true" : "false");
+      const more = btn.getAttribute("data-more-count") || "0";
+      if (rest) rest.hidden = !next;
+      btn.textContent = next ? "Show less" : `+${more} more`;
+    });
+  });
+
+  document.querySelectorAll(".activity-row--expandable").forEach((row) => {
+    row.addEventListener("click", (ev) => {
+      if (ev.target.closest(".activity-detail-toggle") || ev.target.closest(".activity-meta")) return;
+      const btn = row.querySelector(".activity-detail-toggle");
+      if (btn) btn.click();
+    });
+  });
+}
+
 function initActivityFilterPills() {
   document.querySelectorAll("[data-pill-filter]").forEach((pill) => {
     pill.addEventListener("click", () => {
@@ -400,6 +425,7 @@ window.addEventListener("DOMContentLoaded", () => {
   bindRevealButtons();
   bindDashboardDismissibles();
   initActivityFilterPills();
+  initActivityDetailExpand();
   initSettingsPageCollapses();
 
   staggerClass(".hero-stat", 0, 60, "anim-in");

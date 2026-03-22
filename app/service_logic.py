@@ -477,16 +477,22 @@ def _interval_skip_detail(last_at: datetime, now: datetime, tick_minutes: int) -
     return f"{age_m} min since last run for this app; interval {tick_minutes} min (~{left} min until eligible)"
 
 
-def _detail_from_labels(labels: list[str], *, total: int) -> str:
-    uniq = [x for x in labels if x]
-    if not uniq:
-        return ""
-    max_items = 4
-    shown = uniq[:max_items]
-    remain = max(0, total - len(shown))
-    if remain > 0:
-        return "\n".join(shown + [f"+{remain} more"])
-    return "\n".join(shown)
+# Activity log ``detail`` stores every title line (UI shows 5 + “+N more”, expandable).
+# Extreme safety cap only — normal runs stay well below this.
+ACTIVITY_DETAIL_MAX_CHARS = 400_000
+
+
+def _detail_from_labels(labels: list[str]) -> str:
+    """Join non-empty labels with newlines. Full list is stored; list UI previews first 5 lines."""
+    parts: list[str] = []
+    for raw in labels:
+        label = (raw or "").strip()
+        if label:
+            parts.append(label)
+    body = "\n".join(parts)
+    if len(body) > ACTIVITY_DETAIL_MAX_CHARS:
+        body = body[:ACTIVITY_DETAIL_MAX_CHARS] + "\n… (detail truncated)"
+    return body
 
 
 async def apply_emby_trimmer_live_deletes(
@@ -755,7 +761,7 @@ async def _run_once_inner(
                                     app="sonarr",
                                     kind="missing",
                                     count=len(allowed_ids),
-                                    detail=_detail_from_labels(labels, total=len(allowed_ids)),
+                                    detail=_detail_from_labels(labels),
                                 )
                             )
                         elif missing_total > 0:
@@ -801,7 +807,7 @@ async def _run_once_inner(
                                     app="sonarr",
                                     kind="upgrade",
                                     count=len(allowed_ids),
-                                    detail=_detail_from_labels(labels, total=len(allowed_ids)),
+                                    detail=_detail_from_labels(labels),
                                 )
                             )
                         elif cutoff_total > 0:
@@ -897,7 +903,7 @@ async def _run_once_inner(
                                     app="radarr",
                                     kind="missing",
                                     count=len(allowed_ids),
-                                    detail=_detail_from_labels(labels, total=len(allowed_ids)),
+                                    detail=_detail_from_labels(labels),
                                 )
                             )
                         elif missing_total > 0:
@@ -934,7 +940,7 @@ async def _run_once_inner(
                                     app="radarr",
                                     kind="upgrade",
                                     count=len(allowed_ids),
-                                    detail=_detail_from_labels(labels, total=len(allowed_ids)),
+                                    detail=_detail_from_labels(labels),
                                 )
                             )
                         elif cutoff_total > 0:
@@ -1074,7 +1080,7 @@ async def _run_once_inner(
                                     app="emby",
                                     kind="trimmed",
                                     count=len(candidates),
-                                    detail=_detail_from_labels([name for _, name, _, _ in candidates], total=len(candidates)),
+                                    detail=_detail_from_labels([name for _, name, _, _ in candidates]),
                                 )
                             )
                         settings.emby_last_run_at = now

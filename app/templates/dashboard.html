@@ -1,5 +1,6 @@
 {% extends "layout.html" %}
 {% from "macros/arr_panel.html" import arr_panel %}
+{% from "macros/activity_row.html" import activity_row %}
 {% block content %}
 <div class="wrap">
   <div class="page-head">
@@ -160,37 +161,11 @@
 
     <div class="section dashboard-activity-section">
       <h2 class="gc-title">Recent activity</h2>
-      <p class="hint">Searches and Trimmer actions. Open <a href="/activity">Activity</a> for the full list.</p>
+      <p class="hint">Searches and Trimmer actions. Click a row with <strong>+N more</strong> for full titles. Open <a href="/activity">Activity</a> for the full list.</p>
       {% if activity %}
       <div class="activity-list">
         {% for e in activity[:5] %}
-        <div class="activity-row" data-activity-app="{{ e.app }}" data-activity-kind="{{ e.kind }}">
-          {% if e.app == "sonarr" %}
-            <div class="activity-icon icon-sonarr" aria-hidden="true">TV</div>
-          {% elif e.app == "radarr" %}
-            <div class="activity-icon icon-radarr" aria-hidden="true">M</div>
-          {% else %}
-            <div class="activity-icon icon-emby" aria-hidden="true">E</div>
-          {% endif %}
-          <div class="activity-body">
-            <div class="activity-title-line">
-            {% if e.kind == "missing" %}
-              Missing search for {{ e.count }} {% if e.app == "sonarr" %}{{ "episode" if e.count == 1 else "episodes" }}{% else %}{{ "movie" if e.count == 1 else "movies" }}{% endif %}
-            {% elif e.kind == "trimmed" %}
-              {{ e.count }} item{{ "s" if e.count != 1 else "" }} matched Emby Trimmer rules
-            {% else %}
-              Upgrade search for {{ e.count }} {% if e.app == "sonarr" %}{{ "episode" if e.count == 1 else "episodes" }}{% else %}{{ "movie" if e.count == 1 else "movies" }}{% endif %}
-            {% endif %}
-            </div>
-            {% if e.detail %}
-              <div class="activity-detail-sub">{{ e.detail }}</div>
-            {% endif %}
-          </div>
-          <div class="activity-meta">
-            <span class="activity-count">{{ e.count }}</span>
-            <span class="activity-time">{{ e.time_local }}</span>
-          </div>
-        </div>
+        {{ activity_row(e, activity_detail_preview) }}
         {% endfor %}
       </div>
       <a href="/activity" class="btn secondary dashboard-activity-all">View all activity</a>
