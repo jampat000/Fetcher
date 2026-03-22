@@ -1,20 +1,20 @@
 {% extends "layout.html" %}
 {% block content %}
-<div class="wrap" style="max-width: 420px; margin: 3rem auto;">
-  <div class="card module-content" style="padding: 1.75rem;">
-    <h1 style="margin-top: 0; text-align: center;">Sign in</h1>
-    <p class="hint" style="text-align: center;">{{ app_name }} — enter your credentials to continue.</p>
+<div class="login-wrap">
+  <div class="card module-content login-card">
+    <h1 class="login-title">Sign in</h1>
+    <p class="hint login-hint">{{ app_name }} — enter your credentials to continue.</p>
     {% if error %}
-    <div class="banner banner-warn" role="alert" style="margin-bottom: 1rem;">{{ error }}</div>
+    <div class="banner banner-warn" role="alert">{{ error }}</div>
     {% endif %}
-    <form method="post" action="/login" class="setup-wizard-form" style="margin-top: 1rem;">
+    <form method="post" action="/login" class="setup-wizard-form login-form">
       <input type="hidden" name="next" value="{{ login_next|default('/', true)|e }}" />
       <label for="username">Username</label>
       <input class="input" id="username" name="username" type="text" autocomplete="username" required />
       <label for="password">Password</label>
       <input class="password" id="password" name="password" type="password" autocomplete="current-password" required />
-      <div class="setup-wizard-footer" style="margin-top: 1.25rem;">
-        <button class="btn" type="submit" style="width: 100%;">Sign in</button>
+      <div class="setup-wizard-footer login-footer">
+        <button class="btn login-submit" type="submit">Sign in</button>
       </div>
     </form>
   </div>
