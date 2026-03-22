@@ -175,11 +175,11 @@
           <div class="activity-body">
             <div class="activity-title-line">
             {% if e.kind == "missing" %}
-              {{ e.count }} {% if e.app == "sonarr" %}{{ "episode" if e.count == 1 else "episodes" }}{% else %}{{ "movie" if e.count == 1 else "movies" }}{% endif %} missing search
+              Missing search for {{ e.count }} {% if e.app == "sonarr" %}{{ "episode" if e.count == 1 else "episodes" }}{% else %}{{ "movie" if e.count == 1 else "movies" }}{% endif %}
             {% elif e.kind == "trimmed" %}
               {{ e.count }} item{{ "s" if e.count != 1 else "" }} matched Emby Trimmer rules
             {% else %}
-              {{ e.count }} {% if e.app == "sonarr" %}{{ "episode" if e.count == 1 else "episodes" }}{% else %}{{ "movie" if e.count == 1 else "movies" }}{% endif %} upgrade search
+              Upgrade search for {{ e.count }} {% if e.app == "sonarr" %}{{ "episode" if e.count == 1 else "episodes" }}{% else %}{{ "movie" if e.count == 1 else "movies" }}{% endif %}
             {% endif %}
             </div>
             {% if e.detail %}
