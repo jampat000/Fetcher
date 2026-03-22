@@ -1,0 +1,13 @@
+# Direct runtime dependencies (unpinned). Lock with: pip-compile requirements.in
+fastapi
+uvicorn[standard]
+httpx
+pydantic
+pydantic-settings
+jinja2
+python-multipart
+apscheduler
+sqlalchemy
+aiosqlite
+packaging
+PyYAML

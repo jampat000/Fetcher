@@ -5,8 +5,7 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import quote, urlparse
-from zoneinfo import ZoneInfo
+from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
@@ -17,12 +16,29 @@ from sqlalchemy import desc, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import db_path, engine, get_session
+from app.db import _get_or_create_settings, db_path, engine, get_session
 from app.migrations import migrate
 import httpx
 
 from app.backup import export_json_bytes, import_settings_replace
 from app.arr_client import ArrClient, ArrConfig
+from app.constants import _MOVIE_GENRE_OPTIONS, _PEOPLE_CREDIT_OPTIONS, _TIMEZONE_CHOICES
+from app.display_helpers import (
+    _fmt_local,
+    _now_local,
+    _normalize_hhmm,
+    _schedule_days_display,
+    _schedule_time_range_friendly,
+    _time_select_orphan,
+    _to_12h,
+    _truncate_display,
+)
+from app.form_helpers import (
+    _looks_like_url,
+    _normalize_base_url,
+    _people_credit_types_csv_from_form,
+    _resolve_timezone_name,
+)
 from app.emby_client import EmbyClient, EmbyConfig
 from app.emby_rules import (
     evaluate_candidate,
@@ -43,7 +59,7 @@ from app.time_util import utc_now_naive
 from app import updates as app_updates
 from app.version_info import get_app_version
 from app.log_sanitize import configure_grabby_logging
-from services.api_keys import (
+from app.resolvers.api_keys import (
     resolve_emby_api_key,
     resolve_radarr_api_key,
     resolve_setup_api_key,
@@ -136,99 +152,6 @@ app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 app.include_router(app_updates.router)
 
 
-async def _get_or_create_settings(session: AsyncSession) -> AppSettings:
-    row = (await session.execute(select(AppSettings).order_by(AppSettings.id.asc()).limit(1))).scalars().first()
-    if row:
-        return row
-    row = AppSettings()
-    session.add(row)
-    await session.commit()
-    await session.refresh(row)
-    return row
-
-
-_TIMEZONE_CHOICES = [
-    ("UTC", "UTC"),
-    ("America/New_York", "America/New_York"),
-    ("America/Chicago", "America/Chicago"),
-    ("America/Denver", "America/Denver"),
-    ("America/Los_Angeles", "America/Los_Angeles"),
-    ("America/Phoenix", "America/Phoenix"),
-    ("America/Anchorage", "America/Anchorage"),
-    ("America/Toronto", "America/Toronto"),
-    ("America/Vancouver", "America/Vancouver"),
-    ("Europe/London", "Europe/London"),
-    ("Europe/Paris", "Europe/Paris"),
-    ("Europe/Berlin", "Europe/Berlin"),
-    ("Europe/Amsterdam", "Europe/Amsterdam"),
-    ("Europe/Rome", "Europe/Rome"),
-    ("Australia/Sydney", "AEDT/AEST (Australia/Sydney)"),
-    ("Australia/Brisbane", "AEST (Australia/Brisbane)"),
-    ("Australia/Melbourne", "Australia/Melbourne"),
-    ("Australia/Perth", "Australia/Perth"),
-    ("Australia/Adelaide", "Australia/Adelaide"),
-    ("Asia/Tokyo", "Asia/Tokyo"),
-    ("Asia/Shanghai", "Asia/Shanghai"),
-    ("Asia/Singapore", "Asia/Singapore"),
-    ("Pacific/Auckland", "Pacific/Auckland"),
-]
-
-_TZ_ALIASES = {
-    "AEDT": "Australia/Sydney",
-    "AEST": "Australia/Brisbane",
-}
-
-_MOVIE_GENRE_OPTIONS = [
-    "Action",
-    "Adventure",
-    "Animation",
-    "Comedy",
-    "Crime",
-    "Documentary",
-    "Drama",
-    "Family",
-    "Fantasy",
-    "History",
-    "Horror",
-    "Music",
-    "Mystery",
-    "Romance",
-    "Science Fiction",
-    "Thriller",
-    "TV Movie",
-    "War",
-    "Western",
-]
-
-# Values must match Emby People[].Type (storage is canonical casing).
-_PEOPLE_CREDIT_OPTIONS: list[tuple[str, str]] = [
-    ("Actor", "Cast (actors)"),
-    ("Director", "Directors"),
-    ("Writer", "Writers"),
-    ("Producer", "Producers"),
-    ("GuestStar", "Guest stars"),
-]
-
-_PEOPLE_CREDIT_TYPE_FORM_MAP = {
-    "actor": "Actor",
-    "director": "Director",
-    "writer": "Writer",
-    "producer": "Producer",
-    "gueststar": "GuestStar",
-}
-
-
-def _people_credit_types_csv_from_form(form_values: list[str] | None) -> str:
-    credit_vals: list[str] = []
-    for v in form_values or []:
-        key = str(v).strip().lower().replace(" ", "")
-        canon = _PEOPLE_CREDIT_TYPE_FORM_MAP.get(key)
-        if canon:
-            credit_vals.append(canon)
-    credit_vals = sorted(set(credit_vals))
-    return ",".join(credit_vals) if credit_vals else "Actor"
-
-
 def _movie_credit_types_summary(types: frozenset[str]) -> str:
     short = {
         "actor": "Cast",
@@ -240,55 +163,6 @@ def _movie_credit_types_summary(types: frozenset[str]) -> str:
     order = ("actor", "director", "writer", "producer", "gueststar")
     parts = [short[k] for k in order if k in types]
     return "+".join(parts) if parts else "Cast"
-
-
-def _resolve_timezone_name(raw: str) -> str:
-    v = (raw or "UTC").strip() or "UTC"
-    return _TZ_ALIASES.get(v.upper(), v)
-
-
-def _normalize_hhmm(raw: str, default: str) -> str:
-    v = (raw or "").strip()
-    if not v:
-        return default
-    # Already 24h HH:MM
-    try:
-        dt = datetime.strptime(v, "%H:%M")
-        return dt.strftime("%H:%M")
-    except Exception:
-        pass
-    # 12h forms like 9:30 PM / 09:30pm
-    for fmt in ("%I:%M %p", "%I:%M%p"):
-        try:
-            dt = datetime.strptime(v.upper(), fmt)
-            return dt.strftime("%H:%M")
-        except Exception:
-            continue
-    return default
-
-
-def _to_12h(hhmm: str, default: str) -> str:
-    try:
-        dt = datetime.strptime((hhmm or "").strip(), "%H:%M")
-        return dt.strftime("%I:%M %p").lstrip("0")
-    except Exception:
-        return default
-
-
-def _time_select_orphan(canonical_hhmm: str, choice_keys: set[str], *, fallback_display: str) -> tuple[str, str] | None:
-    """If saved time is not on the dropdown grid, offer it as the first option."""
-    if canonical_hhmm in choice_keys:
-        return None
-    return (canonical_hhmm, _to_12h(canonical_hhmm, fallback_display))
-
-
-def _schedule_days_display(days_csv: str) -> str:
-    """Format stored CSV weekdays for dashboard (commas → spaced hyphens)."""
-    raw = (days_csv or "").strip()
-    if not raw:
-        return ""
-    parts = [p.strip() for p in raw.split(",") if p.strip()]
-    return " - ".join(parts)
 
 
 def _schedule_days_csv_from_named_day_checks(
@@ -317,27 +191,14 @@ def _schedule_weekdays_selected_dict(days_csv: str) -> dict[str, bool]:
     return {d: (d in allowed) for d in DAY_NAMES}
 
 
-def _schedule_time_range_friendly(start_hhmm: str, end_hhmm: str) -> str:
-    """Avoid a lone en-dash when pairing start/end for dashboard tiles."""
-    s = (start_hhmm or "").strip() or "00:00"
-    e = (end_hhmm or "").strip() or "23:59"
-    if e == "24:00":
-        e = "23:59"
-    if s == "00:00" and e in ("23:59", "23:58"):
-        return "All day"
-    left = _to_12h(s, "12:00 AM")
-    right = _to_12h(e, "11:59 PM")
-    return f"{left} – {right}"
-
-
 def _effective_emby_rules(settings: AppSettings) -> dict[str, int | bool]:
-    global_rating = max(0, int(getattr(settings, "emby_rule_watched_rating_below", 0) or 0))
-    global_unwatched = max(0, int(getattr(settings, "emby_rule_unwatched_days", 0) or 0))
+    global_rating = max(0, int(settings.emby_rule_watched_rating_below or 0))
+    global_unwatched = max(0, int(settings.emby_rule_unwatched_days or 0))
 
-    movie_rating = max(0, int(getattr(settings, "emby_rule_movie_watched_rating_below", 0) or 0)) or global_rating
-    movie_unwatched = max(0, int(getattr(settings, "emby_rule_movie_unwatched_days", 0) or 0)) or global_unwatched
-    tv_delete_watched = bool(getattr(settings, "emby_rule_tv_delete_watched", False))
-    tv_unwatched = max(0, int(getattr(settings, "emby_rule_tv_unwatched_days", 0) or 0)) or global_unwatched
+    movie_rating = max(0, int(settings.emby_rule_movie_watched_rating_below or 0)) or global_rating
+    movie_unwatched = max(0, int(settings.emby_rule_movie_unwatched_days or 0)) or global_unwatched
+    tv_delete_watched = bool(settings.emby_rule_tv_delete_watched)
+    tv_unwatched = max(0, int(settings.emby_rule_tv_unwatched_days or 0)) or global_unwatched
 
     return {
         "movie_rating_below": movie_rating,
@@ -345,57 +206,6 @@ def _effective_emby_rules(settings: AppSettings) -> dict[str, int | bool]:
         "tv_delete_watched": tv_delete_watched,
         "tv_unwatched_days": tv_unwatched,
     }
-
-
-def _now_local(timezone: str) -> str:
-    try:
-        tz = ZoneInfo(_resolve_timezone_name(timezone))
-    except Exception:
-        tz = ZoneInfo("UTC")
-    # Keep a stable-width display across tabs to avoid subtle layout jitter.
-    return datetime.now(tz).strftime("%d-%m-%Y %I:%M %p")
-
-
-def _truncate_display(s: str, max_len: int = 220) -> str:
-    t = (s or "").strip().replace("\n", " ")
-    if len(t) <= max_len:
-        return t
-    return t[: max_len - 1] + "…"
-
-
-def _fmt_local(dt: datetime, tz_name: str) -> str:
-    try:
-        tz = ZoneInfo(_resolve_timezone_name(tz_name))
-    except Exception:
-        tz = ZoneInfo("UTC")
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=ZoneInfo("UTC"))
-    return dt.astimezone(tz).strftime("%d-%m-%Y %I:%M %p")
-
-
-def _normalize_base_url(raw: str) -> str:
-    raw = (raw or "").strip()
-    if not raw:
-        return ""
-    # If user enters "10.0.0.5:8989", assume http://
-    if "://" not in raw:
-        raw = "http://" + raw
-    p = urlparse(raw)
-    if not p.scheme or not p.netloc:
-        return raw
-    # Common pitfall: Sonarr/Radarr default ports are HTTP, not HTTPS.
-    # If user enters https://host:8989 (or :7878) it will fail with SSL WRONG_VERSION_NUMBER.
-    if p.scheme == "https" and (p.port in (8989, 7878)) and (p.path in ("", "/")):
-        base = f"http://{p.netloc}".rstrip("/")
-        return base
-    # Strip trailing slash, keep path if they run behind a reverse proxy subpath.
-    base = f"{p.scheme}://{p.netloc}{p.path}".rstrip("/")
-    return base
-
-
-def _looks_like_url(raw: str) -> bool:
-    v = (raw or "").strip().lower()
-    return v.startswith("http://") or v.startswith("https://")
 
 
 @app.get("/healthz")
@@ -467,7 +277,7 @@ async def setup_wizard_page(
     if step < 1 or step > _SETUP_WIZARD_STEPS:
         return RedirectResponse("/setup/1", status_code=302)
     settings = await _get_or_create_settings(session)
-    tz = getattr(settings, "timezone", None) or "UTC"
+    tz = settings.timezone or "UTC"
     return templates.TemplateResponse(
         request,
         "setup_wizard.html",
@@ -555,7 +365,7 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
         (await session.execute(select(ActivityLog).order_by(desc(ActivityLog.id)).limit(30)))
         .scalars().all()
     )
-    tz = getattr(settings, "timezone", None) or "UTC"
+    tz = settings.timezone or "UTC"
     activity_display = [
         {
             "time_local": _fmt_local(e.created_at, tz),
@@ -601,21 +411,21 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
         }
     next_tick = scheduler.next_grabby_run_at()
     next_tick_local = _fmt_local(next_tick, tz) if next_tick else ""
-    emby_schedule_start_display = _to_12h(getattr(settings, "emby_schedule_start", "00:00") or "00:00", "12:00 AM")
-    emby_schedule_end_display = _to_12h(getattr(settings, "emby_schedule_end", "23:59") or "23:59", "11:59 PM")
-    sonarr_schedule_start_display = _to_12h(getattr(settings, "sonarr_schedule_start", "00:00") or "00:00", "12:00 AM")
-    sonarr_schedule_end_display = _to_12h(getattr(settings, "sonarr_schedule_end", "23:59") or "23:59", "11:59 PM")
-    radarr_schedule_start_display = _to_12h(getattr(settings, "radarr_schedule_start", "00:00") or "00:00", "12:00 AM")
-    radarr_schedule_end_display = _to_12h(getattr(settings, "radarr_schedule_end", "23:59") or "23:59", "11:59 PM")
-    sonarr_schedule_days_display = _schedule_days_display(getattr(settings, "sonarr_schedule_days", "") or "")
+    emby_schedule_start_display = _to_12h(settings.emby_schedule_start or "00:00", "12:00 AM")
+    emby_schedule_end_display = _to_12h(settings.emby_schedule_end or "23:59", "11:59 PM")
+    sonarr_schedule_start_display = _to_12h(settings.sonarr_schedule_start or "00:00", "12:00 AM")
+    sonarr_schedule_end_display = _to_12h(settings.sonarr_schedule_end or "23:59", "11:59 PM")
+    radarr_schedule_start_display = _to_12h(settings.radarr_schedule_start or "00:00", "12:00 AM")
+    radarr_schedule_end_display = _to_12h(settings.radarr_schedule_end or "23:59", "11:59 PM")
+    sonarr_schedule_days_display = _schedule_days_display(settings.sonarr_schedule_days or "")
     sonarr_schedule_time_friendly = _schedule_time_range_friendly(
-        getattr(settings, "sonarr_schedule_start", "") or "00:00",
-        getattr(settings, "sonarr_schedule_end", "") or "23:59",
+        settings.sonarr_schedule_start or "00:00",
+        settings.sonarr_schedule_end or "23:59",
     )
-    radarr_schedule_days_display = _schedule_days_display(getattr(settings, "radarr_schedule_days", "") or "")
+    radarr_schedule_days_display = _schedule_days_display(settings.radarr_schedule_days or "")
     radarr_schedule_time_friendly = _schedule_time_range_friendly(
-        getattr(settings, "radarr_schedule_start", "") or "00:00",
-        getattr(settings, "radarr_schedule_end", "") or "23:59",
+        settings.radarr_schedule_start or "00:00",
+        settings.radarr_schedule_end or "23:59",
     )
     return templates.TemplateResponse(
         request,
@@ -643,21 +453,21 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
             "sonarr": sonarr_snap,
             "radarr": radarr_snap,
             "emby": emby_snap,
-            "selected_movie_genres": sorted(parse_genres_csv(getattr(settings, "emby_rule_movie_genres_csv", ""))),
-            "selected_tv_genres": sorted(parse_genres_csv(getattr(settings, "emby_rule_tv_genres_csv", ""))),
-            "movie_people_phrases": parse_movie_people_phrases(getattr(settings, "emby_rule_movie_people_csv", "")),
+            "selected_movie_genres": sorted(parse_genres_csv(settings.emby_rule_movie_genres_csv)),
+            "selected_tv_genres": sorted(parse_genres_csv(settings.emby_rule_tv_genres_csv)),
+            "movie_people_phrases": parse_movie_people_phrases(settings.emby_rule_movie_people_csv),
             "movie_people_credit_types": parse_movie_people_credit_types_csv(
-                getattr(settings, "emby_rule_movie_people_credit_types_csv", "Actor")
+                settings.emby_rule_movie_people_credit_types_csv
             ),
             "movie_people_credit_summary": _movie_credit_types_summary(
                 parse_movie_people_credit_types_csv(
-                    getattr(settings, "emby_rule_movie_people_credit_types_csv", "Actor")
+                    settings.emby_rule_movie_people_credit_types_csv
                 )
             ),
-            "tv_people_phrases": parse_movie_people_phrases(getattr(settings, "emby_rule_tv_people_csv", "")),
+            "tv_people_phrases": parse_movie_people_phrases(settings.emby_rule_tv_people_csv),
             "tv_people_credit_summary": _movie_credit_types_summary(
                 parse_movie_people_credit_types_csv(
-                    getattr(settings, "emby_rule_tv_people_credit_types_csv", "Actor")
+                    settings.emby_rule_tv_people_credit_types_csv
                 )
             ),
             "now": utc_now_naive(),
@@ -671,7 +481,7 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
 async def logs_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await _get_or_create_settings(session)
     logs = (await session.execute(select(JobRunLog).order_by(desc(JobRunLog.id)).limit(200))).scalars().all()
-    tz = getattr(settings, "timezone", None) or "UTC"
+    tz = settings.timezone or "UTC"
     logs_display = [
         {"started_local": _fmt_local(r.started_at, tz), "ok": r.ok, "message": r.message}
         for r in logs
@@ -699,7 +509,7 @@ async def activity_page(request: Request, session: AsyncSession = Depends(get_se
         (await session.execute(select(ActivityLog).order_by(desc(ActivityLog.id)).limit(200)))
         .scalars().all()
     )
-    tz = getattr(settings, "timezone", None) or "UTC"
+    tz = settings.timezone or "UTC"
     activity_display = [
         {
             "time_local": _fmt_local(e.created_at, tz),
@@ -740,11 +550,11 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
         .scalars()
         .first()
     )
-    tz = getattr(settings, "timezone", None) or "UTC"
+    tz = settings.timezone or "UTC"
     time_choices = schedule_time_dropdown_choices(step_minutes=30)
     time_choice_keys = {v for v, _ in time_choices}
-    sn_days = normalize_schedule_days_csv(getattr(settings, "sonarr_schedule_days", "") or "")
-    rd_days = normalize_schedule_days_csv(getattr(settings, "radarr_schedule_days", "") or "")
+    sn_days = normalize_schedule_days_csv(settings.sonarr_schedule_days or "")
+    rd_days = normalize_schedule_days_csv(settings.radarr_schedule_days or "")
     ss = _normalize_hhmm(settings.sonarr_schedule_start, "00:00")
     se = _normalize_hhmm(settings.sonarr_schedule_end, "23:59")
     rs = _normalize_hhmm(settings.radarr_schedule_start, "00:00")
@@ -768,10 +578,10 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
             "sonarr_schedule_days_normalized": sn_days,
             "radarr_schedule_days_normalized": rd_days,
             "sonarr_schedule_days_selected": _schedule_weekdays_selected_dict(
-                getattr(settings, "sonarr_schedule_days", "") or ""
+                settings.sonarr_schedule_days or ""
             ),
             "radarr_schedule_days_selected": _schedule_weekdays_selected_dict(
-                getattr(settings, "radarr_schedule_days", "") or ""
+                settings.radarr_schedule_days or ""
             ),
             "sonarr_schedule_start_hhmm": ss,
             "sonarr_schedule_end_hhmm": se,
@@ -831,10 +641,10 @@ async def emby_settings_page(request: Request, session: AsyncSession = Depends(g
         .scalars()
         .first()
     )
-    tz = getattr(settings, "timezone", None) or "UTC"
+    tz = settings.timezone or "UTC"
     time_choices = schedule_time_dropdown_choices(step_minutes=30)
     time_choice_keys = {v for v, _ in time_choices}
-    em_days = normalize_schedule_days_csv(getattr(settings, "emby_schedule_days", "") or "")
+    em_days = normalize_schedule_days_csv(settings.emby_schedule_days or "")
     es = _normalize_hhmm(settings.emby_schedule_start, "00:00")
     ee = _normalize_hhmm(settings.emby_schedule_end, "23:59")
     return templates.TemplateResponse(
@@ -853,21 +663,21 @@ async def emby_settings_page(request: Request, session: AsyncSession = Depends(g
             "schedule_time_choices": time_choices,
             "emby_schedule_days_normalized": em_days,
             "emby_schedule_days_selected": _schedule_weekdays_selected_dict(
-                getattr(settings, "emby_schedule_days", "") or ""
+                settings.emby_schedule_days or ""
             ),
             "emby_schedule_start_hhmm": es,
             "emby_schedule_end_hhmm": ee,
             "emby_start_orphan": _time_select_orphan(es, time_choice_keys, fallback_display="12:00 AM"),
             "emby_end_orphan": _time_select_orphan(ee, time_choice_keys, fallback_display="11:59 PM"),
             "movie_genre_options": _MOVIE_GENRE_OPTIONS,
-            "selected_movie_genres": parse_genres_csv(getattr(settings, "emby_rule_movie_genres_csv", "")),
-            "selected_tv_genres": parse_genres_csv(getattr(settings, "emby_rule_tv_genres_csv", "")),
+            "selected_movie_genres": parse_genres_csv(settings.emby_rule_movie_genres_csv),
+            "selected_tv_genres": parse_genres_csv(settings.emby_rule_tv_genres_csv),
             "people_credit_options": _PEOPLE_CREDIT_OPTIONS,
             "selected_movie_people_credit_types": parse_movie_people_credit_types_csv(
-                getattr(settings, "emby_rule_movie_people_credit_types_csv", "Actor")
+                settings.emby_rule_movie_people_credit_types_csv
             ),
             "selected_tv_people_credit_types": parse_movie_people_credit_types_csv(
-                getattr(settings, "emby_rule_tv_people_credit_types_csv", "Actor")
+                settings.emby_rule_tv_people_credit_types_csv
             ),
         },
     )
@@ -877,7 +687,7 @@ async def emby_settings_page(request: Request, session: AsyncSession = Depends(g
 @app.get("/emby/preview", response_class=HTMLResponse)
 async def emby_preview_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await _get_or_create_settings(session)
-    tz = getattr(settings, "timezone", None) or "UTC"
+    tz = settings.timezone or "UTC"
     rows: list[dict] = []
     error = ""
     used_user_id = (settings.emby_user_id or "").strip()
@@ -888,19 +698,19 @@ async def emby_preview_page(request: Request, session: AsyncSession = Depends(ge
     movie_unwatched_days = rules["movie_unwatched_days"]
     tv_delete_watched = bool(rules["tv_delete_watched"])
     tv_unwatched_days = rules["tv_unwatched_days"]
-    _v_scan = getattr(settings, "emby_max_items_scan", 2000)
+    _v_scan = settings.emby_max_items_scan
     _raw_scan = int(_v_scan) if _v_scan is not None else 2000
     scan_limit = 0 if _raw_scan <= 0 else max(1, min(100_000, _raw_scan))
-    max_deletes = max(1, int(getattr(settings, "emby_max_deletes_per_run", 25) or 25))
-    selected_movie_genres = parse_genres_csv(getattr(settings, "emby_rule_movie_genres_csv", ""))
-    selected_tv_genres = parse_genres_csv(getattr(settings, "emby_rule_tv_genres_csv", ""))
-    selected_movie_people = parse_movie_people_phrases(getattr(settings, "emby_rule_movie_people_csv", ""))
+    max_deletes = max(1, int(settings.emby_max_deletes_per_run or 25))
+    selected_movie_genres = parse_genres_csv(settings.emby_rule_movie_genres_csv)
+    selected_tv_genres = parse_genres_csv(settings.emby_rule_tv_genres_csv)
+    selected_movie_people = parse_movie_people_phrases(settings.emby_rule_movie_people_csv)
     selected_movie_credit_types = parse_movie_people_credit_types_csv(
-        getattr(settings, "emby_rule_movie_people_credit_types_csv", "Actor")
+        settings.emby_rule_movie_people_credit_types_csv
     )
-    selected_tv_people = parse_movie_people_phrases(getattr(settings, "emby_rule_tv_people_csv", ""))
+    selected_tv_people = parse_movie_people_phrases(settings.emby_rule_tv_people_csv)
     selected_tv_credit_types = parse_movie_people_credit_types_csv(
-        getattr(settings, "emby_rule_tv_people_credit_types_csv", "Actor")
+        settings.emby_rule_tv_people_credit_types_csv
     )
 
     _truthy = ("1", "true", "yes")
@@ -1003,7 +813,7 @@ async def emby_preview_page(request: Request, session: AsyncSession = Depends(ge
             "movie_people_credit_summary": _movie_credit_types_summary(selected_movie_credit_types),
             "selected_tv_people_display": selected_tv_people,
             "tv_people_credit_summary": _movie_credit_types_summary(selected_tv_credit_types),
-            "dry_run": bool(getattr(settings, "emby_dry_run", True)),
+            "dry_run": bool(settings.emby_dry_run),
             "matched_count": len(rows),
             "scan_prompt": scan_prompt,
             "scan_loaded": scan_loaded,
