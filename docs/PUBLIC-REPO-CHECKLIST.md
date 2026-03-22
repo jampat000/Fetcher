@@ -22,7 +22,7 @@ Work through the steps **in order**. Check each box when done.
 In your repo root:
 
 ```powershell
-cd C:\Users\User\fetcher
+cd $env:USERPROFILE\Fetcher   # or your clone — see WORKSPACE-FOLDER.md
 ```
 
 - [ ] Search working tree for obvious secrets (pick one tool):

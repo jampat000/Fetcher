@@ -2,6 +2,8 @@
 
 Thanks for helping improve Fetcher.
 
+**Clone path:** Prefer **`%USERPROFILE%\Fetcher`** so the folder name matches the repo (see **[`docs/WORKSPACE-FOLDER.md`](docs/WORKSPACE-FOLDER.md)** if you still use an old name like **`grabby`**).
+
 ## Workflow (protected `master`)
 
 This repo uses **classic branch protection** on **`master`**: pull requests, required CI checks, no force-push.

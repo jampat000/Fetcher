@@ -42,7 +42,7 @@ These require **your** browser and **owner** rights on the repository.
 ## If `git` is not in your PATH
 
 Use **Git Bash** or full path, e.g.  
-`"C:\Program Files\Git\bin\git.exe" -C C:\Users\User\fetcher status`
+`"C:\Program Files\Git\bin\git.exe" -C %USERPROFILE%\Fetcher status` (use your real clone path if different — see **WORKSPACE-FOLDER.md**)
 
 ---
 

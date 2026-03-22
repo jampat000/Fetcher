@@ -42,7 +42,7 @@ def test_regenerate_readme_screenshots(e2e_server: str) -> None:
         page = browser.new_page(viewport={"width": 1440, "height": 900})
         try:
             _e2e_sign_in(page, e2e_server)
-            # Sidebar must show Fetcher (not legacy Grabby branding).
+            # Sidebar must show Fetcher product name.
             page.locator(".sidebar-logo").filter(has_text="Fetcher").wait_for(timeout=15000)
 
             page.goto(f"{e2e_server}/", wait_until="domcontentloaded")

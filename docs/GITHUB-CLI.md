@@ -29,7 +29,7 @@ gh pr list --repo jampat000/Fetcher
 gh pr merge 35 --repo jampat000/Fetcher --merge
 
 # After merge — sync local
-cd C:\Users\User\fetcher
+cd $env:USERPROFILE\Fetcher   # or your clone — see WORKSPACE-FOLDER.md
 git checkout master
 git pull origin master
 

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Docs:** **[`docs/WORKSPACE-FOLDER.md`](docs/WORKSPACE-FOLDER.md)** — use local folder **`Fetcher`** (not legacy **`grabby`**), **`fetcher.code-workspace`** for Cursor/VS Code, and **`scripts/rename-local-repo-folder.ps1`** to rename an existing clone.
+
 ## [2.0.0] - 2026-03-22
 
 **First semver 2.x release** — rebrand from Grabby to Fetcher, Cleaner to Trimmer, full V5 UI, Windows installer via GitHub Actions, and CI/packaging fixes so the frozen app builds and smoke-tests cleanly on Windows.

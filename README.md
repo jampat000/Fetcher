@@ -1,5 +1,7 @@
 # Fetcher
 
+**Local folder:** Clone or rename your copy to **`%USERPROFILE%\Fetcher`** so it matches this repo (old checkouts may still be named **`grabby`**). See **[`docs/WORKSPACE-FOLDER.md`](docs/WORKSPACE-FOLDER.md)** · open **`fetcher.code-workspace`** in Cursor/VS Code for a clear sidebar label.
+
 **Never miss a release (and clean up old media).** — Windows Service + Web UI for **Sonarr**, **Radarr**, and **Emby**:
 
 > **Why this exists:** This is a **vibe-coded** app — I had a concrete requirement (Arr automation + optional Emby cleanup on Windows, as a service, with a UI that matched how I work) and nothing public really fit. If it helps you, great; if not, no hard feelings. It’s shipped because *I* needed it to exist.
@@ -77,7 +79,8 @@ GitHub Actions runs **pip-audit** on dependencies for the default branch. **Prot
 - `installer/`: Inno Setup script to produce `FetcherSetup.exe`
 - `VERSION`: current release version (semver) for the app + installer metadata
 - **`config.example.yaml`** → copy to **`config.yaml`** (gitignored) to supply **Sonarr / Radarr / Emby API keys** without storing them in SQLite; optional **YAML values override** DB for outbound API calls (see **`app/config.py`** / **`app/resolvers/api_keys.py`**). Packaged builds look for **`config.yaml`** next to **`Fetcher.exe`** first.
-- `docs/`: maintainer guides — **[public repo checklist](docs/PUBLIC-REPO-CHECKLIST.md)**, **[audit log after local checks](docs/PUBLIC-REPO-AUDIT.md)**
+- `docs/`: maintainer guides — **[public repo checklist](docs/PUBLIC-REPO-CHECKLIST.md)**, **[audit log after local checks](docs/PUBLIC-REPO-AUDIT.md)**, **[local folder name / Cursor workspace](docs/WORKSPACE-FOLDER.md)**
+- **`fetcher.code-workspace`**: open in Cursor/VS Code so the sidebar shows **Fetcher** (not an old folder name like `grabby`)
 
 ## License
 
@@ -124,7 +127,7 @@ Merge **`release/v…` → `master`** via PR when you want the default branch up
 ## Run locally (dev)
 
 ```powershell
-cd C:\Users\User\fetcher
+cd $env:USERPROFILE\Fetcher   # or your clone path — see docs/WORKSPACE-FOLDER.md
 py -m venv .venv
 .\.venv\Scripts\pip install -r requirements.txt
 .\scripts\dev-start.ps1
@@ -179,7 +182,7 @@ pytest tests/e2e -q
 ## Packaging (exe)
 
 ```powershell
-cd C:\Users\User\fetcher
+cd $env:USERPROFILE\Fetcher   # or your clone path — see docs/WORKSPACE-FOLDER.md
 .\packaging\build.ps1 -Clean
 ```
 
@@ -210,7 +213,7 @@ Prereq: install Inno Setup (so `ISCC.exe` exists), or pass **`-InstallInnoSetupI
 Build:
 
 ```powershell
-cd C:\Users\User\fetcher
+cd $env:USERPROFILE\Fetcher   # or your clone path — see docs/WORKSPACE-FOLDER.md
 .\installer\build.ps1 -Clean -InstallInnoSetupIfMissing
 # Optional explicit version for Inno metadata:
 # .\installer\build.ps1 -Clean -InstallInnoSetupIfMissing -Version 1.2.3
