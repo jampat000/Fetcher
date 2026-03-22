@@ -17,7 +17,7 @@ The Arr “over and over” loop mitigation was shipped on **`v1.0.20`**.
 - When Grabby is about to call:
   - Sonarr `wanted_missing` / `wanted_cutoff_unmet` (episode searches/upgrade searches)
   - Radarr `wanted_missing` / `wanted_cutoff_unmet` (movie searches/upgrade searches)
-  it filters out any episode/movie IDs already triggered within a cooldown window (defaults to your `interval_minutes`).
+  it filters out any episode/movie IDs already triggered within a cooldown window (see **`arr_search_cooldown_minutes`** in Settings).
 
 Result: the same IDs won’t re-trigger every scheduler run until state changes.
 
@@ -46,12 +46,12 @@ Result: the same IDs won’t re-trigger every scheduler run until state changes.
 
 Users still saw **Radarr** hammering the **same movies** because:
 
-1. **Cooldown used the scheduler `interval_minutes`** — short intervals meant “allowed again” almost every tick.
+1. **Cooldown was tied to very short scheduler intervals** — items became eligible again almost every tick.
 2. **Cooldown was keyed by `action`** (`missing` vs `upgrade`) — the same movie could get **two** `MoviesSearch` calls in **one** Grabby run if it appeared on both queues.
 
 **Changes after that handoff:**
 
-- **`arr_search_cooldown_minutes`** in Settings (default **1440** = 24h; **`0`** = legacy, same as run interval).
+- **`arr_search_cooldown_minutes`** in Settings (default **1440** = 24h; **`0`** = use each app’s run interval as the cooldown basis).
 - **`_filter_ids_by_cooldown`** ignores `action` when deciding suppression; `action` is still stored for auditing.
 - Sample **`service/GrabbyService.xml`** uses **`--host 0.0.0.0`** for LAN Web UI access (+ firewall / SECURITY notes).
 

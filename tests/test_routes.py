@@ -63,8 +63,8 @@ def test_cleaner_default_skips_emby_client_when_ready(monkeypatch) -> None:
     assert b"Scan Emby for matches" in resp.content
 
 
-def test_cleaner_still_accepts_legacy_preview_query(monkeypatch) -> None:
-    """?preview=1 remains valid alongside ?scan=1."""
+def test_cleaner_preview_query_does_not_trigger_scan(monkeypatch) -> None:
+    """Only ?scan=1 (or truthy scan) loads Emby; ?preview= is ignored."""
 
     async def _fake_settings(_session):
         return AppSettings(
@@ -96,7 +96,7 @@ def test_cleaner_still_accepts_legacy_preview_query(monkeypatch) -> None:
     with _build_client(monkeypatch) as client:
         resp = client.get("/cleaner?preview=1")
     assert resp.status_code == 200
-    assert constructed == [True]
+    assert constructed == []
 
 
 def test_settings_route_smoke(monkeypatch) -> None:

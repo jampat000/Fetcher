@@ -29,6 +29,7 @@ Thumbs.db
 tmp/
 
 # Never commit secrets or exported settings (see docs/PUBLIC-REPO-CHECKLIST.md)
+config.yaml
 .env
 .env.*
 grabby-settings-backup*.json

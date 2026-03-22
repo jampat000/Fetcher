@@ -27,7 +27,7 @@ class AppSettings(Base):
     sonarr_schedule_days: Mapped[str] = mapped_column(Text, default="")
     sonarr_schedule_start: Mapped[str] = mapped_column(String(5), default="00:00")  # HH:MM
     sonarr_schedule_end: Mapped[str] = mapped_column(String(5), default="23:59")  # HH:MM
-    # Minutes between Sonarr runs when schedule allows (minimum 1; legacy 0 is coerced to 60 on startup/save).
+    # Minutes between Sonarr runs when schedule allows (minimum 1; invalid/low values coerced to 60 on startup/save).
     sonarr_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     sonarr_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
@@ -42,12 +42,10 @@ class AppSettings(Base):
     radarr_schedule_days: Mapped[str] = mapped_column(Text, default="")
     radarr_schedule_start: Mapped[str] = mapped_column(String(5), default="00:00")  # HH:MM
     radarr_schedule_end: Mapped[str] = mapped_column(String(5), default="23:59")  # HH:MM
-    # Minutes between Radarr runs when schedule allows (minimum 1; legacy 0 is coerced to 60 on startup/save).
+    # Minutes between Radarr runs when schedule allows (minimum 1; invalid/low values coerced to 60 on startup/save).
     radarr_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     radarr_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    # Legacy column (backup/export). Wake cadence = min(Sonarr, Radarr) run intervals; see app.arr_intervals.
-    interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     # How often Emby Cleaner may run (Cleaner Settings only; independent of Sonarr/Radarr).
     emby_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     emby_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -81,10 +79,6 @@ class AppSettings(Base):
     emby_rule_tv_people_credit_types_csv: Mapped[str] = mapped_column(Text, default="Actor")
     emby_rule_tv_watched_rating_below: Mapped[int] = mapped_column(Integer, default=0)  # 0 -> fallback/global or disabled
     emby_rule_tv_unwatched_days: Mapped[int] = mapped_column(Integer, default=0)  # 0 -> fallback/global or disabled
-    # Global defaults (kept for backward compatibility / existing DBs)
-    search_missing: Mapped[bool] = mapped_column(Boolean, default=True)
-    search_upgrades: Mapped[bool] = mapped_column(Boolean, default=True)
-    max_items_per_run: Mapped[int] = mapped_column(Integer, default=50)
 
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
 

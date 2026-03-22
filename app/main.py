@@ -43,6 +43,12 @@ from app.time_util import utc_now_naive
 from app import updates as app_updates
 from app.version_info import get_app_version
 from app.log_sanitize import configure_grabby_logging
+from services.api_keys import (
+    resolve_emby_api_key,
+    resolve_radarr_api_key,
+    resolve_setup_api_key,
+    resolve_sonarr_api_key,
+)
 
 configure_grabby_logging()
 
@@ -96,8 +102,9 @@ async def _lifespan(_app: FastAPI):
             )
     if last_err is not None:
         logger.error(
-            "Grabby could not finish database setup. If the Windows service is running, use dev-start.ps1 "
-            "(separate dev DB) or stop the service. DB path: %s",
+            "Grabby could not finish database setup. If the Windows service is running, run "
+            "scripts/dev-start.ps1 (uses GRABBY_DEV_DB_PATH / %%TEMP%%\\grabby-dev.sqlite3 by default) "
+            "or stop the service. DB path: %s",
             db_path(),
         )
         raise last_err
@@ -409,19 +416,22 @@ async def api_version() -> dict[str, str]:
 
 @app.post("/api/setup/test-sonarr")
 async def api_setup_test_sonarr(body: SetupConnTestIn) -> JSONResponse:
-    ok, msg = await test_sonarr_connection(body.url, body.api_key)
+    key = resolve_setup_api_key(body.api_key, "sonarr")
+    ok, msg = await test_sonarr_connection(body.url, key)
     return JSONResponse({"ok": ok, "message": msg})
 
 
 @app.post("/api/setup/test-radarr")
 async def api_setup_test_radarr(body: SetupConnTestIn) -> JSONResponse:
-    ok, msg = await test_radarr_connection(body.url, body.api_key)
+    key = resolve_setup_api_key(body.api_key, "radarr")
+    ok, msg = await test_radarr_connection(body.url, key)
     return JSONResponse({"ok": ok, "message": msg})
 
 
 @app.post("/api/setup/test-emby")
 async def api_setup_test_emby(body: SetupEmbyTestIn) -> JSONResponse:
-    ok, msg = await test_emby_connection(body.url, body.api_key, body.user_id)
+    key = resolve_setup_api_key(body.api_key, "emby")
+    ok, msg = await test_emby_connection(body.url, key, body.user_id)
     return JSONResponse({"ok": ok, "message": msg})
 
 
@@ -493,7 +503,7 @@ async def setup_wizard_save(
     emby_url: str = Form(""),
     emby_api_key: str = Form(""),
     emby_user_id: str = Form(""),
-    interval_minutes: int = Form(60),
+    run_interval_minutes: int = Form(60),
     timezone: str = Form("UTC"),
     session: AsyncSession = Depends(get_session),
 ) -> RedirectResponse:
@@ -520,7 +530,7 @@ async def setup_wizard_save(
         elif step == 4:
             # Starting run interval for Sonarr, Radarr, and Emby Cleaner (no separate global scheduler base).
             try:
-                im = int(interval_minutes)
+                im = int(run_interval_minutes)
             except (TypeError, ValueError):
                 im = 60
             im = max(5, min(7 * 24 * 60, im))
@@ -895,11 +905,12 @@ async def emby_preview_page(request: Request, session: AsyncSession = Depends(ge
 
     _truthy = ("1", "true", "yes")
     qp = request.query_params
-    run_emby_scan = qp.get("scan", "").strip().lower() in _truthy or qp.get("preview", "").strip().lower() in _truthy
+    run_emby_scan = qp.get("scan", "").strip().lower() in _truthy
     scan_prompt = False
     scan_loaded = False
 
-    if not settings.emby_url or not settings.emby_api_key:
+    _emby_key = resolve_emby_api_key(settings)
+    if not settings.emby_url or not _emby_key:
         error = "Emby URL and API key are required."
     elif movie_rating_below <= 0 and movie_unwatched_days <= 0 and (not tv_delete_watched) and tv_unwatched_days <= 0:
         error = "No rules are enabled. Set at least one Emby Cleaner rule in Cleaner Settings."
@@ -907,7 +918,7 @@ async def emby_preview_page(request: Request, session: AsyncSession = Depends(ge
         # Fast path: sidebar / default navigation should not scan the whole library.
         scan_prompt = True
     else:
-        client = EmbyClient(EmbyConfig(settings.emby_url, settings.emby_api_key))
+        client = EmbyClient(EmbyConfig(settings.emby_url, _emby_key))
         try:
             await client.health()
             users = await client.users()
@@ -1046,7 +1057,6 @@ async def save_settings(
 ) -> RedirectResponse:
     try:
         row = await _get_or_create_settings(session)
-        # interval_minutes column is legacy / backup only — not edited in Global Settings UI.
         data = SettingsIn(
             sonarr_enabled=sonarr_enabled,
             sonarr_url=_normalize_base_url(sonarr_url),
@@ -1064,7 +1074,6 @@ async def save_settings(
             radarr_max_items_per_run=radarr_max_items_per_run,
             radarr_interval_minutes=radarr_interval_minutes,
             arr_search_cooldown_minutes=arr_search_cooldown_minutes,
-            interval_minutes=max(5, min(7 * 24 * 60, int(getattr(row, "interval_minutes", 60) or 60))),
         )
         scope = (save_scope or "all").strip().lower()
         # Sonarr/Radarr: persist on app-specific save OR "Save Global" (same form posts all fields).
@@ -1252,7 +1261,7 @@ async def save_cleaner_settings(
             row.emby_rule_tv_watched_rating_below = 0
             row.emby_rule_tv_unwatched_days = max(0, min(36500, int(emby_rule_tv_unwatched_days or 0)))
 
-        # Keep legacy global fields in sync for backward compatibility.
+        # Keep aggregate Emby rule fields aligned with movie/TV columns (used as fallbacks in rule evaluation).
         row.emby_rule_watched_rating_below = max(
             row.emby_rule_movie_watched_rating_below,
             0,
@@ -1278,7 +1287,7 @@ async def save_cleaner_settings(
 async def test_sonarr(session: AsyncSession = Depends(get_session)) -> RedirectResponse:
     settings = await _get_or_create_settings(session)
     try:
-        c = ArrClient(ArrConfig(settings.sonarr_url, settings.sonarr_api_key))
+        c = ArrClient(ArrConfig(settings.sonarr_url, resolve_sonarr_api_key(settings)))
         try:
             await c.health()
         finally:
@@ -1296,7 +1305,7 @@ async def test_sonarr(session: AsyncSession = Depends(get_session)) -> RedirectR
 async def test_radarr(session: AsyncSession = Depends(get_session)) -> RedirectResponse:
     settings = await _get_or_create_settings(session)
     try:
-        c = ArrClient(ArrConfig(settings.radarr_url, settings.radarr_api_key))
+        c = ArrClient(ArrConfig(settings.radarr_url, resolve_radarr_api_key(settings)))
         try:
             await c.health()
         finally:
@@ -1314,16 +1323,16 @@ async def test_radarr(session: AsyncSession = Depends(get_session)) -> RedirectR
 async def test_emby(session: AsyncSession = Depends(get_session)) -> RedirectResponse:
     settings = await _get_or_create_settings(session)
     emby_url = _normalize_base_url(settings.emby_url)
-    emby_api_key = (settings.emby_api_key or "").strip()
+    emby_token = resolve_emby_api_key(settings)
     if not emby_url:
         session.add(AppSnapshot(app="emby", ok=False, status_message="Test failed: Emby URL is required.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
         return RedirectResponse("/emby/settings?test=emby_fail", status_code=303)
-    if not emby_api_key:
+    if not emby_token:
         session.add(AppSnapshot(app="emby", ok=False, status_message="Test failed: Emby API key is required.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
         return RedirectResponse("/emby/settings?test=emby_fail", status_code=303)
-    if _looks_like_url(emby_api_key):
+    if _looks_like_url(emby_token):
         session.add(
             AppSnapshot(
                 app="emby",
@@ -1336,7 +1345,7 @@ async def test_emby(session: AsyncSession = Depends(get_session)) -> RedirectRes
         await session.commit()
         return RedirectResponse("/emby/settings?test=emby_fail", status_code=303)
     try:
-        c = EmbyClient(EmbyConfig(emby_url, emby_api_key))
+        c = EmbyClient(EmbyConfig(emby_url, emby_token))
         try:
             await c.health()
             if settings.emby_user_id:
@@ -1378,11 +1387,13 @@ async def test_emby_from_form(
         session.add(AppSnapshot(app="emby", ok=False, status_message="Test failed: Emby URL is required.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
         return RedirectResponse("/emby/settings?test=emby_fail", status_code=303)
-    if not emby_api_key_n:
+    row = await _get_or_create_settings(session)
+    emby_token_n = resolve_emby_api_key(row, form=emby_api_key)
+    if not emby_token_n:
         session.add(AppSnapshot(app="emby", ok=False, status_message="Test failed: Emby API key is required.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
         return RedirectResponse("/emby/settings?test=emby_fail", status_code=303)
-    if _looks_like_url(emby_api_key_n):
+    if _looks_like_url(emby_token_n):
         session.add(
             AppSnapshot(
                 app="emby",
@@ -1395,7 +1406,6 @@ async def test_emby_from_form(
         await session.commit()
         return RedirectResponse("/emby/settings?test=emby_fail", status_code=303)
     # Persist entered connection values so users don't lose them after testing.
-    row = await _get_or_create_settings(session)
     row.emby_enabled = emby_enabled
     row.emby_url = emby_url_n
     row.emby_api_key = emby_api_key_n
@@ -1403,7 +1413,7 @@ async def test_emby_from_form(
     row.updated_at = utc_now_naive()
     await session.commit()
     try:
-        c = EmbyClient(EmbyConfig(emby_url_n, emby_api_key_n))
+        c = EmbyClient(EmbyConfig(emby_url_n, emby_token_n))
         try:
             await c.health()
             if emby_user_id_n:

@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.33] - 2026-03-25
+
+### Changed
+
+- **Schema cleanup:** Removed obsolete **`app_settings`** columns **`interval_minutes`**, global **`search_missing` / `search_upgrades`**, and **`max_items_per_run`** (per-app Sonarr/Radarr fields are the only source of truth). Startup migration copies values into per-app columns when safe, then **`DROP COLUMN`** (requires SQLite **3.35+**).
+- **Backup:** **`format_version`** is now **`2`**; imports still accept **`1`**. Old global keys in v1 JSON are mapped onto per-app fields when needed.
+- **Cleaner:** Only **`?scan=1`** (or other truthy **`scan`**) runs an Emby library pull — **`?preview=1`** is no longer honored.
+- **Setup wizard (step 4):** form field renamed to **`run_interval_minutes`** (still sets Sonarr/Radarr/Emby run intervals).
+
+### Fixed
+
+- **`GRABBY_DEV_DB_PATH`:** **`app/db.py`** now honors this env var (documented since 1.0.29). **`scripts/dev-start.ps1`** sets it to **`%TEMP%\grabby-dev.sqlite3`** by default and adds **`-SharedAppDb`** to use the normal per-user data directory (same file as the installed service when unscoped).
+
+### Added
+
+- Optional root **`config.yaml`** (gitignored): **`SONARR_API_KEY`**, **`RADARR_API_KEY`**, **`EMBY_API_KEY`** loaded via **PyYAML** in **`app/config.py`**. **`services/api_keys.py`** resolves keys for the scheduler, **`run_once`**, and connection tests (**YAML overrides DB** when set). Tracked template: **`config.example.yaml`**.
+
 ## [1.0.32] - 2026-03-24
 
 ### Changed
@@ -247,7 +264,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **First-run setup wizard** (`/setup`): guided steps for Sonarr, Radarr, Emby (with **Test connection** via JSON API), schedule interval & timezone; final **Next steps** screen with links to Grabby Settings, Cleaner Settings, and Cleaner.
 - **Setup** sidebar entry; dashboard CTA when no stack URLs are configured; **dismissible** dashboard banners (stored in `localStorage`).
 - **API:** `POST /api/setup/test-sonarr`, `test-radarr`, `test-emby` for wizard tests.
-- **Cleaner:** default **`GET /cleaner`** no longer scans Emby (fast sidebar); use **`Scan Emby for matches`** (`/cleaner?scan=1`; legacy `?preview=1` still accepted).
+- **Cleaner:** default **`GET /cleaner`** no longer scans Emby (fast sidebar); use **`Scan Emby for matches`** (`/cleaner?scan=1`).
 - **Service upgrades:** [`service/UPGRADE.md`](service/UPGRADE.md) for replacing the Windows install / exe.
 - Playwright **E2E smoke tests** ([`tests/e2e/`](tests/e2e/)) against a live uvicorn process (`healthz`, setup step 1, Cleaner page).
 - **Settings:** **Backup** download filename uses **dd-mm-yyyy**.

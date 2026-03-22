@@ -24,7 +24,7 @@ def test_backup_datetime_format_and_parse_roundtrip() -> None:
     s = format_backup_datetime(utc)
     assert s == "15-06-2024 10:30:05"
     assert parse_backup_datetime_string(s) == utc
-    # Legacy ISO strings from older exports still import
+    # ISO-8601 strings from older exports still import
     legacy = "2024-06-15T10:30:05+00:00"
     assert parse_backup_datetime_string(legacy) == utc
 
@@ -55,6 +55,25 @@ def test_roundtrip_plain_dict() -> None:
     assert row2.radarr_url == "http://b"
     assert row2.emby_max_items_scan == 0
     assert row2.sonarr_enabled is True
+
+
+def test_parse_accepts_format_v1_backup() -> None:
+    raw = json.dumps(
+        {
+            "grabby_backup": BACKUP_MAGIC,
+            "format_version": 1,
+            "settings": {
+                "sonarr_url": "http://old",
+                "search_missing": False,
+                "search_upgrades": True,
+            },
+        }
+    ).encode()
+    settings = parse_and_validate_settings_dict(raw)
+    assert settings["sonarr_url"] == "http://old"
+    assert settings["sonarr_search_missing"] is False
+    assert settings["radarr_search_missing"] is False
+    assert settings["sonarr_search_upgrades"] is True
 
 
 def test_parse_validate_rejects_garbage() -> None:

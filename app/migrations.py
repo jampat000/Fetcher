@@ -17,7 +17,7 @@ async def _add_column(engine: AsyncEngine, *, table: str, ddl: str) -> None:
 
 
 async def _coerce_zero_arr_intervals(engine: AsyncEngine) -> None:
-    """Set Sonarr/Radarr run intervals to 60 if DB still has legacy 0 (or invalid <1)."""
+    """Set Sonarr/Radarr run intervals to 60 if DB still has 0 or invalid <1 values."""
     table = "app_settings"
     if not await _has_column(engine, table=table, column="sonarr_interval_minutes"):
         return
@@ -28,6 +28,59 @@ async def _coerce_zero_arr_intervals(engine: AsyncEngine) -> None:
         await conn.execute(
             text(f"UPDATE {table} SET radarr_interval_minutes = 60 WHERE radarr_interval_minutes < 1")
         )
+
+
+async def _drop_removed_global_arr_columns(engine: AsyncEngine) -> None:
+    """Drop obsolete global Arr columns (interval_minutes, search_*, max_items_per_run) after copying data."""
+    table = "app_settings"
+    obsolete = (
+        "interval_minutes",
+        "search_missing",
+        "search_upgrades",
+        "max_items_per_run",
+    )
+    to_drop = [c for c in obsolete if await _has_column(engine, table=table, column=c)]
+    if not to_drop:
+        return
+
+    has_max = "max_items_per_run" in to_drop
+    has_search = "search_missing" in to_drop and "search_upgrades" in to_drop
+
+    async with engine.begin() as conn:
+        if has_max:
+            await conn.execute(
+                text(
+                    f"UPDATE {table} SET sonarr_max_items_per_run = max_items_per_run "
+                    f"WHERE sonarr_max_items_per_run = 50 AND max_items_per_run <> 50"
+                )
+            )
+            await conn.execute(
+                text(
+                    f"UPDATE {table} SET radarr_max_items_per_run = max_items_per_run "
+                    f"WHERE radarr_max_items_per_run = 50 AND max_items_per_run <> 50"
+                )
+            )
+        if has_search:
+            await conn.execute(
+                text(
+                    f"""
+                    UPDATE {table} SET
+                      sonarr_search_missing = search_missing,
+                      sonarr_search_upgrades = search_upgrades,
+                      radarr_search_missing = search_missing,
+                      radarr_search_upgrades = search_upgrades
+                    WHERE sonarr_search_missing = 1 AND sonarr_search_upgrades = 1
+                      AND radarr_search_missing = 1 AND radarr_search_upgrades = 1
+                      AND (search_missing = 0 OR search_upgrades = 0)
+                    """
+                )
+            )
+
+    for col in to_drop:
+        if not await _has_column(engine, table=table, column=col):
+            continue
+        async with engine.begin() as conn:
+            await conn.execute(text(f"ALTER TABLE {table} DROP COLUMN {col}"))
 
 
 async def _widen_schedule_days_columns(engine: AsyncEngine) -> None:
@@ -91,13 +144,13 @@ async def migrate(engine: AsyncEngine) -> None:
     if not await _has_column(engine, table=table, column="emby_last_run_at"):
         await _add_column(engine, table=table, ddl="emby_last_run_at DATETIME")
 
-    # Emby Cleaner run cadence (separate from Grabby scheduler base / Arr fallback interval_minutes).
+    # Emby Cleaner run cadence (seed from interval_minutes on older DBs that still have that column).
     if not await _has_column(engine, table=table, column="emby_interval_minutes"):
         await _add_column(engine, table=table, ddl="emby_interval_minutes INTEGER NOT NULL DEFAULT 60")
         async with engine.begin() as conn:
             await conn.execute(text("UPDATE app_settings SET emby_interval_minutes = interval_minutes WHERE 1=1"))
 
-    # One-time: legacy stored 0 → 60 so UI matches new defaults (0 = use scheduler base is still valid if set again).
+    # One-time: stored 0 → 60 so UI shows real minute values (per-app run intervals).
     if not await _has_column(engine, table=table, column="arr_interval_defaults_applied"):
         await _add_column(engine, table=table, ddl="arr_interval_defaults_applied BOOLEAN NOT NULL DEFAULT 0")
         async with engine.begin() as conn:
@@ -177,7 +230,7 @@ async def migrate(engine: AsyncEngine) -> None:
     # Older schemas used VARCHAR(16), which can be too short for full week CSV on strict DBs.
     await _widen_schedule_days_columns(engine)
 
-    # Every startup: legacy or re-saved 0 must not persist (per-app run interval is min 1 minute).
+    # Every startup: 0 or invalid run intervals must not persist (minimum 1 minute).
     await _coerce_zero_arr_intervals(engine)
 
     # Snapshots / activity tables (create if missing)
@@ -235,4 +288,6 @@ async def migrate(engine: AsyncEngine) -> None:
                 """
             )
         )
+
+    await _drop_removed_global_arr_columns(engine)
 

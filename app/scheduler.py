@@ -11,6 +11,7 @@ from app.arr_intervals import effective_arr_interval_minutes
 from app.db import SessionLocal
 from app.models import AppSettings
 from app.service_logic import run_once
+from services.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
 from app.time_util import utc_now_naive
 
 
@@ -18,7 +19,7 @@ def _sonarr_configured(settings: AppSettings) -> bool:
     return bool(
         settings.sonarr_enabled
         and (settings.sonarr_url or "").strip()
-        and (settings.sonarr_api_key or "").strip()
+        and resolve_sonarr_api_key(settings)
     )
 
 
@@ -26,7 +27,7 @@ def _radarr_configured(settings: AppSettings) -> bool:
     return bool(
         settings.radarr_enabled
         and (settings.radarr_url or "").strip()
-        and (settings.radarr_api_key or "").strip()
+        and resolve_radarr_api_key(settings)
     )
 
 
@@ -34,7 +35,7 @@ def _emby_configured(settings: AppSettings) -> bool:
     return bool(
         settings.emby_enabled
         and (settings.emby_url or "").strip()
-        and (settings.emby_api_key or "").strip()
+        and resolve_emby_api_key(settings)
     )
 
 
