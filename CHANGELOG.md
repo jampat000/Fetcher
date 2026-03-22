@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.37] - 2026-03-22
+
+### Fixed
+
+- **Setup wizard:** After saving the account (step 0), the response now sets the **session cookie** so **Test connection** on Sonarr/Radarr/Emby steps can call **`/api/setup/test-*`** (those routes require auth).
+
+### Changed
+
+- **Settings → Security:** Clearer layout—**Account** (signed-in line, username then password forms), **Access Control** last with its own intro; removed duplicate “current username” line above the username field.
+
 ## [1.0.36] - 2026-03-22
 
 ### Changed

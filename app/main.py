@@ -503,7 +503,11 @@ async def setup_wizard_save(
             row.updated_at = utc_now_naive()
             if not await _try_commit_and_reschedule(session):
                 return RedirectResponse("/setup/0?save=fail&reason=db_busy", status_code=303)
-            return RedirectResponse("/setup/1", status_code=303)
+            secret = (row.auth_session_secret or "").strip()
+            expected_user = (row.auth_username or "admin").strip() or "admin"
+            resp = RedirectResponse("/setup/1", status_code=303)
+            attach_session_cookie(resp, secret=secret, username=expected_user)
+            return resp
         if step == 1:
             row.sonarr_enabled = sonarr_enabled
             row.sonarr_url = _normalize_base_url(sonarr_url)
