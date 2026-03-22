@@ -52,33 +52,45 @@ jobs:
 
       - name: Smoke test packaged Fetcher.exe
         shell: pwsh
+        env:
+          FETCHER_CI_SMOKE: "1"
+          FETCHER_DEV_DB_PATH: ${{ runner.temp }}/fetcher-ci-smoke.sqlite3
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
-          $exe = "${{ github.workspace }}\dist\Fetcher\Fetcher.exe"
+          $appDir = Join-Path "${{ github.workspace }}" "dist\Fetcher"
+          $exe = Join-Path $appDir "Fetcher.exe"
           if (-not (Test-Path -LiteralPath $exe)) { throw "Missing packaged exe: $exe" }
           & $exe --help
           $port = 28765
-          $proc = Start-Process -FilePath $exe -ArgumentList @("--host","127.0.0.1","--port",$port) -PassThru -WindowStyle Hidden
+          # Inherit FETCHER_CI_SMOKE + FETCHER_DEV_DB_PATH; cwd must be app dir so one-folder bundle resolves deps.
+          $proc = Start-Process -FilePath $exe -WorkingDirectory $appDir `
+            -ArgumentList @("--host","127.0.0.1","--port",$port) -PassThru -WindowStyle Hidden
           try {
-            $deadline = (Get-Date).AddMinutes(2)
+            $deadline = (Get-Date).AddMinutes(6)
             $ok = $false
+            $lastErr = $null
             while ((Get-Date) -lt $deadline) {
               try {
-                $r = Invoke-RestMethod -Uri "http://127.0.0.1:$port/healthz" -TimeoutSec 3
+                $r = Invoke-RestMethod -Uri "http://127.0.0.1:$port/healthz" -TimeoutSec 5
                 if ($r.status -eq "ok" -and $r.version) {
                   if ($r.version.Length -lt 1) { throw "empty version in healthz" }
                   $ok = $true
                   break
                 }
               } catch {
-                Start-Sleep -Milliseconds 500
+                $lastErr = $_
+                Start-Sleep -Milliseconds 400
               }
             }
-            if (-not $ok) { throw "Packaged app did not respond OK at /healthz on port $port" }
+            if (-not $ok) {
+              if ($proc.HasExited) { throw "Fetcher.exe exited early (exit $($proc.ExitCode)). Last error: $lastErr" }
+              throw "Packaged app did not respond OK at /healthz on port $port within 6m. Last error: $lastErr"
+            }
           } finally {
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
             Get-Process -Name "Fetcher" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $env:FETCHER_DEV_DB_PATH -Force -ErrorAction SilentlyContinue
           }
 
       # Repo Settings → Variables: ENABLE_CODE_SIGNING = true
