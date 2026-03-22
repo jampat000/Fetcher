@@ -3,7 +3,7 @@
 <div class="wrap">
   <div class="page-head">
     <div>
-      <h1>Logs</h1>
+      <h1 class="ph-title">Logs</h1>
       <p>Service run history and troubleshooting details.</p>
     </div>
   </div>
@@ -14,34 +14,19 @@
     <a href="/logs" class="module-tab active">Logs</a>
   </div>
 
-  <div class="card module-content">
+  <div class="card module-content gc">
     <h2>Logs</h2>
     <div class="hint">Recent service runs and outcomes.</div>
     {% if logs %}
-    <table>
-      <thead>
-        <tr>
-          <th style="width: 110px;">Started</th>
-          <th style="width: 80px;">Status</th>
-          <th>Message</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for r in logs %}
-        <tr>
-          <td class="muted">{{ r.started_local }}</td>
-          <td>
-            {% if r.ok %}
-              <span class="status-pill status-pill-ok">OK</span>
-            {% else %}
-              <span class="status-pill status-pill-fail">Fail</span>
-            {% endif %}
-          </td>
-          <td class="msg">{{ r.message }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="log-list" role="list">
+      {% for r in logs %}
+      <div class="log-entry" role="listitem">
+        <span class="log-time muted">{{ r.started_local }}</span>
+        <span class="log-dot {% if r.ok %}l-ok{% else %}l-fail{% endif %}" aria-hidden="true"></span>
+        <span class="log-msg">{{ r.message }}</span>
+      </div>
+      {% endfor %}
+    </div>
     {% else %}
     <p class="small muted">No runs yet. It will populate after scheduled cycles.</p>
     {% endif %}

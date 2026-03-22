@@ -3,7 +3,7 @@
 <div class="wrap">
   <div class="page-head">
     <div>
-      <h1>Activity</h1>
+      <h1 class="ph-title">Activity</h1>
       <p>Recent actions triggered by Fetcher and Trimmer.</p>
     </div>
   </div>
@@ -14,20 +14,29 @@
     <a href="/logs" class="module-tab">Logs</a>
   </div>
 
-  <div class="card module-content">
+  <div class="card module-content gc">
     <h2>Activity</h2>
     <div class="hint">What Fetcher triggered: missing, upgrade, and <strong>Emby Trimmer</strong> actions. Times in your chosen timezone.</div>
+    <div class="activity-filters" role="tablist" aria-label="Filter by app">
+      <span class="pill active" data-pill-filter="all" role="tab" tabindex="0">All</span>
+      <span class="pill" data-pill-filter="sonarr" role="tab" tabindex="0">TV</span>
+      <span class="pill" data-pill-filter="radarr" role="tab" tabindex="0">Movies</span>
+      <span class="pill" data-pill-filter="emby" role="tab" tabindex="0">Trimmer</span>
+    </div>
     <div class="section">
       {% if activity %}
       <div class="activity-list">
         {% for e in activity %}
-        <div class="activity-row">
-          <span class="activity-time">{{ e.time_local }}</span>
-          <span class="activity-tags">
-            <span class="tag tag-{{ e.app }}">{{ e.app }}</span>
-            <span class="tag tag-{{ e.kind }}">{% if e.kind == "upgrade" %}Quality Upgrade{% elif e.kind == "trimmed" %}Trimmer{% else %}{{ e.kind.capitalize() }}{% endif %}</span>
-          </span>
-          <div class="activity-msg">
+        <div class="activity-row" data-activity-app="{{ e.app }}" data-activity-kind="{{ e.kind }}">
+          {% if e.app == "sonarr" %}
+            <div class="activity-icon icon-sonarr" aria-hidden="true">TV</div>
+          {% elif e.app == "radarr" %}
+            <div class="activity-icon icon-radarr" aria-hidden="true">M</div>
+          {% else %}
+            <div class="activity-icon icon-emby" aria-hidden="true">E</div>
+          {% endif %}
+          <div class="activity-body">
+            <div class="activity-title-line">
             {% if e.kind == "missing" %}
               {{ e.count }} {{ "episode" if e.app == "sonarr" else "movie" }}{{ "s" if e.count != 1 else "" }} searched
             {% elif e.kind == "trimmed" %}
@@ -35,9 +44,14 @@
             {% else %}
               {{ e.count }} {{ "episode" if e.app == "sonarr" else "movie" }}{{ "s" if e.count != 1 else "" }} upgrade search
             {% endif %}
+            </div>
             {% if e.detail %}
-              <div class="small muted activity-detail">{{ e.detail }}</div>
+              <div class="activity-detail-sub">{{ e.detail }}</div>
             {% endif %}
+          </div>
+          <div class="activity-meta">
+            <span class="activity-count">{{ e.count }}</span>
+            <span class="activity-time">{{ e.time_local }}</span>
           </div>
         </div>
         {% endfor %}

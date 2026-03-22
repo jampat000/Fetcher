@@ -10,11 +10,23 @@
     <title>{{ title }}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
     <link rel="stylesheet" href="/static/app.css?v={{ app_version|default('1', true) }}" />
   </head>
   <body>
+    {# Mesh + noise first so gradient orbs sit behind .app-layout (z-index); also visible before app.js loads #}
+    <div id="mesh" aria-hidden="true">
+      <div class="orb orb1"></div>
+      <div class="orb orb2"></div>
+      <div class="orb orb3"></div>
+      <div class="orb orb4"></div>
+      <div class="orb orb5"></div>
+    </div>
+    <div id="noise" aria-hidden="true"></div>
     <div class="app-layout">
       <aside class="sidebar">
         <a href="/" class="sidebar-brand">
@@ -25,6 +37,7 @@
           <span class="sidebar-tagline">{{ app_tagline|default("Never miss a release.", true) }}</span>
         </a>
         <nav class="sidebar-nav">
+          <div class="sidebar-section-label">Main</div>
           <a href="/" class="sidebar-link {% if request.url.path == '/' %}active{% endif %}">
             <i data-lucide="layout-dashboard" class="sidebar-icon"></i>
             <span>Dashboard</span>
@@ -37,17 +50,18 @@
             <i data-lucide="scroll-text" class="sidebar-icon"></i>
             <span>Logs</span>
           </a>
+          <div class="sidebar-section-label">Configure</div>
           <a href="/settings" class="sidebar-link {% if request.url.path == '/settings' %}active{% endif %}">
             <i data-lucide="settings" class="sidebar-icon"></i>
             <span>Settings</span>
           </a>
-          <a href="/setup" class="sidebar-link {% if request.url.path.startswith('/setup') %}active{% endif %}">
-            <i data-lucide="wand-2" class="sidebar-icon"></i>
-            <span>Setup</span>
-          </a>
           <a href="/trimmer" class="sidebar-link {% if request.url.path in ['/trimmer', '/trimmer/settings'] %}active{% endif %}">
             <i data-lucide="sparkles" class="sidebar-icon"></i>
             <span>Trimmer</span>
+          </a>
+          <a href="/setup" class="sidebar-link {% if request.url.path.startswith('/setup') %}active{% endif %}">
+            <i data-lucide="wand-2" class="sidebar-icon"></i>
+            <span>Setup</span>
           </a>
           <a href="/logout" class="sidebar-link">
             <i data-lucide="log-out" class="sidebar-icon"></i>

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from typing import Any
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -554,6 +555,57 @@ async def setup_wizard_save(
     return RedirectResponse(f"/setup/{nxt}", status_code=303)
 
 
+async def _build_dashboard_status(session: AsyncSession, tz: str) -> dict[str, Any]:
+    """Shared JSON payload for dashboard live polling and server-rendered page."""
+    last_run = (
+        (await session.execute(select(JobRunLog).order_by(desc(JobRunLog.id)).limit(1))).scalars().first()
+    )
+    last_run_display: dict[str, Any] | None = None
+    if last_run:
+        last_run_display = {
+            "started_local": _fmt_local(last_run.started_at, tz),
+            "finished_local": _fmt_local(last_run.finished_at, tz) if last_run.finished_at else "",
+            "has_finished": last_run.finished_at is not None,
+            "ok": bool(last_run.ok),
+            "message": _truncate_display(last_run.message or ""),
+        }
+    next_tick = scheduler.next_fetcher_run_at()
+    next_tick_local = _fmt_local(next_tick, tz) if next_tick else ""
+    sonarr_snap = (
+        (await session.execute(select(AppSnapshot).where(AppSnapshot.app == "sonarr").order_by(desc(AppSnapshot.id)).limit(1)))
+        .scalars()
+        .first()
+    )
+    radarr_snap = (
+        (await session.execute(select(AppSnapshot).where(AppSnapshot.app == "radarr").order_by(desc(AppSnapshot.id)).limit(1)))
+        .scalars()
+        .first()
+    )
+    emby_snap = (
+        (await session.execute(select(AppSnapshot).where(AppSnapshot.app == "emby").order_by(desc(AppSnapshot.id)).limit(1)))
+        .scalars()
+        .first()
+    )
+    return {
+        "last_run": last_run_display,
+        "next_scheduler_tick_local": next_tick_local,
+        "sonarr_missing": int(sonarr_snap.missing_total) if sonarr_snap else 0,
+        "sonarr_upgrades": int(sonarr_snap.cutoff_unmet_total) if sonarr_snap else 0,
+        "radarr_missing": int(radarr_snap.missing_total) if radarr_snap else 0,
+        "radarr_upgrades": int(radarr_snap.cutoff_unmet_total) if radarr_snap else 0,
+        "emby_matched": int(emby_snap.missing_total) if emby_snap else 0,
+    }
+
+
+@app.get("/api/dashboard/status", dependencies=_AUTH_DEPS)
+async def api_dashboard_status(
+    session: AsyncSession = Depends(get_session),
+) -> JSONResponse:
+    settings = await _get_or_create_settings(session)
+    tz = settings.timezone or "UTC"
+    return JSONResponse(await _build_dashboard_status(session, tz))
+
+
 @app.get("/", response_class=HTMLResponse, dependencies=_AUTH_DEPS)
 async def dashboard(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await _get_or_create_settings(session)
@@ -593,20 +645,9 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
         or (settings.radarr_url or "").strip()
         or (settings.emby_url or "").strip()
     )
-    last_run = (
-        (await session.execute(select(JobRunLog).order_by(desc(JobRunLog.id)).limit(1))).scalars().first()
-    )
-    last_run_display = None
-    if last_run:
-        last_run_display = {
-            "started_local": _fmt_local(last_run.started_at, tz),
-            "finished_local": _fmt_local(last_run.finished_at, tz) if last_run.finished_at else "",
-            "has_finished": last_run.finished_at is not None,
-            "ok": last_run.ok,
-            "message": _truncate_display(last_run.message or ""),
-        }
-    next_tick = scheduler.next_fetcher_run_at()
-    next_tick_local = _fmt_local(next_tick, tz) if next_tick else ""
+    dash_status = await _build_dashboard_status(session, tz)
+    last_run_display = dash_status["last_run"]
+    next_tick_local = dash_status["next_scheduler_tick_local"]
     emby_schedule_start_display = _to_12h(settings.emby_schedule_start or "00:00", "12:00 AM")
     emby_schedule_end_display = _to_12h(settings.emby_schedule_end or "23:59", "11:59 PM")
     sonarr_schedule_start_display = _to_12h(settings.sonarr_schedule_start or "00:00", "12:00 AM")

@@ -1,64 +1,64 @@
-{% macro arr_panel(app_name, app_key, enabled, snap, schedule_enabled, schedule_days_display, schedule_time_friendly, search_missing, search_upgrades, interval_minutes, max_items_per_run, missing_total, cutoff_unmet_total) %}
-      <div class="card dashboard-panel">
-        <h3 class="dashboard-panel-title">{{ app_name }}</h3>
+{% macro arr_panel(app_name, app_key, enabled, snap, schedule_enabled, schedule_days_display, schedule_time_friendly, search_missing, search_upgrades, interval_minutes, max_items_per_run, missing_total, cutoff_unmet_total, stripe_class="") %}
+      <div class="card dashboard-panel gc {{ stripe_class }}">
+        <h3 class="dashboard-panel-title">
+          {% if snap and snap.ok %}
+            <span class="status-dot dot-green" title="API OK"></span>
+          {% elif snap %}
+            <span class="status-dot dot-amber" title="API issue"></span>
+          {% else %}
+            <span class="status-dot dot-blue" title="No snapshot"></span>
+          {% endif %}
+          {{ app_name }}
+        </h3>
         {% if not enabled %}
           <div class="small muted">Off — enable {{ app_name }} in <a href="/settings">Fetcher Settings</a>.</div>
         {% else %}
-          <div class="preview-stats dashboard-panel-stats dashboard-arr-overview-stats">
-            <div class="preview-stat">
-              <div class="label">Cutoff Unmet</div>
-              <div class="value">{{ cutoff_unmet_total }}</div>
-            </div>
-            <div class="preview-stat">
-              <div class="label">Missing Queue</div>
+          <div class="metric-grid-2x2 dashboard-panel-stats dashboard-arr-overview-stats">
+            <div class="preview-stat metric-tile" data-metric="{{ app_key }}-missing">
+              <div class="label">Missing</div>
               <div class="value">{{ missing_total }}</div>
             </div>
-            <div class="preview-stat">
-              <div class="label">API</div>
-              <div class="value">
-                {% if snap and snap.ok %}
-                  <span class="status-pill status-pill-ok">OK</span>
-                {% elif snap %}
-                  <span class="status-pill status-pill-fail">Fail</span>
-                {% else %}
-                  <span class="muted">No data</span>
-                {% endif %}
-              </div>
+            <div class="preview-stat metric-tile" data-metric="{{ app_key }}-upgrades">
+              <div class="label">Upgrades</div>
+              <div class="value">{{ cutoff_unmet_total }}</div>
             </div>
-            <div class="preview-stat">
-              <div class="label">Run Interval</div>
+            <div class="preview-stat metric-tile" data-metric="{{ app_key }}-interval">
+              <div class="label">Interval</div>
               <div class="value">{{ interval_minutes }} min</div>
             </div>
-            <div class="preview-stat">
-              <div class="label">Max Per Run</div>
+            <div class="preview-stat metric-tile" data-metric="{{ app_key }}-max">
+              <div class="label">Max per run</div>
               <div class="value">{{ max_items_per_run }}</div>
             </div>
-            <div class="preview-stat">
-              <div class="label">Missing Search</div>
-              <div class="value preview-stat-value-stack">
-                <span class="rule-state {% if search_missing %}rule-state-enabled{% else %}rule-state-disabled{% endif %}">{% if search_missing %}On{% else %}Off{% endif %}</span>
-                <div class="preview-stat-sub">{{ missing_total }} in {{ app_name }} queue</div>
-              </div>
+          </div>
+          <div class="arr-panel-meta">
+            <div class="arr-panel-meta-line">
+              <strong>API</strong>
+              {% if snap and snap.ok %}
+                <span class="badge badge-ok">OK</span>
+              {% elif snap %}
+                <span class="badge badge-warn">Fail</span>
+              {% else %}
+                <span class="muted">No data</span>
+              {% endif %}
             </div>
-            <div class="preview-stat">
-              <div class="label">Upgrade Search</div>
-              <div class="value preview-stat-value-stack">
-                <span class="rule-state {% if search_upgrades %}rule-state-enabled{% else %}rule-state-disabled{% endif %}">{% if search_upgrades %}On{% else %}Off{% endif %}</span>
-                <div class="preview-stat-sub">{{ cutoff_unmet_total }} cutoff unmet</div>
-              </div>
-            </div>
-            <div class="preview-stat dashboard-arr-schedule-tile">
-              <div class="label">Schedule Window</div>
-              <div class="value preview-stat-value-stack">
-                {% if schedule_enabled %}
+            <div class="arr-panel-meta-line">
+              <strong>Schedule</strong>
+              {% if schedule_enabled %}
                 <span class="rule-state rule-state-enabled">On</span>
-                <div class="preview-stat-sub">{{ schedule_days_display or 'No days set' }}</div>
-                <div class="preview-stat-sub muted">{{ schedule_time_friendly }}</div>
-                {% else %}
+                <span>{{ schedule_days_display or 'No days set' }}</span>
+                <span class="muted">{{ schedule_time_friendly }}</span>
+              {% else %}
                 <span class="rule-state rule-state-disabled">Off</span>
-                <div class="preview-stat-sub">Runs any time the tick allows</div>
-                {% endif %}
-              </div>
+                <span class="muted">Runs any time the tick allows</span>
+              {% endif %}
+            </div>
+            <div class="arr-panel-meta-line">
+              <strong>Missing search</strong>
+              <span class="rule-state {% if search_missing %}rule-state-enabled{% else %}rule-state-disabled{% endif %}">{% if search_missing %}On{% else %}Off{% endif %}</span>
+              <span class="arr-panel-meta-sep">·</span>
+              <strong>Upgrade search</strong>
+              <span class="rule-state {% if search_upgrades %}rule-state-enabled{% else %}rule-state-disabled{% endif %}">{% if search_upgrades %}On{% else %}Off{% endif %}</span>
             </div>
           </div>
           {% if snap and snap.status_message and not snap.status_message.startswith("Test") %}
@@ -66,10 +66,9 @@
           {% endif %}
         {% endif %}
         <div class="dashboard-arr-triggers">
-          <p class="dashboard-arr-trigger-intro">One-off {{ app_name }} search for <strong>{% if app_key == "sonarr" %}TV{% else %}movies{% endif %}</strong>: queue everything <strong>missing</strong>, or only <strong>cutoff-unmet</strong> (quality upgrades). Skips your usual schedule and run interval for this run; per-item cooldown still applies.</p>
           <div class="dashboard-arr-trigger-row">
-            <button type="button" class="btn secondary dashboard-arr-trigger-btn" data-arr-search-scope="{{ app_key }}_missing" data-arr-status-target="{{ app_key }}-arr-search-status" data-starts-disabled="{% if not enabled %}1{% else %}0{% endif %}" {% if not enabled %}disabled title="Enable {{ app_name }} in Settings"{% endif %}>Missing</button>
-            <button type="button" class="btn secondary dashboard-arr-trigger-btn" data-arr-search-scope="{{ app_key }}_upgrade" data-arr-status-target="{{ app_key }}-arr-search-status" data-starts-disabled="{% if not enabled %}1{% else %}0{% endif %}" {% if not enabled %}disabled title="Enable {{ app_name }} in Settings"{% endif %}>Upgrade</button>
+            <button type="button" class="btn secondary dashboard-arr-trigger-btn" data-arr-search-scope="{{ app_key }}_missing" data-arr-status-target="{{ app_key }}-arr-search-status" data-starts-disabled="{% if not enabled %}1{% else %}0{% endif %}" {% if not enabled %}disabled title="Enable {{ app_name }} in Settings"{% endif %}>Search missing</button>
+            <button type="button" class="btn secondary dashboard-arr-trigger-btn" data-arr-search-scope="{{ app_key }}_upgrade" data-arr-status-target="{{ app_key }}-arr-search-status" data-starts-disabled="{% if not enabled %}1{% else %}0{% endif %}" {% if not enabled %}disabled title="Enable {{ app_name }} in Settings"{% endif %}>Search upgrades</button>
           </div>
           <p class="dashboard-arr-search-status" id="{{ app_key }}-arr-search-status" hidden role="status"></p>
         </div>

@@ -1,5 +1,6 @@
 {% extends "layout.html" %}
 {% from "macros/schedule.html" import schedule_time_select, schedule_days_checkboxes %}
+{% from "macros/toggle.html" import toggle_checkbox %}
 {% block content %}
 <div class="wrap">
   <div class="page-head">
@@ -30,7 +31,7 @@
   </div>
   {% endif %}
 
-  <div class="card module-content">
+  <div class="card module-content gc card-stripe-green card-green">
       {% if emby and emby.status_message
           and not emby.status_message.startswith("Test")
           and emby.status_message.strip()|lower != "ok" %}
@@ -43,10 +44,7 @@
       <h3>Emby Trimmer Settings</h3>
       <form method="post" action="/trimmer/settings/connection">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-        <div class="checkline">
-          <input type="checkbox" name="emby_enabled" {% if settings.emby_enabled %}checked{% endif %} />
-          <strong>Enable Emby Trimmer</strong>
-        </div>
+        {% call toggle_checkbox("emby_enabled", settings.emby_enabled) %}<strong>Enable Emby Trimmer</strong>{% endcall %}
 
         <div class="row">
           <div class="field">
@@ -98,10 +96,7 @@
           <div class="small">Keep this on until review looks correct.</div>
 
           <div class="section">
-            <div class="checkline">
-              <input type="checkbox" name="emby_schedule_enabled" {% if settings.emby_schedule_enabled %}checked{% endif %} />
-              Enable Emby Trimmer schedule window
-            </div>
+            {% call toggle_checkbox("emby_schedule_enabled", settings.emby_schedule_enabled) %}Enable Emby Trimmer schedule window{% endcall %}
             <label>Days</label>
             {{ schedule_days_checkboxes("emby_schedule", emby_schedule_days_selected) }}
             <div class="row schedule-time-row">
@@ -135,10 +130,7 @@
               </h4>
               <div class="field">
                 <label>Delete watched TV shows</label>
-                <div class="checkline">
-                  <input type="checkbox" name="emby_rule_tv_delete_watched" {% if settings.emby_rule_tv_delete_watched %}checked{% endif %} />
-                  Yes, delete watched TV shows
-                </div>
+                {% call toggle_checkbox("emby_rule_tv_delete_watched", settings.emby_rule_tv_delete_watched) %}Yes, delete watched TV shows{% endcall %}
               </div>
               <div class="field">
                 <label>Delete unwatched TV older than N days</label>

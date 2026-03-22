@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-03-22
+
+Major release — rebrand from Grabby to Fetcher, Cleaner to Trimmer, and full V5 visual redesign.
+
 ### Changed
 
 - **Rebrand:** Application identity is **Fetcher** across the app, docs, installer, Windows service, environment variables (**`FETCHER_*`**), session cookie (**`fetcher_session`**), default SQLite file (**`fetcher.db`**), backup JSON magic (**`fetcher_backup`**), and GitHub defaults (**`jampat000/Fetcher`**, **`FetcherSetup.exe`**).
