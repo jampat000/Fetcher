@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.42] - 2026-03-20
+
+### Added
+
+- **Settings:** Collapsible sections (**Sonarr**, **Radarr**, **Global Grabby**, **Security**) with chevron headers, **`localStorage`** open/closed state, and URL-driven expansion after saves/tests (**`saved`**, **`save`**, **`test`**, **`sec`**).
+
+### Changed
+
+- **Cleaner:** **`Scan Emby for matches`** runs preview-only when **dry run** is on; when **dry run** is off, the same scan applies live deletes (shared **`apply_emby_cleaner_live_deletes`** in **`service_logic`**). Removed **`POST /cleaner/delete-matched`** and the separate delete button.
+- **Activity** / **Dashboard:** Activity kind tags show **Quality Upgrade** and **Cleaner** (instead of **Upgrade** / **Cleanup**).
+
 ## [1.0.41] - 2026-03-20
 
 ### Changed

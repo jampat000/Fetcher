@@ -55,7 +55,7 @@ from app.schemas import ArrSearchNowIn, SetupConnTestIn, SetupEmbyTestIn, Settin
 from app.setup_helpers import test_emby_connection, test_radarr_connection, test_sonarr_connection
 from app.scheduler import ServiceScheduler
 from app.schedule import DAY_NAMES, normalize_schedule_days_csv, schedule_time_dropdown_choices
-from app.service_logic import run_once
+from app.service_logic import apply_emby_cleaner_live_deletes, run_once
 from app.time_util import utc_now_naive
 from app import updates as app_updates
 from app.version_info import get_app_version
@@ -1004,6 +1004,7 @@ async def emby_preview_page(request: Request, session: AsyncSession = Depends(ge
             else:
                 scan_loaded = True
                 items = await client.items_for_user(user_id=used_user_id, limit=scan_limit)
+                candidates: list[tuple[str, str, str, dict]] = []
                 for item in items:
                     item_id = str(item.get("Id", "")).strip()
                     if not item_id:
@@ -1030,19 +1031,30 @@ async def emby_preview_page(request: Request, session: AsyncSession = Depends(ge
                         is_candidate = False
                     if not is_candidate:
                         continue
+                    name = str(item.get("Name", "") or item_id)
+                    item_type = str(item.get("Type", "") or "").strip()
+                    candidates.append((item_id, name, item_type, item))
                     rows.append(
                         {
                             "id": item_id,
-                            "name": str(item.get("Name", "") or item_id),
-                            "type": str(item.get("Type", "") or "-"),
+                            "name": name,
+                            "type": item_type or "-",
                             "played": played,
                             "rating": rating,
                             "age_days": age_days,
                             "reasons": reasons,
                         }
                     )
-                    if len(rows) >= max_deletes:
+                    if len(candidates) >= max_deletes:
                         break
+                if candidates and not settings.emby_dry_run:
+                    sk = resolve_sonarr_api_key(settings)
+                    rk = resolve_radarr_api_key(settings)
+                    await apply_emby_cleaner_live_deletes(
+                        settings, client, candidates, son_key=sk, rad_key=rk
+                    )
+                    settings.emby_last_run_at = utc_now_naive()
+                    await session.commit()
         except Exception as e:  # noqa: BLE001 - user-facing review path
             error = f"Review failed: {type(e).__name__}: {e}"
             scan_loaded = False
