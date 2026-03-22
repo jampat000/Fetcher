@@ -32,7 +32,7 @@
           <div class="activity-body">
             <div class="activity-title-line">
             {% if e.kind == "missing" %}
-              {{ e.count }} {{ "episode" if e.app == "sonarr" else "movie" }}{{ "s" if e.count != 1 else "" }} searched
+              {{ e.count }} {{ "episode" if e.app == "sonarr" else "movie" }}{{ "s" if e.count != 1 else "" }} missing search
             {% elif e.kind == "trimmed" %}
               {{ e.count }} item{{ "s" if e.count != 1 else "" }} matched Emby Trimmer rules
             {% else %}

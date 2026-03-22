@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.4] - 2026-03-23
+
+### Changed
+
+- **Activity:** Missing-queue lines use **missing search** (e.g. **2 movies missing search**) to match **upgrade search** wording.
+- **Dashboard:** Removed redundant quick links (**Fetcher settings**, **Trimmer settings**, **Scan library**, **Run logs**); use the sidebar. Removed the extra **Trimmer settings** link from the disabled **Emby Trimmer** summary.
+
 ## [2.0.3] - 2026-03-23
 
 ### Added
@@ -493,7 +500,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 7. If a **tag** exists but **Releases → Latest** never updated (no **`FetcherSetup.exe`** for that tag), check that **`vX.Y.Z`** points to the commit you mean — run **`git fetch origin master --tags`**, then compare **`git rev-parse vX.Y.Z`** vs **`git rev-parse origin/master`**. **Manual** **Build installer** / **`gh workflow run … --ref vX.Y.Z`** uses the **workflow YAML from that tag’s commit** — an **old** tag SHA can **build** but **skip** **release**. **Fix:** move the tag to the correct commit and **re-push** the tag, **or** bump **`VERSION`** and release again, **or** **`gh release create`** + attach **`FetcherSetup.exe`** from a green run artifact.
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.3...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.4...HEAD
+[2.0.4]: https://github.com/jampat000/Fetcher/compare/v2.0.3...v2.0.4
 [2.0.3]: https://github.com/jampat000/Fetcher/compare/v2.0.2...v2.0.3
 [2.0.2]: https://github.com/jampat000/Fetcher/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/jampat000/Fetcher/compare/v2.0.0...v2.0.1
