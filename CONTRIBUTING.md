@@ -39,7 +39,11 @@ py -m pytest -q
 
 ## Releases
 
-Maintainers: see **Releasing** at the bottom of **[`CHANGELOG.md`](CHANGELOG.md)** and **`VERSION`**. After merge to **`master`**, a change to **`VERSION`** automatically creates and pushes **`vX.Y.Z`** in GitHub Actions (then the installer workflow runs).
+Maintainers: see **Releasing** at the bottom of **[`CHANGELOG.md`](CHANGELOG.md)** and **`VERSION`**.
 
-**GitHub CLI:** Install **`gh`**, run **`gh auth login`**, then you can **`gh pr merge`** and manage releases from the terminal — see **[`docs/GITHUB-CLI.md`](docs/GITHUB-CLI.md)**. If **`gh`** isn’t found in a terminal, restart it after install or use **`%ProgramFiles%\GitHub CLI\gh.exe`**.
+**Easiest path:** on a **release branch** (e.g. **`release/vX.Y.Z`**), bump **`VERSION`** + changelog, commit, then **`.\scripts\ship-release.ps1`** — pushes that branch to **`origin`** and dispatches **Tag release (from VERSION)** so **`vX.Y.Z`** is created (if missing) and **Build installer** runs. No **`dev`** branch on GitHub is required. See **`README.md`** → **Ship a new version to GitHub (maintainers)**.
+
+A push to **`master`** or **`main`** that changes **`VERSION`** also auto-runs that workflow.
+
+**GitHub CLI:** Install **`gh`**, run **`gh auth login`** (required for **`ship-release.ps1`**), then **`gh pr merge`** etc. — see **[`docs/GITHUB-CLI.md`](docs/GITHUB-CLI.md)**. If **`gh`** isn’t found, use **`%ProgramFiles%\GitHub CLI\gh.exe`**.
 

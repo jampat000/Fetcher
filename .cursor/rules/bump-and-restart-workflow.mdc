@@ -5,19 +5,17 @@ alwaysApply: true
 
 # Bump + restart local (full workflow)
 
-## “Bump and ship” (explicit) — **`dev`** + GitHub installer
+## “Bump and ship” (explicit) — GitHub installer (**no remote `dev`**)
 
-When the user says **“bump and ship”** (or clearly means: bump version, push for CI, and queue the **GitHub** installer build — **without** only meaning “PR to master”):
+A **`dev`** branch on GitHub is **not** required. Local development uses **`scripts/dev-start.ps1`** and a local DB; **Releases** come from **tags** + **Build installer**.
 
-1. **Bump** — Same as below: **`VERSION`** + **`CHANGELOG.md`** `[Unreleased]` → dated **`[X.Y.Z]`** section.
-2. **Commit** — On your working branch (e.g. **`release/vX.Y.Z`** from **`origin/master`**, or feature branch).
-3. **Push to `origin dev`** (required for this phrase):
-   - `git fetch origin`
-   - If **`origin/dev`** exists: `git switch dev && git pull origin dev`, merge or cherry-pick the bump commit, `git push origin dev`.
-   - If **`dev` does not exist on the remote:** `git switch -c dev origin/master` (or from current branch base), merge/cherry-pick the release work, `git push -u origin dev`.
-   - **Tag release (from VERSION)** (`.github/workflows/tag-release.yml`) runs on pushes to **`dev`** that change **`VERSION`**: creates **`vX.Y.Z`** if missing and **dispatches Build installer** — no extra step needed unless the workflow fails.
-4. **PR `dev` → `master`** — Remind the user to open/merge so **`master`** matches (protected branch; do not push bump directly to **`master`** from local).
-5. **`gh workflow run build-installer.yml --ref vX.Y.Z`** — Only as **recovery** (same rules as **`.cursor/rules/github-installer-workflow-ref-trap.mdc`**); normal path is Tag release on **`dev`**.
+When the user says **“bump and ship”** (bump version, push, queue **GitHub** installer):
+
+1. **Bump** — **`VERSION`** + **`CHANGELOG.md`** `[Unreleased]` → dated **`[X.Y.Z]`** section.
+2. **Commit** — On a **named release branch** (e.g. **`git fetch origin && git switch -c release/vX.Y.Z origin/master`**, then commit).
+3. **Ship** — From repo root: **`.\scripts\ship-release.ps1`** (requires **`gh auth login`**). It **pushes `HEAD` → `origin/<current-branch>`** and **`gh workflow run "Tag release (from VERSION)" --ref <that-branch>`**, which creates **`vX.Y.Z`** if missing and **dispatches Build installer**.
+4. **PR `release/v…` → `master`** — Remind the user to merge when **`master`** should match (protected branch).
+5. **`gh workflow run build-installer.yml --ref vX.Y.Z`** — Only as **recovery** (see **`.cursor/rules/github-installer-workflow-ref-trap.mdc`**).
 
 If they also want a local dev server restart, run **`scripts/dev-start.ps1`** after.
 
