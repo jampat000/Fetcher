@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.32] - 2026-03-24
+
+### Changed
+
+- **Installer build:** WinSW is **bundled** as **`installer/bin/WinSW.exe`** and staged with **`installer/setup.py`** (skips copy if **`service/winsw.exe`** already exists). **`installer/build.ps1`** no longer downloads WinSW from the network.
+
 ## [1.0.31] - 2026-03-23
 
 ### Security

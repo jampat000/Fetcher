@@ -1,7 +1,6 @@
 param(
   [switch]$Clean,
   [string]$IsccPath = "",
-  [string]$WinSWVersion = "v2.12.0",
   [switch]$InstallInnoSetupIfMissing,
   # Semver only (e.g. 1.2.3). If empty: -Version from env, then repo VERSION file, then 0.0.0-dev
   [string]$Version = ""
@@ -51,14 +50,14 @@ if (-not (Test-Path -LiteralPath $distExe)) {
   throw "PyInstaller output missing: $distExe (is packaging\grabby.spec committed and present on this machine/CI?)"
 }
 
-Write-Host "2) Ensuring WinSW present..."
-$winswPath = ".\\service\\winsw.exe"
-if (!(Test-Path $winswPath)) {
-  $url = "https://github.com/winsw/winsw/releases/download/$WinSWVersion/WinSW-x64.exe"
-  Write-Host "Downloading WinSW from $url"
-  Invoke-WebRequest -Uri $url -OutFile $winswPath -UseBasicParsing
-} else {
-  Write-Host "WinSW already present at $winswPath"
+Write-Host "2) Staging WinSW (bundled installer/bin/WinSW.exe)..."
+$py = Join-Path $root ".venv\Scripts\python.exe"
+if (-not (Test-Path -LiteralPath $py)) {
+  throw "Python venv missing after app build: $py"
+}
+& $py ".\installer\setup.py"
+if ($LASTEXITCODE -ne 0) {
+  throw "installer/setup.py failed with exit code $LASTEXITCODE"
 }
 
 Write-Host "3) Compiling installer (Inno Setup)..."

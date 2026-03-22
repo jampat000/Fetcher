@@ -28,7 +28,7 @@ WizardStyle=modern
 Source: "..\dist\Grabby\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 ; WinSW + config
 Source: "..\service\GrabbyService.xml"; DestDir: "{app}"; DestName: "winsw.xml"; Flags: ignoreversion
-; WinSW is bundled into the installer (installer/build.ps1 downloads it automatically)
+; WinSW is bundled into the installer (installer/bin/WinSW.exe copied via installer/setup.py)
 Source: "..\service\winsw.exe"; DestDir: "{app}"; DestName: "winsw.exe"; Flags: ignoreversion
 
 [Run]
