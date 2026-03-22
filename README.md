@@ -135,7 +135,7 @@ After building the exe, copy:
 
 - `dist\Grabby\Grabby.exe` (name may vary based on spec)
 - `service\GrabbyService.xml`
-- `service\winsw.exe` (download separately; see `service/README.md`)
+- **Installer (`installer\build.ps1`):** WinSW is bundled as **`installer\bin\WinSW.exe`** and copied to **`service\winsw.exe`** (no download during build). **Manual service folder:** get `winsw.exe` separately; see **`service/README.md`**.
 
 Then run (admin PowerShell):
 
