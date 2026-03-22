@@ -1,4 +1,5 @@
-# Auto-tags v{X.Y.Z} from VERSION when VERSION changes on master, main, or dev (see CONTRIBUTING / Cursor rule “bump and ship”).
+# Auto-tags v{X.Y.Z} from VERSION when VERSION changes on master or main.
+# Manual: Actions → this workflow → Run workflow, or .\scripts\ship-release.ps1 (pushes current branch + dispatch).
 #
 # IMPORTANT: `git push` of the tag uses `GITHUB_TOKEN`, which does NOT fire other `on: push: tags`
 # workflows (GitHub security). So we explicitly dispatch "Build installer" for that tag ref.
@@ -10,7 +11,6 @@ on:
     branches:
       - master
       - main
-      - dev
     paths:
       - "VERSION"
   workflow_dispatch:

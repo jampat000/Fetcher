@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **CI:** **Tag release (from VERSION)** auto-runs only on **`VERSION`** changes pushed to **`master`** or **`main`** (no **`dev`** branch on GitHub required). Use **`.\scripts\ship-release.ps1`** to push your current branch (e.g. **`release/vX.Y.Z`**) and dispatch tagging + **Build installer**.
+
 ## [1.0.39] - 2026-03-24
 
 ### Added
@@ -392,11 +396,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 1. Update this file: move **`[Unreleased]`** items under a new **`[X.Y.Z] - YYYY-MM-DD`** heading, then keep **`[Unreleased]`** empty (or note pending work).
 2. Bump **`VERSION`** to match the release.
-3. **Bump and ship (Cursor / maintainer shortcut):** Push the commit that changes **`VERSION`** to **`origin dev`**. **Tag release (from VERSION)** runs on **`dev`** (same as **`master`** / **`main`**): creates **`vX.Y.Z`** if missing and dispatches **Build installer**. Then open a **PR `dev` → `master`** so the default branch matches ( **`master`** stays protected — do not push the bump commit directly to **`master`** from local).
-4. **Classic path (PR to `master` only):** Commit on **`release/vX.Y.Z`** branched from **`origin/master`** — **not** on local **`master`**. Open a **PR** into **`master`** and **merge** when checks pass. That merge also triggers **Tag release** when **`VERSION`** changes. After merge: **`git switch master && git pull --ff-only`**, delete the release branch locally/remotely as needed.
+3. **Bump and ship (shortcut):** On a **release branch** (e.g. **`release/vX.Y.Z`**), run **`.\scripts\ship-release.ps1`** — pushes that branch to **`origin`** and dispatches **Tag release (from VERSION)** (creates **`vX.Y.Z`** if missing + **Build installer**). You do **not** need a **`dev`** branch on GitHub; local dev is **`dev-start.ps1`** only. Then open a **PR `release/v…` → `master`** so the default branch matches (**`master`** is protected).
+4. **Classic path (merge first):** Commit on **`release/vX.Y.Z`** from **`origin/master`**, open **PR → `master`**, merge when checks pass. A push to **`master`** that changes **`VERSION`** also auto-runs **Tag release**. After merge: **`git switch master && git pull --ff-only`**, delete the release branch as needed.
 5. Maintainers / Cursor agent: after **`git fetch origin master --tags`**, you may run **`gh workflow run build-installer.yml --repo jampat000/Grabby --ref vX.Y.Z`** to queue a build — **only** if **`vX.Y.Z`** points to the commit you intend to ship (see step **7** if the tag is stale). Often unnecessary if **Tag release** already dispatched.
 6. If tagging did not run (e.g. workflow not merged yet), use **Actions → Tag release (from VERSION) → Run workflow**, or create the tag from **GitHub Releases**.
-7. If a **tag** exists but **Releases → Latest** never updated (no **`GrabbySetup.exe`** for that tag), check that **`vX.Y.Z`** points to the commit you mean (**`master`** or **`dev`** tip, depending how you shipped — run **`git fetch origin master --tags`**, then compare **`git rev-parse vX.Y.Z`** vs **`git rev-parse origin/master`**). **Manual** **Build installer** / **`gh workflow run … --ref vX.Y.Z`** uses the **workflow YAML from that tag’s commit**, not automatically from **`master`** — an **old** tag SHA can **build** but **skip** **release**. **Fix:** move the tag to the correct commit and **re-push** the tag, **or** bump **`VERSION`** and release again, **or** **`gh release create`** + attach **`GrabbySetup.exe`** from a green run artifact.
+7. If a **tag** exists but **Releases → Latest** never updated (no **`GrabbySetup.exe`** for that tag), check that **`vX.Y.Z`** points to the commit you mean — run **`git fetch origin master --tags`**, then compare **`git rev-parse vX.Y.Z`** vs **`git rev-parse origin/master`**. **Manual** **Build installer** / **`gh workflow run … --ref vX.Y.Z`** uses the **workflow YAML from that tag’s commit** — an **old** tag SHA can **build** but **skip** **release**. **Fix:** move the tag to the correct commit and **re-push** the tag, **or** bump **`VERSION`** and release again, **or** **`gh release create`** + attach **`GrabbySetup.exe`** from a green run artifact.
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 
 [Unreleased]: https://github.com/jampat000/Grabby/compare/v1.0.34...HEAD

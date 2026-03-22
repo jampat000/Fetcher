@@ -83,6 +83,22 @@ Export **Grabby** and **Cleaner** settings to **one JSON file** from **Settings*
 
 See [`CHANGELOG.md`](CHANGELOG.md), including maintainer **Releasing** steps.
 
+### Ship a new version to GitHub (maintainers)
+
+You **do not** need a **`dev`** branch on GitHub — keep “dev” **local** (your machine, `dev-start.ps1`, temp DB). What GitHub needs for a **Release** is: a commit whose **`VERSION`** file is bumped → workflow creates **`vX.Y.Z`** → **Build installer** runs on that tag.
+
+**Habit:** on a **named branch** (e.g. **`release/v1.0.40`** from **`origin/master`**), bump **`VERSION`** + **`CHANGELOG.md`**, commit, then:
+
+```powershell
+.\scripts\ship-release.ps1
+```
+
+That **pushes your current branch** to **`origin`** and runs **`gh workflow run "Tag release (from VERSION)" --ref <that-branch>`**, which creates the tag (if missing) and starts the Windows build + Release. Requires **[GitHub CLI](https://cli.github.com/)** (`gh auth login`).
+
+Pushing to **`master`** / **`main`** with a **`VERSION`** change can also auto-run the same workflow; **`ship-release.ps1`** is for release branches without waiting on a merge.
+
+Merge **`release/v…` → `master`** via PR when you want the default branch updated (branch protection).
+
 ## Prereqs (dev)
 
 - Python (via the `py` launcher)
