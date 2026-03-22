@@ -20,7 +20,7 @@ from app.arr_client import (
     trigger_sonarr_missing_search,
 )
 from app.http_status_hints import format_http_error_detail, hint_for_http_status
-from app.log_sanitize import redact_url_for_logging
+from app.log_sanitize import redact_sensitive_text, redact_url_for_logging
 from app.models import ActivityLog, ArrActionLog, AppSettings, AppSnapshot, JobRunLog
 from app.schedule import in_window
 from app.time_util import utc_now_naive
@@ -1049,7 +1049,10 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
         code = e.response.status_code
         hint = hint_for_http_status(code)
         hint_suffix = f" {hint}" if hint else ""
-        log.message = f"Run failed: HTTP {code} for {e.request.method} {safe_url}{hint_suffix} | {body}"
+        log.message = (
+            f"Run failed: HTTP {code} for {e.request.method} {safe_url}{hint_suffix} | "
+            f"{redact_sensitive_text(body)}"
+        )
         log.finished_at = utc_now_naive()
         # Snapshot failure if it’s clearly Sonarr/Radarr/Emby
         url = safe_url
@@ -1070,7 +1073,7 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
         return RunResult(ok=False, message=log.message)
     except Exception as e:  # noqa: BLE001 - service boundary logging
         log.ok = False
-        log.message = f"Run failed: {type(e).__name__}: {e}"
+        log.message = redact_sensitive_text(f"Run failed: {type(e).__name__}: {e}")
         log.finished_at = utc_now_naive()
         session.add(
             ActivityLog(
