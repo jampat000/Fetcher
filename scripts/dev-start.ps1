@@ -110,6 +110,9 @@ if (!(Test-Path ".\.venv\Scripts\python.exe")) {
   throw "Missing .venv. Run: py -m venv .venv; .\.venv\Scripts\pip install -r requirements.txt"
 }
 
+# Clear stale uvicorn / multiprocessing listeners on common dev ports (Windows reload orphans).
+& (Join-Path $PSScriptRoot "stop-fetcher-dev.ps1") -Quiet
+
 Stop-ListenerProcesses -Port $PreferredPort
 
 $reloadArgs = @()
