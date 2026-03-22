@@ -140,7 +140,6 @@
           <div class="small muted emby-trimmer-disabled-summary">
             <span class="badge {% if settings.emby_dry_run %}b-off{% else %}b-live{% endif %}">{{ "Dry run" if settings.emby_dry_run else "Live delete" }}</span>
             <span class="badge {% if emby_matched_n > 0 %}b-warn{% else %}b-off{% endif %}">{{ emby_matched_n }} matched</span>
-            <a href="/trimmer/settings">Trimmer settings</a>
           </div>
         {% else %}
           <div class="m-grid dashboard-emby-summary-grid">
@@ -157,13 +156,6 @@
           </div>
         {% endif %}
       </div>
-    </div>
-
-    <div class="btn-row dashboard-quick-links">
-      <a class="btn" href="/settings">Fetcher settings</a>
-      <a class="btn secondary" href="/trimmer/settings">Trimmer settings</a>
-      <a class="btn secondary" href="/trimmer">Scan library</a>
-      <a class="btn secondary" href="/logs">Run logs</a>
     </div>
 
     <div class="section dashboard-activity-section">
@@ -183,7 +175,7 @@
           <div class="activity-body">
             <div class="activity-title-line">
             {% if e.kind == "missing" %}
-              {{ e.count }} {% if e.app == "sonarr" %}{{ "episode" if e.count == 1 else "episodes" }}{% else %}{{ "movie" if e.count == 1 else "movies" }}{% endif %} searched
+              {{ e.count }} {% if e.app == "sonarr" %}{{ "episode" if e.count == 1 else "episodes" }}{% else %}{{ "movie" if e.count == 1 else "movies" }}{% endif %} missing search
             {% elif e.kind == "trimmed" %}
               {{ e.count }} item{{ "s" if e.count != 1 else "" }} matched Emby Trimmer rules
             {% else %}
