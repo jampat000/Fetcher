@@ -6,21 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [2.0.2] - 2026-03-22
-
-### Fixed
-
-- **Windows / CI installer build:** **`requirements.txt`** pinned **`uvloop`** without a platform marker. **`uvloop` does not install on Windows**, so **`pip install -r requirements.txt` failed** while **`packaging/build.ps1` did not check the exit code** — the venv was missing **`uvicorn`** and the frozen **`Fetcher.exe` crashed** at import. **`uvloop`** is now **`sys_platform != "win32"`**, and **`packaging/build.ps1`** fails fast if **`pip`** / **PyInstaller** errors.
-
-## [2.0.1] - 2026-03-20
-
-### Fixed
-
-- **CI — Build installer:** Packaged **Fetcher.exe** smoke test could time out because the server does not accept connections until app **lifespan** finishes, while the **scheduler** could start **`run_once`** (Arr/Emby HTTP) before **/healthz** was reachable. The workflow now sets **`FETCHER_CI_SMOKE=1`** and **`FETCHER_DEV_DB_PATH`** to a temp DB, uses **`WorkingDirectory`** = the one-folder bundle dir, waits up to **6 minutes**, and surfaces **exit code** if the process dies early. **`FETCHER_CI_SMOKE`** skips **`scheduler.start()`** in **`app/main.py`** (CI / smoke tests only — do not set on a real Windows service install).
-
 ## [2.0.0] - 2026-03-22
 
-**First semver 2.x release** — rebrand from Grabby to Fetcher, Cleaner to Trimmer, full V5 UI, and a tightened dashboard/settings experience.
+**First semver 2.x release** — rebrand from Grabby to Fetcher, Cleaner to Trimmer, full V5 UI, Windows installer via GitHub Actions, and CI/packaging fixes so the frozen app builds and smoke-tests cleanly on Windows.
 
 ### Changed
 
@@ -28,6 +16,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Trimmer:** Emby maintenance UI and routes under **`/trimmer`** / **`/trimmer/settings`**; activity kind **`trimmed`** (stored rows migrated from the pre-rename kind on upgrade). **`POST /trimmer/settings/cleaner`** remains the form action for Trimmer-specific settings.
 - **Fetcher Settings:** Horizontal **tabs** (Security, Sonarr, Radarr, Global) at the top; each section is its own **`card gc`** with **stripe** accent (**purple** / **blue** / **green** / **gray**). Collapsible panels removed — sections stay open for faster editing.
 - **Dashboard:** Hero tiles for **TV Missing**, **Movies Missing**, **TV Upgrades**, and **Movie Upgrades**; Sonarr/Radarr overview cards no longer duplicate those queue counts; **Automation** and **Emby Trimmer** cards trimmed to essential status; **Recent activity** preview shows up to **5** rows.
+
+### Fixed
+
+- **Windows / CI installer build:** **`requirements.txt`** pinned **`uvloop`** without a platform marker. **`uvloop` does not install on Windows**, so **`pip install -r requirements.txt` failed** while **`packaging/build.ps1` did not check the exit code** — the venv was missing **`uvicorn`** and the frozen **`Fetcher.exe` crashed** at import. **`uvloop`** is now **`sys_platform != "win32"`**, and **`packaging/build.ps1`** fails fast if **`pip`** / **PyInstaller** errors.
+- **CI — Build installer smoke:** Packaged **Fetcher.exe** smoke test could time out because the server does not accept connections until app **lifespan** finishes, while the **scheduler** could start **`run_once`** (Arr/Emby HTTP) before **/healthz** was reachable. The workflow sets **`FETCHER_CI_SMOKE=1`** and **`FETCHER_DEV_DB_PATH`** to a temp DB, uses **`WorkingDirectory`** = the one-folder bundle dir, waits up to **6 minutes**, and surfaces **exit code** if the process dies early. **`FETCHER_CI_SMOKE`** skips **`scheduler.start()`** in **`app/main.py`** (CI / smoke tests only — do not set on a real Windows service install).
 
 ## [1.0.44] - 2026-03-22
 
@@ -460,9 +453,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 7. If a **tag** exists but **Releases → Latest** never updated (no **`FetcherSetup.exe`** for that tag), check that **`vX.Y.Z`** points to the commit you mean — run **`git fetch origin master --tags`**, then compare **`git rev-parse vX.Y.Z`** vs **`git rev-parse origin/master`**. **Manual** **Build installer** / **`gh workflow run … --ref vX.Y.Z`** uses the **workflow YAML from that tag’s commit** — an **old** tag SHA can **build** but **skip** **release**. **Fix:** move the tag to the correct commit and **re-push** the tag, **or** bump **`VERSION`** and release again, **or** **`gh release create`** + attach **`FetcherSetup.exe`** from a green run artifact.
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.2...HEAD
-[2.0.2]: https://github.com/jampat000/Fetcher/compare/v2.0.1...v2.0.2
-[2.0.1]: https://github.com/jampat000/Fetcher/compare/v2.0.0...v2.0.1
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.0...HEAD
 [2.0.0]: https://github.com/jampat000/Fetcher/compare/v1.0.44...v2.0.0
 [1.0.44]: https://github.com/jampat000/Fetcher/compare/v1.0.43...v1.0.44
 [1.0.43]: https://github.com/jampat000/Fetcher/compare/v1.0.42...v1.0.43

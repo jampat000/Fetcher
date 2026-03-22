@@ -40,8 +40,6 @@ pytest tests/e2e/test_readme_screenshots.py -v
 
 **[Download FetcherSetup.exe (latest GitHub Release)](https://github.com/jampat000/Fetcher/releases/latest/download/FetcherSetup.exe)**
 
-**Version note:** **2.0.0** and **2.0.1** are still part of the 2.x line (rebrand + CI smoke hardening), but the first **GitHub Release** whose **Windows installer** was built and smoke-tested cleanly on Actions is **2.0.2** (fixed `uvloop` on Windows + stricter packaging script errors). Use **Latest** above for a known-good installer; details in [`CHANGELOG.md`](CHANGELOG.md).
-
 - Requires **64-bit Windows**.
 - The installer deploys **Fetcher** as a **Windows Service** (WinSW) and opens the Web UI when setup finishes.
 
