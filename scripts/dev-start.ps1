@@ -19,11 +19,11 @@ Write-Host ""
 # Isolated dev DB by default so uvicorn does not compete with the Windows service for the same app.db.
 if ($SharedAppDb) {
   Remove-Item Env:\GRABBY_DEV_DB_PATH -ErrorAction SilentlyContinue
-  Write-Host "Dev DB: (shared) default — %LocalAppData%\Grabby\app.db  [stop Grabby service if SQLite is busy]" -ForegroundColor DarkYellow
+  Write-Host 'Dev DB: (shared) default - %LocalAppData%\Grabby\app.db  [stop Grabby service if SQLite is busy]' -ForegroundColor DarkYellow
 } else {
   $devDb = Join-Path ([System.IO.Path]::GetTempPath()) "grabby-dev.sqlite3"
   $env:GRABBY_DEV_DB_PATH = $devDb
-  Write-Host "Dev DB: $devDb  (GRABBY_DEV_DB_PATH)  [use -SharedAppDb for installed app database]" -ForegroundColor DarkGray
+  Write-Host "Dev DB: $devDb  (GRABBY_DEV_DB_PATH)  `[use -SharedAppDb for installed app database`]" -ForegroundColor DarkGray
 }
 Write-Host ""
 
@@ -119,6 +119,8 @@ if ($Reload) {
 
 Write-Host "Starting Grabby dev server..."
 Write-Host "Open: http://$BindHost`:$PreferredPort"
+Write-Host ""
+Write-Host "TIP: Use this exact host in the browser. If http://localhost:$PreferredPort fails or sign-in works but Settings looks logged out, use 127.0.0.1 (cookies differ per host; localhost may use IPv6 only)."
 Write-Host ""
 Write-Host "NOTE: Port 8765 = installed Windows service (Grabby.exe). Port 8766 = this dev server (source)."
 Write-Host "      To use 8765 for dev: stop the Grabby service first, then: .\scripts\dev-start.ps1 -PreferredPort 8765"

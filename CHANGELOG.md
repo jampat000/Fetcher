@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.38] - 2026-03-23
+
+### Added
+
+- **`tests/test_auth_next_redirect.py`:** Covers **`sanitize_next_param`**, login **`next`** redirect, and open-redirect rejection.
+
+### Changed
+
+- **Settings → Security:** In-page **subnav** (Account, **Change Username**, **Change Password**, Access control) with fragment anchors; card layout for account vs access control; headings and copy state that username and password are changed separately.
+- **Sign-in:** Unauthenticated visits redirect to **`/login?next=…`** (safe, same-origin paths only) so after login you return to the requested page (e.g. **Settings**).
+- **POST `/settings`**, **`POST /emby/settings`**, **`POST /emby/settings/connection`**, **`POST /emby/settings/cleaner`:** **`SQLAlchemyError`** → **`save=fail&reason=db_error`**; **`ValueError`** → **`reason=invalid`**; other exceptions → **`logger.exception`**, session **rollback**, **`reason=error`**; **`GRABBY_LOG_LEVEL=DEBUG`** re-raises after logging.
+
+### Fixed
+
+- **`scripts/dev-start.ps1`:** PowerShell parse errors from **`[...]`** inside double-quoted strings (brackets escaped or single-quoted).
+
+### Documentation
+
+- **README** + **`scripts/dev-start.ps1`:** **`127.0.0.1` vs `localhost`**, dev vs service port, **Settings** auth troubleshooting.
+
 ## [1.0.37] - 2026-03-22
 
 ### Fixed

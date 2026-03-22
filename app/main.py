@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -80,6 +81,7 @@ from app.auth import (
     record_login_failure,
     request_prefers_json,
     require_auth,
+    sanitize_next_param,
     verify_password,
 )
 
@@ -196,11 +198,13 @@ app.include_router(app_updates.router)
 async def login_get(
     request: Request,
     error: str = "",
+    next_q: str = Query("", alias="next"),
     session: AsyncSession = Depends(get_session),
 ) -> HTMLResponse | RedirectResponse:
     settings = await _get_or_create_settings(session)
     if not (settings.auth_password_hash or "").strip():
         return RedirectResponse("/setup/0", status_code=302)
+    login_next = sanitize_next_param(next_q)
     return templates.TemplateResponse(
         request,
         "login.html",
@@ -210,6 +214,7 @@ async def login_get(
             "title": f"{APP_NAME} — Sign in",
             "subtitle": "Sign in to continue",
             "error": (error or "").strip(),
+            "login_next": login_next,
         },
     )
 
@@ -219,9 +224,11 @@ async def login_post(
     request: Request,
     username: str = Form(""),
     password: str = Form(""),
+    next_q: str = Form("", alias="next"),
     session: AsyncSession = Depends(get_session),
 ) -> HTMLResponse | RedirectResponse | JSONResponse:
     settings = await _get_or_create_settings(session)
+    next_dest = sanitize_next_param(next_q)
     if not (settings.auth_password_hash or "").strip():
         if request_prefers_json(request):
             return JSONResponse(
@@ -246,7 +253,7 @@ async def login_post(
             if request_prefers_json(request):
                 return JSONResponse(status_code=500, content={"message": "Server misconfiguration"})
             return HTMLResponse("Server misconfiguration", status_code=500)
-        resp = RedirectResponse("/", status_code=303)
+        resp = RedirectResponse(next_dest, status_code=303)
         attach_session_cookie(resp, secret=secret, username=expected_user)
         return resp
 
@@ -262,6 +269,7 @@ async def login_post(
             "title": f"{APP_NAME} — Sign in",
             "subtitle": "Sign in to continue",
             "error": INVALID_LOGIN_MESSAGE,
+            "login_next": next_dest,
         },
     )
 
@@ -1181,12 +1189,20 @@ async def save_settings(
         if not await _try_commit_and_reschedule(session):
             return RedirectResponse("/settings?save=fail&reason=db_busy", status_code=303)
         return RedirectResponse("/settings?saved=1", status_code=303)
+    except SQLAlchemyError:
+        logger.exception("POST /settings SQLAlchemyError")
+        return RedirectResponse("/settings?save=fail&reason=db_error", status_code=303)
+    except ValueError:
+        logger.exception("POST /settings ValueError")
+        return RedirectResponse("/settings?save=fail&reason=invalid", status_code=303)
     except Exception:
         logger.exception("POST /settings failed")
         try:
             await session.rollback()
         except Exception:
             pass
+        if (os.environ.get("GRABBY_LOG_LEVEL") or "").strip().upper() == "DEBUG":
+            raise
         return RedirectResponse("/settings?save=fail&reason=error", status_code=303)
 
 
@@ -1209,12 +1225,20 @@ async def save_emby_settings(
         if not await _try_commit_and_reschedule(session):
             return RedirectResponse("/emby/settings?save=fail&reason=db_busy", status_code=303)
         return RedirectResponse("/emby/settings?saved=1", status_code=303)
+    except SQLAlchemyError:
+        logger.exception("POST /emby/settings SQLAlchemyError")
+        return RedirectResponse("/emby/settings?save=fail&reason=db_error", status_code=303)
+    except ValueError:
+        logger.exception("POST /emby/settings ValueError")
+        return RedirectResponse("/emby/settings?save=fail&reason=invalid", status_code=303)
     except Exception:
         logger.exception("POST /emby/settings failed")
         try:
             await session.rollback()
         except Exception:
             pass
+        if (os.environ.get("GRABBY_LOG_LEVEL") or "").strip().upper() == "DEBUG":
+            raise
         return RedirectResponse("/emby/settings?save=fail&reason=error", status_code=303)
 
 
@@ -1236,12 +1260,20 @@ async def save_emby_connection_settings(
         if not await _try_commit_and_reschedule(session):
             return RedirectResponse("/emby/settings?save=fail&reason=db_busy", status_code=303)
         return RedirectResponse("/emby/settings?saved=1", status_code=303)
+    except SQLAlchemyError:
+        logger.exception("POST /emby/settings/connection SQLAlchemyError")
+        return RedirectResponse("/emby/settings?save=fail&reason=db_error", status_code=303)
+    except ValueError:
+        logger.exception("POST /emby/settings/connection ValueError")
+        return RedirectResponse("/emby/settings?save=fail&reason=invalid", status_code=303)
     except Exception:
         logger.exception("POST /emby/settings/connection failed")
         try:
             await session.rollback()
         except Exception:
             pass
+        if (os.environ.get("GRABBY_LOG_LEVEL") or "").strip().upper() == "DEBUG":
+            raise
         return RedirectResponse("/emby/settings?save=fail&reason=error", status_code=303)
 
 
@@ -1328,12 +1360,20 @@ async def save_cleaner_settings(
         if not await _try_commit_and_reschedule(session):
             return RedirectResponse("/emby/settings?save=fail&reason=db_busy", status_code=303)
         return RedirectResponse("/emby/settings?saved=1", status_code=303)
+    except SQLAlchemyError:
+        logger.exception("POST /emby/settings/cleaner SQLAlchemyError")
+        return RedirectResponse("/emby/settings?save=fail&reason=db_error", status_code=303)
+    except ValueError:
+        logger.exception("POST /emby/settings/cleaner ValueError")
+        return RedirectResponse("/emby/settings?save=fail&reason=invalid", status_code=303)
     except Exception:
         logger.exception("POST /emby/settings/cleaner failed")
         try:
             await session.rollback()
         except Exception:
             pass
+        if (os.environ.get("GRABBY_LOG_LEVEL") or "").strip().upper() == "DEBUG":
+            raise
         return RedirectResponse("/emby/settings?save=fail&reason=error", status_code=303)
 
 
