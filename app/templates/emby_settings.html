@@ -42,6 +42,7 @@
       <div class="section">
       <h3>Emby Cleaner Settings</h3>
       <form method="post" action="/emby/settings/connection">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
         <div class="checkline">
           <input type="checkbox" name="emby_enabled" {% if settings.emby_enabled %}checked{% endif %} />
           <strong>Enable Emby Cleaner</strong>
@@ -75,6 +76,7 @@
 
       <div class="section">
       <form method="post" action="/emby/settings/cleaner">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
         <div class="section">
           <h3>Global Cleaner Settings</h3>
           <div class="row">

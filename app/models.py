@@ -52,6 +52,8 @@ class AppSettings(Base):
     # Min minutes before Grabby will ask Sonarr/Radarr to search the same episode/movie again.
     # 0 = tie cooldown to each app’s run interval (Sonarr vs Radarr may differ). Default 1440 = 24h.
     arr_search_cooldown_minutes: Mapped[int] = mapped_column(Integer, default=1440)
+    # Activity, job_run_log, app_snapshot pruning window (days); clamped 7–3650 when pruning.
+    log_retention_days: Mapped[int] = mapped_column(Integer, default=90)
     timezone: Mapped[str] = mapped_column(String(64), default="UTC")  # IANA e.g. America/New_York
 
     # Emby Cleaner

@@ -56,6 +56,7 @@
         <h4 id="sec-panel-username-title" class="settings-security-panel-title">Change Username</h4>
         <p class="settings-security-panel-desc">Set a <strong>new username</strong> for signing in to Grabby (this replaces your current one). Enter your <strong>current password</strong> to confirm, then save.</p>
         <form method="post" action="/settings/auth/credentials" class="section">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
           <input type="hidden" name="auth_form" value="username" />
           <label for="sec_username">New sign-in name</label>
           <input class="input" id="sec_username" type="text" name="new_username" value="{{ settings.auth_username|default('admin', true) }}" autocomplete="username" required />
@@ -71,6 +72,7 @@
         <h4 id="sec-panel-password-title" class="settings-security-panel-title">Change Password</h4>
         <p class="settings-security-panel-desc">Set a <strong>new password</strong> for the same account (username stays the same). At least <strong>8 characters</strong>. You’ll stay signed in on this browser until the session expires.</p>
         <form method="post" action="/settings/auth/credentials" class="section">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
           <input type="hidden" name="auth_form" value="password" />
           <label for="sec_pw_curr">Current password</label>
           <input class="password" id="sec_pw_curr" type="password" name="current_password" autocomplete="current-password" required />
@@ -90,6 +92,7 @@
       <h4 id="sec-panel-ac-title" class="settings-security-panel-title">IP allowlist</h4>
       <p class="settings-security-panel-desc">Optional. Clients matching these IPs or CIDR ranges can use Grabby <strong>without</strong> a password. Use only on networks you trust.</p>
       <form method="post" action="/settings/auth/access_control" class="section">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
         <label for="auth_ip_allowlist">Allowed IPs and ranges</label>
         <textarea class="input" id="auth_ip_allowlist" name="auth_ip_allowlist" rows="6" style="font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; width: 100%; box-sizing: border-box;" placeholder="One IP or CIDR range per line, e.g.:&#10;192.168.1.50&#10;192.168.1.0/24&#10;10.0.0.0/8">{{ settings.auth_ip_allowlist or '' }}</textarea>
         <p class="hint" style="margin-top:0.5rem;">Supports single IPs (192.168.1.50) and CIDR ranges (192.168.1.0/24). Leave empty to require sign-in from every device.</p>
@@ -116,6 +119,7 @@
     <p class="hint" style="margin-top:8px;">New here? <a href="/setup"><strong>Run the setup wizard</strong></a> to connect Sonarr, Radarr, and Emby step by step (with connection tests).</p>
 
     <form method="post" action="/settings">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <div class="row">
         <div class="field">
           <div class="checkline">
@@ -238,6 +242,11 @@
             <div class="small settings-global-hint">Minimum time before Grabby asks Sonarr/Radarr to <strong>search the same episode or movie</strong> again. Use <strong>0</strong> to tie cooldown to each app’s <strong>run interval</strong> (Sonarr vs Radarr can differ). Default <strong>1440</strong> (24h) avoids hammering the same missing titles every tick. Missing + upgrade in one run share this cooldown. Grabby <strong>pages through the whole wanted queue</strong> each run (like Huntarr-style batching) until it fills “max items per run” with titles that are off cooldown — not only the first API page.</div>
           </div>
           <div class="field settings-global-field">
+            <label for="log_retention_days">Log retention (days)</label>
+            <input class="number settings-global-number" id="log_retention_days" type="number" name="log_retention_days" value="{{ settings.log_retention_days|default(90, true) }}" min="7" max="3650" />
+            <div class="small settings-global-hint">How many days of activity, job logs, and snapshots to keep. Minimum 7, maximum 3650.</div>
+          </div>
+          <div class="field settings-global-field">
             <label>Timezone</label>
             <select class="input settings-global-select" name="timezone">
               {% for tz in timezones %}
@@ -255,8 +264,12 @@
       </div>
     </form>
 
-    <form id="test-sonarr" method="post" action="/test/sonarr"></form>
-    <form id="test-radarr" method="post" action="/test/radarr"></form>
+    <form id="test-sonarr" method="post" action="/test/sonarr">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    </form>
+    <form id="test-radarr" method="post" action="/test/radarr">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    </form>
 
   </div>
 
@@ -281,6 +294,7 @@
         </div>
         <p class="small backup-panel-desc">Replaces <strong>all</strong> saved <strong>Grabby</strong> and <strong>Cleaner</strong> settings on this PC. Does not change dashboard <strong>Activity</strong> history.</p>
         <form method="post" action="/settings/backup/import" enctype="multipart/form-data" class="backup-restore-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
           <div class="field backup-file-field">
             <label class="backup-file-label" for="backup-file-input">Choose Backup File</label>
             <input id="backup-file-input" class="input backup-file-input" type="file" name="file" accept="application/json,.json,.JSON" required />

@@ -63,3 +63,20 @@ def _dependency_override_require_auth(request: pytest.FixtureRequest) -> None:
     app.dependency_overrides[require_auth] = _ok
     yield
     app.dependency_overrides.pop(require_auth, None)
+
+
+@pytest.fixture(autouse=True)
+def _dependency_override_require_csrf(request: pytest.FixtureRequest) -> None:
+    from app.auth import require_csrf
+    from app.main import app
+
+    if request.node.get_closest_marker("real_csrf"):
+        yield
+        return
+
+    async def _ok_csrf() -> None:
+        return None
+
+    app.dependency_overrides[require_csrf] = _ok_csrf
+    yield
+    app.dependency_overrides.pop(require_csrf, None)

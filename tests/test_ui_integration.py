@@ -188,6 +188,7 @@ def test_post_settings_validation_error_redirects_not_422(monkeypatch: pytest.Mo
         "sonarr_interval_minutes": "60",
         "radarr_interval_minutes": "60",
         "arr_search_cooldown_minutes": "1440",
+        "log_retention_days": "90",
         "timezone": "UTC",
     }
     form: list[tuple[str, str]] = [(k, str(v)) for k, v in payload.items()]
@@ -232,6 +233,7 @@ def test_post_settings_save_redirects(monkeypatch: pytest.MonkeyPatch) -> None:
         "sonarr_interval_minutes": "0",
         "radarr_interval_minutes": "0",
         "arr_search_cooldown_minutes": "1440",
+        "log_retention_days": "90",
         "timezone": "UTC",
     }
     form: list[tuple[str, str]] = [(k, str(v)) for k, v in payload.items()]
@@ -327,6 +329,7 @@ def test_sonarr_schedule_all_days_stays_enabled(monkeypatch: pytest.MonkeyPatch)
         "radarr_interval_minutes": "60",
         "radarr_schedule_enabled": "false",
         "arr_search_cooldown_minutes": "1440",
+        "log_retention_days": "90",
         "timezone": "UTC",
         "save_scope": "sonarr",
     }

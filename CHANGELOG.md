@@ -6,9 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.39] - 2026-03-24
+
+### Added
+
+- **Database pruning:** **`prune_old_records`** during scheduled/Grabby runs removes stale **`arr_action_log`** rows (window from **`arr_search_cooldown_minutes`**, or 48h when cooldown is 0) and **`activity_log`**, **`job_run_log`**, **`app_snapshot`** rows older than **`log_retention_days`** (clamped 7–3650). Failures are logged only. Unit tests: **`tests/test_pruning.py`**.
+
+### Security
+
+- **CSRF protection** for state-changing **HTML form** POSTs: signed tokens (**`itsdangerous.TimestampSigner`**, 1-hour validity) bound to the session user (or IP-allowlist account). **`require_csrf`** on **`/settings`**, **`/settings/auth/*`**, **`/settings/backup/import`**, **`/emby/settings`**, **`/emby/settings/connection`**, **`/emby/settings/cleaner`**, **`/test/sonarr`**, **`/test/radarr`**, **`/test/emby`**, **`/test/emby-form`**, and **`POST /setup/{step}`** for steps **1–5** (step **0** exempt). Excludes **`/login`**, JSON APIs (**`/api/arr/search-now`**, **`/api/setup/test-*`**), and wizard **`fetch()`** tests. Layout **`<meta name="csrf-token">`**, global **`getCSRFToken()`**, hidden fields on templates; **`tests/test_csrf.py`** with **`real_csrf`** marker; other tests override **`require_csrf`** in **`tests/conftest.py`**.
+
 ### Changed
 
 - **CI:** **Tag release (from VERSION)** also runs when **`VERSION`** changes on branch **`dev`** (creates **`vX.Y.Z`** and dispatches **Build installer**), so **“bump and ship”** can target **`dev`** without waiting on **`master`**.
+- **README (dev):** Document **`require_csrf`** test override and CSRF behavior for manual POSTs.
 
 ## [1.0.38] - 2026-03-23
 

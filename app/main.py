@@ -75,17 +75,20 @@ from app.auth import (
     clear_login_failures,
     clear_session_cookie,
     get_client_ip,
+    get_csrf_token_for_template,
     hash_password,
     login_rate_limited,
     normalize_auth_ip_allowlist_input,
     record_login_failure,
     request_prefers_json,
     require_auth,
+    require_csrf,
     sanitize_next_param,
     verify_password,
 )
 
 _AUTH_DEPS = [Depends(require_auth)]
+_AUTH_FORM_DEPS = [Depends(require_auth), Depends(require_csrf)]
 
 configure_grabby_logging()
 
@@ -456,11 +459,12 @@ async def setup_wizard_page(
             "setup_error": setup_error,
             "setup_save_fail": setup_save_fail,
             "setup_account_intro": setup_account_intro,
+            "csrf_token": await get_csrf_token_for_template(request, session),
         },
     )
 
 
-@app.post("/setup/{step}")
+@app.post("/setup/{step}", dependencies=[Depends(require_csrf)])
 async def setup_wizard_save(
     step: int,
     wizard_action: str = Form("continue"),
@@ -665,6 +669,7 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
             "now": utc_now_naive(),
             "now_local": _now_local(tz),
             "timezone": tz,
+            "csrf_token": await get_csrf_token_for_template(request, session),
         },
     )
 
@@ -690,6 +695,7 @@ async def logs_page(request: Request, session: AsyncSession = Depends(get_sessio
             "now": utc_now_naive(),
             "now_local": _now_local(tz),
             "timezone": tz,
+            "csrf_token": await get_csrf_token_for_template(request, session),
         },
     )
 
@@ -725,6 +731,7 @@ async def activity_page(request: Request, session: AsyncSession = Depends(get_se
             "now": utc_now_naive(),
             "now_local": _now_local(tz),
             "timezone": tz,
+            "csrf_token": await get_csrf_token_for_template(request, session),
         },
     )
 
@@ -785,6 +792,7 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
             "sonarr_end_orphan": _time_select_orphan(se, time_choice_keys, fallback_display="11:59 PM"),
             "radarr_start_orphan": _time_select_orphan(rs, time_choice_keys, fallback_display="12:00 AM"),
             "radarr_end_orphan": _time_select_orphan(re, time_choice_keys, fallback_display="11:59 PM"),
+            "csrf_token": await get_csrf_token_for_template(request, session),
         },
     )
     # Simple Browser / embedded WebViews often cache HTML; force reload of Settings.
@@ -806,7 +814,7 @@ async def settings_backup_export(session: AsyncSession = Depends(get_session)) -
     )
 
 
-@app.post("/settings/auth/credentials", dependencies=_AUTH_DEPS)
+@app.post("/settings/auth/credentials", dependencies=_AUTH_FORM_DEPS)
 async def settings_auth_credentials(
     auth_form: str = Form(""),
     current_password: str = Form(""),
@@ -847,7 +855,7 @@ async def settings_auth_credentials(
     return RedirectResponse("/settings?sec=invalid", status_code=303)
 
 
-@app.post("/settings/auth/access_control", dependencies=_AUTH_DEPS)
+@app.post("/settings/auth/access_control", dependencies=_AUTH_FORM_DEPS)
 async def settings_auth_access_control(
     auth_ip_allowlist: str = Form(""),
     session: AsyncSession = Depends(get_session),
@@ -864,7 +872,7 @@ async def settings_auth_access_control(
     return RedirectResponse("/settings?saved=1", status_code=303)
 
 
-@app.post("/settings/backup/import", dependencies=_AUTH_DEPS)
+@app.post("/settings/backup/import", dependencies=_AUTH_FORM_DEPS)
 async def settings_backup_import(
     session: AsyncSession = Depends(get_session),
     file: UploadFile = File(...),
@@ -931,6 +939,7 @@ async def emby_settings_page(request: Request, session: AsyncSession = Depends(g
             "selected_tv_people_credit_types": parse_movie_people_credit_types_csv(
                 settings.emby_rule_tv_people_credit_types_csv
             ),
+            "csrf_token": await get_csrf_token_for_template(request, session),
         },
     )
 
@@ -1072,11 +1081,12 @@ async def emby_preview_page(request: Request, session: AsyncSession = Depends(ge
             "now": utc_now_naive(),
             "now_local": _now_local(tz),
             "timezone": tz,
+            "csrf_token": await get_csrf_token_for_template(request, session),
         },
     )
 
 
-@app.post("/settings", dependencies=_AUTH_DEPS)
+@app.post("/settings", dependencies=_AUTH_FORM_DEPS)
 async def save_settings(
     sonarr_enabled: bool = Form(False),
     sonarr_url: str = Form(""),
@@ -1113,6 +1123,7 @@ async def save_settings(
     radarr_schedule_start: str = Form("00:00"),
     radarr_schedule_end: str = Form("23:59"),
     arr_search_cooldown_minutes: int = Form(1440),
+    log_retention_days: int = Form(90),
     timezone: str = Form("UTC"),
     save_scope: str = Form("all"),
     session: AsyncSession = Depends(get_session),
@@ -1183,6 +1194,7 @@ async def save_settings(
 
         if scope in ("all", "global"):
             row.arr_search_cooldown_minutes = data.arr_search_cooldown_minutes
+            row.log_retention_days = max(7, min(3650, int(log_retention_days or 90)))
             row.timezone = _resolve_timezone_name(timezone)
 
         row.updated_at = utc_now_naive()
@@ -1206,7 +1218,7 @@ async def save_settings(
         return RedirectResponse("/settings?save=fail&reason=error", status_code=303)
 
 
-@app.post("/emby/settings", dependencies=_AUTH_DEPS)
+@app.post("/emby/settings", dependencies=_AUTH_FORM_DEPS)
 async def save_emby_settings(
     emby_enabled: bool = Form(False),
     emby_url: str = Form(""),
@@ -1242,7 +1254,7 @@ async def save_emby_settings(
         return RedirectResponse("/emby/settings?save=fail&reason=error", status_code=303)
 
 
-@app.post("/emby/settings/connection", dependencies=_AUTH_DEPS)
+@app.post("/emby/settings/connection", dependencies=_AUTH_FORM_DEPS)
 async def save_emby_connection_settings(
     emby_enabled: bool = Form(False),
     emby_url: str = Form(""),
@@ -1277,7 +1289,7 @@ async def save_emby_connection_settings(
         return RedirectResponse("/emby/settings?save=fail&reason=error", status_code=303)
 
 
-@app.post("/emby/settings/cleaner", dependencies=_AUTH_DEPS)
+@app.post("/emby/settings/cleaner", dependencies=_AUTH_FORM_DEPS)
 async def save_cleaner_settings(
     emby_interval_minutes: int = Form(60),
     emby_dry_run: bool = Form(False),
@@ -1377,7 +1389,7 @@ async def save_cleaner_settings(
         return RedirectResponse("/emby/settings?save=fail&reason=error", status_code=303)
 
 
-@app.post("/test/sonarr", dependencies=_AUTH_DEPS)
+@app.post("/test/sonarr", dependencies=_AUTH_FORM_DEPS)
 async def test_sonarr(session: AsyncSession = Depends(get_session)) -> RedirectResponse:
     settings = await _get_or_create_settings(session)
     try:
@@ -1395,7 +1407,7 @@ async def test_sonarr(session: AsyncSession = Depends(get_session)) -> RedirectR
         return RedirectResponse("/settings?test=sonarr_fail", status_code=303)
 
 
-@app.post("/test/radarr", dependencies=_AUTH_DEPS)
+@app.post("/test/radarr", dependencies=_AUTH_FORM_DEPS)
 async def test_radarr(session: AsyncSession = Depends(get_session)) -> RedirectResponse:
     settings = await _get_or_create_settings(session)
     try:
@@ -1413,7 +1425,7 @@ async def test_radarr(session: AsyncSession = Depends(get_session)) -> RedirectR
         return RedirectResponse("/settings?test=radarr_fail", status_code=303)
 
 
-@app.post("/test/emby", dependencies=_AUTH_DEPS)
+@app.post("/test/emby", dependencies=_AUTH_FORM_DEPS)
 async def test_emby(session: AsyncSession = Depends(get_session)) -> RedirectResponse:
     settings = await _get_or_create_settings(session)
     emby_url = _normalize_base_url(settings.emby_url)
@@ -1465,7 +1477,7 @@ async def test_emby(session: AsyncSession = Depends(get_session)) -> RedirectRes
         return RedirectResponse("/emby/settings?test=emby_fail", status_code=303)
 
 
-@app.post("/test/emby-form", dependencies=_AUTH_DEPS)
+@app.post("/test/emby-form", dependencies=_AUTH_FORM_DEPS)
 async def test_emby_from_form(
     emby_enabled: bool = Form(False),
     emby_url: str = Form(""),
