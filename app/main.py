@@ -163,7 +163,13 @@ async def _lifespan(_app: FastAPI):
         raise last_err
 
     await bootstrap_auth_on_startup()
-    await scheduler.start()
+    # Packaged-build CI smoke test: skip background scheduler so /healthz is reachable quickly
+    # (first scheduler tick can otherwise block startup on Arr/Emby HTTP before the server listens).
+    _ci_smoke = (os.environ.get("FETCHER_CI_SMOKE") or "").strip().lower() in ("1", "true", "yes")
+    if _ci_smoke:
+        logger.warning("FETCHER_CI_SMOKE set — background scheduler not started (CI / smoke test only)")
+    else:
+        await scheduler.start()
     yield
     scheduler.shutdown()
 

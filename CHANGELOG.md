@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-03-20
+
+### Fixed
+
+- **CI — Build installer:** Packaged **Fetcher.exe** smoke test could time out because the server does not accept connections until app **lifespan** finishes, while the **scheduler** could start **`run_once`** (Arr/Emby HTTP) before **/healthz** was reachable. The workflow now sets **`FETCHER_CI_SMOKE=1`** and **`FETCHER_DEV_DB_PATH`** to a temp DB, uses **`WorkingDirectory`** = the one-folder bundle dir, waits up to **6 minutes**, and surfaces **exit code** if the process dies early. **`FETCHER_CI_SMOKE`** skips **`scheduler.start()`** in **`app/main.py`** (CI / smoke tests only — do not set on a real Windows service install).
+
 ## [2.0.0] - 2026-03-22
 
 **First semver 2.x release** — rebrand from Grabby to Fetcher, Cleaner to Trimmer, full V5 UI, and a tightened dashboard/settings experience.
@@ -448,7 +454,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 7. If a **tag** exists but **Releases → Latest** never updated (no **`FetcherSetup.exe`** for that tag), check that **`vX.Y.Z`** points to the commit you mean — run **`git fetch origin master --tags`**, then compare **`git rev-parse vX.Y.Z`** vs **`git rev-parse origin/master`**. **Manual** **Build installer** / **`gh workflow run … --ref vX.Y.Z`** uses the **workflow YAML from that tag’s commit** — an **old** tag SHA can **build** but **skip** **release**. **Fix:** move the tag to the correct commit and **re-push** the tag, **or** bump **`VERSION`** and release again, **or** **`gh release create`** + attach **`FetcherSetup.exe`** from a green run artifact.
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/jampat000/Fetcher/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/jampat000/Fetcher/compare/v1.0.44...v2.0.0
 [1.0.44]: https://github.com/jampat000/Fetcher/compare/v1.0.43...v1.0.44
 [1.0.43]: https://github.com/jampat000/Fetcher/compare/v1.0.42...v1.0.43
