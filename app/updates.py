@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import subprocess
@@ -15,11 +16,13 @@ from typing import Any
 from urllib.parse import unquote
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from packaging.version import InvalidVersion, Version
 from starlette.responses import JSONResponse
 
 from app.version_info import get_app_version
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/updates", tags=["updates"])
 
@@ -259,10 +262,25 @@ def _installer_download_headers(url: str) -> dict[str, str]:
 
 
 def _pick_setup_asset(payload: dict[str, Any]) -> dict[str, Any] | None:
+    want = SETUP_ASSET_NAME.casefold()
     for a in payload.get("assets") or []:
-        if (a.get("name") or "") == SETUP_ASSET_NAME:
+        name = (a.get("name") or "").strip()
+        if name.casefold() == want:
             return a
     return None
+
+
+def _synthetic_setup_asset(repo: str, tag: str) -> dict[str, Any] | None:
+    """When the REST payload has no matching asset (transient API glitch, renamed file), use GitHub's conventional download URL."""
+    t = (tag or "").strip()
+    if not t:
+        return None
+    dl = f"https://github.com/{repo}/releases/download/{t}/{SETUP_ASSET_NAME}"
+    return {"name": SETUP_ASSET_NAME, "browser_download_url": dl}
+
+
+def _resolve_setup_asset(payload: dict[str, Any], repo: str, tag: str) -> dict[str, Any] | None:
+    return _pick_setup_asset(payload) or _synthetic_setup_asset(repo, tag)
 
 
 def _launch_installer_detached(exe_path: Path) -> None:
@@ -335,6 +353,7 @@ async def _compute_updates_check_payload() -> dict[str, Any]:
     except httpx.HTTPStatusError as e:
         code = e.response.status_code
         detail = _github_error_message(e.response)
+        logger.warning("GitHub release check HTTP %s for %s: %s", code, repo, detail or e)
         suffix = f" ({detail})" if detail else ""
         if code == 404:
             err = (
@@ -364,6 +383,7 @@ async def _compute_updates_check_payload() -> dict[str, Any]:
             "release_notes_url": f"https://github.com/{repo}/releases/latest",
         }
     except (httpx.RequestError, ValueError, KeyError) as e:
+        logger.warning("GitHub release check failed for %s: %s", repo, e)
         return {
             **base,
             "ok": False,
@@ -372,10 +392,20 @@ async def _compute_updates_check_payload() -> dict[str, Any]:
             "update_available": False,
             "release_notes_url": f"https://github.com/{repo}/releases/latest",
         }
+    except Exception as e:  # noqa: BLE001 - surface unexpected errors in UI + logs
+        logger.exception("Unexpected error during GitHub release check for %s", repo)
+        return {
+            **base,
+            "ok": False,
+            "check_error": f"{type(e).__name__}: {e}"[:500],
+            "latest_version": None,
+            "update_available": False,
+            "release_notes_url": f"https://github.com/{repo}/releases/latest",
+        }
 
     tag = (payload.get("tag_name") or "").strip()
     latest_v = _tag_to_version(tag)
-    asset = _pick_setup_asset(payload)
+    asset = _resolve_setup_asset(payload, repo, tag)
     html_url = (payload.get("html_url") or f"https://github.com/{repo}/releases/latest").strip()
 
     update_available = False
@@ -399,7 +429,12 @@ async def _compute_updates_check_payload() -> dict[str, Any]:
 
 
 @router.get("/check")
-async def api_updates_check() -> JSONResponse:
+async def api_updates_check(refresh: str | None = Query(None)) -> JSONResponse:
+    """Optional ``?refresh=1`` skips the in-memory release cache (manual Check button)."""
+    repo = _releases_repo()
+    if (refresh or "").strip().lower() in ("1", "true", "yes"):
+        with _release_cache_lock:
+            _release_payload_cache.pop(repo, None)
     return _no_store_json(await _compute_updates_check_payload())
 
 
