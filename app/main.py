@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -7,13 +9,15 @@ from urllib.parse import quote, urlparse
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import desc, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import engine, get_session
+from app.db import db_path, engine, get_session
 from app.migrations import migrate
 import httpx
 
@@ -33,6 +37,7 @@ from app.models import ActivityLog, AppSettings, AppSnapshot, Base, JobRunLog
 from app.schemas import ArrSearchNowIn, SetupConnTestIn, SetupEmbyTestIn, SettingsIn
 from app.setup_helpers import test_emby_connection, test_radarr_connection, test_sonarr_connection
 from app.scheduler import ServiceScheduler
+from app.schedule import DAY_NAMES, normalize_schedule_days_csv, schedule_time_dropdown_choices
 from app.service_logic import run_once
 from app.time_util import utc_now_naive
 from app import updates as app_updates
@@ -42,20 +47,76 @@ from app.version_info import get_app_version
 APP_NAME = "Grabby"
 APP_TAGLINE = "Never miss a release."
 
+logger = logging.getLogger(__name__)
+
 scheduler = ServiceScheduler()
+
+
+async def _try_commit_and_reschedule(session: AsyncSession) -> bool:
+    """Persist settings and refresh scheduler tick. False if SQLite could not commit (e.g. DB locked)."""
+    try:
+        await session.commit()
+    except SQLAlchemyError:
+        try:
+            await session.rollback()
+        except Exception:
+            logger.exception("rollback after failed settings commit")
+        return False
+    try:
+        await scheduler.reschedule()
+    except Exception:
+        logger.warning("scheduler.reschedule failed after settings commit", exc_info=True)
+    return True
 
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    await migrate(engine)
+    # When the Windows service holds app.db, startup can block until SQLite times out — retry a few times.
+    delays_sec = (0, 2, 5, 10, 15)
+    last_err: BaseException | None = None
+    for attempt, delay in enumerate(delays_sec):
+        if delay:
+            await asyncio.sleep(delay)
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            await migrate(engine)
+            last_err = None
+            break
+        except SQLAlchemyError as e:
+            last_err = e
+            logger.warning(
+                "Database setup blocked (attempt %s/%s): %s",
+                attempt + 1,
+                len(delays_sec),
+                e,
+            )
+    if last_err is not None:
+        logger.error(
+            "Grabby could not finish database setup. If the Windows service is running, use dev-start.ps1 "
+            "(separate dev DB) or stop the service. DB path: %s",
+            db_path(),
+        )
+        raise last_err
+
     await scheduler.start()
     yield
     scheduler.shutdown()
 
 
 app = FastAPI(title=APP_NAME, lifespan=_lifespan)
+
+
+@app.exception_handler(RequestValidationError)
+async def _form_validation_redirect(request: Request, exc: RequestValidationError) -> Response:
+    """Browser form posts expect a redirect/HTML — avoid a raw 422 JSON body ('page isn't working')."""
+    if request.method == "POST" and request.url.path == "/settings":
+        return RedirectResponse("/settings?save=fail&reason=invalid", status_code=303)
+    if request.method == "POST" and request.url.path == "/emby/settings/cleaner":
+        return RedirectResponse("/emby/settings?save=fail&reason=invalid", status_code=303)
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
+
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.globals["app_version"] = get_app_version()
 
@@ -202,6 +263,61 @@ def _to_12h(hhmm: str, default: str) -> str:
         return dt.strftime("%I:%M %p").lstrip("0")
     except Exception:
         return default
+
+
+def _time_select_orphan(canonical_hhmm: str, choice_keys: set[str], *, fallback_display: str) -> tuple[str, str] | None:
+    """If saved time is not on the dropdown grid, offer it as the first option."""
+    if canonical_hhmm in choice_keys:
+        return None
+    return (canonical_hhmm, _to_12h(canonical_hhmm, fallback_display))
+
+
+def _schedule_days_display(days_csv: str) -> str:
+    """Format stored CSV weekdays for dashboard (commas → spaced hyphens)."""
+    raw = (days_csv or "").strip()
+    if not raw:
+        return ""
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    return " - ".join(parts)
+
+
+def _schedule_days_csv_from_named_day_checks(
+    mon: int,
+    tue: int,
+    wed: int,
+    thu: int,
+    fri: int,
+    sat: int,
+    sun: int,
+) -> str:
+    """One checkbox per day (`name=prefix_Mon` value=1). Uncheck all → store "" (not full week)."""
+    flags = (mon, tue, wed, thu, fri, sat, sun)
+    parts = [DAY_NAMES[i] for i, v in enumerate(flags) if int(v or 0) != 0]
+    if not parts:
+        return ""
+    return normalize_schedule_days_csv(",".join(parts))
+
+
+def _schedule_weekdays_selected_dict(days_csv: str) -> dict[str, bool]:
+    """Per-day flags from DB column (raw). Empty stored value → all False."""
+    n = normalize_schedule_days_csv((days_csv or "").strip())
+    if not n.strip():
+        return {d: False for d in DAY_NAMES}
+    allowed = {p.strip() for p in n.split(",") if p.strip() in DAY_NAMES}
+    return {d: (d in allowed) for d in DAY_NAMES}
+
+
+def _schedule_time_range_friendly(start_hhmm: str, end_hhmm: str) -> str:
+    """Avoid a lone en-dash when pairing start/end for dashboard tiles."""
+    s = (start_hhmm or "").strip() or "00:00"
+    e = (end_hhmm or "").strip() or "23:59"
+    if e == "24:00":
+        e = "23:59"
+    if s == "00:00" and e in ("23:59", "23:58"):
+        return "All day"
+    left = _to_12h(s, "12:00 AM")
+    right = _to_12h(e, "11:59 PM")
+    return f"{left} – {right}"
 
 
 def _effective_emby_rules(settings: AppSettings) -> dict[str, int | bool]:
@@ -410,8 +526,8 @@ async def setup_wizard_save(
             row.emby_interval_minutes = im
             row.timezone = _resolve_timezone_name(timezone)
         row.updated_at = utc_now_naive()
-        await session.commit()
-        await scheduler.reschedule()
+        if not await _try_commit_and_reschedule(session):
+            return RedirectResponse(f"/setup/{step}?save=fail&reason=db_busy", status_code=303)
 
     nxt = step + 1
     if nxt > _SETUP_WIZARD_STEPS:
@@ -474,6 +590,20 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
     next_tick_local = _fmt_local(next_tick, tz) if next_tick else ""
     emby_schedule_start_display = _to_12h(getattr(settings, "emby_schedule_start", "00:00") or "00:00", "12:00 AM")
     emby_schedule_end_display = _to_12h(getattr(settings, "emby_schedule_end", "23:59") or "23:59", "11:59 PM")
+    sonarr_schedule_start_display = _to_12h(getattr(settings, "sonarr_schedule_start", "00:00") or "00:00", "12:00 AM")
+    sonarr_schedule_end_display = _to_12h(getattr(settings, "sonarr_schedule_end", "23:59") or "23:59", "11:59 PM")
+    radarr_schedule_start_display = _to_12h(getattr(settings, "radarr_schedule_start", "00:00") or "00:00", "12:00 AM")
+    radarr_schedule_end_display = _to_12h(getattr(settings, "radarr_schedule_end", "23:59") or "23:59", "11:59 PM")
+    sonarr_schedule_days_display = _schedule_days_display(getattr(settings, "sonarr_schedule_days", "") or "")
+    sonarr_schedule_time_friendly = _schedule_time_range_friendly(
+        getattr(settings, "sonarr_schedule_start", "") or "00:00",
+        getattr(settings, "sonarr_schedule_end", "") or "23:59",
+    )
+    radarr_schedule_days_display = _schedule_days_display(getattr(settings, "radarr_schedule_days", "") or "")
+    radarr_schedule_time_friendly = _schedule_time_range_friendly(
+        getattr(settings, "radarr_schedule_start", "") or "00:00",
+        getattr(settings, "radarr_schedule_end", "") or "23:59",
+    )
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -488,6 +618,14 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
             "next_scheduler_tick_local": next_tick_local,
             "emby_schedule_start_display": emby_schedule_start_display,
             "emby_schedule_end_display": emby_schedule_end_display,
+            "sonarr_schedule_start_display": sonarr_schedule_start_display,
+            "sonarr_schedule_end_display": sonarr_schedule_end_display,
+            "radarr_schedule_start_display": radarr_schedule_start_display,
+            "radarr_schedule_end_display": radarr_schedule_end_display,
+            "sonarr_schedule_days_display": sonarr_schedule_days_display,
+            "sonarr_schedule_time_friendly": sonarr_schedule_time_friendly,
+            "radarr_schedule_days_display": radarr_schedule_days_display,
+            "radarr_schedule_time_friendly": radarr_schedule_time_friendly,
             "activity": activity_display,
             "sonarr": sonarr_snap,
             "radarr": radarr_snap,
@@ -590,6 +728,14 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
         .first()
     )
     tz = getattr(settings, "timezone", None) or "UTC"
+    time_choices = schedule_time_dropdown_choices(step_minutes=30)
+    time_choice_keys = {v for v, _ in time_choices}
+    sn_days = normalize_schedule_days_csv(getattr(settings, "sonarr_schedule_days", "") or "")
+    rd_days = normalize_schedule_days_csv(getattr(settings, "radarr_schedule_days", "") or "")
+    ss = _normalize_hhmm(settings.sonarr_schedule_start, "00:00")
+    se = _normalize_hhmm(settings.sonarr_schedule_end, "23:59")
+    rs = _normalize_hhmm(settings.radarr_schedule_start, "00:00")
+    re = _normalize_hhmm(settings.radarr_schedule_end, "23:59")
     response = templates.TemplateResponse(
         request,
         "settings.html",
@@ -605,10 +751,23 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
             "now_local": _now_local(tz),
             "timezone": tz,
             "timezones": _TIMEZONE_CHOICES,
-            "sonarr_schedule_start_display": _to_12h(settings.sonarr_schedule_start, "12:00 AM"),
-            "sonarr_schedule_end_display": _to_12h(settings.sonarr_schedule_end, "11:59 PM"),
-            "radarr_schedule_start_display": _to_12h(settings.radarr_schedule_start, "12:00 AM"),
-            "radarr_schedule_end_display": _to_12h(settings.radarr_schedule_end, "11:59 PM"),
+            "schedule_time_choices": time_choices,
+            "sonarr_schedule_days_normalized": sn_days,
+            "radarr_schedule_days_normalized": rd_days,
+            "sonarr_schedule_days_selected": _schedule_weekdays_selected_dict(
+                getattr(settings, "sonarr_schedule_days", "") or ""
+            ),
+            "radarr_schedule_days_selected": _schedule_weekdays_selected_dict(
+                getattr(settings, "radarr_schedule_days", "") or ""
+            ),
+            "sonarr_schedule_start_hhmm": ss,
+            "sonarr_schedule_end_hhmm": se,
+            "radarr_schedule_start_hhmm": rs,
+            "radarr_schedule_end_hhmm": re,
+            "sonarr_start_orphan": _time_select_orphan(ss, time_choice_keys, fallback_display="12:00 AM"),
+            "sonarr_end_orphan": _time_select_orphan(se, time_choice_keys, fallback_display="11:59 PM"),
+            "radarr_start_orphan": _time_select_orphan(rs, time_choice_keys, fallback_display="12:00 AM"),
+            "radarr_end_orphan": _time_select_orphan(re, time_choice_keys, fallback_display="11:59 PM"),
         },
     )
     # Simple Browser / embedded WebViews often cache HTML; force reload of Settings.
@@ -660,6 +819,11 @@ async def emby_settings_page(request: Request, session: AsyncSession = Depends(g
         .first()
     )
     tz = getattr(settings, "timezone", None) or "UTC"
+    time_choices = schedule_time_dropdown_choices(step_minutes=30)
+    time_choice_keys = {v for v, _ in time_choices}
+    em_days = normalize_schedule_days_csv(getattr(settings, "emby_schedule_days", "") or "")
+    es = _normalize_hhmm(settings.emby_schedule_start, "00:00")
+    ee = _normalize_hhmm(settings.emby_schedule_end, "23:59")
     return templates.TemplateResponse(
         request,
         "emby_settings.html",
@@ -673,8 +837,15 @@ async def emby_settings_page(request: Request, session: AsyncSession = Depends(g
             "now": utc_now_naive(),
             "now_local": _now_local(tz),
             "timezone": tz,
-            "emby_schedule_start_display": _to_12h(settings.emby_schedule_start, "12:00 AM"),
-            "emby_schedule_end_display": _to_12h(settings.emby_schedule_end, "11:59 PM"),
+            "schedule_time_choices": time_choices,
+            "emby_schedule_days_normalized": em_days,
+            "emby_schedule_days_selected": _schedule_weekdays_selected_dict(
+                getattr(settings, "emby_schedule_days", "") or ""
+            ),
+            "emby_schedule_start_hhmm": es,
+            "emby_schedule_end_hhmm": ee,
+            "emby_start_orphan": _time_select_orphan(es, time_choice_keys, fallback_display="12:00 AM"),
+            "emby_end_orphan": _time_select_orphan(ee, time_choice_keys, fallback_display="11:59 PM"),
             "movie_genre_options": _MOVIE_GENRE_OPTIONS,
             "selected_movie_genres": parse_genres_csv(getattr(settings, "emby_rule_movie_genres_csv", "")),
             "selected_tv_genres": parse_genres_csv(getattr(settings, "emby_rule_tv_genres_csv", "")),
@@ -839,7 +1010,13 @@ async def save_settings(
     sonarr_max_items_per_run: int = Form(50),
     sonarr_interval_minutes: int = Form(60),
     sonarr_schedule_enabled: bool = Form(False),
-    sonarr_schedule_days: str = Form("Mon,Tue,Wed,Thu,Fri,Sat,Sun"),
+    sonarr_schedule_Mon: int = Form(0),
+    sonarr_schedule_Tue: int = Form(0),
+    sonarr_schedule_Wed: int = Form(0),
+    sonarr_schedule_Thu: int = Form(0),
+    sonarr_schedule_Fri: int = Form(0),
+    sonarr_schedule_Sat: int = Form(0),
+    sonarr_schedule_Sun: int = Form(0),
     sonarr_schedule_start: str = Form("00:00"),
     sonarr_schedule_end: str = Form("23:59"),
     radarr_enabled: bool = Form(False),
@@ -850,7 +1027,13 @@ async def save_settings(
     radarr_max_items_per_run: int = Form(50),
     radarr_interval_minutes: int = Form(60),
     radarr_schedule_enabled: bool = Form(False),
-    radarr_schedule_days: str = Form("Mon,Tue,Wed,Thu,Fri,Sat,Sun"),
+    radarr_schedule_Mon: int = Form(0),
+    radarr_schedule_Tue: int = Form(0),
+    radarr_schedule_Wed: int = Form(0),
+    radarr_schedule_Thu: int = Form(0),
+    radarr_schedule_Fri: int = Form(0),
+    radarr_schedule_Sat: int = Form(0),
+    radarr_schedule_Sun: int = Form(0),
     radarr_schedule_start: str = Form("00:00"),
     radarr_schedule_end: str = Form("23:59"),
     arr_search_cooldown_minutes: int = Form(1440),
@@ -858,64 +1041,87 @@ async def save_settings(
     save_scope: str = Form("all"),
     session: AsyncSession = Depends(get_session),
 ) -> RedirectResponse:
-    row = await _get_or_create_settings(session)
-    # interval_minutes column is legacy / backup only — not edited in Global Settings UI.
-    data = SettingsIn(
-        sonarr_enabled=sonarr_enabled,
-        sonarr_url=_normalize_base_url(sonarr_url),
-        sonarr_api_key=sonarr_api_key.strip(),
-        sonarr_search_missing=sonarr_search_missing,
-        sonarr_search_upgrades=sonarr_search_upgrades,
-        sonarr_max_items_per_run=sonarr_max_items_per_run,
-        sonarr_interval_minutes=sonarr_interval_minutes,
-        # schedule fields are not in SettingsIn; set on ORM row below
-        radarr_enabled=radarr_enabled,
-        radarr_url=_normalize_base_url(radarr_url),
-        radarr_api_key=radarr_api_key.strip(),
-        radarr_search_missing=radarr_search_missing,
-        radarr_search_upgrades=radarr_search_upgrades,
-        radarr_max_items_per_run=radarr_max_items_per_run,
-        radarr_interval_minutes=radarr_interval_minutes,
-        arr_search_cooldown_minutes=arr_search_cooldown_minutes,
-        interval_minutes=max(5, min(7 * 24 * 60, int(getattr(row, "interval_minutes", 60) or 60))),
-    )
-    scope = (save_scope or "all").strip().lower()
-    # Keep Arr + global settings isolated from Emby settings.
-    if scope in ("all", "sonarr"):
-        row.sonarr_enabled = data.sonarr_enabled
-        row.sonarr_url = data.sonarr_url
-        row.sonarr_api_key = data.sonarr_api_key
-        row.sonarr_search_missing = data.sonarr_search_missing
-        row.sonarr_search_upgrades = data.sonarr_search_upgrades
-        row.sonarr_max_items_per_run = data.sonarr_max_items_per_run
-        row.sonarr_interval_minutes = data.sonarr_interval_minutes
-        row.sonarr_schedule_enabled = sonarr_schedule_enabled
-        row.sonarr_schedule_days = (sonarr_schedule_days or "Mon,Tue,Wed,Thu,Fri,Sat,Sun").strip()
-        row.sonarr_schedule_start = _normalize_hhmm(sonarr_schedule_start, "00:00")
-        row.sonarr_schedule_end = _normalize_hhmm(sonarr_schedule_end, "23:59")
+    try:
+        row = await _get_or_create_settings(session)
+        # interval_minutes column is legacy / backup only — not edited in Global Settings UI.
+        data = SettingsIn(
+            sonarr_enabled=sonarr_enabled,
+            sonarr_url=_normalize_base_url(sonarr_url),
+            sonarr_api_key=sonarr_api_key.strip(),
+            sonarr_search_missing=sonarr_search_missing,
+            sonarr_search_upgrades=sonarr_search_upgrades,
+            sonarr_max_items_per_run=sonarr_max_items_per_run,
+            sonarr_interval_minutes=sonarr_interval_minutes,
+            # schedule fields are not in SettingsIn; set on ORM row below
+            radarr_enabled=radarr_enabled,
+            radarr_url=_normalize_base_url(radarr_url),
+            radarr_api_key=radarr_api_key.strip(),
+            radarr_search_missing=radarr_search_missing,
+            radarr_search_upgrades=radarr_search_upgrades,
+            radarr_max_items_per_run=radarr_max_items_per_run,
+            radarr_interval_minutes=radarr_interval_minutes,
+            arr_search_cooldown_minutes=arr_search_cooldown_minutes,
+            interval_minutes=max(5, min(7 * 24 * 60, int(getattr(row, "interval_minutes", 60) or 60))),
+        )
+        scope = (save_scope or "all").strip().lower()
+        # Sonarr/Radarr: persist on app-specific save OR "Save Global" (same form posts all fields).
+        if scope in ("all", "sonarr", "global"):
+            row.sonarr_enabled = data.sonarr_enabled
+            row.sonarr_url = data.sonarr_url
+            row.sonarr_api_key = data.sonarr_api_key
+            row.sonarr_search_missing = data.sonarr_search_missing
+            row.sonarr_search_upgrades = data.sonarr_search_upgrades
+            row.sonarr_max_items_per_run = data.sonarr_max_items_per_run
+            row.sonarr_interval_minutes = data.sonarr_interval_minutes
+            row.sonarr_schedule_enabled = sonarr_schedule_enabled
+            row.sonarr_schedule_days = _schedule_days_csv_from_named_day_checks(
+                sonarr_schedule_Mon,
+                sonarr_schedule_Tue,
+                sonarr_schedule_Wed,
+                sonarr_schedule_Thu,
+                sonarr_schedule_Fri,
+                sonarr_schedule_Sat,
+                sonarr_schedule_Sun,
+            )
+            row.sonarr_schedule_start = _normalize_hhmm(sonarr_schedule_start, "00:00")
+            row.sonarr_schedule_end = _normalize_hhmm(sonarr_schedule_end, "23:59")
 
-    if scope in ("all", "radarr"):
-        row.radarr_enabled = data.radarr_enabled
-        row.radarr_url = data.radarr_url
-        row.radarr_api_key = data.radarr_api_key
-        row.radarr_search_missing = data.radarr_search_missing
-        row.radarr_search_upgrades = data.radarr_search_upgrades
-        row.radarr_max_items_per_run = data.radarr_max_items_per_run
-        row.radarr_interval_minutes = data.radarr_interval_minutes
-        row.radarr_schedule_enabled = radarr_schedule_enabled
-        row.radarr_schedule_days = (radarr_schedule_days or "Mon,Tue,Wed,Thu,Fri,Sat,Sun").strip()
-        row.radarr_schedule_start = _normalize_hhmm(radarr_schedule_start, "00:00")
-        row.radarr_schedule_end = _normalize_hhmm(radarr_schedule_end, "23:59")
+        if scope in ("all", "radarr", "global"):
+            row.radarr_enabled = data.radarr_enabled
+            row.radarr_url = data.radarr_url
+            row.radarr_api_key = data.radarr_api_key
+            row.radarr_search_missing = data.radarr_search_missing
+            row.radarr_search_upgrades = data.radarr_search_upgrades
+            row.radarr_max_items_per_run = data.radarr_max_items_per_run
+            row.radarr_interval_minutes = data.radarr_interval_minutes
+            row.radarr_schedule_enabled = radarr_schedule_enabled
+            row.radarr_schedule_days = _schedule_days_csv_from_named_day_checks(
+                radarr_schedule_Mon,
+                radarr_schedule_Tue,
+                radarr_schedule_Wed,
+                radarr_schedule_Thu,
+                radarr_schedule_Fri,
+                radarr_schedule_Sat,
+                radarr_schedule_Sun,
+            )
+            row.radarr_schedule_start = _normalize_hhmm(radarr_schedule_start, "00:00")
+            row.radarr_schedule_end = _normalize_hhmm(radarr_schedule_end, "23:59")
 
-    if scope in ("all", "global"):
-        row.arr_search_cooldown_minutes = data.arr_search_cooldown_minutes
-        row.timezone = _resolve_timezone_name(timezone)
+        if scope in ("all", "global"):
+            row.arr_search_cooldown_minutes = data.arr_search_cooldown_minutes
+            row.timezone = _resolve_timezone_name(timezone)
 
-    row.updated_at = utc_now_naive()
-    await session.commit()
-
-    await scheduler.reschedule()
-    return RedirectResponse("/settings?saved=1", status_code=303)
+        row.updated_at = utc_now_naive()
+        if not await _try_commit_and_reschedule(session):
+            return RedirectResponse("/settings?save=fail&reason=db_busy", status_code=303)
+        return RedirectResponse("/settings?saved=1", status_code=303)
+    except Exception:
+        logger.exception("POST /settings failed")
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+        return RedirectResponse("/settings?save=fail&reason=error", status_code=303)
 
 
 @app.post("/emby/settings")
@@ -927,15 +1133,23 @@ async def save_emby_settings(
     session: AsyncSession = Depends(get_session),
 ) -> RedirectResponse:
     # Backward-compatible endpoint: save both sections if old form posts here.
-    row = await _get_or_create_settings(session)
-    row.emby_enabled = emby_enabled
-    row.emby_url = _normalize_base_url(emby_url)
-    row.emby_api_key = emby_api_key.strip()
-    row.emby_user_id = emby_user_id.strip()
-    row.updated_at = utc_now_naive()
-    await session.commit()
-    await scheduler.reschedule()
-    return RedirectResponse("/emby/settings?saved=1", status_code=303)
+    try:
+        row = await _get_or_create_settings(session)
+        row.emby_enabled = emby_enabled
+        row.emby_url = _normalize_base_url(emby_url)
+        row.emby_api_key = emby_api_key.strip()
+        row.emby_user_id = emby_user_id.strip()
+        row.updated_at = utc_now_naive()
+        if not await _try_commit_and_reschedule(session):
+            return RedirectResponse("/emby/settings?save=fail&reason=db_busy", status_code=303)
+        return RedirectResponse("/emby/settings?saved=1", status_code=303)
+    except Exception:
+        logger.exception("POST /emby/settings failed")
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+        return RedirectResponse("/emby/settings?save=fail&reason=error", status_code=303)
 
 
 @app.post("/emby/settings/connection")
@@ -946,15 +1160,23 @@ async def save_emby_connection_settings(
     emby_user_id: str = Form(""),
     session: AsyncSession = Depends(get_session),
 ) -> RedirectResponse:
-    row = await _get_or_create_settings(session)
-    row.emby_enabled = emby_enabled
-    row.emby_url = _normalize_base_url(emby_url)
-    row.emby_api_key = emby_api_key.strip()
-    row.emby_user_id = emby_user_id.strip()
-    row.updated_at = utc_now_naive()
-    await session.commit()
-    await scheduler.reschedule()
-    return RedirectResponse("/emby/settings?saved=1", status_code=303)
+    try:
+        row = await _get_or_create_settings(session)
+        row.emby_enabled = emby_enabled
+        row.emby_url = _normalize_base_url(emby_url)
+        row.emby_api_key = emby_api_key.strip()
+        row.emby_user_id = emby_user_id.strip()
+        row.updated_at = utc_now_naive()
+        if not await _try_commit_and_reschedule(session):
+            return RedirectResponse("/emby/settings?save=fail&reason=db_busy", status_code=303)
+        return RedirectResponse("/emby/settings?saved=1", status_code=303)
+    except Exception:
+        logger.exception("POST /emby/settings/connection failed")
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+        return RedirectResponse("/emby/settings?save=fail&reason=error", status_code=303)
 
 
 @app.post("/emby/settings/cleaner")
@@ -962,7 +1184,13 @@ async def save_cleaner_settings(
     emby_interval_minutes: int = Form(60),
     emby_dry_run: bool = Form(False),
     emby_schedule_enabled: bool = Form(False),
-    emby_schedule_days: str = Form("Mon,Tue,Wed,Thu,Fri,Sat,Sun"),
+    emby_schedule_Mon: int = Form(0),
+    emby_schedule_Tue: int = Form(0),
+    emby_schedule_Wed: int = Form(0),
+    emby_schedule_Thu: int = Form(0),
+    emby_schedule_Fri: int = Form(0),
+    emby_schedule_Sat: int = Form(0),
+    emby_schedule_Sun: int = Form(0),
     emby_schedule_start: str = Form("00:00"),
     emby_schedule_end: str = Form("23:59"),
     emby_max_items_scan: int = Form(2000),
@@ -980,52 +1208,67 @@ async def save_cleaner_settings(
     save_scope: str = Form("all"),
     session: AsyncSession = Depends(get_session),
 ) -> RedirectResponse:
-    row = await _get_or_create_settings(session)
-    scope = (save_scope or "all").strip().lower()
-    # One shared form: persist Emby Cleaner cadence on any save (independent of Grabby / Arr scheduler base).
-    eim = max(5, min(7 * 24 * 60, int(emby_interval_minutes or 60)))
-    row.emby_interval_minutes = eim
-
-    if scope in ("all", "global"):
+    try:
+        row = await _get_or_create_settings(session)
+        scope = (save_scope or "all").strip().lower()
+        # One shared form: persist Emby Cleaner cadence on any save (independent of Grabby / Arr scheduler base).
+        eim = max(5, min(7 * 24 * 60, int(emby_interval_minutes or 60)))
+        row.emby_interval_minutes = eim
+        # One shared HTML form: schedule / dry run / scan limits are always posted; persist on any save button.
         row.emby_dry_run = emby_dry_run
         row.emby_schedule_enabled = emby_schedule_enabled
-        row.emby_schedule_days = (emby_schedule_days or "Mon,Tue,Wed,Thu,Fri,Sat,Sun").strip()
+        row.emby_schedule_days = _schedule_days_csv_from_named_day_checks(
+            emby_schedule_Mon,
+            emby_schedule_Tue,
+            emby_schedule_Wed,
+            emby_schedule_Thu,
+            emby_schedule_Fri,
+            emby_schedule_Sat,
+            emby_schedule_Sun,
+        )
         row.emby_schedule_start = _normalize_hhmm(emby_schedule_start, "00:00")
         row.emby_schedule_end = _normalize_hhmm(emby_schedule_end, "23:59")
         _scan = int(emby_max_items_scan)
         row.emby_max_items_scan = 0 if _scan <= 0 else max(1, min(100_000, _scan))
         row.emby_max_deletes_per_run = max(1, min(500, int(emby_max_deletes_per_run or 25)))
 
-    if scope in ("all", "movies"):
-        row.emby_rule_movie_watched_rating_below = max(0, min(10, int(emby_rule_movie_watched_rating_below or 0)))
-        row.emby_rule_movie_unwatched_days = max(0, min(36500, int(emby_rule_movie_unwatched_days or 0)))
-        selected_genres = sorted({str(v).strip() for v in (emby_rule_movie_genres or []) if str(v).strip()})
-        row.emby_rule_movie_genres_csv = ",".join(selected_genres)
-        row.emby_rule_movie_people_csv = (emby_rule_movie_people or "").strip()[:8000]
-        row.emby_rule_movie_people_credit_types_csv = _people_credit_types_csv_from_form(emby_rule_movie_people_credit_types)
+        if scope in ("all", "movies"):
+            row.emby_rule_movie_watched_rating_below = max(0, min(10, int(emby_rule_movie_watched_rating_below or 0)))
+            row.emby_rule_movie_unwatched_days = max(0, min(36500, int(emby_rule_movie_unwatched_days or 0)))
+            selected_genres = sorted({str(v).strip() for v in (emby_rule_movie_genres or []) if str(v).strip()})
+            row.emby_rule_movie_genres_csv = ",".join(selected_genres)
+            row.emby_rule_movie_people_csv = (emby_rule_movie_people or "").strip()[:8000]
+            row.emby_rule_movie_people_credit_types_csv = _people_credit_types_csv_from_form(emby_rule_movie_people_credit_types)
 
-    if scope in ("all", "tv"):
-        row.emby_rule_tv_delete_watched = emby_rule_tv_delete_watched
-        selected_tv_genres = sorted({str(v).strip() for v in (emby_rule_tv_genres or []) if str(v).strip()})
-        row.emby_rule_tv_genres_csv = ",".join(selected_tv_genres)
-        row.emby_rule_tv_people_csv = (emby_rule_tv_people or "").strip()[:8000]
-        row.emby_rule_tv_people_credit_types_csv = _people_credit_types_csv_from_form(emby_rule_tv_people_credit_types)
-        row.emby_rule_tv_watched_rating_below = 0
-        row.emby_rule_tv_unwatched_days = max(0, min(36500, int(emby_rule_tv_unwatched_days or 0)))
+        if scope in ("all", "tv"):
+            row.emby_rule_tv_delete_watched = emby_rule_tv_delete_watched
+            selected_tv_genres = sorted({str(v).strip() for v in (emby_rule_tv_genres or []) if str(v).strip()})
+            row.emby_rule_tv_genres_csv = ",".join(selected_tv_genres)
+            row.emby_rule_tv_people_csv = (emby_rule_tv_people or "").strip()[:8000]
+            row.emby_rule_tv_people_credit_types_csv = _people_credit_types_csv_from_form(emby_rule_tv_people_credit_types)
+            row.emby_rule_tv_watched_rating_below = 0
+            row.emby_rule_tv_unwatched_days = max(0, min(36500, int(emby_rule_tv_unwatched_days or 0)))
 
-    # Keep legacy global fields in sync for backward compatibility.
-    row.emby_rule_watched_rating_below = max(
-        row.emby_rule_movie_watched_rating_below,
-        0,
-    )
-    row.emby_rule_unwatched_days = max(
-        row.emby_rule_movie_unwatched_days,
-        row.emby_rule_tv_unwatched_days,
-    )
-    row.updated_at = utc_now_naive()
-    await session.commit()
-    await scheduler.reschedule()
-    return RedirectResponse("/emby/settings?saved=1", status_code=303)
+        # Keep legacy global fields in sync for backward compatibility.
+        row.emby_rule_watched_rating_below = max(
+            row.emby_rule_movie_watched_rating_below,
+            0,
+        )
+        row.emby_rule_unwatched_days = max(
+            row.emby_rule_movie_unwatched_days,
+            row.emby_rule_tv_unwatched_days,
+        )
+        row.updated_at = utc_now_naive()
+        if not await _try_commit_and_reschedule(session):
+            return RedirectResponse("/emby/settings?save=fail&reason=db_busy", status_code=303)
+        return RedirectResponse("/emby/settings?saved=1", status_code=303)
+    except Exception:
+        logger.exception("POST /emby/settings/cleaner failed")
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+        return RedirectResponse("/emby/settings?save=fail&reason=error", status_code=303)
 
 
 @app.post("/test/sonarr")

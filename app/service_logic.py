@@ -441,6 +441,13 @@ def _radarr_movie_label(rec: dict) -> str:
     return title
 
 
+def _interval_skip_detail(last_at: datetime, now: datetime, tick_minutes: int) -> str:
+    """Explain run-interval gate (Sonarr and Radarr each use their own last_run_at and interval)."""
+    age_m = max(0, int((now - last_at).total_seconds() // 60))
+    left = max(0, tick_minutes - age_m)
+    return f"{age_m} min since last run for this app; interval {tick_minutes} min (~{left} min until eligible)"
+
+
 def _detail_from_labels(labels: list[str], *, total: int) -> str:
     uniq = [x for x in labels if x]
     if not uniq:
@@ -513,7 +520,7 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
             if arr_manual_scope is None:
                 if not in_window(
                     schedule_enabled=getattr(settings, "sonarr_schedule_enabled", False),
-                    schedule_days=getattr(settings, "sonarr_schedule_days", "Mon,Tue,Wed,Thu,Fri,Sat,Sun"),
+                    schedule_days=getattr(settings, "sonarr_schedule_days", "") or "",
                     schedule_start=getattr(settings, "sonarr_schedule_start", "00:00"),
                     schedule_end=getattr(settings, "sonarr_schedule_end", "23:59"),
                     timezone=tz,
@@ -523,7 +530,11 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
                 else:
                     last_sonarr = getattr(settings, "sonarr_last_run_at", None)
                     if last_sonarr is not None and (now - last_sonarr).total_seconds() < sonarr_tick_m * 60:
-                        actions.append("Sonarr: skipped (run interval not elapsed)")
+                        actions.append(
+                            "Sonarr: skipped (run interval not elapsed — "
+                            + _interval_skip_detail(last_sonarr, now, sonarr_tick_m)
+                            + ")"
+                        )
                         skip_sonarr = True
             if not skip_sonarr:
                 sonarr = ArrClient(ArrConfig(settings.sonarr_url, settings.sonarr_api_key))
@@ -671,7 +682,7 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
             if arr_manual_scope is None:
                 if not in_window(
                     schedule_enabled=getattr(settings, "radarr_schedule_enabled", False),
-                    schedule_days=getattr(settings, "radarr_schedule_days", "Mon,Tue,Wed,Thu,Fri,Sat,Sun"),
+                    schedule_days=getattr(settings, "radarr_schedule_days", "") or "",
                     schedule_start=getattr(settings, "radarr_schedule_start", "00:00"),
                     schedule_end=getattr(settings, "radarr_schedule_end", "23:59"),
                     timezone=tz,
@@ -681,7 +692,11 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
                 else:
                     last_radarr = getattr(settings, "radarr_last_run_at", None)
                     if last_radarr is not None and (now - last_radarr).total_seconds() < radarr_tick_m * 60:
-                        actions.append("Radarr: skipped (run interval not elapsed)")
+                        actions.append(
+                            "Radarr: skipped (run interval not elapsed — "
+                            + _interval_skip_detail(last_radarr, now, radarr_tick_m)
+                            + ")"
+                        )
                         skip_radarr = True
             if not skip_radarr:
                 radarr = ArrClient(ArrConfig(settings.radarr_url, settings.radarr_api_key))
@@ -798,7 +813,7 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
         if arr_manual_scope is None and settings.emby_enabled and settings.emby_url and settings.emby_api_key:
             if not in_window(
                 schedule_enabled=getattr(settings, "emby_schedule_enabled", False),
-                schedule_days=getattr(settings, "emby_schedule_days", "Mon,Tue,Wed,Thu,Fri,Sat,Sun"),
+                schedule_days=getattr(settings, "emby_schedule_days", "") or "",
                 schedule_start=getattr(settings, "emby_schedule_start", "00:00"),
                 schedule_end=getattr(settings, "emby_schedule_end", "23:59"),
                 timezone=tz,
@@ -807,7 +822,11 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
             else:
                 last_emby = getattr(settings, "emby_last_run_at", None)
                 if last_emby is not None and (now - last_emby).total_seconds() < emby_interval_m * 60:
-                    actions.append("Emby: skipped (run interval not elapsed)")
+                    actions.append(
+                        "Emby: skipped (run interval not elapsed — "
+                        + _interval_skip_detail(last_emby, now, emby_interval_m)
+                        + ")"
+                    )
                 else:
                     emby = EmbyClient(EmbyConfig(settings.emby_url, settings.emby_api_key))
                     try:

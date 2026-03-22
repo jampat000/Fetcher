@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.29] - 2026-03-22
+
+### Fixed
+
+- **Schedule weekdays:** Unchecking all days and saving no longer re-selects every day; **empty** `*_schedule_days` persists, **`in_window`** treats **no days** as never matching while the schedule is on, and the settings UI **`checked`** state follows the stored CSV.
+
+### Changed
+
+- **Schedule weekday defaults:** New **`app_settings`** rows and freshly added schedule columns default to **no days** (`""`); scheduler **`getattr`** fallbacks use **`""`**. Existing databases keep stored CSV until you save again.
+- **Schedule weekday UI:** **7-column grid** (4 on narrow viewports) with **chip-style labels**; native checkboxes + **`:has(:checked)`** (no schedule JS).
+- **Schedules (Grabby + Cleaner):** Per-day **`int = Form(0)`** fields (**`sonarr_schedule_Mon` … `_Sun`**, Radarr/Emby same); time `<select>` grids with orphan saved times; **`days_selected`** from the **raw DB** column. **No day checked** stores **`""`**; comma-only / invalid tokens still normalize to **full week** for legacy rows.
+- **Dev server (`dev-start.ps1`):** default **`GRABBY_DEV_DB_PATH`** = **`%TEMP%\grabby-dev.sqlite3`** (optional **`-SharedAppDb`**). **`app/db.py`** honors **`GRABBY_DEV_DB_PATH`**.
+- **App startup / SQLite:** **`create_all` + `migrate`** retry with backoff; **WAL** + **busy_timeout** where possible; settings **`POST`** uses **`_try_commit_and_reschedule`** and friendlier **`save=fail`** redirects (validation, DB busy, errors).
+- **Typography (app UI):** **`--dash-fs-*`** / **`--dash-fw-*`** on **`.main`** and forms; consistent scale across Settings, Cleaner, Activity, Logs, Setup.
+- **Dashboard → Automation / Overview:** Automation card shows **last run** + **next tick**; Overview **preview-stat** grids for Sonarr/Radarr (**Schedule Window** tile with days + friendly time). **Job logs:** skip lines include **minutes since last run**, interval, and **~minutes until eligible**.
+
 ## [1.0.28] - 2026-03-22
 
 ### Fixed

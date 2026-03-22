@@ -1,0 +1,28 @@
+{# Native visible checkboxes (same names as POST handler: prefix_Mon … value=1). days_selected: dict[str,bool]. #}
+{% macro schedule_days_checkboxes(field_prefix, days_selected) %}
+<div class="schedule-days-wrap">
+  <div class="schedule-days-native" role="group" aria-label="Weekdays">
+    {% for day in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] %}
+    <label class="checkline schedule-day-check">
+      <input type="checkbox" name="{{ field_prefix }}_{{ day }}" value="1" {% if days_selected.get(day) %}checked{% endif %} />
+      <span>{{ day }}</span>
+    </label>
+    {% endfor %}
+  </div>
+</div>
+{% endmacro %}
+
+{# schedule_time_choices: list of (HH:MM, label). orphan: None or (HH:MM, label) for off-grid saved times. #}
+{% macro schedule_time_select(name, label, selected_hhmm, choices, orphan) %}
+<div class="field schedule-time-field">
+  <label for="fld_{{ name }}">{{ label }}</label>
+  <select class="input schedule-time-select" name="{{ name }}" id="fld_{{ name }}">
+    {% if orphan %}
+    <option value="{{ orphan[0] }}" selected>{{ orphan[1] }} (saved)</option>
+    {% endif %}
+    {% for v, lab in choices %}
+    <option value="{{ v }}" {% if not orphan and v == selected_hhmm %}selected{% endif %}>{{ lab }}</option>
+    {% endfor %}
+  </select>
+</div>
+{% endmacro %}

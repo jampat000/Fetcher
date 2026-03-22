@@ -8,6 +8,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Always run from repo root (so .venv and app.main resolve even if you run .\scripts\dev-start.ps1 from elsewhere).
+$RepoRoot = Split-Path -Parent $PSScriptRoot
+Set-Location -LiteralPath $RepoRoot
+Write-Host "Repo: $RepoRoot" -ForegroundColor DarkGray
+Write-Host ""
+
 function Get-ProcessNameByPid {
   param([int]$ProcessId)
   try {

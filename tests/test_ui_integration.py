@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+import re
 from urllib.parse import urlencode
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+
+_WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+
+def _schedule_flag_pairs(field_prefix: str) -> list[tuple[str, str]]:
+    """Unique names: sonarr_schedule_Mon=1 … (browser checkbox when checked)."""
+    return [(f"{field_prefix}_{d}", "1") for d in _WEEKDAYS]
 
 
 def _client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
@@ -30,8 +38,10 @@ def _client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
         "/activity",
         "/settings",
         "/settings?saved=1",
+        "/settings?save=fail&reason=db_busy",
         "/emby/settings",
         "/emby/settings?saved=1",
+        "/emby/settings?save=fail&reason=db_busy",
         "/cleaner",
         "/healthz",
         "/settings?import=ok",
@@ -154,6 +164,50 @@ def test_post_setup_wizard_step5_redirects_home(monkeypatch: pytest.MonkeyPatch)
     assert "setup=complete" in (resp.headers.get("location") or "")
 
 
+def test_post_settings_validation_error_redirects_not_422(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Invalid numeric field should redirect to settings with save=fail (browser-friendly), not raw 422 JSON."""
+    payload = {
+        "sonarr_enabled": "false",
+        "sonarr_url": "",
+        "sonarr_api_key": "",
+        "sonarr_search_missing": "true",
+        "sonarr_search_upgrades": "true",
+        "sonarr_max_items_per_run": "not-a-number",
+        "sonarr_schedule_enabled": "false",
+        "sonarr_schedule_start": "00:00",
+        "sonarr_schedule_end": "23:59",
+        "radarr_enabled": "false",
+        "radarr_url": "",
+        "radarr_api_key": "",
+        "radarr_search_missing": "true",
+        "radarr_search_upgrades": "true",
+        "radarr_max_items_per_run": "50",
+        "radarr_schedule_enabled": "false",
+        "radarr_schedule_start": "00:00",
+        "radarr_schedule_end": "23:59",
+        "sonarr_interval_minutes": "60",
+        "radarr_interval_minutes": "60",
+        "arr_search_cooldown_minutes": "1440",
+        "timezone": "UTC",
+    }
+    form: list[tuple[str, str]] = [(k, str(v)) for k, v in payload.items()]
+    form.extend(_schedule_flag_pairs("sonarr_schedule"))
+    form.extend(_schedule_flag_pairs("radarr_schedule"))
+    encoded = urlencode(form)
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/settings",
+            content=encoded,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
+    assert resp.status_code == 303
+    loc = resp.headers.get("location", "")
+    assert "/settings" in loc
+    assert "save=fail" in loc
+    assert "reason=invalid" in loc
+
+
 def test_post_settings_save_redirects(monkeypatch: pytest.MonkeyPatch) -> None:
     """Minimal Grabby settings form post."""
     payload = {
@@ -164,7 +218,6 @@ def test_post_settings_save_redirects(monkeypatch: pytest.MonkeyPatch) -> None:
         "sonarr_search_upgrades": "true",
         "sonarr_max_items_per_run": "50",
         "sonarr_schedule_enabled": "false",
-        "sonarr_schedule_days": "Mon,Tue,Wed,Thu,Fri,Sat,Sun",
         "sonarr_schedule_start": "00:00",
         "sonarr_schedule_end": "23:59",
         "radarr_enabled": "false",
@@ -174,7 +227,6 @@ def test_post_settings_save_redirects(monkeypatch: pytest.MonkeyPatch) -> None:
         "radarr_search_upgrades": "true",
         "radarr_max_items_per_run": "50",
         "radarr_schedule_enabled": "false",
-        "radarr_schedule_days": "Mon,Tue,Wed,Thu,Fri,Sat,Sun",
         "radarr_schedule_start": "00:00",
         "radarr_schedule_end": "23:59",
         "sonarr_interval_minutes": "0",
@@ -182,8 +234,17 @@ def test_post_settings_save_redirects(monkeypatch: pytest.MonkeyPatch) -> None:
         "arr_search_cooldown_minutes": "1440",
         "timezone": "UTC",
     }
+    form: list[tuple[str, str]] = [(k, str(v)) for k, v in payload.items()]
+    form.extend(_schedule_flag_pairs("sonarr_schedule"))
+    form.extend(_schedule_flag_pairs("radarr_schedule"))
+    encoded = urlencode(form)
     with _client(monkeypatch) as client:
-        resp = client.post("/settings", data=payload, follow_redirects=False)
+        resp = client.post(
+            "/settings",
+            content=encoded,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
     assert resp.status_code == 303
     assert resp.headers.get("location", "").startswith("/settings")
 
@@ -210,7 +271,7 @@ def test_post_cleaner_settings_full(monkeypatch: pytest.MonkeyPatch) -> None:
     pairs: list[tuple[str, str]] = [
         ("emby_dry_run", "true"),
         ("emby_schedule_enabled", "false"),
-        ("emby_schedule_days", "Mon,Tue,Wed,Thu,Fri,Sat,Sun"),
+        *_schedule_flag_pairs("emby_schedule"),
         ("emby_schedule_start", "09:00"),
         ("emby_schedule_end", "17:00"),
         ("emby_max_items_scan", "1500"),
@@ -252,7 +313,6 @@ def test_sonarr_schedule_all_days_stays_enabled(monkeypatch: pytest.MonkeyPatch)
         "sonarr_search_upgrades": "true",
         "sonarr_max_items_per_run": "50",
         "sonarr_schedule_enabled": "true",
-        "sonarr_schedule_days": "Mon,Tue,Wed,Thu,Fri,Sat,Sun",
         "sonarr_schedule_start": "00:00",
         "sonarr_schedule_end": "23:59",
         "radarr_enabled": "false",
@@ -261,29 +321,51 @@ def test_sonarr_schedule_all_days_stays_enabled(monkeypatch: pytest.MonkeyPatch)
         "radarr_search_missing": "true",
         "radarr_search_upgrades": "true",
         "radarr_max_items_per_run": "50",
-        "radarr_schedule_days": "Mon,Tue,Wed,Thu,Fri,Sat,Sun",
         "radarr_schedule_start": "00:00",
         "radarr_schedule_end": "23:59",
-        "sonarr_interval_minutes": "0",
-        "radarr_interval_minutes": "0",
+        "sonarr_interval_minutes": "60",
+        "radarr_interval_minutes": "60",
+        "radarr_schedule_enabled": "false",
         "arr_search_cooldown_minutes": "1440",
         "timezone": "UTC",
         "save_scope": "sonarr",
     }
+    form: list[tuple[str, str]] = [(k, str(v)) for k, v in payload.items()]
+    form.extend(_schedule_flag_pairs("sonarr_schedule"))
+    form.extend(_schedule_flag_pairs("radarr_schedule"))
+    encoded = urlencode(form)
     with _client(monkeypatch) as client:
-        resp = client.post("/settings", data=payload, follow_redirects=False)
+        resp = client.post(
+            "/settings",
+            content=encoded,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
         assert resp.status_code == 303
         page = client.get("/settings")
     html = page.text
-    assert 'name="sonarr_schedule_enabled" checked' in html
-    assert 'name="sonarr_schedule_days" value="Mon,Tue,Wed,Thu,Fri,Sat,Sun"' in html
+    assert re.search(
+        r'name="sonarr_schedule_enabled"[^>]*\bchecked\b|\bchecked\b[^>]*name="sonarr_schedule_enabled"',
+        html,
+    )
+    assert len(re.findall(r'name="sonarr_schedule_(Mon|Tue|Wed|Thu|Fri|Sat|Sun)"', html)) == 7
+    assert (
+        len(
+            re.findall(
+                r'<input[^>]*name="sonarr_schedule_(Mon|Tue|Wed|Thu|Fri|Sat|Sun)"[^>]*\bchecked\b',
+                html,
+            )
+        )
+        == 7
+    )
+    assert "schedule-days-native" in html
 
 
 def test_cleaner_schedule_all_days_stays_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     pairs: list[tuple[str, str]] = [
         ("emby_dry_run", "true"),
         ("emby_schedule_enabled", "true"),
-        ("emby_schedule_days", "Mon,Tue,Wed,Thu,Fri,Sat,Sun"),
+        *_schedule_flag_pairs("emby_schedule"),
         ("emby_schedule_start", "00:00"),
         ("emby_schedule_end", "23:59"),
         ("emby_max_items_scan", "2000"),
@@ -302,4 +384,14 @@ def test_cleaner_schedule_all_days_stays_enabled(monkeypatch: pytest.MonkeyPatch
         page = client.get("/emby/settings")
     html = page.text
     assert 'name="emby_schedule_enabled" checked' in html
-    assert 'name="emby_schedule_days" value="Mon,Tue,Wed,Thu,Fri,Sat,Sun"' in html
+    assert len(re.findall(r'name="emby_schedule_(Mon|Tue|Wed|Thu|Fri|Sat|Sun)"', html)) == 7
+    assert (
+        len(
+            re.findall(
+                r'<input[^>]*name="emby_schedule_(Mon|Tue|Wed|Thu|Fri|Sat|Sun)"[^>]*\bchecked\b',
+                html,
+            )
+        )
+        == 7
+    )
+    assert "schedule-days-native" in html

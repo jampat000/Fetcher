@@ -24,7 +24,7 @@ class AppSettings(Base):
     sonarr_search_upgrades: Mapped[bool] = mapped_column(Boolean, default=True)
     sonarr_max_items_per_run: Mapped[int] = mapped_column(Integer, default=50)
     sonarr_schedule_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    sonarr_schedule_days: Mapped[str] = mapped_column(Text, default="Mon,Tue,Wed,Thu,Fri,Sat,Sun")
+    sonarr_schedule_days: Mapped[str] = mapped_column(Text, default="")
     sonarr_schedule_start: Mapped[str] = mapped_column(String(5), default="00:00")  # HH:MM
     sonarr_schedule_end: Mapped[str] = mapped_column(String(5), default="23:59")  # HH:MM
     # Minutes between Sonarr runs when schedule allows (minimum 1; legacy 0 is coerced to 60 on startup/save).
@@ -39,7 +39,7 @@ class AppSettings(Base):
     radarr_search_upgrades: Mapped[bool] = mapped_column(Boolean, default=True)
     radarr_max_items_per_run: Mapped[int] = mapped_column(Integer, default=50)
     radarr_schedule_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    radarr_schedule_days: Mapped[str] = mapped_column(Text, default="Mon,Tue,Wed,Thu,Fri,Sat,Sun")
+    radarr_schedule_days: Mapped[str] = mapped_column(Text, default="")
     radarr_schedule_start: Mapped[str] = mapped_column(String(5), default="00:00")  # HH:MM
     radarr_schedule_end: Mapped[str] = mapped_column(String(5), default="23:59")  # HH:MM
     # Minutes between Radarr runs when schedule allows (minimum 1; legacy 0 is coerced to 60 on startup/save).
@@ -63,7 +63,7 @@ class AppSettings(Base):
     emby_user_id: Mapped[str] = mapped_column(String(128), default="")
     emby_dry_run: Mapped[bool] = mapped_column(Boolean, default=True)
     emby_schedule_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    emby_schedule_days: Mapped[str] = mapped_column(Text, default="Mon,Tue,Wed,Thu,Fri,Sat,Sun")
+    emby_schedule_days: Mapped[str] = mapped_column(Text, default="")
     emby_schedule_start: Mapped[str] = mapped_column(String(5), default="00:00")  # HH:MM
     emby_schedule_end: Mapped[str] = mapped_column(String(5), default="23:59")  # HH:MM
     emby_max_items_scan: Mapped[int] = mapped_column(Integer, default=2000)
