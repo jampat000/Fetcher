@@ -8,6 +8,7 @@
     <div class="banner banner-warn" role="alert" style="margin-bottom: 1rem;">{{ error }}</div>
     {% endif %}
     <form method="post" action="/login" class="setup-wizard-form" style="margin-top: 1rem;">
+      <input type="hidden" name="next" value="{{ login_next|default('/', true)|e }}" />
       <label for="username">Username</label>
       <input class="input" id="username" name="username" type="text" autocomplete="username" required />
       <label for="password">Password</label>

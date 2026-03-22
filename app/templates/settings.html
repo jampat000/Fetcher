@@ -41,45 +41,63 @@
     <div class="banner banner-warn" role="alert">Invalid security form submission.</div>
     {% endif %}
 
-    <h3 class="section" style="margin-top:1rem;">Account</h3>
-    <p class="hint" style="margin-top:0;">Signed in as <strong>{{ settings.auth_username|default('admin', true)|e }}</strong>. Use your <strong>current password</strong> to confirm changes.</p>
+    <nav class="settings-security-subnav" aria-label="Jump to Security sections">
+      <a class="settings-security-subnav-link" href="#security-account">Account</a>
+      <a class="settings-security-subnav-link" href="#security-username">Change Username</a>
+      <a class="settings-security-subnav-link" href="#security-password">Change Password</a>
+      <a class="settings-security-subnav-link" href="#security-access">Access control</a>
+    </nav>
 
-    <form method="post" action="/settings/auth/credentials" class="section" style="margin-top:1rem;">
-      <input type="hidden" name="auth_form" value="username" />
-      <p class="small" style="margin:0 0 0.5rem 0;"><strong>Change username</strong></p>
-      <label for="sec_user_curr_pw">Current password</label>
-      <input class="password" id="sec_user_curr_pw" type="password" name="current_password" autocomplete="current-password" required />
-      <label for="sec_username">Username</label>
-      <input class="input" id="sec_username" type="text" name="new_username" value="{{ settings.auth_username|default('admin', true) }}" autocomplete="username" required />
-      <div class="btnbar" style="margin-top:8px;">
-        <button class="btn secondary" type="submit">Save username</button>
-      </div>
-    </form>
+    <h3 class="section settings-security-anchor" id="security-account" style="margin-top:1rem;">Account</h3>
+    <p class="hint" style="margin-top:0;">You are signed in as <strong>{{ settings.auth_username|default('admin', true)|e }}</strong>. Below you can <strong>change your sign-in username</strong> and <strong>change your password</strong> independently—each section has its own save button.</p>
 
-    <form method="post" action="/settings/auth/credentials" class="section" style="margin-top:1.25rem;">
-      <input type="hidden" name="auth_form" value="password" />
-      <p class="small" style="margin:0 0 0.5rem 0;"><strong>Change password</strong></p>
-      <label for="sec_pw_curr">Current password</label>
-      <input class="password" id="sec_pw_curr" type="password" name="current_password" autocomplete="current-password" required />
-      <label for="sec_pw_new">New password</label>
-      <input class="password" id="sec_pw_new" type="password" name="new_password" autocomplete="new-password" minlength="8" required />
-      <label for="sec_pw_confirm">Confirm new password</label>
-      <input class="password" id="sec_pw_confirm" type="password" name="confirm_new_password" autocomplete="new-password" minlength="8" required />
-      <div class="btnbar" style="margin-top:8px;">
-        <button class="btn secondary" type="submit">Save password</button>
-      </div>
-    </form>
+    <div class="settings-security-account-panels">
+      <section class="settings-security-panel settings-security-anchor" id="security-username" aria-labelledby="sec-panel-username-title">
+        <h4 id="sec-panel-username-title" class="settings-security-panel-title">Change Username</h4>
+        <p class="settings-security-panel-desc">Set a <strong>new username</strong> for signing in to Grabby (this replaces your current one). Enter your <strong>current password</strong> to confirm, then save.</p>
+        <form method="post" action="/settings/auth/credentials" class="section">
+          <input type="hidden" name="auth_form" value="username" />
+          <label for="sec_username">New sign-in name</label>
+          <input class="input" id="sec_username" type="text" name="new_username" value="{{ settings.auth_username|default('admin', true) }}" autocomplete="username" required />
+          <label for="sec_user_curr_pw">Current password (to confirm this change)</label>
+          <input class="password" id="sec_user_curr_pw" type="password" name="current_password" autocomplete="current-password" required />
+          <div class="btnbar">
+            <button class="btn secondary" type="submit">Save username change</button>
+          </div>
+        </form>
+      </section>
 
-    <h3 class="section" style="margin-top:1.75rem;">Access Control</h3>
-    <p class="hint" style="margin-top:0;">Optional. Listed IPs or CIDR ranges can use Grabby <strong>without</strong> a password—only on networks you trust.</p>
-    <form method="post" action="/settings/auth/access_control" class="section" style="margin-top:0.5rem;">
-      <label for="auth_ip_allowlist">IP allowlist (optional)</label>
-      <textarea class="input" id="auth_ip_allowlist" name="auth_ip_allowlist" rows="6" style="font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; width: 100%; box-sizing: border-box;" placeholder="One IP or CIDR range per line, e.g.:&#10;192.168.1.50&#10;192.168.1.0/24&#10;10.0.0.0/8">{{ settings.auth_ip_allowlist or '' }}</textarea>
-      <p class="hint" style="margin-top:0.5rem;">Devices matching these IPs or ranges will access Grabby without a password. Supports individual IPs (192.168.1.50) and CIDR ranges (192.168.1.0/24). Leave empty to require login from all devices.</p>
-      <div class="btnbar" style="margin-top:8px;">
-        <button class="btn secondary" type="submit">Save Access Control</button>
-      </div>
-    </form>
+      <section class="settings-security-panel settings-security-anchor" id="security-password" aria-labelledby="sec-panel-password-title">
+        <h4 id="sec-panel-password-title" class="settings-security-panel-title">Change Password</h4>
+        <p class="settings-security-panel-desc">Set a <strong>new password</strong> for the same account (username stays the same). At least <strong>8 characters</strong>. You’ll stay signed in on this browser until the session expires.</p>
+        <form method="post" action="/settings/auth/credentials" class="section">
+          <input type="hidden" name="auth_form" value="password" />
+          <label for="sec_pw_curr">Current password</label>
+          <input class="password" id="sec_pw_curr" type="password" name="current_password" autocomplete="current-password" required />
+          <label for="sec_pw_new">New password</label>
+          <input class="password" id="sec_pw_new" type="password" name="new_password" autocomplete="new-password" minlength="8" required />
+          <label for="sec_pw_confirm">Confirm new password</label>
+          <input class="password" id="sec_pw_confirm" type="password" name="confirm_new_password" autocomplete="new-password" minlength="8" required />
+          <div class="btnbar">
+            <button class="btn secondary" type="submit">Save password change</button>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <h3 class="section settings-security-anchor" style="margin-top:1.75rem;">Access Control</h3>
+    <section class="settings-security-panel settings-security-anchor" id="security-access" aria-labelledby="sec-panel-ac-title" style="margin-top:10px;">
+      <h4 id="sec-panel-ac-title" class="settings-security-panel-title">IP allowlist</h4>
+      <p class="settings-security-panel-desc">Optional. Clients matching these IPs or CIDR ranges can use Grabby <strong>without</strong> a password. Use only on networks you trust.</p>
+      <form method="post" action="/settings/auth/access_control" class="section">
+        <label for="auth_ip_allowlist">Allowed IPs and ranges</label>
+        <textarea class="input" id="auth_ip_allowlist" name="auth_ip_allowlist" rows="6" style="font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; width: 100%; box-sizing: border-box;" placeholder="One IP or CIDR range per line, e.g.:&#10;192.168.1.50&#10;192.168.1.0/24&#10;10.0.0.0/8">{{ settings.auth_ip_allowlist or '' }}</textarea>
+        <p class="hint" style="margin-top:0.5rem;">Supports single IPs (192.168.1.50) and CIDR ranges (192.168.1.0/24). Leave empty to require sign-in from every device.</p>
+        <div class="btnbar">
+          <button class="btn secondary" type="submit">Save Access Control</button>
+        </div>
+      </form>
+    </section>
   </div>
 
   <div class="card module-content">

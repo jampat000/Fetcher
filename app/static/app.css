@@ -569,6 +569,82 @@ a.text-link:hover{
 
 .module-content{min-width:0}
 
+/* Security card: in-page subnav + anchor scroll offset */
+.settings-security-subnav{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin:12px 0 4px 0;
+  padding:10px 12px;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:rgba(0,0,0,.12);
+}
+.settings-security-subnav-link{
+  display:inline-flex;
+  align-items:center;
+  padding:6px 10px;
+  border-radius:8px;
+  border:1px solid transparent;
+  font-size:0.875rem;
+  font-weight:500;
+  color:var(--muted2);
+  text-decoration:none;
+  line-height:1.2;
+}
+.settings-security-subnav-link:hover{
+  color:var(--text);
+  background:rgba(255,255,255,.06);
+  border-color:var(--border);
+}
+.settings-page-group .settings-security-anchor{
+  scroll-margin-top:1.5rem;
+}
+.settings-security-panel:target{
+  box-shadow:0 0 0 2px rgba(96,165,250,.45);
+}
+h3.settings-security-anchor:target{
+  color:var(--text);
+}
+
+/* Security card: separate panels for username vs password vs access control */
+.settings-security-account-panels{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+  margin-top:12px;
+}
+.settings-security-panel{
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:14px 16px;
+  background:rgba(0,0,0,.14);
+}
+.settings-security-panel-title{
+  margin:0 0 6px 0;
+  font-size:var(--dash-fs-lead);
+  font-weight:var(--dash-fw-semibold);
+  color:var(--text);
+  line-height:var(--dash-lh-snug);
+}
+.settings-security-panel-desc{
+  margin:0 0 12px 0;
+  font-size:var(--dash-fs-body);
+  color:var(--muted2);
+  line-height:var(--dash-lh-snug);
+}
+.settings-security-panel form{
+  margin:0;
+}
+.settings-security-panel form.section{
+  margin-top:0;
+  padding-top:0;
+  border-top:none;
+}
+.settings-security-panel .btnbar{
+  margin-top:10px;
+}
+
 /* Settings: one continuous panel (Grabby Settings + Backup & Restore) */
 .settings-page-group{
   border:1px solid var(--border);

@@ -102,6 +102,14 @@ py -m venv .venv
 
 Then open the URL printed by the script (default `http://127.0.0.1:8766`).
 
+**Security card (Settings):** the **Security** block at the top of **Grabby Settings** has an in-page **subnav** (Account, Change Username, Change Password, Access control). You can also deep-link while testing, e.g. **`http://127.0.0.1:8766/settings#security-password`** (use your dev port if different).
+
+**Troubleshooting “Settings doesn’t work” in dev**
+
+1. **URL:** Open the **exact** URL `dev-start.ps1` prints (usually **`http://127.0.0.1:8766`**). **`http://localhost:8766`** can fail (IPv6 vs IPv4) or use a **different cookie jar** than `127.0.0.1`, so you look “signed out” on Settings after logging in on the other host.
+2. **Port:** **8766** = dev (this repo). **8765** = installed service — it will **not** show your local code edits.
+3. **Auth:** Visiting **`/settings`** without a session sends you to **Sign in** with a **`next=`** return URL; after a successful login you should land back on **Settings**. If you always end up on **Setup**, your dev DB has **no password** yet — finish **step 1 (account)** on **`/setup/0`**, or delete `%TEMP%\grabby-dev.sqlite3` and start clean.
+
 **Development database:** `scripts/dev-start.ps1` sets **`GRABBY_DEV_DB_PATH`** to **`%TEMP%\grabby-dev.sqlite3`** by default (`app/db.py`) so the dev server does not lock the same **`app.db`** as the installed service. Use **`-SharedAppDb`** only when you intentionally want **`%LocalAppData%\Grabby\app.db`**—**stop the Grabby service first** to avoid SQLite “database is locked” errors.
 
 ### Testing the Web UI in dev (auth + setup)

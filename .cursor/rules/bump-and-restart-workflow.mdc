@@ -5,7 +5,25 @@ alwaysApply: true
 
 # Bump + restart local (full workflow)
 
-When the user asks to **bump** (version/release) **and restart local**, or clearly means the same (e.g. “ship it”, “release bump”, “bump and restart”, “new build on GitHub”), do **all** of the following unless they explicitly opt out of one step:
+## “Bump and ship” (explicit) — **`dev`** + GitHub installer
+
+When the user says **“bump and ship”** (or clearly means: bump version, push for CI, and queue the **GitHub** installer build — **without** only meaning “PR to master”):
+
+1. **Bump** — Same as below: **`VERSION`** + **`CHANGELOG.md`** `[Unreleased]` → dated **`[X.Y.Z]`** section.
+2. **Commit** — On your working branch (e.g. **`release/vX.Y.Z`** from **`origin/master`**, or feature branch).
+3. **Push to `origin dev`** (required for this phrase):
+   - `git fetch origin`
+   - If **`origin/dev`** exists: `git switch dev && git pull origin dev`, merge or cherry-pick the bump commit, `git push origin dev`.
+   - If **`dev` does not exist on the remote:** `git switch -c dev origin/master` (or from current branch base), merge/cherry-pick the release work, `git push -u origin dev`.
+   - **Tag release (from VERSION)** (`.github/workflows/tag-release.yml`) runs on pushes to **`dev`** that change **`VERSION`**: creates **`vX.Y.Z`** if missing and **dispatches Build installer** — no extra step needed unless the workflow fails.
+4. **PR `dev` → `master`** — Remind the user to open/merge so **`master`** matches (protected branch; do not push bump directly to **`master`** from local).
+5. **`gh workflow run build-installer.yml --ref vX.Y.Z`** — Only as **recovery** (same rules as **`.cursor/rules/github-installer-workflow-ref-trap.mdc`**); normal path is Tag release on **`dev`**.
+
+If they also want a local dev server restart, run **`scripts/dev-start.ps1`** after.
+
+---
+
+When the user asks to **bump** (version/release) **and restart local**, or clearly means the same (e.g. “ship it”, “release bump”, “bump and restart”, “new build on GitHub”) **and did not say “bump and ship”**, do **all** of the following unless they explicitly opt out of one step:
 
 1. **Bump** — Update repo `VERSION` and move `CHANGELOG.md` `[Unreleased]` into a dated `[X.Y.Z] - YYYY-MM-DD` section (per `CHANGELOG.md` “Releasing”).
 2. **Commit** — On a **release branch only** (see below), `git add` the release-related changes (typically `VERSION`, `CHANGELOG.md`, and any code/docs in that release), message e.g. `Release vX.Y.Z` or `chore: release vX.Y.Z — …`.

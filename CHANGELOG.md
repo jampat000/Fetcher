@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **CI:** **Tag release (from VERSION)** also runs when **`VERSION`** changes on branch **`dev`** (creates **`vX.Y.Z`** and dispatches **Build installer**), so **“bump and ship”** can target **`dev`** without waiting on **`master`**.
+
+## [1.0.38] - 2026-03-23
+
+### Added
+
+- **`tests/test_auth_next_redirect.py`:** Covers **`sanitize_next_param`**, login **`next`** redirect, and open-redirect rejection.
+
+### Changed
+
+- **Settings → Security:** In-page **subnav** (Account, **Change Username**, **Change Password**, Access control) with fragment anchors; card layout for account vs access control; headings and copy state that username and password are changed separately.
+- **Sign-in:** Unauthenticated visits redirect to **`/login?next=…`** (safe, same-origin paths only) so after login you return to the requested page (e.g. **Settings**).
+- **POST `/settings`**, **`POST /emby/settings`**, **`POST /emby/settings/connection`**, **`POST /emby/settings/cleaner`:** **`SQLAlchemyError`** → **`save=fail&reason=db_error`**; **`ValueError`** → **`reason=invalid`**; other exceptions → **`logger.exception`**, session **rollback**, **`reason=error`**; **`GRABBY_LOG_LEVEL=DEBUG`** re-raises after logging.
+
+### Fixed
+
+- **`scripts/dev-start.ps1`:** PowerShell parse errors from **`[...]`** inside double-quoted strings (brackets escaped or single-quoted).
+
+### Documentation
+
+- **README** + **`scripts/dev-start.ps1`:** **`127.0.0.1` vs `localhost`**, dev vs service port, **Settings** auth troubleshooting.
+
 ## [1.0.37] - 2026-03-22
 
 ### Fixed
@@ -357,10 +381,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 1. Update this file: move **`[Unreleased]`** items under a new **`[X.Y.Z] - YYYY-MM-DD`** heading, then keep **`[Unreleased]`** empty (or note pending work).
 2. Bump **`VERSION`** to match the release.
-3. **`master`** is **protected**: commit on **`release/vX.Y.Z`** (or **`chore/release-vX.Y.Z`**) branched from **`origin/master`** (`git fetch origin && git switch -c release/vX.Y.Z origin/master`) — **not** on local **`master`**, or you’ll be **ahead of `origin`** with no clean push. Open a **PR** into **`master`** and **merge** when checks pass. After merge: **`git switch master && git pull --ff-only`** (or **`git reset --hard origin/master`**), **`git branch -d release/vX.Y.Z`**, and **`git push origin --delete release/vX.Y.Z`** if the remote branch remains. Merging a commit that changes **`VERSION`** triggers **Tag release (from VERSION)** in Actions, which pushes **`vX.Y.Z`** if missing and **dispatches Build installer** for that tag. Maintainers / Cursor agent: after **`git fetch origin master --tags`**, you may also run **`gh workflow run build-installer.yml --repo jampat000/Grabby --ref vX.Y.Z`** so a build is always queued — **only** if **`vX.Y.Z`** points to the commit you intend to ship (see step **5** if the tag is stale). You do **not** need to tag locally unless you prefer to.
-4. If tagging did not run (e.g. workflow not merged yet), use **Actions → Tag release (from VERSION) → Run workflow**, or create the tag from **GitHub Releases**.
-5. If a **tag** exists but **Releases → Latest** never updated (no **`GrabbySetup.exe`** for that tag), check that **`vX.Y.Z`** points to the **`master`** commit you mean (run **`git fetch origin master --tags`**, then compare **`git rev-parse vX.Y.Z`** vs **`git rev-parse origin/master`**). **Manual** **Build installer** / **`gh workflow run … --ref vX.Y.Z`** uses the **workflow YAML from that tag’s commit**, not automatically from **`master`** — an **old** tag SHA can **build** but **skip** **release**. **Fix:** move the tag to the correct **`master`** commit and **re-push** the tag, **or** bump **`VERSION`** and release again, **or** **`gh release create`** + attach **`GrabbySetup.exe`** from a green run artifact.
-6. Follow **GitHub Actions** / environment rules for approving production releases if configured.
+3. **Bump and ship (Cursor / maintainer shortcut):** Push the commit that changes **`VERSION`** to **`origin dev`**. **Tag release (from VERSION)** runs on **`dev`** (same as **`master`** / **`main`**): creates **`vX.Y.Z`** if missing and dispatches **Build installer**. Then open a **PR `dev` → `master`** so the default branch matches ( **`master`** stays protected — do not push the bump commit directly to **`master`** from local).
+4. **Classic path (PR to `master` only):** Commit on **`release/vX.Y.Z`** branched from **`origin/master`** — **not** on local **`master`**. Open a **PR** into **`master`** and **merge** when checks pass. That merge also triggers **Tag release** when **`VERSION`** changes. After merge: **`git switch master && git pull --ff-only`**, delete the release branch locally/remotely as needed.
+5. Maintainers / Cursor agent: after **`git fetch origin master --tags`**, you may run **`gh workflow run build-installer.yml --repo jampat000/Grabby --ref vX.Y.Z`** to queue a build — **only** if **`vX.Y.Z`** points to the commit you intend to ship (see step **7** if the tag is stale). Often unnecessary if **Tag release** already dispatched.
+6. If tagging did not run (e.g. workflow not merged yet), use **Actions → Tag release (from VERSION) → Run workflow**, or create the tag from **GitHub Releases**.
+7. If a **tag** exists but **Releases → Latest** never updated (no **`GrabbySetup.exe`** for that tag), check that **`vX.Y.Z`** points to the commit you mean (**`master`** or **`dev`** tip, depending how you shipped — run **`git fetch origin master --tags`**, then compare **`git rev-parse vX.Y.Z`** vs **`git rev-parse origin/master`**). **Manual** **Build installer** / **`gh workflow run … --ref vX.Y.Z`** uses the **workflow YAML from that tag’s commit**, not automatically from **`master`** — an **old** tag SHA can **build** but **skip** **release**. **Fix:** move the tag to the correct commit and **re-push** the tag, **or** bump **`VERSION`** and release again, **or** **`gh release create`** + attach **`GrabbySetup.exe`** from a green run artifact.
+8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 
 [Unreleased]: https://github.com/jampat000/Grabby/compare/v1.0.34...HEAD
 [1.0.34]: https://github.com/jampat000/Grabby/compare/v1.0.33...v1.0.34

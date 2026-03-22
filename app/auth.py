@@ -6,6 +6,7 @@ import ipaddress
 import logging
 import time
 import bcrypt
+from urllib.parse import quote
 from fastapi import Depends, HTTPException, Request
 from itsdangerous import BadSignature, SignatureExpired, TimestampSigner
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -183,6 +184,32 @@ def clear_login_failures(ip: str) -> None:
     _login_attempts.pop(ip, None)
 
 
+def sanitize_next_param(raw: str | None, *, max_len: int = 2048) -> str:
+    """Allow only same-origin relative paths (with optional query) for post-login redirect."""
+    s = (raw or "").strip()
+    if not s:
+        return "/"
+    if len(s) > max_len:
+        s = s[:max_len]
+    if not s.startswith("/") or s.startswith("//"):
+        return "/"
+    if any(c in s for c in "\r\n\x00"):
+        return "/"
+    path_only = s.split("?", 1)[0]
+    if "://" in path_only:
+        return "/"
+    return s
+
+
+def login_url_with_next(*, request: Request) -> str:
+    """``/login?next=…`` pointing at the current path+query (safe), for return after sign-in."""
+    path = request.url.path
+    query = request.url.query
+    rel = path + (f"?{query}" if query else "")
+    safe_rel = sanitize_next_param(rel)
+    return f"/login?next={quote(safe_rel, safe='/?:=&')}"
+
+
 async def bootstrap_auth_on_startup() -> None:
     """GRABBY_RESET_AUTH=1 clears credentials; ensure session signing secret exists."""
     import os
@@ -244,11 +271,11 @@ async def require_auth(
     if not secret:
         if _wants_json(request):
             raise HTTPException(status_code=401, detail={"message": "Unauthorized"})
-        raise GrabbyAuthRequired(RedirectResponse(url="/login", status_code=303))
+        raise GrabbyAuthRequired(RedirectResponse(url=login_url_with_next(request=request), status_code=303))
 
     raw = request.cookies.get(SESSION_COOKIE_NAME) or ""
     expected = (settings.auth_username or "admin").strip() or "admin"
     if not verify_session_cookie(secret=secret, cookie_value=raw, expected_username=expected):
         if _wants_json(request):
             raise HTTPException(status_code=401, detail={"message": "Unauthorized"})
-        raise GrabbyAuthRequired(RedirectResponse(url="/login", status_code=303))
+        raise GrabbyAuthRequired(RedirectResponse(url=login_url_with_next(request=request), status_code=303))
