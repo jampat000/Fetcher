@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-03-23
+
+### Fixed
+
+- **Windows dev:** **`scripts/stop-fetcher-dev.ps1`** frees typical dev ports (**8766–8770**) and stops stray **Fetcher `uvicorn app.main:app`** processes and orphan **`multiprocessing` `python.exe`** workers (parent PID gone). **`scripts/dev-start.ps1`** invokes it before binding so **`--reload`** no longer leaves **8766** stuck.
+
 ### Added
 
 - **Docs:** **[`docs/WORKSPACE-FOLDER.md`](docs/WORKSPACE-FOLDER.md)** — use local folder **`Fetcher`** (not legacy **`grabby`**), **`fetcher.code-workspace`** for Cursor/VS Code, and **`scripts/rename-local-repo-folder.ps1`** to rename an existing clone.
@@ -457,7 +463,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 7. If a **tag** exists but **Releases → Latest** never updated (no **`FetcherSetup.exe`** for that tag), check that **`vX.Y.Z`** points to the commit you mean — run **`git fetch origin master --tags`**, then compare **`git rev-parse vX.Y.Z`** vs **`git rev-parse origin/master`**. **Manual** **Build installer** / **`gh workflow run … --ref vX.Y.Z`** uses the **workflow YAML from that tag’s commit** — an **old** tag SHA can **build** but **skip** **release**. **Fix:** move the tag to the correct commit and **re-push** the tag, **or** bump **`VERSION`** and release again, **or** **`gh release create`** + attach **`FetcherSetup.exe`** from a green run artifact.
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/jampat000/Fetcher/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/jampat000/Fetcher/compare/v1.0.44...v2.0.0
 [1.0.44]: https://github.com/jampat000/Fetcher/compare/v1.0.43...v1.0.44
 [1.0.43]: https://github.com/jampat000/Fetcher/compare/v1.0.42...v1.0.43
