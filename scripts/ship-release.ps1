@@ -17,6 +17,9 @@
 
   Prerequisites: **git**, **GitHub CLI** (**gh auth login**).
 
+  **Changelog date:** When editing **CHANGELOG.md** for a release, set **YYYY-MM-DD** from the machine
+  system date (e.g. **`Get-Date -Format yyyy-MM-dd`** in PowerShell), not a guessed day.
+
 .EXAMPLE
   git switch -c release/v1.0.40 origin/master
   # edit VERSION + CHANGELOG, commit
