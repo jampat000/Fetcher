@@ -8,12 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [2.0.0] - 2026-03-22
 
-Major release — rebrand from Grabby to Fetcher, Cleaner to Trimmer, and full V5 visual redesign.
+**First semver 2.x release** — rebrand from Grabby to Fetcher, Cleaner to Trimmer, full V5 UI, and a tightened dashboard/settings experience.
 
 ### Changed
 
 - **Rebrand:** Application identity is **Fetcher** across the app, docs, installer, Windows service, environment variables (**`FETCHER_*`**), session cookie (**`fetcher_session`**), default SQLite file (**`fetcher.db`**), backup JSON magic (**`fetcher_backup`**), and GitHub defaults (**`jampat000/Fetcher`**, **`FetcherSetup.exe`**).
 - **Trimmer:** Emby maintenance UI and routes under **`/trimmer`** / **`/trimmer/settings`**; activity kind **`trimmed`** (stored rows migrated from the pre-rename kind on upgrade). **`POST /trimmer/settings/cleaner`** remains the form action for Trimmer-specific settings.
+- **Fetcher Settings:** Horizontal **tabs** (Security, Sonarr, Radarr, Global) at the top; each section is its own **`card gc`** with **stripe** accent (**purple** / **blue** / **green** / **gray**). Collapsible panels removed — sections stay open for faster editing.
+- **Dashboard:** Hero tiles for **TV Missing**, **Movies Missing**, **TV Upgrades**, and **Movie Upgrades**; Sonarr/Radarr overview cards no longer duplicate those queue counts; **Automation** and **Emby Trimmer** cards trimmed to essential status; **Recent activity** preview shows up to **5** rows.
 
 ## [1.0.44] - 2026-03-22
 
@@ -446,7 +448,18 @@ Major release — rebrand from Grabby to Fetcher, Cleaner to Trimmer, and full V
 7. If a **tag** exists but **Releases → Latest** never updated (no **`FetcherSetup.exe`** for that tag), check that **`vX.Y.Z`** points to the commit you mean — run **`git fetch origin master --tags`**, then compare **`git rev-parse vX.Y.Z`** vs **`git rev-parse origin/master`**. **Manual** **Build installer** / **`gh workflow run … --ref vX.Y.Z`** uses the **workflow YAML from that tag’s commit** — an **old** tag SHA can **build** but **skip** **release**. **Fix:** move the tag to the correct commit and **re-push** the tag, **or** bump **`VERSION`** and release again, **or** **`gh release create`** + attach **`FetcherSetup.exe`** from a green run artifact.
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v1.0.34...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/jampat000/Fetcher/compare/v1.0.44...v2.0.0
+[1.0.44]: https://github.com/jampat000/Fetcher/compare/v1.0.43...v1.0.44
+[1.0.43]: https://github.com/jampat000/Fetcher/compare/v1.0.42...v1.0.43
+[1.0.42]: https://github.com/jampat000/Fetcher/compare/v1.0.41...v1.0.42
+[1.0.41]: https://github.com/jampat000/Fetcher/compare/v1.0.40...v1.0.41
+[1.0.40]: https://github.com/jampat000/Fetcher/compare/v1.0.39...v1.0.40
+[1.0.39]: https://github.com/jampat000/Fetcher/compare/v1.0.38...v1.0.39
+[1.0.38]: https://github.com/jampat000/Fetcher/compare/v1.0.37...v1.0.38
+[1.0.37]: https://github.com/jampat000/Fetcher/compare/v1.0.36...v1.0.37
+[1.0.36]: https://github.com/jampat000/Fetcher/compare/v1.0.35...v1.0.36
+[1.0.35]: https://github.com/jampat000/Fetcher/compare/v1.0.34...v1.0.35
 [1.0.34]: https://github.com/jampat000/Fetcher/compare/v1.0.33...v1.0.34
 [1.0.33]: https://github.com/jampat000/Fetcher/compare/v1.0.32...v1.0.33
 [1.0.32]: https://github.com/jampat000/Fetcher/compare/v1.0.31...v1.0.32

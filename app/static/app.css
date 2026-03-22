@@ -596,11 +596,13 @@ h2.gc-title,
   border-color: rgba(255, 255, 255, 0.12);
 }
 .card-blue:hover,
-.card-stripe-blue:hover {
+.card-stripe-blue:hover,
+.card.gc.stripe-blue:hover {
   box-shadow: 0 8px 40px rgba(59, 130, 246, 0.12);
 }
 .card-green:hover,
-.card-stripe-green:hover {
+.card-stripe-green:hover,
+.card.gc.stripe-green:hover {
   box-shadow: 0 8px 40px rgba(16, 185, 129, 0.12);
 }
 
@@ -608,7 +610,11 @@ h2.gc-title,
 .card-stripe-green::before,
 .card-stripe-amber::before,
 .card-stripe-purple::before,
-.card-stripe-gray::before {
+.card-stripe-gray::before,
+.card.gc.stripe-blue::before,
+.card.gc.stripe-green::before,
+.card.gc.stripe-purple::before,
+.card.gc.stripe-gray::before {
   content: "";
   position: absolute;
   left: 12px;
@@ -619,19 +625,23 @@ h2.gc-title,
   z-index: 2;
   pointer-events: none;
 }
-.card-stripe-blue::before {
+.card-stripe-blue::before,
+.card.gc.stripe-blue::before {
   background: linear-gradient(90deg, transparent, #3b82f6, #06b6d4, transparent);
 }
-.card-stripe-green::before {
+.card-stripe-green::before,
+.card.gc.stripe-green::before {
   background: linear-gradient(90deg, transparent, #10b981, #14b8a6, transparent);
 }
 .card-stripe-amber::before {
   background: linear-gradient(90deg, transparent, #f59e0b, #f97316, transparent);
 }
-.card-stripe-purple::before {
+.card-stripe-purple::before,
+.card.gc.stripe-purple::before {
   background: linear-gradient(90deg, transparent, #8b5cf6, #a78bfa, transparent);
 }
-.card-stripe-gray::before {
+.card-stripe-gray::before,
+.card.gc.stripe-gray::before {
   background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.5), rgba(148, 163, 184, 0.2), transparent);
 }
 
@@ -1302,68 +1312,52 @@ h2.gc-title,
   font-size: 14px;
 }
 
-/* ---- Settings layout ---- */
-.settings-page-layout {
-  display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
-  gap: 24px;
-  align-items: start;
-}
-@media (max-width: 900px) {
-  .settings-page-layout {
-    grid-template-columns: 1fr;
-  }
-  .settings-nav {
-    position: static;
-    flex-direction: row;
-    flex-wrap: wrap;
-  }
-}
-
-.settings-nav {
-  position: sticky;
-  top: 12px;
+/* ---- Settings page (Fetcher) ---- */
+.settings-tabs {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  gap: 8px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
 }
-.settings-nav-link {
-  display: flex;
+.settings-tab {
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 7px;
+  padding: 8px 16px;
   border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   color: var(--text2);
-  text-decoration: none;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
-  border: 1px solid transparent;
-  transition: background 0.15s, color 0.15s;
+  text-decoration: none;
+  transition: all 0.15s;
 }
-.settings-nav-link:hover {
-  background: rgba(255, 255, 255, 0.04);
+.settings-tab:hover {
+  background: rgba(255, 255, 255, 0.1);
   color: var(--text);
+  border-color: rgba(255, 255, 255, 0.18);
 }
-.settings-nav-dot {
-  width: 8px;
-  height: 8px;
+.settings-tab-dot {
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
 }
-.settings-nav-dot.blue {
+.settings-tab-dot.blue {
   background: #3b82f6;
-  box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.8);
 }
-.settings-nav-dot.green {
+.settings-tab-dot.green {
   background: #10b981;
-  box-shadow: 0 0 10px rgba(16, 185, 129, 0.45);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.8);
 }
-.settings-nav-dot.gray {
-  background: #64748b;
-}
-.settings-nav-dot.purple {
+.settings-tab-dot.purple {
   background: #8b5cf6;
-  box-shadow: 0 0 10px rgba(139, 92, 246, 0.45);
+  box-shadow: 0 0 6px rgba(139, 92, 246, 0.8);
+}
+.settings-tab-dot.gray {
+  background: #475569;
 }
 
 .settings-collapse {
@@ -1448,11 +1442,6 @@ h2.gc-title,
 .settings-collapse-body {
   padding: 0 22px 20px;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.settings-page-group .card.gc:not(.login-card):not(.dashboard-panel):not(.banner),
-.settings-page-group .module-content:not(.login-card):not(.dashboard-panel):not(.banner) {
-  margin-bottom: 20px;
 }
 
 /* ---- Login ---- */

@@ -1,6 +1,9 @@
 # Fetcher
 
-**Never miss a release (and clean up old media).** — Windows Service + Web UI that integrates with **Sonarr**, **Radarr**, and **Emby** to:
+**Never miss a release (and clean up old media).** — Windows Service + Web UI for **Sonarr**, **Radarr**, and **Emby**:
+
+> **Why this exists:** This is a **vibe-coded** app — I had a concrete requirement (Arr automation + optional Emby cleanup on Windows, as a service, with a UI that matched how I work) and nothing public really fit. If it helps you, great; if not, no hard feelings. It’s shipped because *I* needed it to exist.
+
 
 - Search for **missing** movies/episodes
 - Re-trigger searches to **upgrade** existing items until the Arr app reports the **quality cutoff** is met (your Quality Profiles still decide what “better” means)
