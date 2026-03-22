@@ -6,7 +6,7 @@ annotated-doc==0.0.4
 annotated-types==0.7.0
 anyio==4.12.1
 apscheduler==3.11.0
-bcrypt==4.2.1
+bcrypt==5.0.0
 certifi==2026.2.25
 click==8.3.1
 fastapi==0.135.1
