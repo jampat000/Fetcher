@@ -66,6 +66,22 @@ def test_no_password_home_redirects_to_setup(client_real_auth: TestClient) -> No
     assert r.headers.get("location", "").endswith("/setup/0")
 
 
+def test_setup_step0_sets_session_cookie_for_api_tests(client_real_auth: TestClient) -> None:
+    r = client_real_auth.post(
+        "/setup/0",
+        data={
+            "setup_auth_username": "admin",
+            "setup_auth_password": "newpass123",
+            "wizard_action": "continue",
+        },
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert r.headers.get("location", "").endswith("/setup/1")
+    set_cookie = r.headers.get("set-cookie") or ""
+    assert "grabby_session=" in set_cookie
+
+
 def test_no_password_login_redirects_to_setup(client_real_auth: TestClient) -> None:
     r = client_real_auth.get("/login", follow_redirects=False)
     assert r.status_code == 302

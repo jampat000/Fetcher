@@ -17,7 +17,7 @@
 
   <div class="card module-content">
     <h2>Security</h2>
-    <p class="hint">Web UI sign-in. Session cookie is HTTP-only (7 days). Optional <strong>Access Control</strong> below lets listed IPs or CIDR ranges reach Grabby without a password—use only on trusted networks.</p>
+    <p class="hint">Your account password protects this web UI. The session cookie is <strong>HTTP-only</strong> and lasts <strong>7 days</strong>.</p>
     {% if request.query_params.get('saved') == '1' %}
     <div class="banner banner-ok" role="status">Settings saved.</div>
     {% elif request.query_params.get('save') == 'fail' and request.query_params.get('reason') == 'invalid_ip' %}
@@ -41,36 +41,38 @@
     <div class="banner banner-warn" role="alert">Invalid security form submission.</div>
     {% endif %}
 
-    <p><strong>Current username:</strong> {{ settings.auth_username|default('admin', true)|e }}</p>
+    <h3 class="section" style="margin-top:1rem;">Account</h3>
+    <p class="hint" style="margin-top:0;">Signed in as <strong>{{ settings.auth_username|default('admin', true)|e }}</strong>. Use your <strong>current password</strong> to confirm changes.</p>
 
-    <h3 class="section" style="margin-top:1rem;">Change username</h3>
-    <form method="post" action="/settings/auth/credentials" class="section">
+    <form method="post" action="/settings/auth/credentials" class="section" style="margin-top:1rem;">
       <input type="hidden" name="auth_form" value="username" />
-      <label>Current password</label>
-      <input class="password" type="password" name="current_password" autocomplete="current-password" required />
-      <label>New username</label>
-      <input class="input" type="text" name="new_username" value="{{ settings.auth_username|default('admin', true) }}" autocomplete="username" required />
+      <p class="small" style="margin:0 0 0.5rem 0;"><strong>Change username</strong></p>
+      <label for="sec_user_curr_pw">Current password</label>
+      <input class="password" id="sec_user_curr_pw" type="password" name="current_password" autocomplete="current-password" required />
+      <label for="sec_username">Username</label>
+      <input class="input" id="sec_username" type="text" name="new_username" value="{{ settings.auth_username|default('admin', true) }}" autocomplete="username" required />
       <div class="btnbar" style="margin-top:8px;">
         <button class="btn secondary" type="submit">Save username</button>
       </div>
     </form>
 
-    <h3 class="section" style="margin-top:1.5rem;">Change password</h3>
-    <form method="post" action="/settings/auth/credentials" class="section">
+    <form method="post" action="/settings/auth/credentials" class="section" style="margin-top:1.25rem;">
       <input type="hidden" name="auth_form" value="password" />
-      <label>Current password</label>
-      <input class="password" type="password" name="current_password" autocomplete="current-password" required />
-      <label>New password</label>
-      <input class="password" type="password" name="new_password" autocomplete="new-password" minlength="8" required />
-      <label>Confirm new password</label>
-      <input class="password" type="password" name="confirm_new_password" autocomplete="new-password" minlength="8" required />
+      <p class="small" style="margin:0 0 0.5rem 0;"><strong>Change password</strong></p>
+      <label for="sec_pw_curr">Current password</label>
+      <input class="password" id="sec_pw_curr" type="password" name="current_password" autocomplete="current-password" required />
+      <label for="sec_pw_new">New password</label>
+      <input class="password" id="sec_pw_new" type="password" name="new_password" autocomplete="new-password" minlength="8" required />
+      <label for="sec_pw_confirm">Confirm new password</label>
+      <input class="password" id="sec_pw_confirm" type="password" name="confirm_new_password" autocomplete="new-password" minlength="8" required />
       <div class="btnbar" style="margin-top:8px;">
         <button class="btn secondary" type="submit">Save password</button>
       </div>
     </form>
 
-    <h3 class="section" style="margin-top:1.5rem;">Access Control</h3>
-    <form method="post" action="/settings/auth/access_control" class="section">
+    <h3 class="section" style="margin-top:1.75rem;">Access Control</h3>
+    <p class="hint" style="margin-top:0;">Optional. Listed IPs or CIDR ranges can use Grabby <strong>without</strong> a password—only on networks you trust.</p>
+    <form method="post" action="/settings/auth/access_control" class="section" style="margin-top:0.5rem;">
       <label for="auth_ip_allowlist">IP allowlist (optional)</label>
       <textarea class="input" id="auth_ip_allowlist" name="auth_ip_allowlist" rows="6" style="font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; width: 100%; box-sizing: border-box;" placeholder="One IP or CIDR range per line, e.g.:&#10;192.168.1.50&#10;192.168.1.0/24&#10;10.0.0.0/8">{{ settings.auth_ip_allowlist or '' }}</textarea>
       <p class="hint" style="margin-top:0.5rem;">Devices matching these IPs or ranges will access Grabby without a password. Supports individual IPs (192.168.1.50) and CIDR ranges (192.168.1.0/24). Leave empty to require login from all devices.</p>
