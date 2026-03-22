@@ -1,12 +1,15 @@
 {% extends "layout.html" %}
+{% from "macros/trimmer_area.html" import trimmer_area_tabs %}
 {% block content %}
 <div class="wrap">
   <div class="page-head">
     <div>
       <h1 class="ph-title">Trimmer</h1>
-      <p>Review <strong>Emby Trimmer</strong> candidates clearly before scheduled delete runs.</p>
+      <p>Review <strong>Emby Trimmer</strong> candidates clearly before scheduled delete runs. Rules and schedules live under <a href="/trimmer/settings">Trimmer Settings</a>.</p>
     </div>
   </div>
+
+  {{ trimmer_area_tabs('review') }}
 
   <div class="card gc">
       <div class="gc-title">Trimmer Review</div>

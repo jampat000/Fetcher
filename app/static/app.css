@@ -613,6 +613,7 @@ h2.gc-title,
 .card-stripe-gray::before,
 .card.gc.stripe-blue::before,
 .card.gc.stripe-green::before,
+.card.gc.stripe-amber::before,
 .card.gc.stripe-purple::before,
 .card.gc.stripe-gray::before {
   content: "";
@@ -633,8 +634,13 @@ h2.gc-title,
 .card.gc.stripe-green::before {
   background: linear-gradient(90deg, transparent, #10b981, #14b8a6, transparent);
 }
-.card-stripe-amber::before {
+.card-stripe-amber::before,
+.card.gc.stripe-amber::before {
   background: linear-gradient(90deg, transparent, #f59e0b, #f97316, transparent);
+}
+.card-stripe-amber:hover,
+.card.gc.stripe-amber:hover {
+  box-shadow: 0 8px 40px rgba(245, 158, 11, 0.12);
 }
 .card-stripe-purple::before,
 .card.gc.stripe-purple::before {
@@ -1338,6 +1344,12 @@ h2.gc-title,
   color: var(--text);
   border-color: rgba(255, 255, 255, 0.18);
 }
+.trimmer-area-tabs .settings-tab.is-active,
+.settings-tab.is-active {
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(59, 130, 246, 0.35);
+  color: var(--text);
+}
 .settings-tab-dot {
   width: 7px;
   height: 7px;
@@ -1355,6 +1367,10 @@ h2.gc-title,
 .settings-tab-dot.purple {
   background: #8b5cf6;
   box-shadow: 0 0 6px rgba(139, 92, 246, 0.8);
+}
+.settings-tab-dot.amber {
+  background: #f59e0b;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.85);
 }
 .settings-tab-dot.gray {
   background: #475569;
@@ -2025,6 +2041,11 @@ th {
 
 .trimmer-mode-banner {
   margin-bottom: 14px;
+}
+
+/* In-page section jumps (Trimmer Settings tabs → #trimmer-*) */
+.trimmer-settings-anchor {
+  scroll-margin-top: 1.25rem;
 }
 
 .genre-select {

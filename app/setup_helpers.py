@@ -2,33 +2,20 @@
 
 from __future__ import annotations
 
-from urllib.parse import urlparse
-
 import httpx
 
 from app.arr_client import ArrClient, ArrConfig
 from app.emby_client import EmbyClient, EmbyConfig
+from app.form_helpers import _looks_like_url, _normalize_base_url
 
 
 def normalize_setup_url(raw: str) -> str:
-    """Same rules as main._normalize_base_url."""
-    raw = (raw or "").strip()
-    if not raw:
-        return ""
-    if "://" not in raw:
-        raw = "http://" + raw
-    p = urlparse(raw)
-    if not p.scheme or not p.netloc:
-        return raw
-    if p.scheme == "https" and (p.port in (8989, 7878)) and (p.path in ("", "/")):
-        return f"http://{p.netloc}".rstrip("/")
-    base = f"{p.scheme}://{p.netloc}{p.path}".rstrip("/")
-    return base
+    """Same rules as ``_normalize_base_url`` (wizard + settings POST)."""
+    return _normalize_base_url(raw)
 
 
 def looks_like_url(raw: str) -> bool:
-    v = (raw or "").strip().lower()
-    return v.startswith("http://") or v.startswith("https://")
+    return _looks_like_url(raw)
 
 
 async def test_sonarr_connection(url: str, api_key: str) -> tuple[bool, str]:

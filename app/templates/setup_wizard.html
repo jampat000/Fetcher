@@ -46,7 +46,7 @@
     {% endif %}
 
     {% if step < 5 %}
-    <form method="post" action="/setup/{{ step }}" class="setup-wizard-form">
+    <form method="post" action="/setup/{{ step }}" class="setup-wizard-form"{% if step > 0 %} autocomplete="off"{% endif %}>
       {% if step > 0 %}
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       {% endif %}
@@ -61,12 +61,13 @@
       {% elif step == 1 %}
       <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Sonarr</h2>
       <p class="hint">Base URL and API key from Sonarr → Settings → General. You can test the connection before saving.</p>
+      <p class="small muted" style="margin-top:0;">Example URL: <code class="code-inline">http://192.168.1.10:8989</code> · <code class="code-inline">http://localhost:8989</code> · reverse proxy: <code class="code-inline">https://sonarr.example.com</code></p>
       <div class="checkline">
         <input type="checkbox" name="sonarr_enabled" id="sonarr_enabled" {% if settings.sonarr_enabled %}checked{% endif %} />
         <label for="sonarr_enabled"><strong>Enable</strong> Sonarr automation</label>
       </div>
       <label for="sonarr_url">Sonarr URL</label>
-      <input class="input" id="sonarr_url" name="sonarr_url" type="text" value="{{ settings.sonarr_url }}" placeholder="http://localhost:8989" autocomplete="off" />
+      <input class="input" id="sonarr_url" name="sonarr_url" type="text" value="{{ settings.sonarr_url }}" placeholder="http://localhost:8989" inputmode="url" autocomplete="off" autocorrect="off" spellcheck="false" />
       <label for="sonarr_api_key">Sonarr API key</label>
       <div class="control">
         <input class="password" id="sonarr_api_key" name="sonarr_api_key" type="password" value="{{ settings.sonarr_api_key }}" placeholder="X-Api-Key" autocomplete="off" />
@@ -79,12 +80,13 @@
       {% elif step == 2 %}
       <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Radarr</h2>
       <p class="hint">Base URL and API key from Radarr → Settings → General.</p>
+      <p class="small muted" style="margin-top:0;">Example URL: <code class="code-inline">http://192.168.1.10:7878</code> · <code class="code-inline">http://localhost:7878</code> · reverse proxy: <code class="code-inline">https://radarr.example.com</code></p>
       <div class="checkline">
         <input type="checkbox" name="radarr_enabled" id="radarr_enabled" {% if settings.radarr_enabled %}checked{% endif %} />
         <label for="radarr_enabled"><strong>Enable</strong> Radarr automation</label>
       </div>
       <label for="radarr_url">Radarr URL</label>
-      <input class="input" id="radarr_url" name="radarr_url" type="text" value="{{ settings.radarr_url }}" placeholder="http://localhost:7878" autocomplete="off" />
+      <input class="input" id="radarr_url" name="radarr_url" type="text" value="{{ settings.radarr_url }}" placeholder="http://localhost:7878" inputmode="url" autocomplete="off" autocorrect="off" spellcheck="false" />
       <label for="radarr_api_key">Radarr API key</label>
       <div class="control">
         <input class="password" id="radarr_api_key" name="radarr_api_key" type="password" value="{{ settings.radarr_api_key }}" placeholder="X-Api-Key" autocomplete="off" />
@@ -97,12 +99,13 @@
       {% elif step == 3 %}
       <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Emby (Trimmer)</h2>
       <p class="hint">Optional. Server URL, API key (Emby → API Keys), and your user ID if required by your server policy.</p>
+      <p class="small muted" style="margin-top:0;">Example URL: <code class="code-inline">http://192.168.1.10:8096</code> · <code class="code-inline">http://localhost:8096</code> · reverse proxy: <code class="code-inline">https://emby.example.com</code></p>
       <div class="checkline">
         <input type="checkbox" name="emby_enabled" id="emby_enabled" {% if settings.emby_enabled %}checked{% endif %} />
         <label for="emby_enabled"><strong>Enable</strong> Emby Trimmer</label>
       </div>
       <label for="emby_url">Emby URL</label>
-      <input class="input" id="emby_url" name="emby_url" type="text" value="{{ settings.emby_url }}" placeholder="http://localhost:8096" autocomplete="off" />
+      <input class="input" id="emby_url" name="emby_url" type="text" value="{{ settings.emby_url }}" placeholder="http://localhost:8096" inputmode="url" autocomplete="off" autocorrect="off" spellcheck="false" />
       <label for="emby_api_key">Emby API key</label>
       <div class="control">
         <input class="password" id="emby_api_key" name="emby_api_key" type="password" value="{{ settings.emby_api_key }}" placeholder="API key" autocomplete="off" />
@@ -116,9 +119,16 @@
 
       {% elif step == 4 %}
       <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Schedule &amp; timezone</h2>
-      <p class="hint">Starting <strong>run interval</strong> for <strong>Sonarr</strong>, <strong>Radarr</strong>, and <strong>Emby Trimmer</strong> (minutes between runs when schedules allow). You can change each later under <strong>Fetcher Settings</strong> and <strong>Trimmer Settings</strong>. Times below use your timezone.</p>
-      <label for="run_interval_minutes">Run interval (minutes)</label>
-      <input class="number" id="run_interval_minutes" name="run_interval_minutes" type="number" value="{{ settings.sonarr_interval_minutes | default(60, true) }}" min="5" max="10080" />
+      <p class="hint">Set <strong>run intervals</strong> the same way as in the full app: <strong>Sonarr</strong> and <strong>Radarr</strong> each have their own minutes-between-runs (TV vs movies). <strong>Emby Trimmer</strong> has its own cadence. You can change these anytime under <strong>Fetcher Settings</strong> (Sonarr/Radarr cards) and <strong>Trimmer Settings</strong>. Times below use your timezone.</p>
+      <label for="sonarr_interval_minutes">Sonarr run interval (minutes)</label>
+      <input class="number" id="sonarr_interval_minutes" name="sonarr_interval_minutes" type="number" value="{{ settings.sonarr_interval_minutes | default(60, true) }}" min="5" max="10080" />
+      <div class="small">Minimum time between Sonarr automation runs when its schedule window allows.</div>
+      <label for="radarr_interval_minutes">Radarr run interval (minutes)</label>
+      <input class="number" id="radarr_interval_minutes" name="radarr_interval_minutes" type="number" value="{{ settings.radarr_interval_minutes | default(60, true) }}" min="5" max="10080" />
+      <div class="small">Minimum time between Radarr automation runs when its schedule window allows.</div>
+      <label for="emby_interval_minutes">Emby Trimmer run interval (minutes)</label>
+      <input class="number" id="emby_interval_minutes" name="emby_interval_minutes" type="number" value="{{ settings.emby_interval_minutes | default(60, true) }}" min="5" max="10080" />
+      <div class="small">Minimum time between Trimmer runs when Trimmer’s schedule and rules allow (same field as <strong>Trimmer Settings</strong>).</div>
       <label for="timezone">Timezone</label>
       <select class="input" id="timezone" name="timezone">
         {% for val, label in timezone_choices %}

@@ -81,6 +81,8 @@ def test_settings_page_has_forms(monkeypatch: pytest.MonkeyPatch) -> None:
     assert r.status_code == 200
     assert b"sonarr_url" in r.content
     assert b"radarr_url" in r.content
+    assert b"section-trimmer" not in r.content
+    assert b"Trimmer Settings" in r.content
 
 
 def test_trimmer_settings_has_content_criteria(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -88,8 +90,12 @@ def test_trimmer_settings_has_content_criteria(monkeypatch: pytest.MonkeyPatch) 
         r = client.get("/trimmer/settings")
     assert r.status_code == 200
     html = r.text
-    assert "Content Criteria" in html
-    assert "People" in html
+    assert "trimmer-connection" in html
+    assert "trimmer-schedule" in html
+    assert "trimmer-rules" in html
+    assert "trimmer-people" in html
+    assert "trimmer-area-tabs" in html
+    assert "People rules" in html
     assert "emby_rule_movie_people" in html
     assert "emby_rule_tv_people" in html
 
@@ -144,7 +150,9 @@ def test_post_setup_wizard_step4_redirects_to_step5(monkeypatch: pytest.MonkeyPa
             "/setup/4",
             data={
                 "wizard_action": "continue",
-                "run_interval_minutes": "60",
+                "sonarr_interval_minutes": "45",
+                "radarr_interval_minutes": "90",
+                "emby_interval_minutes": "120",
                 "timezone": "UTC",
             },
             follow_redirects=False,
