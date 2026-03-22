@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-03-23
+
+### Added
+
+- **Trimmer:** Top **Review** / **Settings** tabs (same style as Fetcher Settings) on **`/trimmer`** and **`/trimmer/settings`** via **`macros/trimmer_area.html`**. **Trimmer Settings** adds a second tab row — **Connection**, **Schedule & limits**, **TV & movie rules**, **People rules** — with anchored sections and striped cards.
+- **Tests:** **`tests/test_form_helpers.py`** for URL normalization (reject autofill tokens like **`admin`** as whole-field “URLs”).
+
+### Changed
+
+- **Fetcher Settings** is **Fetcher-only** again (Security, Sonarr, Radarr, Global): removed the embedded Trimmer card; **Global** points to sidebar **Trimmer** → **Trimmer Settings**.
+- **Setup wizard:** Separate **Sonarr**, **Radarr**, and **Emby Trimmer** run interval fields (aligned with full Settings); **example URLs** on Sonarr/Radarr/Emby steps; **`autocomplete="off"`** on wizard steps after account; **`setup_helpers.normalize_setup_url`** delegates to **`form_helpers._normalize_base_url`**.
+
 ## [2.0.1] - 2026-03-23
 
 ### Fixed
@@ -463,7 +475,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 7. If a **tag** exists but **Releases → Latest** never updated (no **`FetcherSetup.exe`** for that tag), check that **`vX.Y.Z`** points to the commit you mean — run **`git fetch origin master --tags`**, then compare **`git rev-parse vX.Y.Z`** vs **`git rev-parse origin/master`**. **Manual** **Build installer** / **`gh workflow run … --ref vX.Y.Z`** uses the **workflow YAML from that tag’s commit** — an **old** tag SHA can **build** but **skip** **release**. **Fix:** move the tag to the correct commit and **re-push** the tag, **or** bump **`VERSION`** and release again, **or** **`gh release create`** + attach **`FetcherSetup.exe`** from a green run artifact.
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.1...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.2...HEAD
+[2.0.2]: https://github.com/jampat000/Fetcher/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/jampat000/Fetcher/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/jampat000/Fetcher/compare/v1.0.44...v2.0.0
 [1.0.44]: https://github.com/jampat000/Fetcher/compare/v1.0.43...v1.0.44
