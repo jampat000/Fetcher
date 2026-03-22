@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% from "macros/schedule.html" import schedule_time_select, schedule_days_checkboxes %}
 {% block content %}
 <div class="wrap">
   <div class="page-head">
@@ -100,29 +101,12 @@
               Enable Emby Cleaner schedule window
             </div>
             <label>Days</label>
-            <input type="hidden" name="emby_schedule_days" value="{{ settings.emby_schedule_days }}" data-days-input />
-            <div class="days-picker" data-days-picker>
-              <button class="day-pill" type="button" data-day="Mon">Mon</button>
-              <button class="day-pill" type="button" data-day="Tue">Tue</button>
-              <button class="day-pill" type="button" data-day="Wed">Wed</button>
-              <button class="day-pill" type="button" data-day="Thu">Thu</button>
-              <button class="day-pill" type="button" data-day="Fri">Fri</button>
-              <button class="day-pill" type="button" data-day="Sat">Sat</button>
-              <button class="day-pill" type="button" data-day="Sun">Sun</button>
+            {{ schedule_days_checkboxes("emby_schedule", emby_schedule_days_selected) }}
+            <div class="row schedule-time-row">
+              {{ schedule_time_select("emby_schedule_start", "Start time", emby_schedule_start_hhmm, schedule_time_choices, emby_start_orphan) }}
+              {{ schedule_time_select("emby_schedule_end", "End time", emby_schedule_end_hhmm, schedule_time_choices, emby_end_orphan) }}
             </div>
-            <div class="row">
-              <div class="field">
-                <label>Start (h:mm AM/PM)</label>
-                <input class="input" type="text" name="emby_schedule_start" value="{{ emby_schedule_start_display }}" placeholder="12:00 AM" />
-                <div class="small">Example: 8:00 AM</div>
-              </div>
-              <div class="field">
-                <label>End (h:mm AM/PM)</label>
-                <input class="input" type="text" name="emby_schedule_end" value="{{ emby_schedule_end_display }}" placeholder="11:59 PM" />
-                <div class="small">Example: 11:30 PM</div>
-              </div>
-            </div>
-            <div class="small">If start is later than end, the window crosses midnight.</div>
+            <div class="small">30-minute steps; times outside the list stay available as <strong>(saved)</strong>. If start is later than end, the window crosses midnight.</div>
             <div class="row row-schedule-pair">
               <div class="field">
                 <label>Run interval (minutes)</label>

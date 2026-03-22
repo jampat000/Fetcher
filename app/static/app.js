@@ -141,44 +141,6 @@ function reapplyPendingScrollAfterPageshow() {
   applyScrollY(grabbyPendingMainScroll);
 }
 
-function bindDaysPickers() {
-  const dayOrder = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  document.querySelectorAll("[data-days-picker]").forEach((picker) => {
-    const hidden = picker.previousElementSibling;
-    if (!hidden || !hidden.hasAttribute("data-days-input")) return;
-
-    const selected = new Set(
-      String(hidden.value || "")
-        .split(",")
-        .map((d) => d.trim())
-        .filter((d) => dayOrder.includes(d))
-    );
-
-    const sync = () => {
-      picker.querySelectorAll("[data-day]").forEach((btn) => {
-        const day = btn.getAttribute("data-day");
-        btn.classList.toggle("active", selected.has(day));
-      });
-      hidden.value = dayOrder.filter((d) => selected.has(d)).join(",");
-    };
-
-    picker.querySelectorAll("[data-day]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const day = btn.getAttribute("data-day");
-        if (!day) return;
-        if (selected.has(day)) {
-          selected.delete(day);
-        } else {
-          selected.add(day);
-        }
-        sync();
-      });
-    });
-
-    sync();
-  });
-}
-
 /** Helps embedded / webview panels (Simple Browser) where default navigation can stick. */
 function bindInternalLinksTargetTop() {
   document.querySelectorAll('a[href^="/"]').forEach((a) => {
@@ -215,7 +177,6 @@ window.addEventListener("DOMContentLoaded", () => {
   bindScrollRestoreOnFormSubmit();
   restoreScrollAfterFormRedirect();
   bindRevealButtons();
-  bindDaysPickers();
   bindDashboardDismissibles();
   if (qs("saved") === "1") showToast("Settings saved");
   if (qs("ran") === "1") showToast("Run triggered");

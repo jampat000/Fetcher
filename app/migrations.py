@@ -64,7 +64,7 @@ async def migrate(engine: AsyncEngine) -> None:
     if not await _has_column(engine, table=table, column="sonarr_schedule_enabled"):
         await _add_column(engine, table=table, ddl="sonarr_schedule_enabled BOOLEAN NOT NULL DEFAULT 0")
     if not await _has_column(engine, table=table, column="sonarr_schedule_days"):
-        await _add_column(engine, table=table, ddl="sonarr_schedule_days TEXT NOT NULL DEFAULT 'Mon,Tue,Wed,Thu,Fri,Sat,Sun'")
+        await _add_column(engine, table=table, ddl="sonarr_schedule_days TEXT NOT NULL DEFAULT ''")
     if not await _has_column(engine, table=table, column="sonarr_schedule_start"):
         await _add_column(engine, table=table, ddl="sonarr_schedule_start TEXT NOT NULL DEFAULT '00:00'")
     if not await _has_column(engine, table=table, column="sonarr_schedule_end"):
@@ -73,7 +73,7 @@ async def migrate(engine: AsyncEngine) -> None:
     if not await _has_column(engine, table=table, column="radarr_schedule_enabled"):
         await _add_column(engine, table=table, ddl="radarr_schedule_enabled BOOLEAN NOT NULL DEFAULT 0")
     if not await _has_column(engine, table=table, column="radarr_schedule_days"):
-        await _add_column(engine, table=table, ddl="radarr_schedule_days TEXT NOT NULL DEFAULT 'Mon,Tue,Wed,Thu,Fri,Sat,Sun'")
+        await _add_column(engine, table=table, ddl="radarr_schedule_days TEXT NOT NULL DEFAULT ''")
     if not await _has_column(engine, table=table, column="radarr_schedule_start"):
         await _add_column(engine, table=table, ddl="radarr_schedule_start TEXT NOT NULL DEFAULT '00:00'")
     if not await _has_column(engine, table=table, column="radarr_schedule_end"):
@@ -138,7 +138,7 @@ async def migrate(engine: AsyncEngine) -> None:
     if not await _has_column(engine, table=table, column="emby_schedule_enabled"):
         await _add_column(engine, table=table, ddl="emby_schedule_enabled BOOLEAN NOT NULL DEFAULT 0")
     if not await _has_column(engine, table=table, column="emby_schedule_days"):
-        await _add_column(engine, table=table, ddl="emby_schedule_days TEXT NOT NULL DEFAULT 'Mon,Tue,Wed,Thu,Fri,Sat,Sun'")
+        await _add_column(engine, table=table, ddl="emby_schedule_days TEXT NOT NULL DEFAULT ''")
     if not await _has_column(engine, table=table, column="emby_schedule_start"):
         await _add_column(engine, table=table, ddl="emby_schedule_start TEXT NOT NULL DEFAULT '00:00'")
     if not await _has_column(engine, table=table, column="emby_schedule_end"):
