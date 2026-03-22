@@ -34,8 +34,13 @@
 ## Install & first run
 
 1. Run **`GrabbySetup.exe`** and complete the wizard (admin prompt is normal for a service).
-2. Open **`http://127.0.0.1:8765`** on the server (default port), or **`http://<server-ip>:8765`** from another PC on your LAN if the service listens on all interfaces (default in `service/GrabbyService.xml` is **`0.0.0.0`**). Allow **TCP 8765** in **Windows Defender Firewall** on the Grabby machine if browsers on other devices cannot connect. The Web UI has **no login**—only expose it on networks you trust (see [`SECURITY.md`](SECURITY.md)).
-3. Use **Setup** in the sidebar (or **Settings** → *Run the setup wizard*) to add **Sonarr**, **Radarr**, and **Emby** with a **Test** on each step—or configure everything in **Settings** if you prefer. **Cleaner** rules and scans are under **Cleaner** / **Cleaner Settings** in the sidebar.
+2. Open **`http://127.0.0.1:8765`** on the server (default port), or **`http://<server-ip>:8765`** from another PC on your LAN if the service listens on all interfaces (default in `service/GrabbyService.xml` is **`0.0.0.0`**). Allow **TCP 8765** in **Windows Defender Firewall** on the Grabby machine if browsers on other devices cannot connect.
+3. **First browser visit (new or upgraded install):** if no password is stored yet, any visit to the main UI sends you to **`/setup/0`** (**Setup step 1 of 6 — account**): choose username and password (minimum **8** characters). You are **not** left on Sign-in with no way forward. Continue through **Sonarr**, **Radarr**, **Emby**, **Schedule & timezone**, then the final **You’re all set** screen (or use **Skip** on later steps — not on account). After that, use **Sign in** at **`/login`** when your session expires (cookie lasts **7 days**).
+4. You can return to **Setup** in the sidebar anytime, or use **Grabby Settings** / **Cleaner Settings** for detail. **Cleaner** rules and scans are under **Cleaner** / **Cleaner Settings**.
+
+**Security:** The Web UI is **password-protected** (bcrypt + signed session cookie). Optional **Bypass auth on local LAN** (private IPs only) is in **Settings → Security**—still treat **`0.0.0.0`** as risky on untrusted networks; see [`SECURITY.md`](SECURITY.md). **Forgot password?** See **Lockout recovery** in [`SECURITY.md`](SECURITY.md) (**`GRABBY_RESET_AUTH=1`** on the service).
+
+**Upgrading** from a build **without** sign-in: after the update, your **first** Web UI visit goes to **account setup** (`/setup/0`). **Sonarr / Radarr / Emby** settings in the database are **unchanged**; you only add a password (and can re-run the rest of the wizard or use **Settings** as before).
 
 Upgrading an existing install: **Settings → Software updates** can run the latest **`GrabbySetup.exe`** silently (Windows service install), or follow **[`service/UPGRADE.md`](service/UPGRADE.md)** for manual steps. The update check uses GitHub’s **REST API** first; if your IP hits **API rate limits** (403), Grabby falls back to **github.com** (`/releases/latest` / Atom) so checks usually still work without a token. For heavy use or private repos, set **`GRABBY_GITHUB_TOKEN`** (read-only PAT) on that PC — see [`SECURITY.md`](SECURITY.md). Optional: **`GRABBY_UPDATES_CACHE_SECONDS`** (default **900**) controls how long a successful check is cached.
 
@@ -43,8 +48,8 @@ Version is shown in the sidebar of the Web UI (`v…` next to the clock). It mat
 
 ### Monitoring / observability
 
-- **`GET /healthz`** — JSON: `status`, `app`, **`version`** (use for load balancers / uptime checks).
-- **`GET /api/version`** — JSON: `app`, **`version`** (lightweight automation).
+- **`GET /healthz`** — JSON: `status`, `app`, **`version`** (use for load balancers / uptime checks). **No login required.**
+- **`GET /api/version`** — JSON: `app`, **`version`** (lightweight automation). **No login required.**
 - Logs go to the **process console**; when running under **WinSW**, see the service wrapper logs in `service/README.md`. For long-running hosts, configure **log rotation** at the OS or service-manager level if log files grow large.
 
 ## Security
@@ -72,7 +77,7 @@ This project is licensed under the **MIT License** — see [`LICENSE`](LICENSE).
 
 ## Backup & Restore
 
-Export **Grabby** and **Cleaner** settings to **one JSON file** from **Settings** → **Backup & Restore** (move PCs, reinstall, keep API keys). Details: **[`HOWTO-RESTORE.md`](HOWTO-RESTORE.md)**.
+Export **Grabby** and **Cleaner** settings to **one JSON file** from **Settings** → **Backup & Restore** (move PCs, reinstall, keep API keys). The backup includes **auth fields** (e.g. password hash, session secret)—treat the file like a **password**. Details: **[`HOWTO-RESTORE.md`](HOWTO-RESTORE.md)**.
 
 ## Changelog
 
@@ -98,6 +103,14 @@ py -m venv .venv
 Then open the URL printed by the script (default `http://127.0.0.1:8766`).
 
 **Development database:** `scripts/dev-start.ps1` sets **`GRABBY_DEV_DB_PATH`** to **`%TEMP%\grabby-dev.sqlite3`** by default (`app/db.py`) so the dev server does not lock the same **`app.db`** as the installed service. Use **`-SharedAppDb`** only when you intentionally want **`%LocalAppData%\Grabby\app.db`**—**stop the Grabby service first** to avoid SQLite “database is locked” errors.
+
+### Testing the Web UI in dev (auth + setup)
+
+1. Start **`.\scripts\dev-start.ps1`** and open the printed URL (e.g. **`http://127.0.0.1:8766`**).
+2. **Fresh dev DB** (default path above): you’ll land on **`/setup/0`** → **step 1 of 6** is **account** (set username + password, 8+ chars). Finish or skip later wizard steps; then browse the app (**you’ll be signed in** after setup until the session expires).
+3. **Start over:** stop the server, delete **`%TEMP%\grabby-dev.sqlite3`**, start again → new **Setup** from step 1.
+4. **Lockout / forgot password in dev:** set environment variable **`GRABBY_RESET_AUTH=1`** for the **same** shell or process that runs uvicorn, start once, then **remove** it—see **[`SECURITY.md` → Lockout recovery](SECURITY.md)**.
+5. **`pytest`** (unit/integration) uses a **separate temp database** and **overrides `require_auth`** in **`tests/conftest.py`**—automated tests do **not** use your dev browser session. **E2E** (`tests/e2e`) may need a real login flow depending on how those tests are written.
 
 ### Port **8765** vs **8766** (Simple Browser)
 

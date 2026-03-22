@@ -309,6 +309,18 @@ async def _migrate_017_drop_removed_global_arr_columns(engine: AsyncEngine) -> N
             await conn.execute(text(f"ALTER TABLE {table} DROP COLUMN {col}"))
 
 
+async def _migrate_018_auth_columns(engine: AsyncEngine) -> None:
+    table = "app_settings"
+    if not await _has_column(engine, table=table, column="auth_username"):
+        await _add_column(engine, table=table, ddl="auth_username TEXT NOT NULL DEFAULT 'admin'")
+    if not await _has_column(engine, table=table, column="auth_password_hash"):
+        await _add_column(engine, table=table, ddl="auth_password_hash TEXT NOT NULL DEFAULT ''")
+    if not await _has_column(engine, table=table, column="auth_bypass_lan"):
+        await _add_column(engine, table=table, ddl="auth_bypass_lan BOOLEAN NOT NULL DEFAULT 0")
+    if not await _has_column(engine, table=table, column="auth_session_secret"):
+        await _add_column(engine, table=table, ddl="auth_session_secret TEXT NOT NULL DEFAULT ''")
+
+
 async def migrate(engine: AsyncEngine) -> None:
     await _migrate_001_sonarr_per_app_columns(engine)
     await _migrate_002_radarr_per_app_columns(engine)
@@ -327,3 +339,4 @@ async def migrate(engine: AsyncEngine) -> None:
     await _migrate_015_activity_log_detail_and_status(engine)
     await _migrate_016_create_arr_action_log(engine)
     await _migrate_017_drop_removed_global_arr_columns(engine)
+    await _migrate_018_auth_columns(engine)

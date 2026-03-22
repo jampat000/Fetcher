@@ -11,7 +11,7 @@ Use the **Web UI** so your **Grabby** (Sonarr/Radarr) and **Cleaner** (Emby) set
 1. Open **Grabby** in the browser (for example `http://127.0.0.1:8765` or dev port `8766`).
 2. Go to **Settings**.
 3. Under **Backup & Restore**, click **Download Backup**.
-4. Keep the file **private** (same as a password manager export).
+4. Keep the file **private** (same as a password manager export). The JSON includes **auth data** (e.g. password hash, session secret)—treat it like a **password**.
 
 **Backup file format:** Timestamps inside the JSON (for example `exported_at` and `updated_at`) use **dd-mm-yyyy** style strings for readability. Older backups that used **ISO-8601** datetime strings still **import** correctly. **`format_version`: `1`** backups still import; current exports use **`format_version`: `2`** (removed obsolete global Arr columns from the schema).
 
