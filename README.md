@@ -59,7 +59,7 @@ GitHub Actions runs **pip-audit** on dependencies for the default branch. **Prot
 - `service/`: WinSW (Windows Service Wrapper) config for running the packaged app as a Windows service
 - `installer/`: Inno Setup script to produce `GrabbySetup.exe`
 - `VERSION`: current release version (semver) for the app + installer metadata
-- **`config.example.yaml`** → copy to **`config.yaml`** (gitignored) to supply **Sonarr / Radarr / Emby API keys** without storing them in SQLite; optional **YAML values override** DB for outbound API calls (see **`app/config.py`** / **`services/api_keys.py`**). Packaged builds look for **`config.yaml`** next to **`Grabby.exe`** first.
+- **`config.example.yaml`** → copy to **`config.yaml`** (gitignored) to supply **Sonarr / Radarr / Emby API keys** without storing them in SQLite; optional **YAML values override** DB for outbound API calls (see **`app/config.py`** / **`app/resolvers/api_keys.py`**). Packaged builds look for **`config.yaml`** next to **`Grabby.exe`** first.
 - `docs/`: maintainer guides — **[public repo checklist](docs/PUBLIC-REPO-CHECKLIST.md)**, **[audit log after local checks](docs/PUBLIC-REPO-AUDIT.md)**
 
 ## License

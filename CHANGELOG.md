@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.34] - 2026-03-26
+
+### Changed
+
+- **`app/main.py`:** Non-route helpers moved to **`app/constants.py`** (timezone / genre / credit option lists), **`app/form_helpers.py`** (URL + timezone + people-credit form helpers), and **`app/display_helpers.py`** (schedule display, local time formatting).
+- **`services/`** removed; API key resolution lives under **`app/resolvers/`** (imports and **PyInstaller** `hiddenimports` updated).
+- **`app/migrations.py`:** Startup migrations split into ordered **`_migrate_001_…`** … **`_migrate_017_…`** steps (same SQL and behavior as before).
+
+### Added
+
+- **`requirements.in`** + pip-compile workflow note in **`requirements.txt`**; **`pip-tools`** in **`requirements-dev.txt`**.
+- Unit tests: **`tests/test_emby_cleaner.py`** (`evaluate_candidate`), **`tests/test_run_once_cooldown.py`** (`_filter_ids_by_cooldown`, `_paginate_wanted_for_search` with in-memory SQLite).
+
 ## [1.0.33] - 2026-03-25
 
 ### Changed
@@ -21,7 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Optional root **`config.yaml`** (gitignored): **`SONARR_API_KEY`**, **`RADARR_API_KEY`**, **`EMBY_API_KEY`** loaded via **PyYAML** in **`app/config.py`**. **`services/api_keys.py`** resolves keys for the scheduler, **`run_once`**, and connection tests (**YAML overrides DB** when set). Tracked template: **`config.example.yaml`**.
+- Optional root **`config.yaml`** (gitignored): **`SONARR_API_KEY`**, **`RADARR_API_KEY`**, **`EMBY_API_KEY`** loaded via **PyYAML** in **`app/config.py`**. **`app/resolvers/api_keys.py`** resolves keys for the scheduler, **`run_once`**, and connection tests (**YAML overrides DB** when set). Tracked template: **`config.example.yaml`**.
 
 ## [1.0.32] - 2026-03-24
 
@@ -294,7 +307,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - README: download link, install/first-run, signing and CI docs.
 - Installer reads version from `-Version`, `GITHUB_REF_NAME` (`v*`), or `VERSION`.
 
-## [1.0.4] - 2025-03-20
+## [1.0.4] - 2026-03-20
 
 ### Changed
 - CI: dedupe concurrent installer builds for the same commit.
@@ -315,7 +328,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 5. If a **tag** exists but **Releases → Latest** never updated (no **`GrabbySetup.exe`** for that tag), check that **`vX.Y.Z`** points to the **`master`** commit you mean (run **`git fetch origin master --tags`**, then compare **`git rev-parse vX.Y.Z`** vs **`git rev-parse origin/master`**). **Manual** **Build installer** / **`gh workflow run … --ref vX.Y.Z`** uses the **workflow YAML from that tag’s commit**, not automatically from **`master`** — an **old** tag SHA can **build** but **skip** **release**. **Fix:** move the tag to the correct **`master`** commit and **re-push** the tag, **or** bump **`VERSION`** and release again, **or** **`gh release create`** + attach **`GrabbySetup.exe`** from a green run artifact.
 6. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 
-[Unreleased]: https://github.com/jampat000/Grabby/compare/v1.0.28...HEAD
+[Unreleased]: https://github.com/jampat000/Grabby/compare/v1.0.34...HEAD
+[1.0.34]: https://github.com/jampat000/Grabby/compare/v1.0.33...v1.0.34
+[1.0.33]: https://github.com/jampat000/Grabby/compare/v1.0.32...v1.0.33
+[1.0.32]: https://github.com/jampat000/Grabby/compare/v1.0.31...v1.0.32
+[1.0.31]: https://github.com/jampat000/Grabby/compare/v1.0.30...v1.0.31
+[1.0.30]: https://github.com/jampat000/Grabby/compare/v1.0.29...v1.0.30
+[1.0.29]: https://github.com/jampat000/Grabby/compare/v1.0.28...v1.0.29
 [1.0.28]: https://github.com/jampat000/Grabby/compare/v1.0.27...v1.0.28
 [1.0.27]: https://github.com/jampat000/Grabby/compare/v1.0.26...v1.0.27
 [1.0.26]: https://github.com/jampat000/Grabby/compare/v1.0.25...v1.0.26

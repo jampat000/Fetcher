@@ -1,0 +1,89 @@
+from __future__ import annotations
+
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from app.form_helpers import _resolve_timezone_name
+
+
+def _to_12h(hhmm: str, default: str) -> str:
+    try:
+        dt = datetime.strptime((hhmm or "").strip(), "%H:%M")
+        return dt.strftime("%I:%M %p").lstrip("0")
+    except Exception:
+        return default
+
+
+def _normalize_hhmm(raw: str, default: str) -> str:
+    v = (raw or "").strip()
+    if not v:
+        return default
+    # Already 24h HH:MM
+    try:
+        dt = datetime.strptime(v, "%H:%M")
+        return dt.strftime("%H:%M")
+    except Exception:
+        pass
+    # 12h forms like 9:30 PM / 09:30pm
+    for fmt in ("%I:%M %p", "%I:%M%p"):
+        try:
+            dt = datetime.strptime(v.upper(), fmt)
+            return dt.strftime("%H:%M")
+        except Exception:
+            continue
+    return default
+
+
+def _time_select_orphan(canonical_hhmm: str, choice_keys: set[str], *, fallback_display: str) -> tuple[str, str] | None:
+    """If saved time is not on the dropdown grid, offer it as the first option."""
+    if canonical_hhmm in choice_keys:
+        return None
+    return (canonical_hhmm, _to_12h(canonical_hhmm, fallback_display))
+
+
+def _schedule_days_display(days_csv: str) -> str:
+    """Format stored CSV weekdays for dashboard (commas → spaced hyphens)."""
+    raw = (days_csv or "").strip()
+    if not raw:
+        return ""
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    return " - ".join(parts)
+
+
+def _schedule_time_range_friendly(start_hhmm: str, end_hhmm: str) -> str:
+    """Avoid a lone en-dash when pairing start/end for dashboard tiles."""
+    s = (start_hhmm or "").strip() or "00:00"
+    e = (end_hhmm or "").strip() or "23:59"
+    if e == "24:00":
+        e = "23:59"
+    if s == "00:00" and e in ("23:59", "23:58"):
+        return "All day"
+    left = _to_12h(s, "12:00 AM")
+    right = _to_12h(e, "11:59 PM")
+    return f"{left} – {right}"
+
+
+def _truncate_display(s: str, max_len: int = 220) -> str:
+    t = (s or "").strip().replace("\n", " ")
+    if len(t) <= max_len:
+        return t
+    return t[: max_len - 1] + "…"
+
+
+def _now_local(timezone: str) -> str:
+    try:
+        tz = ZoneInfo(_resolve_timezone_name(timezone))
+    except Exception:
+        tz = ZoneInfo("UTC")
+    # Keep a stable-width display across tabs to avoid subtle layout jitter.
+    return datetime.now(tz).strftime("%d-%m-%Y %I:%M %p")
+
+
+def _fmt_local(dt: datetime, tz_name: str) -> str:
+    try:
+        tz = ZoneInfo(_resolve_timezone_name(tz_name))
+    except Exception:
+        tz = ZoneInfo("UTC")
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+    return dt.astimezone(tz).strftime("%d-%m-%Y %I:%M %p")

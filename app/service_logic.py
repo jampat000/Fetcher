@@ -10,6 +10,7 @@ import httpx
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db import _get_or_create_settings
 from app.arr_intervals import effective_arr_interval_minutes
 from app.arr_client import (
     ArrClient,
@@ -34,7 +35,7 @@ from app.emby_rules import (
     parse_movie_people_phrases,
     tv_matches_selected_genres,
 )
-from services.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
+from app.resolvers.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
 
 
 @dataclass(frozen=True)
@@ -52,17 +53,6 @@ _run_once_lock = asyncio.Lock()
 async def run_once(session: AsyncSession, *, arr_manual_scope: ArrManualScope | None = None) -> RunResult:
     async with _run_once_lock:
         return await _run_once_inner(session, arr_manual_scope=arr_manual_scope)
-
-
-async def _get_or_create_settings(session: AsyncSession) -> AppSettings:
-    row = (await session.execute(select(AppSettings).order_by(AppSettings.id.asc()).limit(1))).scalars().first()
-    if row:
-        return row
-    row = AppSettings()
-    session.add(row)
-    await session.commit()
-    await session.refresh(row)
-    return row
 
 
 def _take_int_ids(records: list[dict], *keys: str, limit: int) -> list[int]:
@@ -476,10 +466,10 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
         actions: list[str] = []
         default_limit = 50
 
-        tz = (getattr(settings, "timezone", None) or "UTC").strip() or "UTC"
-        sonarr_tick_m = effective_arr_interval_minutes(getattr(settings, "sonarr_interval_minutes", None))
-        radarr_tick_m = effective_arr_interval_minutes(getattr(settings, "radarr_interval_minutes", None))
-        _cd = getattr(settings, "arr_search_cooldown_minutes", None)
+        tz = (settings.timezone or "UTC").strip() or "UTC"
+        sonarr_tick_m = effective_arr_interval_minutes(settings.sonarr_interval_minutes)
+        radarr_tick_m = effective_arr_interval_minutes(settings.radarr_interval_minutes)
+        _cd = settings.arr_search_cooldown_minutes
         try:
             cd_raw = int(_cd) if _cd is not None else 0
         except (TypeError, ValueError):
@@ -492,7 +482,7 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
             1, radarr_tick_m if cd_raw <= 0 else min(cd_raw, 365 * 24 * 60)
         )
         now = utc_now_naive()
-        emby_interval_m = max(5, int(getattr(settings, "emby_interval_minutes", 60) or 60))
+        emby_interval_m = max(5, int(settings.emby_interval_minutes or 60))
         await _prune_action_log(session, older_than_days=14)
 
         if arr_manual_scope is not None:
@@ -523,16 +513,16 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
             skip_sonarr = False
             if arr_manual_scope is None:
                 if not in_window(
-                    schedule_enabled=getattr(settings, "sonarr_schedule_enabled", False),
-                    schedule_days=getattr(settings, "sonarr_schedule_days", "") or "",
-                    schedule_start=getattr(settings, "sonarr_schedule_start", "00:00"),
-                    schedule_end=getattr(settings, "sonarr_schedule_end", "23:59"),
+                    schedule_enabled=settings.sonarr_schedule_enabled,
+                    schedule_days=settings.sonarr_schedule_days or "",
+                    schedule_start=settings.sonarr_schedule_start,
+                    schedule_end=settings.sonarr_schedule_end,
                     timezone=tz,
                 ):
                     actions.append("Sonarr: skipped (outside schedule window)")
                     skip_sonarr = True
                 else:
-                    last_sonarr = getattr(settings, "sonarr_last_run_at", None)
+                    last_sonarr = settings.sonarr_last_run_at
                     if last_sonarr is not None and (now - last_sonarr).total_seconds() < sonarr_tick_m * 60:
                         actions.append(
                             "Sonarr: skipped (run interval not elapsed — "
@@ -685,16 +675,16 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
             skip_radarr = False
             if arr_manual_scope is None:
                 if not in_window(
-                    schedule_enabled=getattr(settings, "radarr_schedule_enabled", False),
-                    schedule_days=getattr(settings, "radarr_schedule_days", "") or "",
-                    schedule_start=getattr(settings, "radarr_schedule_start", "00:00"),
-                    schedule_end=getattr(settings, "radarr_schedule_end", "23:59"),
+                    schedule_enabled=settings.radarr_schedule_enabled,
+                    schedule_days=settings.radarr_schedule_days or "",
+                    schedule_start=settings.radarr_schedule_start,
+                    schedule_end=settings.radarr_schedule_end,
                     timezone=tz,
                 ):
                     actions.append("Radarr: skipped (outside schedule window)")
                     skip_radarr = True
                 else:
-                    last_radarr = getattr(settings, "radarr_last_run_at", None)
+                    last_radarr = settings.radarr_last_run_at
                     if last_radarr is not None and (now - last_radarr).total_seconds() < radarr_tick_m * 60:
                         actions.append(
                             "Radarr: skipped (run interval not elapsed — "
@@ -816,15 +806,15 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
         # Emby Cleaner (not part of manual Arr “search now”)
         if arr_manual_scope is None and settings.emby_enabled and settings.emby_url and em_key:
             if not in_window(
-                schedule_enabled=getattr(settings, "emby_schedule_enabled", False),
-                schedule_days=getattr(settings, "emby_schedule_days", "") or "",
-                schedule_start=getattr(settings, "emby_schedule_start", "00:00"),
-                schedule_end=getattr(settings, "emby_schedule_end", "23:59"),
+                schedule_enabled=settings.emby_schedule_enabled,
+                schedule_days=settings.emby_schedule_days or "",
+                schedule_start=settings.emby_schedule_start,
+                schedule_end=settings.emby_schedule_end,
                 timezone=tz,
             ):
                 actions.append("Emby: skipped (outside schedule window)")
             else:
-                last_emby = getattr(settings, "emby_last_run_at", None)
+                last_emby = settings.emby_last_run_at
                 if last_emby is not None and (now - last_emby).total_seconds() < emby_interval_m * 60:
                     actions.append(
                         "Emby: skipped (run interval not elapsed — "
@@ -845,27 +835,27 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
                         if not effective_user_id:
                             raise ValueError("Emby has no users available to query.")
 
-                        _v_scan = getattr(settings, "emby_max_items_scan", 2000)
+                        _v_scan = settings.emby_max_items_scan
                         _raw_scan = int(_v_scan) if _v_scan is not None else 2000
                         scan_limit = 0 if _raw_scan <= 0 else max(1, min(100_000, _raw_scan))
-                        max_deletes = max(1, int(getattr(settings, "emby_max_deletes_per_run", 25) or 25))
-                        global_rating = max(0, int(getattr(settings, "emby_rule_watched_rating_below", 0) or 0))
-                        global_unwatched = max(0, int(getattr(settings, "emby_rule_unwatched_days", 0) or 0))
-                        movie_rating_below = max(0, int(getattr(settings, "emby_rule_movie_watched_rating_below", 0) or 0)) or global_rating
-                        movie_unwatched_days = max(0, int(getattr(settings, "emby_rule_movie_unwatched_days", 0) or 0)) or global_unwatched
-                        selected_movie_genres = parse_genres_csv(getattr(settings, "emby_rule_movie_genres_csv", ""))
-                        selected_movie_people = parse_movie_people_phrases(getattr(settings, "emby_rule_movie_people_csv", ""))
+                        max_deletes = max(1, int(settings.emby_max_deletes_per_run or 25))
+                        global_rating = max(0, int(settings.emby_rule_watched_rating_below or 0))
+                        global_unwatched = max(0, int(settings.emby_rule_unwatched_days or 0))
+                        movie_rating_below = max(0, int(settings.emby_rule_movie_watched_rating_below or 0)) or global_rating
+                        movie_unwatched_days = max(0, int(settings.emby_rule_movie_unwatched_days or 0)) or global_unwatched
+                        selected_movie_genres = parse_genres_csv(settings.emby_rule_movie_genres_csv)
+                        selected_movie_people = parse_movie_people_phrases(settings.emby_rule_movie_people_csv)
                         selected_movie_credit_types = parse_movie_people_credit_types_csv(
-                            getattr(settings, "emby_rule_movie_people_credit_types_csv", "Actor")
+                            settings.emby_rule_movie_people_credit_types_csv
                         )
-                        selected_tv_people = parse_movie_people_phrases(getattr(settings, "emby_rule_tv_people_csv", ""))
+                        selected_tv_people = parse_movie_people_phrases(settings.emby_rule_tv_people_csv)
                         selected_tv_credit_types = parse_movie_people_credit_types_csv(
-                            getattr(settings, "emby_rule_tv_people_credit_types_csv", "Actor")
+                            settings.emby_rule_tv_people_credit_types_csv
                         )
-                        tv_delete_watched = bool(getattr(settings, "emby_rule_tv_delete_watched", False))
-                        selected_tv_genres = parse_genres_csv(getattr(settings, "emby_rule_tv_genres_csv", ""))
-                        tv_unwatched_days = max(0, int(getattr(settings, "emby_rule_tv_unwatched_days", 0) or 0)) or global_unwatched
-                        dry_run = bool(getattr(settings, "emby_dry_run", True))
+                        tv_delete_watched = bool(settings.emby_rule_tv_delete_watched)
+                        selected_tv_genres = parse_genres_csv(settings.emby_rule_tv_genres_csv)
+                        tv_unwatched_days = max(0, int(settings.emby_rule_tv_unwatched_days or 0)) or global_unwatched
+                        dry_run = bool(settings.emby_dry_run)
 
                         if movie_rating_below <= 0 and movie_unwatched_days <= 0 and (not tv_delete_watched) and tv_unwatched_days <= 0:
                             actions.append("Emby: skipped (no Emby Cleaner rules enabled)")

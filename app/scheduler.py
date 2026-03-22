@@ -11,7 +11,7 @@ from app.arr_intervals import effective_arr_interval_minutes
 from app.db import SessionLocal
 from app.models import AppSettings
 from app.service_logic import run_once
-from services.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
+from app.resolvers.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
 from app.time_util import utc_now_naive
 
 

@@ -4,7 +4,10 @@ import os
 from collections.abc import AsyncIterator
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+
+from app.models import AppSettings
 
 
 def default_data_dir() -> Path:
@@ -38,4 +41,15 @@ SessionLocal: async_sessionmaker[AsyncSession] = async_sessionmaker(engine, expi
 async def get_session() -> AsyncIterator[AsyncSession]:
     async with SessionLocal() as session:
         yield session
+
+
+async def _get_or_create_settings(session: AsyncSession) -> AppSettings:
+    row = (await session.execute(select(AppSettings).order_by(AppSettings.id.asc()).limit(1))).scalars().first()
+    if row:
+        return row
+    row = AppSettings()
+    session.add(row)
+    await session.commit()
+    await session.refresh(row)
+    return row
 

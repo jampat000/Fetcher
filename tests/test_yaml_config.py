@@ -8,7 +8,7 @@ import pytest
 
 from app.config import RootYamlConfig, clear_root_yaml_config_cache, get_root_yaml_config
 from app.models import AppSettings
-from services.api_keys import (
+from app.resolvers.api_keys import (
     resolve_emby_api_key,
     resolve_radarr_api_key,
     resolve_setup_api_key,
@@ -45,7 +45,7 @@ def test_get_root_yaml_config_loads_keys(tmp_path: Path, monkeypatch: pytest.Mon
 
 def test_resolve_sonarr_prefers_yaml(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "services.api_keys.get_root_yaml_config",
+        "app.resolvers.api_keys.get_root_yaml_config",
         lambda: RootYamlConfig(sonarr_api_key="from-yaml", radarr_api_key="", emby_api_key=""),
     )
     s = AppSettings()
@@ -55,7 +55,7 @@ def test_resolve_sonarr_prefers_yaml(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_resolve_sonarr_falls_back_to_db(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "services.api_keys.get_root_yaml_config",
+        "app.resolvers.api_keys.get_root_yaml_config",
         lambda: RootYamlConfig(),
     )
     s = AppSettings()
@@ -65,7 +65,7 @@ def test_resolve_sonarr_falls_back_to_db(monkeypatch: pytest.MonkeyPatch) -> Non
 
 def test_resolve_emby_form_overrides_yaml(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "services.api_keys.get_root_yaml_config",
+        "app.resolvers.api_keys.get_root_yaml_config",
         lambda: RootYamlConfig(emby_api_key="yaml-e"),
     )
     s = AppSettings()
@@ -77,7 +77,7 @@ def test_resolve_emby_form_overrides_yaml(monkeypatch: pytest.MonkeyPatch) -> No
 
 def test_resolve_setup_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "services.api_keys.get_root_yaml_config",
+        "app.resolvers.api_keys.get_root_yaml_config",
         lambda: RootYamlConfig(sonarr_api_key="y-s"),
     )
     assert resolve_setup_api_key("", "sonarr") == "y-s"
