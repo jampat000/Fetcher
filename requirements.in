@@ -1,4 +1,7 @@
 # Direct runtime dependencies (unpinned). Lock with: pip-compile requirements.in
+# Note: pip-compile may emit an unconditional uvloop pin; keep
+#   uvloop==...; sys_platform != "win32"
+# in requirements.txt so Windows CI / PyInstaller builds do not fail.
 fastapi
 uvicorn[standard]
 httpx

@@ -29,9 +29,12 @@ if (!(Test-Path ".\\.venv\\Scripts\\python.exe")) {
 }
 
 .\.venv\Scripts\pip install -r requirements.txt
+if ($LASTEXITCODE -ne 0) { throw "pip install -r requirements.txt failed (exit $LASTEXITCODE)" }
 .\.venv\Scripts\pip install pyinstaller
+if ($LASTEXITCODE -ne 0) { throw "pip install pyinstaller failed (exit $LASTEXITCODE)" }
 
 .\.venv\Scripts\pyinstaller --noconfirm packaging\fetcher.spec
+if ($LASTEXITCODE -ne 0) { throw "pyinstaller failed (exit $LASTEXITCODE)" }
 
 Write-Host ""
 Write-Host "Built: dist\\Fetcher\\Fetcher.exe"

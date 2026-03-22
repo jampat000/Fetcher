@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-03-22
+
+### Fixed
+
+- **Windows / CI installer build:** **`requirements.txt`** pinned **`uvloop`** without a platform marker. **`uvloop` does not install on Windows**, so **`pip install -r requirements.txt` failed** while **`packaging/build.ps1` did not check the exit code** — the venv was missing **`uvicorn`** and the frozen **`Fetcher.exe` crashed** at import. **`uvloop`** is now **`sys_platform != "win32"`**, and **`packaging/build.ps1`** fails fast if **`pip`** / **PyInstaller** errors.
+
 ## [2.0.1] - 2026-03-20
 
 ### Fixed
@@ -454,7 +460,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 7. If a **tag** exists but **Releases → Latest** never updated (no **`FetcherSetup.exe`** for that tag), check that **`vX.Y.Z`** points to the commit you mean — run **`git fetch origin master --tags`**, then compare **`git rev-parse vX.Y.Z`** vs **`git rev-parse origin/master`**. **Manual** **Build installer** / **`gh workflow run … --ref vX.Y.Z`** uses the **workflow YAML from that tag’s commit** — an **old** tag SHA can **build** but **skip** **release**. **Fix:** move the tag to the correct commit and **re-push** the tag, **or** bump **`VERSION`** and release again, **or** **`gh release create`** + attach **`FetcherSetup.exe`** from a green run artifact.
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.1...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.2...HEAD
+[2.0.2]: https://github.com/jampat000/Fetcher/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/jampat000/Fetcher/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/jampat000/Fetcher/compare/v1.0.44...v2.0.0
 [1.0.44]: https://github.com/jampat000/Fetcher/compare/v1.0.43...v1.0.44
