@@ -401,18 +401,41 @@
           }
         }
 
-        function runCheck() {
+        function runCheck(fromUser) {
           if (checkBtn) {
             checkBtn.disabled = true;
             checkBtn.textContent = "Checking…";
           }
-          fetch(checkUrl, { headers: { Accept: "application/json" }, cache: "no-store" })
+          var url = checkUrl;
+          if (fromUser) {
+            url += (checkUrl.indexOf("?") >= 0 ? "&" : "?") + "refresh=1";
+          }
+          fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" })
             .then(function (r) {
-              return r.json();
+              return r.text().then(function (text) {
+                var ct = (r.headers.get("content-type") || "").toLowerCase();
+                if (!r.ok) {
+                  var bit = text ? text.replace(/^\s+|\s+$/g, "").slice(0, 240) : "";
+                  throw new Error("HTTP " + r.status + (bit ? " — " + bit : ""));
+                }
+                if (ct.indexOf("json") < 0 && text.charCodeAt(0) !== 123) {
+                  throw new Error("Update service returned non-JSON (check server / reverse proxy).");
+                }
+                try {
+                  return JSON.parse(text);
+                } catch (e) {
+                  throw new Error("Invalid JSON from update service.");
+                }
+              });
             })
             .then(render)
-            .catch(function () {
-              panel.innerHTML = "<p class=\"banner banner-warn\" role=\"alert\">Could not reach the update service.</p>";
+            .catch(function (err) {
+              var msg =
+                err && err.message
+                  ? esc(err.message)
+                  : "Could not reach the update service.";
+              panel.innerHTML =
+                "<p class=\"banner banner-warn\" role=\"alert\">" + msg + "</p>";
             })
             .finally(function () {
               if (checkBtn) {
@@ -423,9 +446,11 @@
         }
 
         if (checkBtn) {
-          checkBtn.addEventListener("click", runCheck);
+          checkBtn.addEventListener("click", function () {
+            runCheck(true);
+          });
         }
-        runCheck();
+        runCheck(false);
       })();
     </script>
   </div>

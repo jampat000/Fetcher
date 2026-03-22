@@ -150,6 +150,58 @@ def test_installer_download_headers_skip_auth_for_github_releases_download() -> 
     assert h.get("Accept") == "application/octet-stream"
 
 
+def test_api_updates_check_synthetic_download_when_api_assets_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    """GitHub sometimes returns a release without assets in the JSON; use conventional /releases/download/ URL."""
+
+    async def _fake(_repo: str, include_token: bool = True) -> dict[str, Any]:
+        return {
+            "tag_name": "v2.0.0",
+            "html_url": "https://github.com/jampat000/Grabby/releases/tag/v2.0.0",
+            "assets": [],
+        }
+
+    monkeypatch.setattr("app.updates._fetch_latest_release_payload", _fake)
+    monkeypatch.setattr("app.updates._platform_ok", lambda: True)
+    monkeypatch.setattr("app.updates.get_app_version", lambda: "1.0.0")
+
+    with _build_client(monkeypatch) as client:
+        r = client.get("/api/updates/check")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    assert data["update_available"] is True
+    assert data["asset_missing"] is False
+    assert "releases/download/v2.0.0/GrabbySetup.exe" in (data.get("download_url") or "")
+
+
+def test_api_updates_check_refresh_bypasses_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"n": 0}
+
+    async def _fake(_repo: str, include_token: bool = True) -> dict[str, Any]:
+        calls["n"] += 1
+        return {
+            "tag_name": "v2.0.0",
+            "html_url": "https://github.com/jampat000/Grabby/releases/tag/v2.0.0",
+            "assets": [
+                {
+                    "name": "GrabbySetup.exe",
+                    "browser_download_url": "https://github.com/jampat000/Grabby/releases/download/v2.0.0/GrabbySetup.exe",
+                }
+            ],
+        }
+
+    monkeypatch.setattr("app.updates._fetch_latest_release_payload", _fake)
+    monkeypatch.setattr("app.updates._platform_ok", lambda: True)
+    monkeypatch.setattr("app.updates.get_app_version", lambda: "1.0.0")
+
+    with _build_client(monkeypatch) as client:
+        client.get("/api/updates/check")
+        client.get("/api/updates/check")
+        assert calls["n"] == 1
+        client.get("/api/updates/check?refresh=1")
+        assert calls["n"] == 2
+
+
 def test_api_updates_check_up_to_date(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _fake_fetch(_repo: str, include_token: bool = True) -> dict[str, Any]:
         return {
