@@ -47,6 +47,9 @@
 
     {% if step < 5 %}
     <form method="post" action="/setup/{{ step }}" class="setup-wizard-form">
+      {% if step > 0 %}
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      {% endif %}
       {% if step == 0 %}
       <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Sign in for Grabby</h2>
       <p class="hint">Set the <strong>username</strong> and <strong>password</strong> for this install (minimum 8 characters for the password). You’ll use these on every visit; you can change them later under <strong>Grabby Settings</strong> → Security.</p>

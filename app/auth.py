@@ -13,10 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import RedirectResponse, Response
 
 from app.db import SessionLocal, _get_or_create_settings, get_session
+from app.models import AppSettings
 
 SESSION_COOKIE_NAME = "grabby_session"
 SESSION_MAX_AGE_SEC = 604800
 SIGNER_SALT = "grabby-session"
+CSRF_SIGNER_SALT = "grabby-csrf"
+CSRF_MAX_AGE_SEC = 3600
 
 LOGIN_WINDOW_SEC = 600
 LOGIN_MAX_FAILS = 5
@@ -128,6 +131,90 @@ def verify_session_cookie(*, secret: str, cookie_value: str, expected_username: 
 def build_session_cookie_value(*, secret: str, username: str) -> str:
     signer = _signer_for_secret(secret)
     return signer.sign(username.encode("utf-8")).decode("utf-8")
+
+
+def generate_csrf_token(session_secret: str, username: str) -> str:
+    """Sign ``{username}:csrf`` for HTML forms (1h validity at verify time)."""
+    signer = TimestampSigner(session_secret, salt=CSRF_SIGNER_SALT)
+    return signer.sign(f"{username}:csrf".encode("utf-8")).decode("utf-8")
+
+
+def verify_csrf_token(token: str, session_secret: str, username: str) -> bool:
+    if not (token or "").strip() or not (session_secret or "").strip():
+        return False
+    try:
+        signer = TimestampSigner(session_secret, salt=CSRF_SIGNER_SALT)
+        raw = signer.unsign(token.encode("utf-8"), max_age=CSRF_MAX_AGE_SEC)
+        return raw.decode("utf-8") == f"{username}:csrf"
+    except Exception:
+        return False
+
+
+def get_session_username(request: Request, secret: str) -> str:
+    """Decode username from session cookie; empty string if missing or invalid."""
+    raw = (request.cookies.get(SESSION_COOKIE_NAME) or "").strip()
+    if not raw or not (secret or "").strip():
+        return ""
+    try:
+        signer = _signer_for_secret(secret)
+        username_bytes = signer.unsign(raw.encode("utf-8"), max_age=SESSION_MAX_AGE_SEC)
+        return username_bytes.decode("utf-8")
+    except Exception:
+        return ""
+
+
+def effective_username_for_csrf(request: Request, settings: AppSettings) -> str:
+    """Username bound to CSRF tokens: allowlisted IP uses configured account; else cookie session."""
+    secret = (settings.auth_session_secret or "").strip()
+    allow_txt = (settings.auth_ip_allowlist or "").strip()
+    if allow_txt and is_ip_allowed(get_client_ip(request), settings.auth_ip_allowlist):
+        return (settings.auth_username or "admin").strip() or "admin"
+    return get_session_username(request, secret)
+
+
+async def get_csrf_token_for_template(request: Request, session: AsyncSession) -> str:
+    """Token for layout meta and hidden fields (empty if not signable)."""
+    settings = await _get_or_create_settings(session)
+    secret = (settings.auth_session_secret or "").strip()
+    if not secret:
+        return ""
+    u = effective_username_for_csrf(request, settings)
+    if not u:
+        return ""
+    return generate_csrf_token(secret, u)
+
+
+async def require_csrf(request: Request, session: AsyncSession = Depends(get_session)) -> None:
+    """Validate form ``csrf_token`` for POST; no-op for GET. Skips ``POST /setup/0`` only."""
+    if request.method != "POST":
+        return
+    step_raw = request.path_params.get("step")
+    if step_raw is not None:
+        try:
+            if int(step_raw) == 0:
+                return
+        except (TypeError, ValueError):
+            pass
+
+    settings = await _get_or_create_settings(session)
+    secret = (settings.auth_session_secret or "").strip()
+    username = effective_username_for_csrf(request, settings)
+    if not username:
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid or expired CSRF token. Please reload the page and try again.",
+        )
+
+    form = await request.form()
+    raw_tok = form.get("csrf_token")
+    if isinstance(raw_tok, list):
+        raw_tok = raw_tok[0] if raw_tok else ""
+    token = (raw_tok or "").strip()
+    if not verify_csrf_token(token, secret, username):
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid or expired CSRF token. Please reload the page and try again.",
+        )
 
 
 def attach_session_cookie(response: Response, *, secret: str, username: str) -> None:

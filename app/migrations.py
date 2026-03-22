@@ -338,6 +338,12 @@ async def _migrate_019_auth_ip_allowlist(engine: AsyncEngine) -> None:
         )
 
 
+async def _migrate_020_log_retention_days(engine: AsyncEngine) -> None:
+    table = "app_settings"
+    if not await _has_column(engine, table=table, column="log_retention_days"):
+        await _add_column(engine, table=table, ddl="log_retention_days INTEGER NOT NULL DEFAULT 90")
+
+
 async def migrate(engine: AsyncEngine) -> None:
     await _migrate_001_sonarr_per_app_columns(engine)
     await _migrate_002_radarr_per_app_columns(engine)
@@ -358,3 +364,4 @@ async def migrate(engine: AsyncEngine) -> None:
     await _migrate_017_drop_removed_global_arr_columns(engine)
     await _migrate_018_auth_columns(engine)
     await _migrate_019_auth_ip_allowlist(engine)
+    await _migrate_020_log_retention_days(engine)

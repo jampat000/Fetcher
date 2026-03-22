@@ -118,7 +118,8 @@ Then open the URL printed by the script (default `http://127.0.0.1:8766`).
 2. **Fresh dev DB** (default path above): you’ll land on **`/setup/0`** → **step 1 of 6** is **account** (set username + password, 8+ chars). Finish or skip later wizard steps; then browse the app (**you’ll be signed in** after setup until the session expires).
 3. **Start over:** stop the server, delete **`%TEMP%\grabby-dev.sqlite3`**, start again → new **Setup** from step 1.
 4. **Lockout / forgot password in dev:** set environment variable **`GRABBY_RESET_AUTH=1`** for the **same** shell or process that runs uvicorn, start once, then **remove** it—see **[`SECURITY.md` → Lockout recovery](SECURITY.md)**.
-5. **`pytest`** (unit/integration) uses a **separate temp database** and **overrides `require_auth`** in **`tests/conftest.py`**—automated tests do **not** use your dev browser session. **E2E** (`tests/e2e`) may need a real login flow depending on how those tests are written.
+5. **`pytest`** (unit/integration) uses a **separate temp database** and **overrides `require_auth`** and **`require_csrf`** in **`tests/conftest.py`** (tests marked **`real_csrf`** use the real CSRF dependency). Automated tests do **not** use your dev browser session. **E2E** (`tests/e2e`) may need a real login flow depending on how those tests are written.
+6. **CSRF:** After sign-in, every protected form includes a hidden **`csrf_token`** (and **`<meta name="csrf-token">`** for **`getCSRFToken()`**). Reload stale tabs if a POST returns **403** (“Invalid or expired CSRF token”). Manual **`curl`** / API clients posting **`application/x-www-form-urlencoded`** must send that field too (copy from **View source** or the meta tag)—**JSON** endpoints such as **`POST /api/arr/search-now`** are unchanged.
 
 ### Port **8765** vs **8766** (Simple Browser)
 

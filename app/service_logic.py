@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+import logging
 import re
 from typing import Literal
 
@@ -36,6 +37,8 @@ from app.emby_rules import (
     tv_matches_selected_genres,
 )
 from app.resolvers.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -230,10 +233,41 @@ async def _wanted_queue_total(client: ArrClient, *, kind: str) -> int:
     return int(data.get("totalRecords") or 0)
 
 
-async def _prune_action_log(session: AsyncSession, *, older_than_days: int = 7) -> None:
-    # Keep DB small; safe since cooldown is time-windowed.
-    cutoff = utc_now_naive() - timedelta(days=max(1, int(older_than_days)))
-    await session.execute(delete(ArrActionLog).where(ArrActionLog.created_at < cutoff))
+async def prune_old_records(session: AsyncSession) -> None:
+    """Delete old log/snapshot rows in one transaction batch (committed with the next run commit).
+
+    - ``arr_action_log``: older than ``arr_search_cooldown_minutes * 2`` (minutes); if cooldown is 0, use 2880 min.
+    - ``activity_log``, ``job_run_log``, ``app_snapshot``: older than ``log_retention_days`` (clamped 7–3650).
+
+    Never raises — failures are logged at WARNING only.
+    """
+    try:
+        now = utc_now_naive()
+        row = (await session.execute(select(AppSettings).order_by(AppSettings.id.asc()).limit(1))).scalars().first()
+        if row is None:
+            return
+
+        try:
+            cd_raw = int(row.arr_search_cooldown_minutes)
+        except (TypeError, ValueError):
+            cd_raw = 0
+        arr_window_min = 2880 if cd_raw <= 0 else cd_raw * 2
+        arr_cutoff = now - timedelta(minutes=arr_window_min)
+
+        try:
+            stored_ret = int(row.log_retention_days)
+        except (TypeError, ValueError):
+            stored_ret = 90
+        ret_days = max(7, min(3650, stored_ret))
+        ret_cutoff = now - timedelta(days=ret_days)
+
+        # Batched deletes (SQLite/aiosqlite: one statement per execute; same transaction until commit).
+        await session.execute(delete(ArrActionLog).where(ArrActionLog.created_at < arr_cutoff))
+        await session.execute(delete(ActivityLog).where(ActivityLog.created_at < ret_cutoff))
+        await session.execute(delete(JobRunLog).where(JobRunLog.started_at < ret_cutoff))
+        await session.execute(delete(AppSnapshot).where(AppSnapshot.created_at < ret_cutoff))
+    except Exception:
+        logger.warning("prune_old_records failed; continuing run", exc_info=True)
 
 
 def _sonarr_series_ids_for_episode_batch(records: list[dict], *episode_keys: str, limit: int) -> list[int]:
@@ -452,6 +486,8 @@ def _detail_from_labels(labels: list[str], *, total: int) -> str:
 
 
 async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualScope | None) -> RunResult:
+    await prune_old_records(session)
+
     log = JobRunLog(started_at=utc_now_naive(), ok=False, message="")
     session.add(log)
     await session.commit()
@@ -483,7 +519,6 @@ async def _run_once_inner(session: AsyncSession, *, arr_manual_scope: ArrManualS
         )
         now = utc_now_naive()
         emby_interval_m = max(5, int(settings.emby_interval_minutes or 60))
-        await _prune_action_log(session, older_than_days=14)
 
         if arr_manual_scope is not None:
             actions.append(
