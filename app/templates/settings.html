@@ -76,7 +76,7 @@
           <input class="input" id="sec_username" type="text" name="new_username" value="{{ settings.auth_username|default('admin', true) }}" autocomplete="username" required />
           <label for="sec_user_curr_pw">Current password (to confirm this change)</label>
           <input class="password" id="sec_user_curr_pw" type="password" name="current_password" autocomplete="current-password" required />
-          <div class="btnbar">
+          <div class="btn-row">
             <button class="btn secondary" type="submit">Save username change</button>
           </div>
         </form>
@@ -94,7 +94,7 @@
           <input class="password" id="sec_pw_new" type="password" name="new_password" autocomplete="new-password" minlength="8" required />
           <label for="sec_pw_confirm">Confirm new password</label>
           <input class="password" id="sec_pw_confirm" type="password" name="confirm_new_password" autocomplete="new-password" minlength="8" required />
-          <div class="btnbar">
+          <div class="btn-row">
             <button class="btn secondary" type="submit">Save password change</button>
           </div>
         </form>
@@ -110,7 +110,7 @@
         <label for="auth_ip_allowlist">Allowed IPs and ranges</label>
         <textarea class="input" id="auth_ip_allowlist" name="auth_ip_allowlist" rows="6" style="font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; width: 100%; box-sizing: border-box;" placeholder="One IP or CIDR range per line, e.g.:&#10;192.168.1.50&#10;192.168.1.0/24&#10;10.0.0.0/8">{{ settings.auth_ip_allowlist or '' }}</textarea>
         <p class="hint" style="margin-top:0.5rem;">Supports single IPs (192.168.1.50) and CIDR ranges (192.168.1.0/24). Leave empty to require sign-in from every device.</p>
-        <div class="btnbar">
+        <div class="btn-row">
           <button class="btn secondary" type="submit">Save Access Control</button>
         </div>
       </form>
@@ -120,7 +120,7 @@
   </div>
 
   <div class="card gc">
-    <h2>Fetcher Settings</h2>
+    <div class="gc-title">Fetcher Settings</div>
     {% set im = request.query_params.get('import', '') %}
     {% if im == 'ok' %}
     <div class="banner banner-ok" role="status"><strong>Settings</strong> restored from backup. <strong>Restart</strong> the <strong>Fetcher</strong> Windows service (or the app) so schedules pick up changes.</div>
@@ -182,7 +182,7 @@
             </div>
           </div>
 
-          <div class="btnbar">
+          <div class="btn-row">
             <button class="btn" type="submit" name="save_scope" value="sonarr">Save Sonarr Settings</button>
             <button type="submit" class="btn secondary" form="test-sonarr">Test Sonarr</button>
           </div>
@@ -236,7 +236,7 @@
             </div>
           </div>
 
-          <div class="btnbar">
+          <div class="btn-row">
             <button class="btn" type="submit" name="save_scope" value="radarr">Save Radarr Settings</button>
             <button type="submit" class="btn secondary" form="test-radarr">Test Radarr</button>
           </div>
@@ -254,7 +254,7 @@
         </button>
         <div class="settings-collapse-body" id="settings-collapse-panel-global" role="region" aria-labelledby="settings-collapse-btn-global">
       <div class="section">
-        <h3 style="margin:0 0 8px;">Global Settings</h3>
+        <div class="gc-title" style="margin-bottom:8px;">Global Settings</div>
         <p class="small muted" style="margin:0 0 12px;"><strong>Emby Trimmer</strong> cadence is under <a href="/trimmer/settings">Trimmer Settings</a>. The Fetcher scheduler <strong>wake interval</strong> is the <strong>minimum</strong> of your Sonarr and Radarr <strong>run intervals</strong> (in each schedule section above).</p>
         <div class="settings-global-stack">
           <div class="field settings-global-field">
@@ -279,7 +279,7 @@
         </div>
       </div>
 
-      <div class="btnbar">
+      <div class="btn-row">
         <button class="btn" type="submit" name="save_scope" value="global">Save Global Settings</button>
         <a class="btn secondary" href="/">Back to dashboard</a>
       </div>
@@ -297,14 +297,14 @@
   </div>
 
   <div class="card backup-restore-card gc">
-    <h2>Backup &amp; Restore</h2>
+    <div class="gc-title">Backup &amp; Restore</div>
     <p class="hint backup-restore-lead">Saves <strong>everything in Settings</strong> to one file: <strong>Fetcher</strong> (Sonarr, Radarr, schedules) and <strong>Trimmer</strong> (Emby connection, rules, schedules). <strong>Activity</strong> history is <em>not</em> included. Treat the file as secret—it contains your API keys.</p>
 
     <div class="backup-panels">
       <div class="backup-panel backup-panel-download">
         <div class="backup-panel-head">
           <span class="backup-panel-icon" aria-hidden="true">⬇</span>
-          <h3 class="backup-panel-title">Download Backup</h3>
+          <div class="gc-title">Download Backup</div>
         </div>
         <p class="small backup-panel-desc">Creates <code class="code-inline">fetcher-settings-backup-dd-mm-yyyy.json</code> with your current <strong>Fetcher</strong> and <strong>Trimmer</strong> settings.</p>
         <a class="btn backup-panel-btn" href="/settings/backup/export" download>Download Backup</a>
@@ -313,7 +313,7 @@
       <div class="backup-panel backup-panel-restore">
         <div class="backup-panel-head">
           <span class="backup-panel-icon" aria-hidden="true">⬆</span>
-          <h3 class="backup-panel-title">Restore from Backup</h3>
+          <div class="gc-title">Restore from Backup</div>
         </div>
         <p class="small backup-panel-desc">Replaces <strong>all</strong> saved <strong>Fetcher</strong> and <strong>Trimmer</strong> settings on this PC. Does not change dashboard <strong>Activity</strong> history.</p>
         <form method="post" action="/settings/backup/import" enctype="multipart/form-data" class="backup-restore-form">
@@ -346,17 +346,17 @@
   </div>
 
   <div class="card updates-card gc" id="updates-card">
-    <h2>Software Updates</h2>
+    <div class="gc-title">Software Updates</div>
     <p class="hint updates-lead">Compares this PC with the latest <strong>GitHub</strong> release. You can run <code class="code-inline">FetcherSetup.exe</code> silently; the <strong>Fetcher</strong> Windows service stops briefly, then starts again.</p>
 
     <div class="backup-panels updates-panels">
       <div class="backup-panel backup-panel-updates-status">
         <div class="backup-panel-head">
           <span class="backup-panel-icon" aria-hidden="true">◉</span>
-          <h3 class="backup-panel-title">Release Status</h3>
+          <div class="gc-title">Release Status</div>
         </div>
         <p class="small backup-panel-desc">Installed version, latest published tag, and whether <code class="code-inline">FetcherSetup.exe</code> is attached to that release.</p>
-        <div class="btnbar" style="margin-top: 0;">
+        <div class="btn-row" style="margin-top: 0;">
           <button type="button" class="btn secondary" id="updates-check-btn">Check for Updates</button>
         </div>
         <div id="updates-panel" class="updates-panel-inner" data-check-url="/api/updates/check" data-apply-url="/api/updates/apply">
@@ -367,7 +367,7 @@
       <div class="backup-panel backup-panel-upgrades-actions">
         <div class="backup-panel-head">
           <span class="backup-panel-icon" aria-hidden="true">⬆</span>
-          <h3 class="backup-panel-title">Apply Upgrade</h3>
+          <div class="gc-title">Apply Upgrade</div>
         </div>
         <p class="small backup-panel-desc">When a newer release is available, confirm below and run the installer. Use <strong>Release Notes</strong> to see what changed.</p>
         <p class="small muted updates-idle-hint" id="updates-idle-hint">No action needed until a newer release is detected.</p>
@@ -375,7 +375,7 @@
           <input type="checkbox" id="updates-confirm" />
           <label for="updates-confirm">I understand the <strong>Fetcher</strong> service will restart and this page may disconnect until the upgrade finishes.</label>
         </div>
-        <div class="btnbar updates-actions backup-panel-actions" id="updates-actions" hidden>
+        <div class="btn-row updates-actions backup-panel-actions" id="updates-actions" hidden>
           <button type="button" class="btn backup-panel-btn" id="updates-apply-btn" disabled>Upgrade Now</button>
           <a class="btn secondary backup-panel-btn" id="updates-notes-link" href="#" target="_blank" rel="noopener noreferrer">Release Notes</a>
         </div>

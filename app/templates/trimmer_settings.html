@@ -36,7 +36,7 @@
       {% endif %}
 
       <div class="section">
-      <h3>Emby Trimmer Settings</h3>
+      <div class="gc-title">Emby Trimmer Settings</div>
       <form method="post" action="/trimmer/settings/connection">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
         {% call toggle_checkbox("emby_enabled", settings.emby_enabled) %}<strong>Enable Emby Trimmer</strong>{% endcall %}
@@ -60,7 +60,7 @@
         </div>
         <div class="small">Required. Generate in Emby Dashboard - Advanced - API Keys. Do not paste your Emby URL here.</div>
 
-        <div class="btnbar">
+        <div class="btn-row">
           <button class="btn" type="submit">Save Trimmer Emby Settings</button>
           <button type="submit" class="btn secondary" formaction="/test/emby-form">Test Emby</button>
         </div>
@@ -108,21 +108,21 @@
             </div>
           </div>
 
-          <div class="btnbar">
+          <div class="btn-row">
             <button class="btn" type="submit" name="save_scope" value="global">Save Trimmer Global Settings</button>
           </div>
         </div>
 
         <div class="section">
-          <h3>Content Criteria Settings</h3>
+          <div class="gc-title">Content Criteria Settings</div>
           <div class="criteria-grid">
             <div class="criteria-panel">
-              <h4 class="criteria-title">
+              <div class="gc-title" style="font-size:12px;">
                 <span class="criteria-icon criteria-icon-tv" aria-hidden="true">
                   <img src="/static/icon-tv.svg" alt="" class="criteria-icon-img" />
                 </span>
                 <span>TV</span>
-              </h4>
+              </div>
               <div class="field">
                 <label>Delete watched TV shows</label>
                 {% call toggle_checkbox("emby_rule_tv_delete_watched", settings.emby_rule_tv_delete_watched) %}Yes, delete watched TV shows{% endcall %}
@@ -147,12 +147,12 @@
             </div>
 
             <div class="criteria-panel">
-              <h4 class="criteria-title">
+              <div class="gc-title" style="font-size:12px;">
                 <span class="criteria-icon criteria-icon-movie" aria-hidden="true">
                   <img src="/static/icon-film.svg" alt="" class="criteria-icon-img" />
                 </span>
                 <span>Movies</span>
-              </h4>
+              </div>
               <div class="field">
                 <label>Delete watched movies rated under</label>
                 <input class="number" type="number" name="emby_rule_movie_watched_rating_below" value="{{ settings.emby_rule_movie_watched_rating_below }}" min="0" max="10" />
@@ -180,12 +180,12 @@
 
           <div class="criteria-grid criteria-people-row">
             <div class="criteria-panel people-criteria-panel">
-              <h4 class="criteria-title">
+              <div class="gc-title" style="font-size:12px;">
                 <span class="criteria-icon criteria-icon-tv" aria-hidden="true">
                   <img src="/static/icon-tv.svg" alt="" class="criteria-icon-img" />
                 </span>
                 <span>TV — People</span>
-              </h4>
+              </div>
               <div class="field people-field">
                 <label>Delete TV shows when these people are credited</label>
                 <textarea class="input people-textarea" name="emby_rule_tv_people" rows="5" placeholder="Example: Alex Carter, Jordan Lee (comma or one per line)">{{ settings.emby_rule_tv_people_csv }}</textarea>
@@ -209,18 +209,18 @@
                 {% endfor %}
                 <div class="small people-credits-hint"><strong>Default:</strong> Cast (actors) only. Add other roles as needed. If none are checked, Cast is used when you save.</div>
               </div>
-              <div class="btnbar">
+              <div class="btn-row">
                 <button class="btn" type="submit" name="save_scope" value="tv">Save Content Criteria Settings (TV)</button>
               </div>
             </div>
 
             <div class="criteria-panel people-criteria-panel">
-              <h4 class="criteria-title">
+              <div class="gc-title" style="font-size:12px;">
                 <span class="criteria-icon criteria-icon-movie" aria-hidden="true">
                   <img src="/static/icon-film.svg" alt="" class="criteria-icon-img" />
                 </span>
                 <span>Movies — People</span>
-              </h4>
+              </div>
               <div class="field people-field">
                 <label>Delete movies when these people are credited</label>
                 <textarea class="input people-textarea" name="emby_rule_movie_people" rows="5" placeholder="Example: Alex Carter, Jordan Lee (comma or one per line)">{{ settings.emby_rule_movie_people_csv }}</textarea>
@@ -244,7 +244,7 @@
                 {% endfor %}
                 <div class="small people-credits-hint"><strong>Default:</strong> Cast (actors) only. Add other roles as needed. If none are checked, Cast is used when you save.</div>
               </div>
-              <div class="btnbar">
+              <div class="btn-row">
                 <button class="btn" type="submit" name="save_scope" value="movies">Save Content Criteria Settings (Movies)</button>
               </div>
             </div>

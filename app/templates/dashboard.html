@@ -12,31 +12,31 @@
   <div id="dashboard-hero-stats" class="hero-stats">
     {% set tv_miss = (sonarr.missing_total if sonarr else 0) %}
     {% set mov_miss = (radarr.missing_total if radarr else 0) %}
-    {% set upg = ((sonarr.cutoff_unmet_total if sonarr else 0) + (radarr.cutoff_unmet_total if radarr else 0)) %}
-    {% set trm = (emby.missing_total if emby else 0) %}
+    {% set upg_tv = (sonarr.cutoff_unmet_total if sonarr else 0) %}
+    {% set upg_mov = (radarr.cutoff_unmet_total if radarr else 0) %}
     <div class="hero-stat hs-tv">
       <div class="hs-glow" aria-hidden="true"></div>
-      <div class="hs-lbl">TV missing</div>
+      <div class="hs-lbl">TV Missing</div>
       <div class="hs-val" data-target="{{ tv_miss }}">0</div>
-      <div class="hs-sub">Sonarr queue</div>
+      <div class="hs-sub">Episodes in Sonarr queue</div>
     </div>
     <div class="hero-stat hs-mov">
       <div class="hs-glow" aria-hidden="true"></div>
-      <div class="hs-lbl">Movies missing</div>
+      <div class="hs-lbl">Movies Missing</div>
       <div class="hs-val" data-target="{{ mov_miss }}">0</div>
-      <div class="hs-sub">Radarr queue</div>
+      <div class="hs-sub">In Radarr queue</div>
     </div>
-    <div class="hero-stat hs-upg">
+    <div class="hero-stat hs-upg-tv">
       <div class="hs-glow" aria-hidden="true"></div>
-      <div class="hs-lbl">Upgrades</div>
-      <div class="hs-val" data-target="{{ upg }}">0</div>
-      <div class="hs-sub">Cutoff unmet (TV + movies)</div>
+      <div class="hs-lbl">TV Upgrades</div>
+      <div class="hs-val" data-target="{{ upg_tv }}">0</div>
+      <div class="hs-sub">Sonarr cutoff unmet</div>
     </div>
-    <div class="hero-stat hs-cln">
+    <div class="hero-stat hs-upg-mov">
       <div class="hs-glow" aria-hidden="true"></div>
-      <div class="hs-lbl">Trimmer</div>
-      <div class="hs-val" data-target="{{ trm }}">0</div>
-      <div class="hs-sub">Emby matches</div>
+      <div class="hs-lbl">Movie Upgrades</div>
+      <div class="hs-val" data-target="{{ upg_mov }}">0</div>
+      <div class="hs-sub">Radarr cutoff unmet</div>
     </div>
   </div>
 
@@ -55,7 +55,7 @@
   <div class="card setup-cta-card dashboard-dismissible gc" data-dismiss-storage="fetcher_v1_dismiss_setup_wizard_cta">
     <div class="dashboard-dismissible-inner setup-cta-inner">
       <div>
-        <h2>Connect your stack</h2>
+        <div class="gc-title">Connect your stack</div>
         <p class="hint">Sonarr, Radarr, and Emby are not configured yet. Run the guided wizard to add URLs, API keys, and test each connection.</p>
         <p style="margin:0;"><a class="btn" href="/setup">Run setup wizard</a></p>
       </div>
@@ -64,7 +64,7 @@
   </div>
   {% endif %}
 
-  <div class="card automation-card gc card-stripe-purple">
+  <div class="card gc card-stripe-purple">
     <h2 class="gc-title">Automation</h2>
     <div class="automation-spec">
       {% if last_run %}
@@ -73,32 +73,28 @@
         <div class="automation-spec-value" id="dash-automation-last">
           <span id="dash-last-started">{{ last_run.started_local }}</span>
           {% if last_run.ok %}<span class="status-pill status-pill-ok">OK</span>{% else %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
-          {% if last_run.has_finished and last_run.finished_local %}<span class="muted automation-spec-meta">Done <span id="dash-last-finished">{{ last_run.finished_local }}</span></span>{% elif not last_run.has_finished %}<span class="muted automation-spec-meta">In progress or interrupted</span>{% endif %}
-          {% if last_run.message %}
-          <div class="automation-run-log monospace-ish" id="dash-last-message">{{ last_run.message }}</div>
-          {% endif %}
         </div>
       </div>
       {% else %}
       <div class="automation-spec-row">
         <div class="automation-spec-label">Last run</div>
-        <div class="automation-spec-value muted" id="dash-automation-last">None yet — first run will appear after the scheduler starts.</div>
+        <div class="automation-spec-value muted" id="dash-automation-last">—</div>
       </div>
       {% endif %}
 
       <div class="automation-spec-row">
         <div class="automation-spec-label">Next tick</div>
         <div class="automation-spec-value">
-          <span id="dash-next-tick">{% if next_scheduler_tick_local %}{{ next_scheduler_tick_local }}{% else %}<span class="muted">Waiting for scheduler…</span>{% endif %}</span>
+          <span id="dash-next-tick">{% if next_scheduler_tick_local %}{{ next_scheduler_tick_local }}{% else %}<span class="muted">—</span>{% endif %}</span>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="card dashboard-overview gc">
+  <div class="card gc" id="dashboard-overview">
     <h2 class="gc-title">Overview</h2>
 
-    <div class="dashboard-overview-grid">
+    <div class="g2">
       {{ arr_panel(
         "Sonarr",
         "sonarr",
@@ -108,11 +104,8 @@
         sonarr_schedule_days_display,
         sonarr_schedule_time_friendly,
         settings.sonarr_search_missing,
-        settings.sonarr_search_upgrades,
         settings.sonarr_interval_minutes,
         settings.sonarr_max_items_per_run,
-        (sonarr.missing_total if sonarr else 0),
-        (sonarr.cutoff_unmet_total if sonarr else 0),
         "card-stripe-blue card-blue"
       ) }}
       {{ arr_panel(
@@ -124,18 +117,15 @@
         radarr_schedule_days_display,
         radarr_schedule_time_friendly,
         settings.radarr_search_missing,
-        settings.radarr_search_upgrades,
         settings.radarr_interval_minutes,
         settings.radarr_max_items_per_run,
-        (radarr.missing_total if radarr else 0),
-        (radarr.cutoff_unmet_total if radarr else 0),
         "card-stripe-green card-green"
       ) }}
     </div>
 
     <div class="section dashboard-emby-section">
-      <div class="card dashboard-panel gc card-stripe-green card-green">
-        <h3 class="dashboard-panel-title">
+      <div class="card gc card-stripe-green">
+        <div class="gc-title">
           {% if emby and emby.ok %}
             <span class="status-dot dot-green"></span>
           {% elif emby %}
@@ -144,149 +134,32 @@
             <span class="status-dot dot-blue"></span>
           {% endif %}
           Emby Trimmer
-        </h3>
+        </div>
         {% if not settings.emby_enabled %}
-          <div class="small muted">Off — enable in <a href="/trimmer/settings">Trimmer Settings</a>.</div>
+          {% set emby_matched_n = (emby.missing_total if emby else 0) %}
+          <div class="small muted emby-trimmer-disabled-summary">
+            <span class="badge {% if settings.emby_dry_run %}b-off{% else %}b-live{% endif %}">{{ "Dry run" if settings.emby_dry_run else "Live delete" }}</span>
+            <span class="badge {% if emby_matched_n > 0 %}b-warn{% else %}b-off{% endif %}">{{ emby_matched_n }} matched</span>
+            <a href="/trimmer/settings">Trimmer Settings</a>
+          </div>
         {% else %}
-          <div class="metric-grid-2x2 dashboard-panel-stats">
-            <div class="preview-stat metric-tile" data-metric="emby-matched">
-              <div class="label">Matched</div>
-              <div class="value" id="dash-emby-matched">{{ emby.missing_total if emby else 0 }}</div>
+          <div class="m-grid dashboard-emby-summary-grid">
+            <div class="m" data-metric="emby-matched">
+              <div class="m-lbl">Matched</div>
+              <div class="m-val" id="dash-emby-matched">{{ emby.missing_total if emby else 0 }}</div>
             </div>
-            <div class="preview-stat metric-tile" data-metric="emby-deleted">
-              <div class="label">Deleted</div>
-              <div class="value" id="dash-emby-deleted">{{ emby.cutoff_unmet_total if emby else 0 }}</div>
-            </div>
-            <div class="preview-stat metric-tile">
-              <div class="label">Mode</div>
-              <div class="value {% if settings.emby_dry_run %}mode-safe{% else %}mode-live{% endif %}">
+            <div class="m">
+              <div class="m-lbl">Mode</div>
+              <div class="m-val {% if settings.emby_dry_run %}mode-safe{% else %}mode-live{% endif %}">
                 {{ "Dry run" if settings.emby_dry_run else "Live delete" }}
               </div>
             </div>
-            <div class="preview-stat metric-tile">
-              <div class="label">Interval</div>
-              <div class="value">{{ settings.emby_interval_minutes | default(60, true) }} min</div>
-            </div>
           </div>
-
-          <div class="automation-flow-summary dashboard-panel-flow">
-            <div class="automation-flow-line">
-              <span>Every <strong>{{ settings.emby_interval_minutes | default(60, true) }}</strong> min</span>
-              {% if settings.emby_schedule_enabled %}
-              <span class="rule-state rule-state-enabled">Scheduled</span>
-              {% else %}
-              <span class="rule-state rule-state-disabled">No window</span>
-              {% endif %}
-            </div>
-            {% if settings.emby_schedule_enabled %}
-            <div class="automation-flow-panel">{{ settings.emby_schedule_days }} · {{ emby_schedule_start_display }}–{{ emby_schedule_end_display }}</div>
-            {% else %}
-            <div class="automation-flow-panel muted">Runs every tick — no day or time filter.</div>
-            {% endif %}
-            <div class="automation-flow-panel">
-              <strong>Scan / delete limits</strong>
-              <p class="dashboard-panel-flow-foot dashboard-panel-flow-foot--flush">
-                Library scan: {% if settings.emby_max_items_scan <= 0 %}<strong>Entire library</strong>{% else %}up to <strong>{{ settings.emby_max_items_scan }}</strong> items{% endif %}
-                · Deletes: up to <strong>{{ settings.emby_max_deletes_per_run }}</strong> per run
-              </p>
-            </div>
-          </div>
-
-          <div class="section small dashboard-rules-block">
-            <div class="row rule-bubbles">
-              <div class="card rule-bubble gc">
-                <strong>TV Rules</strong>
-                <div class="rule-bubble-inner">
-                  <span class="preview-reason preview-reason-tv">
-                    Watched delete
-                    <span class="rule-state {% if settings.emby_rule_tv_delete_watched %}rule-state-enabled{% else %}rule-state-disabled{% endif %}">
-                      {{ "Enabled" if settings.emby_rule_tv_delete_watched else "Disabled" }}
-                    </span>
-                  </span>
-                  <span class="preview-reason preview-reason-tv">
-                    Unwatched
-                    {% if settings.emby_rule_tv_unwatched_days > 0 %}
-                      <span class="rule-state rule-state-enabled">{{ settings.emby_rule_tv_unwatched_days }}d</span>
-                    {% else %}
-                      <span class="rule-state rule-state-disabled">Disabled</span>
-                    {% endif %}
-                  </span>
-                  <span class="preview-reason preview-reason-tv">
-                    Genres
-                    {% if selected_tv_genres %}
-                      <span class="rule-state rule-state-enabled">{{ selected_tv_genres | length }} selected</span>
-                    {% else %}
-                      <span class="rule-state rule-state-disabled">All</span>
-                    {% endif %}
-                  </span>
-                  <span class="preview-reason preview-reason-tv">
-                    People
-                    {% if tv_people_phrases %}
-                      <span class="rule-state rule-state-enabled">{{ tv_people_phrases | length }} name{{ "s" if tv_people_phrases | length != 1 else "" }} ({{ tv_people_credit_summary }})</span>
-                    {% else %}
-                      <span class="rule-state rule-state-disabled">Any</span>
-                    {% endif %}
-                  </span>
-                </div>
-              </div>
-              <div class="card rule-bubble gc">
-                <strong>Movie Rules</strong>
-                <div class="rule-bubble-inner">
-                  <span class="preview-reason preview-reason-movie">
-                    Rating
-                    {% if settings.emby_rule_movie_watched_rating_below > 0 %}
-                      <span class="rule-state rule-state-enabled">&lt; {{ settings.emby_rule_movie_watched_rating_below }}</span>
-                    {% else %}
-                      <span class="rule-state rule-state-disabled">Disabled</span>
-                    {% endif %}
-                  </span>
-                  <span class="preview-reason preview-reason-movie">
-                    Unwatched
-                    {% if settings.emby_rule_movie_unwatched_days > 0 %}
-                      <span class="rule-state rule-state-enabled">{{ settings.emby_rule_movie_unwatched_days }}d</span>
-                    {% else %}
-                      <span class="rule-state rule-state-disabled">Disabled</span>
-                    {% endif %}
-                  </span>
-                  <span class="preview-reason preview-reason-movie">
-                    Genres
-                    {% if selected_movie_genres %}
-                      <span class="rule-state rule-state-enabled">{{ selected_movie_genres | length }} selected</span>
-                    {% else %}
-                      <span class="rule-state rule-state-disabled">All</span>
-                    {% endif %}
-                  </span>
-                  <span class="preview-reason preview-reason-movie">
-                    People
-                    {% if movie_people_phrases %}
-                      <span class="rule-state rule-state-enabled">{{ movie_people_phrases | length }} name{{ "s" if movie_people_phrases | length != 1 else "" }} ({{ movie_people_credit_summary }})</span>
-                    {% else %}
-                      <span class="rule-state rule-state-disabled">Any</span>
-                    {% endif %}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="section small dashboard-emby-status-row">
-            <strong>Status:</strong>
-            {% if emby and emby.ok %}
-              <span class="badge badge-ok">OK</span>
-            {% elif emby %}
-              <span class="badge badge-warn">Fail</span>
-            {% else %}
-              <span class="muted">No data yet</span>
-            {% endif %}
-          </div>
-          {% if emby and emby.status_message and not emby.status_message.startswith("Test") %}
-            <div class="section small">{{ emby.status_message }}</div>
-          {% endif %}
         {% endif %}
       </div>
     </div>
 
-    <div class="btnbar dashboard-quick-links">
+    <div class="btn-row dashboard-quick-links">
       <a class="btn" href="/settings">Fetcher Settings</a>
       <a class="btn secondary" href="/trimmer/settings">Trimmer Settings</a>
       <a class="btn secondary" href="/trimmer">Scan library</a>
@@ -298,7 +171,7 @@
       <p class="hint">Searches and Trimmer actions. Open <a href="/activity">Activity</a> for the full list.</p>
       {% if activity %}
       <div class="activity-list">
-        {% for e in activity %}
+        {% for e in activity[:5] %}
         <div class="activity-row" data-activity-app="{{ e.app }}" data-activity-kind="{{ e.kind }}">
           {% if e.app == "sonarr" %}
             <div class="activity-icon icon-sonarr" aria-hidden="true">TV</div>

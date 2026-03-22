@@ -319,7 +319,7 @@ function escapeHtml(s) {
 }
 
 function setMetricTile(metricKey, value) {
-  const tile = document.querySelector(`[data-metric="${metricKey}"] .value`);
+  const tile = document.querySelector(`[data-metric="${metricKey}"] .m-val`);
   if (!tile) return;
   const badge = tile.querySelector(".badge");
   if (badge) return;
@@ -329,8 +329,8 @@ function setMetricTile(metricKey, value) {
 function applyDashboardStatusPayload(data) {
   const tv = document.querySelector(".hero-stat.hs-tv .hs-val");
   const mov = document.querySelector(".hero-stat.hs-mov .hs-val");
-  const upg = document.querySelector(".hero-stat.hs-upg .hs-val");
-  const trm = document.querySelector(".hero-stat.hs-cln .hs-val");
+  const upgTv = document.querySelector(".hero-stat.hs-upg-tv .hs-val");
+  const upgMov = document.querySelector(".hero-stat.hs-upg-mov .hs-val");
   if (tv) {
     tv.textContent = String(data.sonarr_missing ?? 0);
     tv.setAttribute("data-target", String(data.sonarr_missing ?? 0));
@@ -339,27 +339,21 @@ function applyDashboardStatusPayload(data) {
     mov.textContent = String(data.radarr_missing ?? 0);
     mov.setAttribute("data-target", String(data.radarr_missing ?? 0));
   }
-  const u = (data.sonarr_upgrades ?? 0) + (data.radarr_upgrades ?? 0);
-  if (upg) {
-    upg.textContent = String(u);
-    upg.setAttribute("data-target", String(u));
+  if (upgTv) {
+    upgTv.textContent = String(data.sonarr_upgrades ?? 0);
+    upgTv.setAttribute("data-target", String(data.sonarr_upgrades ?? 0));
   }
-  if (trm) {
-    trm.textContent = String(data.emby_matched ?? 0);
-    trm.setAttribute("data-target", String(data.emby_matched ?? 0));
+  if (upgMov) {
+    upgMov.textContent = String(data.radarr_upgrades ?? 0);
+    upgMov.setAttribute("data-target", String(data.radarr_upgrades ?? 0));
   }
 
   const nextEl = document.getElementById("dash-next-tick");
   if (nextEl) {
     const t = data.next_scheduler_tick_local;
     if (t) nextEl.textContent = t;
-    else nextEl.innerHTML = '<span class="muted">Waiting for scheduler…</span>';
+    else nextEl.innerHTML = '<span class="muted">—</span>';
   }
-
-  setMetricTile("sonarr-missing", data.sonarr_missing ?? 0);
-  setMetricTile("sonarr-upgrades", data.sonarr_upgrades ?? 0);
-  setMetricTile("radarr-missing", data.radarr_missing ?? 0);
-  setMetricTile("radarr-upgrades", data.radarr_upgrades ?? 0);
 
   const emM = document.getElementById("dash-emby-matched");
   if (emM) emM.textContent = String(data.emby_matched ?? 0);
@@ -370,20 +364,10 @@ function applyDashboardStatusPayload(data) {
     lastHost.className = "automation-spec-value";
     const lr = data.last_run;
     const ok = lr.ok ? '<span class="status-pill status-pill-ok">OK</span>' : '<span class="status-pill status-pill-fail">Failed</span>';
-    let done = "";
-    if (lr.has_finished && lr.finished_local) {
-      done = ` <span class="muted automation-spec-meta">Done <span id="dash-last-finished">${escapeHtml(lr.finished_local)}</span></span>`;
-    } else if (!lr.has_finished) {
-      done = ' <span class="muted automation-spec-meta">In progress or interrupted</span>';
-    }
-    let msg = "";
-    if (lr.message) {
-      msg = `<div class="automation-run-log monospace-ish" id="dash-last-message">${escapeHtml(lr.message)}</div>`;
-    }
-    lastHost.innerHTML = `<span id="dash-last-started">${escapeHtml(lr.started_local)}</span> ${ok}${done}${msg}`;
+    lastHost.innerHTML = `<span id="dash-last-started">${escapeHtml(lr.started_local)}</span> ${ok}`;
   } else if (lastHost && !data.last_run) {
     lastHost.className = "automation-spec-value muted";
-    lastHost.textContent = "None yet — first run will appear after the scheduler starts.";
+    lastHost.textContent = "—";
   }
 }
 

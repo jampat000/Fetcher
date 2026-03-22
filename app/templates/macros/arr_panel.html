@@ -1,9 +1,9 @@
-{% macro arr_panel(app_name, app_key, enabled, snap, schedule_enabled, schedule_days_display, schedule_time_friendly, search_missing, search_upgrades, interval_minutes, max_items_per_run, missing_total, cutoff_unmet_total, stripe_class="") %}
+{% macro arr_panel(app_name, app_key, enabled, snap, schedule_enabled, schedule_days_display, schedule_time_friendly, search_missing, interval_minutes, max_items_per_run, stripe_class="") %}
       <div class="card dashboard-panel gc {{ stripe_class }}{% if not enabled %} arr-panel-disabled{% endif %}">
         {% if not enabled %}
         <div class="arr-panel-disabled-veil" aria-hidden="true"></div>
         {% endif %}
-        <h3 class="dashboard-panel-title">
+        <div class="gc-title">
           {% if enabled %}
             {% if snap and snap.ok %}
               <span class="status-dot dot-green" title="API OK"></span>
@@ -19,24 +19,36 @@
           {% if not enabled %}
             <span class="badge badge-off">Off</span>
           {% endif %}
-        </h3>
+        </div>
 
-        <div class="metric-grid-2x2 dashboard-panel-stats dashboard-arr-overview-stats">
-          <div class="preview-stat metric-tile" data-metric="{{ app_key }}-missing">
-            <div class="label">Missing</div>
-            <div class="value">{% if enabled %}{{ missing_total }}{% else %}0{% endif %}</div>
+        <div class="m-grid">
+          <div class="m">
+            <div class="m-lbl">Interval</div>
+            <div class="m-val">{% if enabled %}{{ interval_minutes }} min{% else %}0 min{% endif %}</div>
           </div>
-          <div class="preview-stat metric-tile" data-metric="{{ app_key }}-upgrades">
-            <div class="label">Upgrades</div>
-            <div class="value">{% if enabled %}{{ cutoff_unmet_total }}{% else %}0{% endif %}</div>
+          <div class="m">
+            <div class="m-lbl">Max per run</div>
+            <div class="m-val">{% if enabled %}{{ max_items_per_run }}{% else %}0{% endif %}</div>
           </div>
-          <div class="preview-stat metric-tile" data-metric="{{ app_key }}-interval">
-            <div class="label">Interval</div>
-            <div class="value">{% if enabled %}{{ interval_minutes }} min{% else %}0 min{% endif %}</div>
+          <div class="m">
+            <div class="m-lbl">Schedule</div>
+            <div class="m-val m-val--badge">
+              {% if enabled %}
+                {% if schedule_enabled %}<span class="badge b-on">On</span>{% else %}<span class="badge b-off">Off</span>{% endif %}
+              {% else %}
+                <span class="badge b-off">Off</span>
+              {% endif %}
+            </div>
           </div>
-          <div class="preview-stat metric-tile" data-metric="{{ app_key }}-max">
-            <div class="label">Max per run</div>
-            <div class="value">{% if enabled %}{{ max_items_per_run }}{% else %}0{% endif %}</div>
+          <div class="m">
+            <div class="m-lbl">Search</div>
+            <div class="m-val m-val--badge">
+              {% if enabled %}
+                {% if search_missing %}<span class="badge b-on">On</span>{% else %}<span class="badge b-off">Off</span>{% endif %}
+              {% else %}
+                <span class="badge b-off">Off</span>
+              {% endif %}
+            </div>
           </div>
         </div>
 
