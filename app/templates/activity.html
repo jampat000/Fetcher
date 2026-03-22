@@ -32,11 +32,11 @@
           <div class="activity-body">
             <div class="activity-title-line">
             {% if e.kind == "missing" %}
-              {{ e.count }} {{ "episode" if e.app == "sonarr" else "movie" }}{{ "s" if e.count != 1 else "" }} missing search
+              Missing search for {{ e.count }} {{ "episode" if e.app == "sonarr" else "movie" }}{{ "s" if e.count != 1 else "" }}
             {% elif e.kind == "trimmed" %}
               {{ e.count }} item{{ "s" if e.count != 1 else "" }} matched Emby Trimmer rules
             {% else %}
-              {{ e.count }} {{ "episode" if e.app == "sonarr" else "movie" }}{{ "s" if e.count != 1 else "" }} upgrade search
+              Upgrade search for {{ e.count }} {{ "episode" if e.app == "sonarr" else "movie" }}{{ "s" if e.count != 1 else "" }}
             {% endif %}
             </div>
             {% if e.detail %}
