@@ -241,3 +241,41 @@ def test_api_updates_apply_rejects_non_windows(monkeypatch: pytest.MonkeyPatch) 
         r = client.post("/api/updates/apply")
     assert r.status_code == 200
     assert r.json()["ok"] is False
+
+
+def test_api_updates_apply_success_returns_version_hints_for_ui_reload(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Apply response includes versions so Settings can poll /healthz and reload when upgraded."""
+
+    async def _fake_check() -> dict[str, Any]:
+        return {
+            "ok": True,
+            "update_available": True,
+            "download_url": "https://github.com/jampat000/Fetcher/releases/download/v9.9.9/FetcherSetup.exe",
+            "latest_version": "9.9.9",
+        }
+
+    dest_holder: dict[str, Any] = {}
+
+    async def _fake_dl(url: str, dest: Any) -> None:
+        dest_holder["path"] = dest
+        dest.write_bytes(b"x" * (600 * 1024))
+
+    launched: list[Any] = []
+
+    def _fake_launch(p: Any) -> None:
+        launched.append(p)
+
+    monkeypatch.setattr("app.updates.sys", types.SimpleNamespace(platform="win32", frozen=True))
+    monkeypatch.setattr("app.updates._compute_updates_check_payload", _fake_check)
+    monkeypatch.setattr("app.updates._download_installer", _fake_dl)
+    monkeypatch.setattr("app.updates._launch_installer_detached", _fake_launch)
+    monkeypatch.setattr("app.updates.get_app_version", lambda: "1.0.0")
+
+    with _build_client(monkeypatch) as client:
+        r = client.post("/api/updates/apply")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+    assert body["previous_version"] == "1.0.0"
+    assert body["target_version"] == "9.9.9"
+    assert launched, "installer should be launched"

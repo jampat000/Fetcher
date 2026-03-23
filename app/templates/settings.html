@@ -429,6 +429,65 @@
           return d.innerHTML;
         }
 
+        function normVer(v) {
+          return String(v == null ? "" : v).trim();
+        }
+
+        /** Poll /healthz until the service reports the new version (or any change), then reload the page. */
+        function watchUpgradeThenReload(previousVersion, targetVersion) {
+          var healthzUrl = "/healthz";
+          var started = Date.now();
+          var maxMs = 6 * 60 * 1000;
+          var intervalMs = 2000;
+          var prev = normVer(previousVersion);
+          var tgt = normVer(targetVersion);
+          function doneWaiting() {
+            if (applyBtn) {
+              applyBtn.disabled = false;
+              applyBtn.textContent = "Upgrade now";
+            }
+          }
+          function tick() {
+            if (Date.now() - started > maxMs) {
+              panel.insertAdjacentHTML(
+                "beforeend",
+                "<div class=\"banner banner-warn updates-status-msg\" role=\"alert\">Still waiting for the new version. When the <strong>Fetcher</strong> service is back, refresh this page manually.</div>"
+              );
+              doneWaiting();
+              return;
+            }
+            fetch(healthzUrl, { cache: "no-store", credentials: "same-origin" })
+              .then(function (r) {
+                return r.json().then(function (j) {
+                  return { ok: r.ok, j: j };
+                });
+              })
+              .then(function (res) {
+                if (!res.ok || !res.j || res.j.status !== "ok") {
+                  setTimeout(tick, intervalMs);
+                  return;
+                }
+                var v = normVer(res.j.version);
+                if (tgt && v === tgt) {
+                  window.location.reload();
+                  return;
+                }
+                if (prev && v && v !== prev) {
+                  window.location.reload();
+                  return;
+                }
+                setTimeout(tick, intervalMs);
+              })
+              .catch(function () {
+                setTimeout(tick, intervalMs);
+              });
+          }
+          if (applyBtn) {
+            applyBtn.textContent = "Waiting for restart…";
+          }
+          tick();
+        }
+
         function setIdleVisible(show) {
           if (idleHint) idleHint.hidden = !show;
         }
@@ -529,6 +588,7 @@
               };
               applyBtn.onclick = function () {
                 if (!confirmCb.checked) return;
+                var installedBefore = normVer(data.current_version);
                 applyBtn.disabled = true;
                 applyBtn.textContent = "Starting…";
                 fetch(applyUrl, { method: "POST", headers: { Accept: "application/json" }, cache: "no-store" })
@@ -543,7 +603,11 @@
                         "beforeend",
                         "<p class=\"banner banner-ok updates-status-msg\" role=\"status\">" +
                           esc(res.body.message || "Upgrade started.") +
-                          "</p>"
+                          " This page will reload when the new version is live.</p>"
+                      );
+                      watchUpgradeThenReload(
+                        res.body.previous_version != null ? res.body.previous_version : installedBefore,
+                        res.body.target_version != null ? res.body.target_version : latest
                       );
                     } else {
                       applyBtn.disabled = false;
