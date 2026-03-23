@@ -4,7 +4,7 @@ import asyncio
 import logging
 import os
 import re
-from typing import Any
+from typing import Annotated, Any
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -128,6 +128,36 @@ def _activity_display_row(e: ActivityLog, tz: str) -> dict[str, Any]:
         "count": e.count,
         "detail_lines": _activity_log_title_lines(raw_detail),
     }
+
+
+def _settings_save_redirect_tab(save_scope: str) -> str:
+    """Query ``tab=`` value for /settings after POST so the UI stays on the same section."""
+    s = (save_scope or "global").strip().lower()
+    if s == "all":
+        return "global"
+    if s in ("global", "sonarr", "radarr"):
+        return s
+    return "global"
+
+
+def _trimmer_settings_fragment(trimmer_section: str | None) -> str:
+    key = (trimmer_section or "").strip().lower()
+    ids = {
+        "connection": "trimmer-connection",
+        "schedule": "trimmer-schedule",
+        "rules": "trimmer-rules",
+        "people": "trimmer-people",
+    }
+    fid = ids.get(key)
+    return f"#{fid}" if fid else ""
+
+
+def _trimmer_settings_redirect_url(*, saved: bool, reason: str | None = None, section: str | None = None) -> str:
+    frag = _trimmer_settings_fragment(section)
+    if saved:
+        return f"/trimmer/settings?saved=1{frag}"
+    err = quote(str(reason or "error").replace("\n", " ").strip()[:240], safe="")
+    return f"/trimmer/settings?save=fail&reason={err}{frag}"
 
 
 def _settings_looks_like_existing_fetcher_install(settings: AppSettings) -> bool:
@@ -902,12 +932,12 @@ async def settings_auth_access_control(
     try:
         normalized = normalize_auth_ip_allowlist_input(auth_ip_allowlist)
     except ValueError:
-        return RedirectResponse("/settings?save=fail&reason=invalid_ip", status_code=303)
+        return RedirectResponse("/settings?save=fail&reason=invalid_ip&tab=security", status_code=303)
     row.auth_ip_allowlist = normalized
     row.updated_at = utc_now_naive()
     if not await _try_commit_and_reschedule(session):
-        return RedirectResponse("/settings?sec=save_fail", status_code=303)
-    return RedirectResponse("/settings?saved=1", status_code=303)
+        return RedirectResponse("/settings?sec=save_fail&tab=security", status_code=303)
+    return RedirectResponse("/settings?saved=1&tab=security", status_code=303)
 
 
 @app.post("/settings/backup/import", dependencies=_AUTH_FORM_DEPS)
@@ -1173,6 +1203,7 @@ async def save_settings(
     save_scope: str = Form("all"),
     session: AsyncSession = Depends(get_session),
 ) -> RedirectResponse:
+    tab_q = quote(_settings_save_redirect_tab(save_scope), safe="")
     try:
         row = await _get_or_create_settings(session)
         data = SettingsIn(
@@ -1244,14 +1275,14 @@ async def save_settings(
 
         row.updated_at = utc_now_naive()
         if not await _try_commit_and_reschedule(session):
-            return RedirectResponse("/settings?save=fail&reason=db_busy", status_code=303)
-        return RedirectResponse("/settings?saved=1", status_code=303)
+            return RedirectResponse(f"/settings?save=fail&reason=db_busy&tab={tab_q}", status_code=303)
+        return RedirectResponse(f"/settings?saved=1&tab={tab_q}", status_code=303)
     except SQLAlchemyError:
         logger.exception("POST /settings SQLAlchemyError")
-        return RedirectResponse("/settings?save=fail&reason=db_error", status_code=303)
+        return RedirectResponse(f"/settings?save=fail&reason=db_error&tab={tab_q}", status_code=303)
     except ValueError:
         logger.exception("POST /settings ValueError")
-        return RedirectResponse("/settings?save=fail&reason=invalid", status_code=303)
+        return RedirectResponse(f"/settings?save=fail&reason=invalid&tab={tab_q}", status_code=303)
     except Exception:
         logger.exception("POST /settings failed")
         try:
@@ -1260,7 +1291,7 @@ async def save_settings(
             pass
         if (os.environ.get("FETCHER_LOG_LEVEL") or "").strip().upper() == "DEBUG":
             raise
-        return RedirectResponse("/settings?save=fail&reason=error", status_code=303)
+        return RedirectResponse(f"/settings?save=fail&reason=error&tab={tab_q}", status_code=303)
 
 
 @app.post("/trimmer/settings", dependencies=_AUTH_FORM_DEPS)
@@ -1280,14 +1311,23 @@ async def save_emby_settings(
         row.emby_user_id = emby_user_id.strip()
         row.updated_at = utc_now_naive()
         if not await _try_commit_and_reschedule(session):
-            return RedirectResponse("/trimmer/settings?save=fail&reason=db_busy", status_code=303)
-        return RedirectResponse("/trimmer/settings?saved=1", status_code=303)
+            return RedirectResponse(
+                _trimmer_settings_redirect_url(saved=False, reason="db_busy", section="connection"),
+                status_code=303,
+            )
+        return RedirectResponse(_trimmer_settings_redirect_url(saved=True, section="connection"), status_code=303)
     except SQLAlchemyError:
         logger.exception("POST /trimmer/settings SQLAlchemyError")
-        return RedirectResponse("/trimmer/settings?save=fail&reason=db_error", status_code=303)
+        return RedirectResponse(
+            _trimmer_settings_redirect_url(saved=False, reason="db_error", section="connection"),
+            status_code=303,
+        )
     except ValueError:
         logger.exception("POST /trimmer/settings ValueError")
-        return RedirectResponse("/trimmer/settings?save=fail&reason=invalid", status_code=303)
+        return RedirectResponse(
+            _trimmer_settings_redirect_url(saved=False, reason="invalid", section="connection"),
+            status_code=303,
+        )
     except Exception:
         logger.exception("POST /trimmer/settings failed")
         try:
@@ -1296,7 +1336,10 @@ async def save_emby_settings(
             pass
         if (os.environ.get("FETCHER_LOG_LEVEL") or "").strip().upper() == "DEBUG":
             raise
-        return RedirectResponse("/trimmer/settings?save=fail&reason=error", status_code=303)
+        return RedirectResponse(
+            _trimmer_settings_redirect_url(saved=False, reason="error", section="connection"),
+            status_code=303,
+        )
 
 
 @app.post("/trimmer/settings/connection", dependencies=_AUTH_FORM_DEPS)
@@ -1315,14 +1358,23 @@ async def save_emby_connection_settings(
         row.emby_user_id = emby_user_id.strip()
         row.updated_at = utc_now_naive()
         if not await _try_commit_and_reschedule(session):
-            return RedirectResponse("/trimmer/settings?save=fail&reason=db_busy", status_code=303)
-        return RedirectResponse("/trimmer/settings?saved=1", status_code=303)
+            return RedirectResponse(
+                _trimmer_settings_redirect_url(saved=False, reason="db_busy", section="connection"),
+                status_code=303,
+            )
+        return RedirectResponse(_trimmer_settings_redirect_url(saved=True, section="connection"), status_code=303)
     except SQLAlchemyError:
         logger.exception("POST /trimmer/settings/connection SQLAlchemyError")
-        return RedirectResponse("/trimmer/settings?save=fail&reason=db_error", status_code=303)
+        return RedirectResponse(
+            _trimmer_settings_redirect_url(saved=False, reason="db_error", section="connection"),
+            status_code=303,
+        )
     except ValueError:
         logger.exception("POST /trimmer/settings/connection ValueError")
-        return RedirectResponse("/trimmer/settings?save=fail&reason=invalid", status_code=303)
+        return RedirectResponse(
+            _trimmer_settings_redirect_url(saved=False, reason="invalid", section="connection"),
+            status_code=303,
+        )
     except Exception:
         logger.exception("POST /trimmer/settings/connection failed")
         try:
@@ -1331,7 +1383,10 @@ async def save_emby_connection_settings(
             pass
         if (os.environ.get("FETCHER_LOG_LEVEL") or "").strip().upper() == "DEBUG":
             raise
-        return RedirectResponse("/trimmer/settings?save=fail&reason=error", status_code=303)
+        return RedirectResponse(
+            _trimmer_settings_redirect_url(saved=False, reason="error", section="connection"),
+            status_code=303,
+        )
 
 
 @app.post("/trimmer/settings/cleaner", dependencies=_AUTH_FORM_DEPS)
@@ -1361,6 +1416,7 @@ async def save_trimmer_settings(
     emby_rule_tv_people_credit_types: list[str] = Form([]),
     emby_rule_tv_unwatched_days: int = Form(0),
     save_scope: str = Form("all"),
+    trimmer_section: Annotated[str | None, Query()] = None,
     session: AsyncSession = Depends(get_session),
 ) -> RedirectResponse:
     try:
@@ -1415,14 +1471,26 @@ async def save_trimmer_settings(
         )
         row.updated_at = utc_now_naive()
         if not await _try_commit_and_reschedule(session):
-            return RedirectResponse("/trimmer/settings?save=fail&reason=db_busy", status_code=303)
-        return RedirectResponse("/trimmer/settings?saved=1", status_code=303)
+            return RedirectResponse(
+                _trimmer_settings_redirect_url(saved=False, reason="db_busy", section=trimmer_section),
+                status_code=303,
+            )
+        return RedirectResponse(
+            _trimmer_settings_redirect_url(saved=True, section=trimmer_section),
+            status_code=303,
+        )
     except SQLAlchemyError:
         logger.exception("POST /trimmer/settings/cleaner SQLAlchemyError")
-        return RedirectResponse("/trimmer/settings?save=fail&reason=db_error", status_code=303)
+        return RedirectResponse(
+            _trimmer_settings_redirect_url(saved=False, reason="db_error", section=trimmer_section),
+            status_code=303,
+        )
     except ValueError:
         logger.exception("POST /trimmer/settings/cleaner ValueError")
-        return RedirectResponse("/trimmer/settings?save=fail&reason=invalid", status_code=303)
+        return RedirectResponse(
+            _trimmer_settings_redirect_url(saved=False, reason="invalid", section=trimmer_section),
+            status_code=303,
+        )
     except Exception:
         logger.exception("POST /trimmer/settings/cleaner failed")
         try:
@@ -1431,7 +1499,10 @@ async def save_trimmer_settings(
             pass
         if (os.environ.get("FETCHER_LOG_LEVEL") or "").strip().upper() == "DEBUG":
             raise
-        return RedirectResponse("/trimmer/settings?save=fail&reason=error", status_code=303)
+        return RedirectResponse(
+            _trimmer_settings_redirect_url(saved=False, reason="error", section=trimmer_section),
+            status_code=303,
+        )
 
 
 @app.post("/test/sonarr", dependencies=_AUTH_FORM_DEPS)

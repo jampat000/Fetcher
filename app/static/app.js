@@ -63,15 +63,19 @@ function persistScrollForAfterRedirect() {
 
 function shouldRestoreAfterRedirect() {
   const sp = new URLSearchParams(window.location.search);
-  return (
+  const base =
     sp.get("saved") === "1" ||
     sp.get("test") === "sonarr_ok" ||
     sp.get("test") === "sonarr_fail" ||
     sp.get("test") === "radarr_ok" ||
     sp.get("test") === "radarr_fail" ||
     sp.get("test") === "emby_ok" ||
-    sp.get("test") === "emby_fail"
-  );
+    sp.get("test") === "emby_fail";
+  if (!base) return false;
+  const path = normPathname(window.location.pathname || "");
+  if (path === "/settings" && sp.get("tab")) return false;
+  if (path === "/trimmer/settings" && (window.location.hash || "").trim()) return false;
+  return true;
 }
 
 /** Keeps main-column scroll across redirect + late layout (pageshow / fonts). */
