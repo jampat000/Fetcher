@@ -41,8 +41,9 @@ router = APIRouter(dependencies=AUTH_DEPS)
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await _get_or_create_settings(session)
+    # Home only shows five rows; avoid loading rows we never render.
     activity = (
-        (await session.execute(select(ActivityLog).order_by(desc(ActivityLog.id)).limit(30)))
+        (await session.execute(select(ActivityLog).order_by(desc(ActivityLog.id)).limit(8)))
         .scalars().all()
     )
     tz = settings.timezone or "UTC"

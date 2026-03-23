@@ -402,7 +402,10 @@ function applyDashboardStatusPayload(data) {
 
 function startDashboardStatusPolling() {
   if (!document.getElementById("dashboard-hero-stats")) return;
+  const intervalMs = 60000;
+  let timerId = null;
   const poll = () => {
+    if (document.visibilityState === "hidden") return;
     fetch("/api/dashboard/status", {
       method: "GET",
       headers: {
@@ -418,7 +421,26 @@ function startDashboardStatusPolling() {
       })
       .catch(() => {});
   };
-  window.setInterval(poll, 60000);
+  const arm = () => {
+    if (timerId !== null) {
+      clearInterval(timerId);
+      timerId = null;
+    }
+    timerId = window.setInterval(poll, intervalMs);
+  };
+  poll();
+  arm();
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      if (timerId !== null) {
+        clearInterval(timerId);
+        timerId = null;
+      }
+    } else {
+      poll();
+      arm();
+    }
+  });
 }
 
 window.addEventListener("DOMContentLoaded", () => {

@@ -438,7 +438,8 @@
           var healthzUrl = "/healthz";
           var started = Date.now();
           var maxMs = 6 * 60 * 1000;
-          var intervalMs = 2000;
+          /* Slightly slower than 2s — fewer /healthz hits while the service restarts. */
+          var intervalMs = 3000;
           var prev = normVer(previousVersion);
           var tgt = normVer(targetVersion);
           function doneWaiting() {
