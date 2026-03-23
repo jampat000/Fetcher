@@ -6,12 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [2.0.22] - 2026-03-23
+## [2.0.23] - 2026-03-23
 
 ### Fixed
 
 - **Packaging/dependencies:** Restored required runtime dependencies in release lockfiles (**`passlib[argon2,bcrypt]`**, **`slowapi`**) after lock refresh drift, and kept vulnerability remediation pins for **`cryptography`** and **`pyjwt`** so CI security checks pass and installable builds include auth/rate-limit runtime modules.
 - **Release CI:** Set CI/runtime JWT test secrets for GitHub Actions smoke/pytest workflows so packaged startup health checks and test collection succeed with enforced `FETCHER_JWT_SECRET` startup validation.
+- **Installer packaging:** Expanded PyInstaller hidden imports for auth/rate-limit runtime modules so frozen `Fetcher.exe` includes passlib/slowapi dependency trees required by startup paths.
 
 ## [2.0.20] - 2026-03-23
 
@@ -658,8 +659,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **v2.0.x** diffs only. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.22...HEAD
-[2.0.22]: https://github.com/jampat000/Fetcher/compare/v2.0.20...v2.0.22
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.23...HEAD
+[2.0.23]: https://github.com/jampat000/Fetcher/compare/v2.0.20...v2.0.23
 [2.0.20]: https://github.com/jampat000/Fetcher/compare/v2.0.19...v2.0.20
 [2.0.19]: https://github.com/jampat000/Fetcher/compare/v2.0.18...v2.0.19
 [2.0.18]: https://github.com/jampat000/Fetcher/compare/v2.0.17...v2.0.18
