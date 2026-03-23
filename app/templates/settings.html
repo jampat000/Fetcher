@@ -45,7 +45,7 @@
       {% if im == 'ok' %}
       <div class="banner banner-ok" role="status"><strong>Settings</strong> restored from backup. <strong>Restart</strong> the <strong>Fetcher</strong> Windows service (or the app) so schedules pick up changes.</div>
       {% elif im == 'need_confirm' %}
-      <div class="banner banner-warn" role="alert"><strong>Import</strong> cancelled—check the confirmation box to replace settings.</div>
+      <div class="banner banner-warn" role="alert"><strong>Import</strong> cancelled—turn on the confirmation toggle to replace settings.</div>
       {% elif im == 'empty' %}
       <div class="banner banner-warn" role="alert"><strong>Import</strong> cancelled—the file was empty.</div>
       {% elif im == 'fail' %}
@@ -352,7 +352,7 @@
           var ok = form.querySelector("#backup-confirm");
           if (!ok || !ok.checked) {
             e.preventDefault();
-            alert("Check the confirmation box to restore from backup.");
+            alert("Turn on the confirmation toggle to restore from backup.");
           }
         });
       })();

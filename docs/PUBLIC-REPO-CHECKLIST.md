@@ -2,7 +2,7 @@
 
 Use this when you want **GitHub Releases** and the **in-app update check** to work for everyone, without leaking secrets.
 
-**Local audit already run in-repo:** see **[`PUBLIC-REPO-AUDIT.md`](PUBLIC-REPO-AUDIT.md)** for what was checked automatically vs what you must click on GitHub.
+**Automated checks you can repeat anytime:** search the working tree for obvious secret patterns (variable names are fine; reject real tokens); run **`git ls-files`** and confirm no **`.env`**, **`*.pem`**, or settings-backup **`.json`** is tracked; keep **`.gitignore`** covering **`.venv/`**, **`dist/`**, **`*.db`**, backups.
 
 Work through the steps **in order**. Check each box when done.
 
@@ -83,17 +83,17 @@ On GitHub: **Settings** for the repository (and org if applicable).
 
 ---
 
-## Step 6 — Create at least one public Release
+## Step 6 — Ship at least one release (CI)
 
-The in-app updater looks for **`FetcherSetup.exe`** on the **latest Release**.
+The in-app updater looks for **`FetcherSetup.exe`** on the **latest GitHub Release** (and **Docker** users pull from **GHCR** — see **[`docs/DOCKER.md`](DOCKER.md)**).
 
-- [ ] Build the installer (your usual pipeline, e.g. `packaging/build.ps1` + Inno).
+- [ ] On **`master`**, **`VERSION`** matches a semver you intend to ship; **`CHANGELOG.md`** has a matching **`[X.Y.Z] - YYYY-MM-DD`** section (see **Releasing** in **[`CHANGELOG.md`](../CHANGELOG.md)**).
 
-- [ ] On GitHub: **Releases → Draft a new release** — tag (e.g. `v1.0.9`), title, short notes.
+- [ ] Merge a **release branch** (or push a **`VERSION`** bump to **`master`**) so **Actions → Tag release (from VERSION)** runs. It creates **`vX.Y.Z`** if missing and dispatches **Build installer** (Windows) and **Docker publish** (Linux image).
 
-- [ ] **Attach** `FetcherSetup.exe` (exact name the app expects).
+- [ ] Wait for **Build installer** to finish, then confirm **Releases → Latest** lists **`FetcherSetup.exe`**.
 
-- [ ] Publish the release.
+- [ ] **Recovery only:** if a tag exists but no release asset, see **Releasing** step 7 in **`CHANGELOG.md`** (ref trap / manual **`gh workflow run`**).
 
 ---
 
