@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-03-25
+
+### Added
+
+- **Regression tests:** Contract coverage for Emby `items_for_user` paging/merge/stop semantics and for the Emby delete phase of `apply_emby_trimmer_live_deletes` (including duplicate candidate ids and partial-failure messaging).
+
+### Changed
+
+- **Performance — Emby library scan:** `EmbyClient.items_for_user` prefetches at most one next page while merging results (bounded overlap; same API params and output order).
+- **Performance — Sonarr/Radarr wanted queues:** Wanted-queue pagination may prefetch the next page while cooldown filtering runs on the current page (strict page order preserved).
+- **Performance — Sonarr trimmer apply:** On-disk episode file deletes use bounded concurrency with per-file failure aggregation (non-fail-fast).
+- **Performance — Emby trimmer apply:** Emby `delete_item` calls use bounded concurrency; failures are aggregated (not fail-fast). Automation action lines report partial success as `Emby: deleted X item(s); Y failed — …` when applicable.
+
+### Security / operations
+
+- **Installed Windows service builds** now require a persistent **`FETCHER_JWT_SECRET`** at startup (JWT/session signing). For WinSW env pass-through and first-time service setup, see **2.0.24** release notes.
+
 ## [2.0.25] - 2026-03-24
 
 ### Changed
@@ -669,9 +686,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 6. If tagging did not run, use **Actions → Tag release (from VERSION) → Run workflow** on **`master`** (or your release branch). Avoid hand-creating tags only from the **Releases** UI unless you know the commit matches **`VERSION`**.
 7. If a **tag** exists but **Releases → Latest** never updated (no **`FetcherSetup.exe`**), compare **`git rev-parse vX.Y.Z`** vs **`git rev-parse origin/master`**. An **old** tag SHA can **build** but **skip** the **release** job. **Fix:** move the tag, **or** bump **`VERSION`** and release again, **or** **`gh release create`** + attach **`FetcherSetup.exe`** from a green artifact.
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
-9. **Compare links** at the end of this file list **v2.0.x** diffs only. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
+9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.25...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/jampat000/Fetcher/compare/v2.0.25...v2.1.0
 [2.0.25]: https://github.com/jampat000/Fetcher/compare/v2.0.24...v2.0.25
 [2.0.24]: https://github.com/jampat000/Fetcher/compare/v2.0.23...v2.0.24
 [2.0.23]: https://github.com/jampat000/Fetcher/compare/v2.0.20...v2.0.23

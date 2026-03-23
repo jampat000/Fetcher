@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any
 
@@ -70,42 +71,74 @@ class EmbyClient:
         data = r.json()
         return data if isinstance(data, list) else []
 
+    async def _items_page_for_user(self, user_id: str, start: int, take: int) -> list[dict]:
+        """Single /Users/{id}/Items page — same params and parsing as ``items_for_user``."""
+        params = {
+            "Recursive": "true",
+            "IncludeItemTypes": "Movie,Series",
+            "Fields": "UserData,DateCreated,PremiereDate,DateLastMediaAdded,Genres,People",
+            "SortBy": "DateCreated",
+            "SortOrder": "Descending",
+            "StartIndex": str(start),
+            "Limit": str(take),
+        }
+        r = await self._req("GET", f"/Users/{user_id}/Items", params=params)
+        r.raise_for_status()
+        payload = r.json()
+        items = payload.get("Items") if isinstance(payload, dict) else None
+        return items if isinstance(items, list) else []
+
     async def items_for_user(self, *, user_id: str, limit: int) -> list[dict]:
         """Return Movies and Series for the user, newest DateCreated first.
 
         * ``limit`` > 0: return at most that many items (paged API calls).
         * ``limit`` <= 0: **entire library** — keep paging until Emby returns no more items.
+
+        When another page may be needed, the next page request is started before ``out``
+        is extended so at most two page fetches are in flight (current + one prefetch).
         """
         unlimited = int(limit) <= 0
         max_items = max(1, int(limit)) if not unlimited else None
         chunk = _DEFAULT_ITEMS_PAGE_SIZE
         out: list[dict] = []
         start = 0
-        while True:
-            if not unlimited and max_items is not None and len(out) >= max_items:
-                break
-            take = chunk if unlimited else min(chunk, max_items - len(out))
-            params = {
-                "Recursive": "true",
-                "IncludeItemTypes": "Movie,Series",
-                "Fields": "UserData,DateCreated,PremiereDate,DateLastMediaAdded,Genres,People",
-                "SortBy": "DateCreated",
-                "SortOrder": "Descending",
-                "StartIndex": str(start),
-                "Limit": str(take),
-            }
-            r = await self._req("GET", f"/Users/{user_id}/Items", params=params)
-            r.raise_for_status()
-            payload = r.json()
-            items = payload.get("Items") if isinstance(payload, dict) else None
-            batch = items if isinstance(items, list) else []
-            if not batch:
-                break
-            out.extend(batch)
-            if len(batch) < take:
-                break
-            start += len(batch)
-        return out
+        pending: asyncio.Task | None = None
+        try:
+            while True:
+                if not unlimited and max_items is not None and len(out) >= max_items:
+                    break
+                take = chunk if unlimited else min(chunk, max_items - len(out))
+                if pending is None:
+                    pending = asyncio.create_task(self._items_page_for_user(user_id, start, take))
+                batch = await pending
+                pending = None
+
+                if not batch:
+                    break
+
+                new_len = len(out) + len(batch)
+                take_next = chunk if unlimited else min(chunk, max_items - new_len)
+                should_prefetch = len(batch) == take and (unlimited or new_len < max_items)
+                if should_prefetch:
+                    pending = asyncio.create_task(
+                        self._items_page_for_user(user_id, start + len(batch), take_next)
+                    )
+
+                out.extend(batch)
+
+                if len(batch) < take:
+                    break
+                if not unlimited and max_items is not None and len(out) >= max_items:
+                    break
+                start += len(batch)
+            return out
+        finally:
+            if pending is not None and not pending.done():
+                pending.cancel()
+                try:
+                    await pending
+                except asyncio.CancelledError:
+                    pass
 
     async def delete_item(self, item_id: str) -> None:
         # Emby delete endpoint.
