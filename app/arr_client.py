@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 
 from app.http_retry import httpx_request_with_retries
+from app.httpx_shared import get_shared_httpx_client
 
 
 @dataclass(frozen=True)
@@ -15,19 +16,34 @@ class ArrConfig:
 
 
 class ArrClient:
-    def __init__(self, cfg: ArrConfig, *, timeout_s: float = 30.0) -> None:
+    def __init__(
+        self,
+        cfg: ArrConfig,
+        *,
+        timeout_s: float = 30.0,
+        http_client: httpx.AsyncClient | None = None,
+    ) -> None:
         self._cfg = cfg
-        self._client = httpx.AsyncClient(
-            base_url=cfg.base_url.rstrip("/"),
-            headers={"X-Api-Key": cfg.api_key},
-            timeout=timeout_s,
-        )
+        self._client = http_client if http_client is not None else get_shared_httpx_client()
+        self._timeout_s = timeout_s
+
+    def _abs_url(self, path: str) -> str:
+        base = self._cfg.base_url.rstrip("/")
+        p = path if path.startswith("/") else f"/{path}"
+        return f"{base}{p}"
 
     async def _req(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
-        return await httpx_request_with_retries(self._client, method, path, **kwargs)
+        opts: dict[str, Any] = dict(kwargs)
+        opts.setdefault("timeout", self._timeout_s)
+        headers = dict(opts.pop("headers", {}))
+        headers.setdefault("X-Api-Key", self._cfg.api_key)
+        return await httpx_request_with_retries(
+            self._client, method, self._abs_url(path), headers=headers, **opts
+        )
 
     async def aclose(self) -> None:
-        await self._client.aclose()
+        # Shared ``httpx.AsyncClient`` is owned by FastAPI lifespan — never close it here.
+        return None
 
     async def health(self) -> bool:
         # Both Sonarr and Radarr support /api/v3/system/status
@@ -35,21 +51,21 @@ class ArrClient:
         r.raise_for_status()
         return True
 
-    async def wanted_missing(self, *, page: int = 1, page_size: int = 50) -> dict:
+    async def wanted_missing(self, *, page: int = 1, page_size: int = 50) -> dict[str, Any]:
         # Sonarr: /api/v3/wanted/missing
         # Radarr: /api/v3/wanted/missing
         r = await self._req("GET", "/api/v3/wanted/missing", params={"page": page, "pageSize": page_size})
         r.raise_for_status()
         return r.json()
 
-    async def wanted_cutoff_unmet(self, *, page: int = 1, page_size: int = 50) -> dict:
+    async def wanted_cutoff_unmet(self, *, page: int = 1, page_size: int = 50) -> dict[str, Any]:
         # Sonarr: /api/v3/wanted/cutoff
         # Radarr: /api/v3/wanted/cutoff
         r = await self._req("GET", "/api/v3/wanted/cutoff", params={"page": page, "pageSize": page_size})
         r.raise_for_status()
         return r.json()
 
-    async def command(self, name: str, **kwargs) -> dict:
+    async def command(self, name: str, **kwargs: Any) -> dict[str, Any]:
         # POST /api/v3/command with { name: ... }
         payload = {"name": name}
         payload.update(kwargs)
@@ -57,13 +73,13 @@ class ArrClient:
         r.raise_for_status()
         return r.json()
 
-    async def tags(self) -> list[dict]:
+    async def tags(self) -> list[dict[str, Any]]:
         r = await self._req("GET", "/api/v3/tag")
         r.raise_for_status()
         data = r.json()
         return data if isinstance(data, list) else []
 
-    async def movies(self) -> list[dict]:
+    async def movies(self) -> list[dict[str, Any]]:
         """Radarr movie catalog."""
         r = await self._req("GET", "/api/v3/movie")
         r.raise_for_status()
@@ -77,7 +93,7 @@ class ArrClient:
         data = r.json()
         return data if isinstance(data, list) else []
 
-    async def episodes_for_series(self, *, series_id: int) -> list[dict]:
+    async def episodes_for_series(self, *, series_id: int) -> list[dict[str, Any]]:
         r = await self._req("GET", "/api/v3/episode", params={"seriesId": int(series_id)})
         r.raise_for_status()
         data = r.json()

@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.8] - 2026-03-23
+
+### Added
+
+- **`app/httpx_shared.py`:** One shared **`httpx.AsyncClient`** created in FastAPI **lifespan** and closed on shutdown; **Arr**, **Emby**, and **GitHub updates** reuse it for connection pooling.
+- **`app/routers/`:** FastAPI **`APIRouter`** modules (**`auth`**, **`setup`**, **`api`**, **`dashboard`**, **`settings`**, **`trimmer`**) plus **`deps`**; shared UI helpers in **`app/web_common.py`**, **`app/branding.py`**, **`app/paths.py`**, **`app/ui_templates.py`**.
+
+### Changed
+
+- **`app/db.py`:** **`PRAGMA journal_mode=WAL`**, **`synchronous=NORMAL`**, **`busy_timeout`** (10s) on each SQLite connection; **`aiosqlite`** connect **`timeout`**; **`get_session`** uses **`try`/`finally`** with **`await session.close()`**. Warns if WAL is not active.
+- **`app/main.py`:** Lifespan only (app, static, routers, exception handlers); scheduler shutdown uses **`wait=False`** with logging and **`try`/`except`**.
+- **`app/scheduler.py`:** **`shutdown(*, wait=True)`** forwards **`wait`** to APScheduler (app uses **`wait=False`**).
+- **`app/service_logic.py`** / **`app/arr_client.py`:** Broader type hints (**`dict[str, Any]`**, **`datetime`**, etc.).
+- **`scripts/protect-master-branch.ps1`:** REST body includes **`restrictions: null`** for GitHub branch-protection API.
+
+### Fixed
+
+- **Tests:** Router monkeypatch targets and Emby paging tests pass a mock **`http_client`** when the shared httpx client is not initialized.
+
 ## [2.0.7] - 2026-03-23
 
 ### Changed
@@ -528,7 +547,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 7. If a **tag** exists but **Releases → Latest** never updated (no **`FetcherSetup.exe`** for that tag), check that **`vX.Y.Z`** points to the commit you mean — run **`git fetch origin master --tags`**, then compare **`git rev-parse vX.Y.Z`** vs **`git rev-parse origin/master`**. **Manual** **Build installer** / **`gh workflow run … --ref vX.Y.Z`** uses the **workflow YAML from that tag’s commit** — an **old** tag SHA can **build** but **skip** **release**. **Fix:** move the tag to the correct commit and **re-push** the tag, **or** bump **`VERSION`** and release again, **or** **`gh release create`** + attach **`FetcherSetup.exe`** from a green run artifact.
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.7...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.8...HEAD
+[2.0.8]: https://github.com/jampat000/Fetcher/compare/v2.0.7...v2.0.8
 [2.0.7]: https://github.com/jampat000/Fetcher/compare/v2.0.6...v2.0.7
 [2.0.6]: https://github.com/jampat000/Fetcher/compare/v2.0.5...v2.0.6
 [2.0.5]: https://github.com/jampat000/Fetcher/compare/v2.0.4...v2.0.5

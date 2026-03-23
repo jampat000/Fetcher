@@ -70,16 +70,18 @@ $checks = @(
     @{ context = "Security / pip-audit" }
 )
 
+# GitHub REST requires `restrictions` on PUT (use null = no push allowlist; user repos cannot use user/team lists).
 $body = [ordered]@{
-    enforce_admins                  = $true
+    enforce_admins                   = $true
     required_pull_request_reviews    = @{
         dismiss_stale_reviews           = $true
         require_code_owner_reviews       = $false
         required_approving_review_count  = 1
     }
-    allow_force_pushes              = $false
-    allow_deletions                 = $false
+    allow_force_pushes               = $false
+    allow_deletions                  = $false
     required_conversation_resolution = $true
+    restrictions                     = $null
 }
 
 if (-not $SkipRequiredStatusChecks) {

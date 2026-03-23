@@ -23,6 +23,7 @@ from packaging.version import InvalidVersion, Version
 from starlette.responses import JSONResponse
 
 from app.version_info import get_app_version
+from app.httpx_shared import get_shared_httpx_client
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +138,7 @@ def _tag_from_releases_url(url: str) -> str | None:
     return unquote(m.group(1))
 
 
-async def _payload_from_tag_and_repo(_client: httpx.AsyncClient, repo: str, tag: str) -> dict[str, Any]:
+async def _payload_from_tag_and_repo(repo: str, tag: str) -> dict[str, Any]:
     """Build API-shaped payload using GitHub's conventional release asset URL."""
     html_url = f"https://github.com/{repo}/releases/tag/{tag}"
     dl = f"https://github.com/{repo}/releases/download/{tag}/{SETUP_ASSET_NAME}"
@@ -151,47 +152,47 @@ async def _payload_from_tag_and_repo(_client: httpx.AsyncClient, repo: str, tag:
 async def _fetch_latest_via_github_web(repo: str) -> dict[str, Any] | None:
     """Follow https://github.com/{repo}/releases/latest to discover tag (no REST API)."""
     timeout = httpx.Timeout(30.0, connect=10.0)
-    async with httpx.AsyncClient(
+    client = get_shared_httpx_client()
+    r = await client.get(
+        f"https://github.com/{repo}/releases/latest",
         headers=_web_headers(),
         timeout=timeout,
-        follow_redirects=True,
-    ) as client:
-        r = await client.get(f"https://github.com/{repo}/releases/latest")
-        if r.status_code >= 400:
-            return None
-        tag = _tag_from_releases_url(str(r.url))
-        if not tag:
-            return None
-        return await _payload_from_tag_and_repo(client, repo, tag)
+    )
+    if r.status_code >= 400:
+        return None
+    tag = _tag_from_releases_url(str(r.url))
+    if not tag:
+        return None
+    return await _payload_from_tag_and_repo(repo, tag)
 
 
 async def _fetch_latest_via_releases_atom(repo: str) -> dict[str, Any] | None:
     """Parse releases.atom first entry (fallback if /releases/latest did not expose a tag URL)."""
     timeout = httpx.Timeout(30.0, connect=10.0)
-    async with httpx.AsyncClient(
+    client = get_shared_httpx_client()
+    r = await client.get(
+        f"https://github.com/{repo}/releases.atom",
         headers={**_web_headers(), "Accept": "application/atom+xml"},
         timeout=timeout,
-        follow_redirects=True,
-    ) as client:
-        r = await client.get(f"https://github.com/{repo}/releases.atom")
-        if r.status_code >= 400:
-            return None
-        try:
-            root = ET.fromstring(r.text)
-        except ET.ParseError:
-            return None
-        entry = root.find(f"{_ATOM_NS}entry")
-        if entry is None:
-            return None
-        tag: str | None = None
-        for link in entry.findall(f"{_ATOM_NS}link"):
-            href = link.get("href") or ""
-            tag = _tag_from_releases_url(href)
-            if tag:
-                break
-        if not tag:
-            return None
-        return await _payload_from_tag_and_repo(client, repo, tag)
+    )
+    if r.status_code >= 400:
+        return None
+    try:
+        root = ET.fromstring(r.text)
+    except ET.ParseError:
+        return None
+    entry = root.find(f"{_ATOM_NS}entry")
+    if entry is None:
+        return None
+    tag: str | None = None
+    for link in entry.findall(f"{_ATOM_NS}link"):
+        href = link.get("href") or ""
+        tag = _tag_from_releases_url(href)
+        if tag:
+            break
+    if not tag:
+        return None
+    return await _payload_from_tag_and_repo(repo, tag)
 
 
 async def _fetch_latest_without_api(repo: str) -> dict[str, Any] | None:
@@ -205,14 +206,10 @@ async def _fetch_latest_without_api(repo: str) -> dict[str, Any] | None:
 async def _fetch_latest_release_payload(repo: str, *, include_token: bool = True) -> dict[str, Any]:
     url = _latest_api_url(repo)
     timeout = httpx.Timeout(30.0, connect=10.0)
-    async with httpx.AsyncClient(
-        headers=_github_headers(include_token=include_token),
-        timeout=timeout,
-        follow_redirects=True,
-    ) as client:
-        r = await client.get(url)
-        r.raise_for_status()
-        return r.json()
+    client = get_shared_httpx_client()
+    r = await client.get(url, headers=_github_headers(include_token=include_token), timeout=timeout)
+    r.raise_for_status()
+    return r.json()
 
 
 async def _resolve_latest_release_payload(repo: str) -> dict[str, Any]:
@@ -312,18 +309,14 @@ def _launch_installer_detached(exe_path: Path) -> None:
 
 async def _download_installer(url: str, dest: Path) -> None:
     timeout = httpx.Timeout(600.0, connect=30.0)
-    async with httpx.AsyncClient(
-        headers=_installer_download_headers(url),
-        timeout=timeout,
-        follow_redirects=True,
-    ) as client:
-        async with client.stream("GET", url) as resp:
-            resp.raise_for_status()
-            total = 0
-            with open(dest, "wb") as f:
-                async for chunk in resp.aiter_bytes(65536):
-                    total += len(chunk)
-                    f.write(chunk)
+    client = get_shared_httpx_client()
+    async with client.stream("GET", url, headers=_installer_download_headers(url), timeout=timeout) as resp:
+        resp.raise_for_status()
+        total = 0
+        with open(dest, "wb") as f:
+            async for chunk in resp.aiter_bytes(65536):
+                total += len(chunk)
+                f.write(chunk)
     if total < 512 * 1024:
         raise ValueError("Downloaded file is too small to be a valid installer")
 

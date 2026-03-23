@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from app.models import AppSettings, AppSnapshot
+
+logger = logging.getLogger(__name__)
+
+# aiosqlite: ``timeout`` is the SQLite busy-handler wait, in seconds (complements ``PRAGMA busy_timeout``).
+_SQLITE_CONNECT_TIMEOUT_S = 10.0
+# SQLite ``busy_timeout`` PRAGMA is in milliseconds.
+_SQLITE_BUSY_TIMEOUT_MS = 10_000
 
 
 def default_data_dir() -> Path:
@@ -31,7 +39,35 @@ def db_path() -> Path:
 
 
 def create_engine() -> AsyncEngine:
-    return create_async_engine(f"sqlite+aiosqlite:///{db_path().as_posix()}", future=True)
+    eng = create_async_engine(
+        f"sqlite+aiosqlite:///{db_path().as_posix()}",
+        future=True,
+        connect_args={"timeout": _SQLITE_CONNECT_TIMEOUT_S},
+    )
+    _register_sqlite_pragmas(eng)
+    return eng
+
+
+def _register_sqlite_pragmas(engine: AsyncEngine) -> None:
+    """Apply WAL + sane sync + busy wait on every new SQLite connection (scheduler + HTTP concurrency)."""
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _on_sqlite_connect(dbapi_connection: object, _connection_record: object) -> None:
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA journal_mode=WAL;")
+            cursor.execute("PRAGMA synchronous=NORMAL;")
+            cursor.execute(f"PRAGMA busy_timeout={_SQLITE_BUSY_TIMEOUT_MS};")
+            cursor.execute("PRAGMA journal_mode;")
+            jm = cursor.fetchone()
+            if jm and str(jm[0]).upper() != "WAL":
+                logger.warning(
+                    "SQLite journal_mode is %r (WAL unavailable on this path/volume). "
+                    "Concurrent access may see more 'database is locked' errors.",
+                    jm[0],
+                )
+        finally:
+            cursor.close()
 
 
 engine = create_engine()
@@ -39,8 +75,12 @@ SessionLocal: async_sessionmaker[AsyncSession] = async_sessionmaker(engine, expi
 
 
 async def get_session() -> AsyncIterator[AsyncSession]:
-    async with SessionLocal() as session:
+    """Yield one :class:`AsyncSession` per request; always closed in ``finally`` (success or exception)."""
+    session = SessionLocal()
+    try:
         yield session
+    finally:
+        await session.close()
 
 
 async def _get_or_create_settings(session: AsyncSession) -> AppSettings:

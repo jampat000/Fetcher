@@ -22,7 +22,7 @@ def _client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     async def _noop_start() -> None:
         return None
 
-    def _noop_shutdown() -> None:
+    def _noop_shutdown(*_a: object, **_kw: object) -> None:
         return None
 
     monkeypatch.setattr("app.main.scheduler.start", _noop_start)
@@ -113,7 +113,7 @@ def test_post_api_arr_search_now(monkeypatch: pytest.MonkeyPatch, scope: str) ->
         seen["scope"] = arr_manual_scope
         return RunResult(ok=True, message="done")
 
-    monkeypatch.setattr("app.main.run_once", _fake_run_once)
+    monkeypatch.setattr("app.routers.api.run_once", _fake_run_once)
     with _client(monkeypatch) as client:
         resp = client.post("/api/arr/search-now", json={"scope": scope})
     assert resp.status_code == 200

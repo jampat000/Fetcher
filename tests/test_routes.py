@@ -8,7 +8,7 @@ def _build_client(monkeypatch) -> TestClient:
     async def _noop_start() -> None:
         return None
 
-    def _noop_shutdown() -> None:
+    def _noop_shutdown(*_a: object, **_kw: object) -> None:
         return None
 
     monkeypatch.setattr("app.main.scheduler.start", _noop_start)
@@ -68,8 +68,8 @@ def test_cleaner_default_skips_emby_client_when_ready(monkeypatch) -> None:
     def _emby_should_not_construct(*_a, **_kw):
         raise AssertionError("EmbyClient must not run without ?scan=1")
 
-    monkeypatch.setattr("app.main._get_or_create_settings", _fake_settings)
-    monkeypatch.setattr("app.main.EmbyClient", _emby_should_not_construct)
+    monkeypatch.setattr("app.routers.trimmer._get_or_create_settings", _fake_settings)
+    monkeypatch.setattr("app.routers.trimmer.EmbyClient", _emby_should_not_construct)
     with _build_client(monkeypatch) as client:
         resp = client.get("/trimmer")
     assert resp.status_code == 200
@@ -106,8 +106,8 @@ def test_cleaner_preview_query_does_not_trigger_scan(monkeypatch) -> None:
         async def aclose(self) -> None:
             return None
 
-    monkeypatch.setattr("app.main._get_or_create_settings", _fake_settings)
-    monkeypatch.setattr("app.main.EmbyClient", _StubClient)
+    monkeypatch.setattr("app.routers.trimmer._get_or_create_settings", _fake_settings)
+    monkeypatch.setattr("app.routers.trimmer.EmbyClient", _StubClient)
     with _build_client(monkeypatch) as client:
         resp = client.get("/trimmer?preview=1")
     assert resp.status_code == 200
@@ -135,7 +135,7 @@ async def _fake_arr_ok(url: str, api_key: str) -> tuple[bool, str]:
 
 
 def test_api_setup_test_sonarr_mocked(monkeypatch) -> None:
-    monkeypatch.setattr("app.main.test_sonarr_connection", _fake_arr_ok)
+    monkeypatch.setattr("app.routers.api.test_sonarr_connection", _fake_arr_ok)
     with _build_client(monkeypatch) as client:
         resp = client.post(
             "/api/setup/test-sonarr",

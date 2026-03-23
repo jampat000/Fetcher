@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 import logging
 import re
-from typing import Literal
+from typing import Any, Literal
 
 import httpx
 from sqlalchemy import delete, select
@@ -58,7 +58,7 @@ async def run_once(session: AsyncSession, *, arr_manual_scope: ArrManualScope | 
         return await _run_once_inner(session, arr_manual_scope=arr_manual_scope)
 
 
-def _take_int_ids(records: list[dict], *keys: str, limit: int) -> list[int]:
+def _take_int_ids(records: list[dict[str, Any]], *keys: str, limit: int) -> list[int]:
     out: list[int] = []
     seen: set[int] = set()
     for r in records:
@@ -73,7 +73,7 @@ def _take_int_ids(records: list[dict], *keys: str, limit: int) -> list[int]:
     return out
 
 
-def _extract_first_int(rec: dict, *keys: str) -> int | None:
+def _extract_first_int(rec: dict[str, Any], *keys: str) -> int | None:
     for k in keys:
         v = rec.get(k)
         if isinstance(v, int) and v > 0:
@@ -85,10 +85,12 @@ def _extract_first_int(rec: dict, *keys: str) -> int | None:
     return None
 
 
-def _take_records_and_ids(records: list[dict], *keys: str, limit: int) -> tuple[list[int], list[dict]]:
+def _take_records_and_ids(
+    records: list[dict[str, Any]], *keys: str, limit: int
+) -> tuple[list[int], list[dict[str, Any]]]:
     """Deduplicate by id while preserving Sonarr/Radarr record order."""
     ids_out: list[int] = []
-    recs_out: list[dict] = []
+    recs_out: list[dict[str, Any]] = []
     seen: set[int] = set()
     for r in records:
         rid = _extract_first_int(r, *keys)
@@ -112,7 +114,7 @@ async def _filter_ids_by_cooldown(
     item_type: str,
     ids: list[int],
     cooldown_minutes: int,
-    now,
+    now: datetime,
     max_apply: int | None = None,
 ) -> list[int]:
     """Return ids that are not triggered again inside the cooldown window; record those triggers.
@@ -169,8 +171,8 @@ async def _paginate_wanted_for_search(
     action: str,
     limit: int,
     cooldown_minutes: int,
-    now,
-) -> tuple[list[int], list[dict], int]:
+    now: datetime,
+) -> tuple[list[int], list[dict[str, Any]], int]:
     """Walk Sonarr/Radarr wanted pages until we collect up to ``limit`` items that pass cooldown.
 
     Without this, only *page 1* is considered — the same titles stay at the top of the queue,
@@ -179,7 +181,7 @@ async def _paginate_wanted_for_search(
     limit = max(1, int(limit))
     page_size = min(100, max(50, limit))
     allowed_ids: list[int] = []
-    allowed_recs: list[dict] = []
+    allowed_recs: list[dict[str, Any]] = []
     seen: set[int] = set()
     total_records = 0
     page = 1
@@ -274,7 +276,9 @@ async def prune_old_records(session: AsyncSession, settings: AppSettings | None 
         logger.warning("prune_old_records failed; continuing run", exc_info=True)
 
 
-def _sonarr_series_ids_for_episode_batch(records: list[dict], *episode_keys: str, limit: int) -> list[int]:
+def _sonarr_series_ids_for_episode_batch(
+    records: list[dict[str, Any]], *episode_keys: str, limit: int
+) -> list[int]:
     """Unique seriesIds for the first `limit` episodes (same walk order as _take_int_ids)."""
     series_out: list[int] = []
     seen_series: set[int] = set()
@@ -310,12 +314,12 @@ def _safe_int(v: object) -> int | None:
         return None
 
 
-def _emby_provider_id(item: dict, key: str) -> str:
+def _emby_provider_id(item: dict[str, Any], key: str) -> str:
     providers = item.get("ProviderIds") if isinstance(item.get("ProviderIds"), dict) else {}
     return str(providers.get(key) or "").strip()
 
 
-def _emby_year(item: dict) -> int | None:
+def _emby_year(item: dict[str, Any]) -> int | None:
     y = _safe_int(item.get("ProductionYear"))
     if y:
         return y
@@ -325,7 +329,7 @@ def _emby_year(item: dict) -> int | None:
     return None
 
 
-def _match_radarr_movie_id(emby_item: dict, radarr_movies: list[dict]) -> int | None:
+def _match_radarr_movie_id(emby_item: dict[str, Any], radarr_movies: list[dict[str, Any]]) -> int | None:
     emby_tmdb = _safe_int(_emby_provider_id(emby_item, "Tmdb"))
     emby_imdb = _emby_provider_id(emby_item, "Imdb").lower()
     emby_title = _norm_title(str(emby_item.get("Name") or ""))
@@ -348,7 +352,7 @@ def _match_radarr_movie_id(emby_item: dict, radarr_movies: list[dict]) -> int | 
     return None
 
 
-def _match_sonarr_series_id(emby_item: dict, sonarr_series: list[dict]) -> int | None:
+def _match_sonarr_series_id(emby_item: dict[str, Any], sonarr_series: list[dict[str, Any]]) -> int | None:
     emby_tvdb = _safe_int(_emby_provider_id(emby_item, "Tvdb"))
     emby_title = _norm_title(str(emby_item.get("Name") or ""))
     emby_year = _emby_year(emby_item)
@@ -366,7 +370,9 @@ def _match_sonarr_series_id(emby_item: dict, sonarr_series: list[dict]) -> int |
     return None
 
 
-def _episode_ids_for_emby_tv_item(emby_item: dict, sonarr_episodes: list[dict]) -> list[int]:
+def _episode_ids_for_emby_tv_item(
+    emby_item: dict[str, Any], sonarr_episodes: list[dict[str, Any]]
+) -> list[int]:
     """Map an Emby TV candidate to Sonarr episode ids (episode/season/series scopes)."""
     item_type = str(emby_item.get("Type") or "").strip()
     if item_type == "Series":
@@ -410,14 +416,14 @@ def _episode_ids_for_emby_tv_item(emby_item: dict, sonarr_episodes: list[dict]) 
     return []
 
 
-def _sonarr_series_is_ended(series: dict | None) -> bool:
+def _sonarr_series_is_ended(series: dict[str, Any] | None) -> bool:
     """Sonarr series.status is typically 'continuing', 'ended', or 'upcoming'."""
     if not series or not isinstance(series, dict):
         return False
     return str(series.get("status") or "").strip().lower() == "ended"
 
 
-def _sonarr_episode_file_id(episode: dict) -> int | None:
+def _sonarr_episode_file_id(episode: dict[str, Any]) -> int | None:
     fid = _safe_int(episode.get("episodeFileId"))
     if fid:
         return fid
@@ -427,7 +433,7 @@ def _sonarr_episode_file_id(episode: dict) -> int | None:
     return None
 
 
-def _sonarr_episode_label(rec: dict) -> str:
+def _sonarr_episode_label(rec: dict[str, Any]) -> str:
     series_obj = rec.get("series") if isinstance(rec.get("series"), dict) else {}
     title = str(
         rec.get("seriesTitle")
@@ -450,7 +456,7 @@ def _sonarr_episode_label(rec: dict) -> str:
     return episode_title or code
 
 
-def _sonarr_episode_label_with_fallback(rec: dict, series_title_map: dict[int, str]) -> str:
+def _sonarr_episode_label_with_fallback(rec: dict[str, Any], series_title_map: dict[int, str]) -> str:
     """Prefer explicit show title from record; fallback to seriesId lookup if needed."""
     base = _sonarr_episode_label(rec)
     # If base has no show context, try series map.
@@ -462,7 +468,7 @@ def _sonarr_episode_label_with_fallback(rec: dict, series_title_map: dict[int, s
     return base
 
 
-def _radarr_movie_label(rec: dict) -> str:
+def _radarr_movie_label(rec: dict[str, Any]) -> str:
     title = str(rec.get("title") or "").strip() or "Movie"
     year = _safe_int(rec.get("year"))
     if year:
@@ -498,7 +504,7 @@ def _detail_from_labels(labels: list[str]) -> str:
 async def apply_emby_trimmer_live_deletes(
     settings: AppSettings,
     emby: EmbyClient,
-    candidates: list[tuple[str, str, str, dict]],
+    candidates: list[tuple[str, str, str, dict[str, Any]]],
     *,
     son_key: str | None,
     rad_key: str | None,
@@ -531,7 +537,7 @@ async def apply_emby_trimmer_live_deletes(
         sonarr2 = ArrClient(ArrConfig(settings.sonarr_url, son_key))
         try:
             catalog = await sonarr2.series()
-            series_by_id: dict[int, dict] = {}
+            series_by_id: dict[int, dict[str, Any]] = {}
             for s in catalog:
                 sid = _safe_int(s.get("id"))
                 if sid:
@@ -540,7 +546,7 @@ async def apply_emby_trimmer_live_deletes(
             to_unmonitor: list[int] = []
             to_keep_monitored: list[int] = []
             seen_episode_ids: set[int] = set()
-            episodes_cache: dict[int, list[dict]] = {}
+            episodes_cache: dict[int, list[dict[str, Any]]] = {}
             for item in tv_candidates:
                 sid = _match_sonarr_series_id(item, catalog)
                 if not sid:
@@ -561,7 +567,7 @@ async def apply_emby_trimmer_live_deletes(
             to_unmonitor = list(dict.fromkeys(to_unmonitor))
             to_keep_monitored = list(dict.fromkeys(to_keep_monitored))
 
-            episode_by_id: dict[int, dict] = {}
+            episode_by_id: dict[int, dict[str, Any]] = {}
             for eps in episodes_cache.values():
                 for ep in eps:
                     eid = _safe_int(ep.get("id"))
@@ -1024,7 +1030,7 @@ async def _run_once_inner(
                             actions.append("Emby: skipped (no Emby Trimmer rules enabled)")
                         else:
                             items = await emby.items_for_user(user_id=effective_user_id, limit=scan_limit)
-                            candidates: list[tuple[str, str, str, dict]] = []
+                            candidates: list[tuple[str, str, str, dict[str, Any]]] = []
                             for item in items:
                                 item_id = str(item.get("Id", "")).strip()
                                 if not item_id:
