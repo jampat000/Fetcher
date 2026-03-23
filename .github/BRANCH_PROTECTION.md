@@ -35,7 +35,7 @@ Use **classic branch protection**, not rulesets (rulesets often don’t enforce 
 
 If a status check name isn’t found, merge anything to `master` once or open a PR so workflows run, then edit the rule and add the check.
 
-**JSON import / API bodies:** see **[`IMPORT-BRANCH-PROTECTION.md`](IMPORT-BRANCH-PROTECTION.md)** (`rulesets/master-middle-ground.json` and `branch-protection-classic-master.json`).
+**JSON import / API bodies:** see **[`IMPORT-BRANCH-PROTECTION.md`](IMPORT-BRANCH-PROTECTION.md)** (`rulesets/master-middle-ground.json`, `rulesets/protect-default-branch.json`, `branch-protection-classic-master.json`).
 
 ---
 

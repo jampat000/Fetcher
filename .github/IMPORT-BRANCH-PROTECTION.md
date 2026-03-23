@@ -7,6 +7,7 @@ Also read **[`CONTRIBUTING.md`](../CONTRIBUTING.md)** for day-to-day PR workflow
 | File | Use when |
 |------|-----------|
 | [`rulesets/master-middle-ground.json`](rulesets/master-middle-ground.json) | **Rulesets** UI **Import** or `POST /repos/{owner}/{repo}/rulesets`. **Note:** On **free private** repos GitHub often **does not enforce** rulesets until **GitHub Team**. |
+| [`rulesets/protect-default-branch.json`](rulesets/protect-default-branch.json) | Same as rulesets import, but targets **`~DEFAULT_BRANCH`** instead of hard-coded **`master`**. |
 | [`branch-protection-classic-master.json`](branch-protection-classic-master.json) | **Classic** protection via API: `PUT /repos/{owner}/{repo}/branches/master/protection`. **Works on typical free private repos.** Cannot be pasted into the Rulesets importer. |
 
 ## Import ruleset (GitHub UI)

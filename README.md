@@ -67,14 +67,8 @@ Optional **`config.yaml`** next to **`Fetcher.exe`** can supply API keys instead
 
 ## More documentation
 
-| Doc | Purpose |
-| --- | --- |
-| **[`docs/DOCKER.md`](docs/DOCKER.md)** | Linux container install (**GHCR**, Compose) |
-| **[`HOWTO-RESTORE.md`](HOWTO-RESTORE.md)** | Settings backup JSON |
-| **[`docs/GITHUB-CLI.md`](docs/GITHUB-CLI.md)** | **`gh`**, workflows, ref trap |
-| **[`docs/PUBLIC-REPO-CHECKLIST.md`](docs/PUBLIC-REPO-CHECKLIST.md)** | Going public safely |
-| **[`docs/WORKSPACE-FOLDER.md`](docs/WORKSPACE-FOLDER.md)** | Clone path / rename folder |
-| **[`docs/PRUNE-OLD-RELEASES.md`](docs/PRUNE-OLD-RELEASES.md)** | Trim old GitHub releases |
+**[`docs/README.md`](docs/README.md)** — index of guides (Docker, **`gh`**, public repo, workspace).  
+**[`HOWTO-RESTORE.md`](HOWTO-RESTORE.md)** — settings backup JSON (also linked from the index).
 
 ## Contributing
 
