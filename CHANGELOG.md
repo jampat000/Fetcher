@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.17] - 2026-03-23
+
 ### Changed
 
 - **Docs:** First pass removed stale **Cursor** handoff, **public repo audit**, and **`ship-dev.ps1`**; aligned **public checklist**, **CONTRIBUTING**, **CHANGELOG** releasing, **README**, **HOWTO-RESTORE**, backup UI copy (**toggle** wording). **Second pass:** **`docs/README.md`** index; **`PRUNE-OLD-RELEASES`** merged into **`docs/GITHUB-CLI.md`**; compare-link footer trimmed to **v2.x** (older tags → **Releases**); **IMPORT-BRANCH-PROTECTION** documents **`protect-default-branch`** ruleset.
@@ -629,7 +631,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **v2.0.x** diffs only. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.16...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.17...HEAD
+[2.0.17]: https://github.com/jampat000/Fetcher/compare/v2.0.16...v2.0.17
 [2.0.16]: https://github.com/jampat000/Fetcher/compare/v2.0.15...v2.0.16
 [2.0.15]: https://github.com/jampat000/Fetcher/compare/v2.0.14...v2.0.15
 [2.0.14]: https://github.com/jampat000/Fetcher/compare/v2.0.13...v2.0.14
