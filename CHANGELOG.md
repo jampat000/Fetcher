@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.25] - 2026-03-24
+
+### Changed
+
+- **Dashboard automation status:** Aligned the Automation "Last run" timestamp and status pill vertically and kept success wording consistent ("Succeeded") between initial render and live dashboard polling updates.
+
 ## [2.0.24] - 2026-03-23
 
 ### Fixed
@@ -665,7 +671,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **v2.0.x** diffs only. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.24...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.25...HEAD
+[2.0.25]: https://github.com/jampat000/Fetcher/compare/v2.0.24...v2.0.25
 [2.0.24]: https://github.com/jampat000/Fetcher/compare/v2.0.23...v2.0.24
 [2.0.23]: https://github.com/jampat000/Fetcher/compare/v2.0.20...v2.0.23
 [2.0.20]: https://github.com/jampat000/Fetcher/compare/v2.0.19...v2.0.20

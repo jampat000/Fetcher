@@ -1915,7 +1915,14 @@ textarea.input:focus {
   display: grid;
   grid-template-columns: 140px 1fr;
   gap: 12px;
-  align-items: start;
+  align-items: center;
+}
+.automation-spec-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 @media (max-width: 640px) {
   .automation-spec-row {

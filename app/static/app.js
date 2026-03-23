@@ -392,7 +392,9 @@ function applyDashboardStatusPayload(data) {
   if (lastHost && data.last_run) {
     lastHost.className = "automation-spec-value";
     const lr = data.last_run;
-    const ok = lr.ok ? '<span class="status-pill status-pill-ok">OK</span>' : '<span class="status-pill status-pill-fail">Failed</span>';
+    const ok = lr.ok
+      ? '<span class="status-pill status-pill-ok">Succeeded</span>'
+      : '<span class="status-pill status-pill-fail">Failed</span>';
     lastHost.innerHTML = `<span id="dash-last-started">${escapeHtml(lr.started_local)}</span> ${ok}`;
   } else if (lastHost && !data.last_run) {
     lastHost.className = "automation-spec-value muted";
