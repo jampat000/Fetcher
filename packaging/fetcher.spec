@@ -21,6 +21,9 @@ hiddenimports = []
 hiddenimports += collect_submodules("apscheduler")
 hiddenimports += collect_submodules("sqlalchemy")
 hiddenimports += collect_submodules("aiosqlite")
+hiddenimports += collect_submodules("passlib")
+hiddenimports += collect_submodules("slowapi")
+hiddenimports += collect_submodules("limits")
 hiddenimports += ["yaml", "app.resolvers", "app.resolvers.api_keys", "bcrypt", "itsdangerous", "_cffi_backend"]
 
 # ASGI server + uvicorn[standard] extras — PyInstaller often misses these (dynamic imports),
