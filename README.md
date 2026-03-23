@@ -1,10 +1,12 @@
 # Fetcher
 
-**Fetcher** is a Windows-friendly app (service + web UI) that automates **Sonarr** and **Radarr** searches and optionally applies **Emby Trimmer** rules (with dry-run support).
+**Fetcher** is a **FastAPI** web app with a **glass-style** UI (**Inter**), a **SQLite** database, and a background scheduler. It ships as a **64-bit Windows service** (Inno Setup **`FetcherSetup.exe`**) and as an optional **Linux** image on **GitHub Container Registry** (**`ghcr.io/jampat000/fetcher`**). It automates **Sonarr** and **Radarr** searches and optionally applies **Emby Trimmer** rules (with dry-run support).
 
 - Search for **missing** movies and episodes  
 - Re-run **upgrade** searches until Arr reports **quality cutoff** is met (your Quality Profiles define “better”)  
 - Optional **Emby Trimmer** to match and remove titles by rules — use **Trimmer** in the UI to scan and review  
+
+**License:** [MIT](LICENSE) · **Security:** [SECURITY.md](SECURITY.md) · **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## Screenshots
 
@@ -36,9 +38,15 @@
 
 ## Docker (Linux / NAS / container hosts)
 
-**Separate from Windows:** use **`FetcherSetup.exe`** above for the Windows service. Docker is an optional **Linux** image (local build or **GHCR** after **Docker publish** — see **[`docs/DOCKER.md`](docs/DOCKER.md)**).
+**Separate from Windows:** use **`FetcherSetup.exe`** above for the Windows service. Docker is an optional **Linux** image: build from this repo or pull from **GHCR** after each release (**Docker publish** runs with **Tag release**).
 
-**[`docs/DOCKER.md`](docs/DOCKER.md)** — **`docker compose up -d --build`** from git, or **`docker pull ghcr.io/jampat000/fetcher:latest`** when a published image exists. Open **`http://127.0.0.1:8765`**. The database persists in a volume under **`/data`**.
+**[`docs/DOCKER.md`](docs/DOCKER.md)** — **`docker compose up -d --build`** from git, or:
+
+```bash
+docker pull ghcr.io/jampat000/fetcher:latest
+```
+
+Tags match **[Releases](https://github.com/jampat000/Fetcher/releases)** (e.g. **`v2.0.18`**). Open **`http://127.0.0.1:8765`**. The database persists in a volume under **`/data`**.
 
 ## Health checks (no login)
 
@@ -72,11 +80,21 @@ Optional **`config.yaml`** next to **`Fetcher.exe`** can supply API keys instead
 
 ## Contributing
 
-Pull requests welcome against **`master`**. See **[`CONTRIBUTING.md`](CONTRIBUTING.md)** for branch workflow, tests, and releases.
+Pull requests are welcome against **`master`** (branch protection / rulesets apply — see **[`CONTRIBUTING.md`](CONTRIBUTING.md)**). That file covers workflow, tests, **Windows** and **Docker** release automation, and **`gh`** usage.
 
 ## License
 
 **MIT** — see **[`LICENSE`](LICENSE)**.
+
+## GitHub “About” (repository metadata)
+
+These are **not** stored in git; set them under **Repository → ⚙ About** (or **Settings → General**) so the GitHub page matches the project.
+
+| Field | Suggested value |
+| --- | --- |
+| **Description** | `Windows service + web UI for Sonarr/Radarr automation and optional Emby Trimmer. FastAPI, SQLite. Docker on GHCR.` |
+| **Website** | `https://github.com/jampat000/Fetcher/releases/latest` |
+| **Topics** | `sonarr`, `radarr`, `emby`, `fastapi`, `sqlite`, `windows-service`, `docker`, `automation`, `self-hosted` |
 
 ## Development (quick start)
 

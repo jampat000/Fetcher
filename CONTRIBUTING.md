@@ -6,16 +6,16 @@ Thanks for helping improve Fetcher.
 
 ## Workflow (protected `master`)
 
-This repo uses **classic branch protection** on **`master`**: pull requests, required CI checks, no force-push.
+The default branch **`master`** is protected: changes land via **pull request**, **required CI checks** must pass, and **force-push** is blocked. Enforcement may be **classic branch protection** (*Settings → Branches*) or **repository rulesets** (*Settings → Rules → Rulesets*) — see **[`.github/BRANCH_PROTECTION.md`](.github/BRANCH_PROTECTION.md)** and **[`.github/IMPORT-BRANCH-PROTECTION.md`](.github/IMPORT-BRANCH-PROTECTION.md)**.
 
-1. **Branch** from `master` (example: `fix/thing`, `chore/docs`, `feat/whatever`).
+1. **Branch** from `master` (examples: `fix/thing`, `chore/docs`, `feat/whatever`), or use a **`release/vX.Y.Z`** branch for version bumps (maintainers).
 2. **Commit** with clear messages.
 3. Open a **pull request** into `master`.
-4. Wait for **required checks** (e.g. `Test / pytest`, `Security / pip-audit`).
-5. **Approve** the PR if your branch rules require an approval (solo maintainers often self-approve).
-6. **Merge** when green.
+4. Wait for **required checks** (e.g. **`Test / pytest`**, **`Security / pip-audit`** — use the exact names shown on a green PR).
+5. If your rules require **approvals**, add one; **solo** setups often use **0** required approvals so you can merge your own PR without a second person.
+6. **Merge** when green. If GitHub reports the base branch policy blocks merge (e.g. review rules), maintainers may use **`gh pr merge <n> --admin`** when appropriate.
 
-Docs: **[`.github/BRANCH_PROTECTION.md`](.github/BRANCH_PROTECTION.md)** · JSON/API: **[`.github/IMPORT-BRANCH-PROTECTION.md`](.github/IMPORT-BRANCH-PROTECTION.md)**
+**After merge:** a push to **`master`** that updates **`VERSION`** runs **Tag release (from VERSION)**, which creates tag **`vX.Y.Z`** (if missing) and dispatches **Build installer** (Windows **`FetcherSetup.exe`**) and **Docker publish** (**`ghcr.io/jampat000/fetcher`**). See **Releasing** in **[`CHANGELOG.md`](CHANGELOG.md)**.
 
 ## Local checks
 
@@ -36,18 +36,15 @@ py -m pytest -q
 - Do **not** commit API keys, backup JSON, or real `.env` files. See **[`SECURITY.md`](SECURITY.md)**.
 - If you used a **personal access token** only to run `scripts/protect-master-branch.ps1` or the protection API once, **revoke** it when finished (*GitHub → Settings → Developer settings → Personal access tokens*).
 
-## GitHub cleanup (one-time, after enabling protection)
-
-- Remove any **Rulesets** that GitHub said **won’t enforce** on a free private repo, if you now rely on **Settings → Branches** instead.
-- Prefer **one** protection story so the team isn’t confused.
-
 ## Releases
 
-Maintainers: see **Releasing** at the bottom of **[`CHANGELOG.md`](CHANGELOG.md)** and **`VERSION`**.
+Maintainers: see **Releasing** at the bottom of **[`CHANGELOG.md`](CHANGELOG.md)** and the **`VERSION`** file.
 
-**Easiest path:** on a **release branch** (e.g. **`release/vX.Y.Z`**), bump **`VERSION`** + changelog, commit, then **`.\scripts\ship-release.ps1`** — pushes that branch to **`origin`** and dispatches **Tag release (from VERSION)** so **`vX.Y.Z`** is created (if missing) and **Build installer** runs. No **`dev`** branch on GitHub is required. See **Releasing** in **`CHANGELOG.md`** for date and compare-link conventions.
+**Typical path:** create **`release/vX.Y.Z`** from **`origin/master`**, bump **`VERSION`**, move **`[Unreleased]`** into **`[X.Y.Z] - YYYY-MM-DD`** (use the machine date, e.g. **`Get-Date -Format yyyy-MM-dd`** on Windows), update changelog compare links, **commit**, **push**, open **PR → `master`**, **merge**. That merge updates **`VERSION`** on **`master`** and triggers **Tag release (from VERSION)** → **`vX.Y.Z`**, **Build installer**, and **Docker publish**. No **`dev`** branch is required.
 
-A push to **`master`** or **`main`** that changes **`VERSION`** also auto-runs that workflow.
+**Alternate:** from a release branch, **`.\scripts\ship-release.ps1`** pushes the branch and dispatches **Tag release** (requires **`gh auth login`**).
 
-**GitHub CLI:** Install **`gh`**, run **`gh auth login`** (required for **`ship-release.ps1`**), then **`gh pr merge`** etc. — see **[`docs/GITHUB-CLI.md`](docs/GITHUB-CLI.md)**. If **`gh`** isn’t found, use **`%ProgramFiles%\GitHub CLI\gh.exe`**.
+**GitHub CLI:** Install **`gh`**, run **`gh auth login`** — see **[`docs/GITHUB-CLI.md`](docs/GITHUB-CLI.md)**. If **`gh`** isn’t on **`PATH`**, use **`%ProgramFiles%\GitHub CLI\gh.exe`**.
+
+**Ref note:** manual **`gh workflow run build-installer.yml --ref vX.Y.Z`** uses the workflow file **at that tag’s commit** — if the tag is stale vs **`master`**, fix the tag or merge first (see **`docs/GITHUB-CLI.md`** / workspace rules on the ref trap).
 

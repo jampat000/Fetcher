@@ -2,7 +2,10 @@
 
 ## Supported versions
 
-We fix security issues in the **latest release** on the default branch (`master`). Use an up-to-date build from [Releases](https://github.com/jampat000/Fetcher/releases).
+We fix security issues in the **latest release** on the default branch (`master`). Use an up-to-date build:
+
+- **Windows:** **`FetcherSetup.exe`** from [Releases](https://github.com/jampat000/Fetcher/releases/latest) (or in-app **Settings → Software updates** when enabled).  
+- **Docker:** pull **`ghcr.io/jampat000/fetcher:latest`** (or the image tag matching the release you run) — see **[`docs/DOCKER.md`](docs/DOCKER.md)**.
 
 ## Reporting a vulnerability
 
@@ -30,7 +33,7 @@ Fetcher targets a **single trusted operator** on the **same machine** or a **pri
 |------|--------------------------------------------------|------------------------------------------------------------------|
 | **Access control** | Sign-in + session cookie (or optional IP allowlist if you configure it). | **Do not** expose the app to the internet without **extra** authentication (e.g. reverse proxy) and narrow **firewall** rules. |
 | **SSRF** | Setup / “test connection” endpoints request **URLs you supply** (Sonarr, Radarr, Emby, etc.). Abuse requires reaching those API routes. | High risk: an attacker could probe internal URLs. Keep Fetcher **off** public networks or **block** those routes at the proxy. |
-| **CSRF** | Forms use POST **without CSRF tokens**; the session cookie is **HttpOnly** and **SameSite=Lax**. Risk is lower on a private LAN; for broader exposure use **network isolation** or **proxy auth**. |
+| **CSRF** | Authenticated **POST** forms include a signed **`csrf_token`** (see `app/auth.py`). The session cookie is **HttpOnly** and **SameSite=Lax**. For broader exposure still use **network isolation** or **proxy auth**. |
 | **In-app upgrade** | **`POST /api/updates/apply`** downloads the release **`FetcherSetup.exe`** from GitHub and runs a **silent** Inno install (stops/restarts the Windows service). Treat like any admin installer: only use on **trusted networks**; do not expose the Web UI to the internet without proxy auth. Forks can set **`FETCHER_UPDATES_REPO`** (`owner/repo`). The **update check** calls GitHub’s API; if you see **403** (rate limits or policy), set **`FETCHER_GITHUB_TOKEN`** (or **`GITHUB_TOKEN`**) to a **read-only** PAT with minimal scope—never commit it. |
 | **Injection** | Data access uses **SQLAlchemy** ORM/API for normal queries; migrations use fixed table names. | Keep dependencies updated (`pip-audit` in CI). |
 | **Secrets in storage** | Keys live in **SQLite** and **backup JSON** (documented above). | Encrypt backups, restrict file permissions. |
@@ -41,9 +44,9 @@ Fetcher’s **`get_client_ip()`** only substitutes the **`X-Forwarded-For`** hea
 
 ## Default branch (`master`) on GitHub
 
-Do not rely on local git habits alone: in GitHub **Settings → Branches** (or **Rules → Rulesets**), protect **`master`** with **required PR**, **required passing checks** (`Test / pytest`, `Security / pip-audit` — copy exact names from a PR), **no force-push**, and (for strongest posture) **don’t allow admins to bypass**.
+Do not rely on local git habits alone: protect **`master`** (and **`main`** if you use it) with **required PRs**, **required passing checks** (`Test / pytest`, `Security / pip-audit` — copy exact names from a PR), **no force-push**, and rules that match how you work (**classic branch protection** or **repository rulesets**).
 
-Step-by-step checklist: **[`.github/BRANCH_PROTECTION.md`](.github/BRANCH_PROTECTION.md)**.
+Step-by-step checklist: **[`.github/BRANCH_PROTECTION.md`](.github/BRANCH_PROTECTION.md)** · ruleset JSON: **[`.github/IMPORT-BRANCH-PROTECTION.md`](.github/IMPORT-BRANCH-PROTECTION.md)**. Solo maintainers may use **0** required approvals with **restrict updates** so merges still go through PRs without a second human.
 
 ## CI security checks
 
