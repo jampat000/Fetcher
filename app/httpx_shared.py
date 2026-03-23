@@ -15,7 +15,11 @@ async def init_shared_httpx_client() -> None:
     global _client
     if _client is not None:
         return
-    _client = httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, follow_redirects=True)
+    _client = httpx.AsyncClient(
+        timeout=_DEFAULT_TIMEOUT,
+        follow_redirects=True,
+        limits=httpx.Limits(max_connections=32, max_keepalive_connections=16),
+    )
 
 
 async def aclose_shared_httpx_client() -> None:

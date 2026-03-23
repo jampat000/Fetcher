@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - **Docs:** First pass removed stale **Cursor** handoff, **public repo audit**, and **`ship-dev.ps1`**; aligned **public checklist**, **CONTRIBUTING**, **CHANGELOG** releasing, **README**, **HOWTO-RESTORE**, backup UI copy (**toggle** wording). **Second pass:** **`docs/README.md`** index; **`PRUNE-OLD-RELEASES`** merged into **`docs/GITHUB-CLI.md`**; compare-link footer trimmed to **v2.x** (older tags → **Releases**); **IMPORT-BRANCH-PROTECTION** documents **`protect-default-branch`** ruleset.
+- **Performance / UI noise:** Dashboard **Activity** query loads **8** rows (was **30**) since only five render; **dashboard status** polling runs once on load, pauses while the tab is hidden, and resumes on focus; shared **httpx** client uses connection limits for better reuse; **Software updates** post-upgrade **`/healthz`** poll interval **3s** (was **2s**).
 
 ## [2.0.16] - 2026-03-23
 
