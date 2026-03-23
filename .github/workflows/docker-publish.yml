@@ -1,6 +1,9 @@
 # Publish the Linux container image to GitHub Container Registry (GHCR).
 # Separate from the Windows installer workflow (.github/workflows/build-installer.yml).
-# Tag pushes from GITHUB_TOKEN do not trigger this workflow; "Tag release" dispatches it for the tag ref.
+#
+# Tag pushes from GITHUB_TOKEN do not trigger on.push.tags; "Tag release" dispatches this workflow.
+# Dispatch must use the default branch as `ref` so the workflow YAML is current; pass the release
+# tag in checkout_ref (ref trap: dispatching with ref=vX.Y.Z uses workflow files from that old commit).
 name: Docker publish
 
 on:
@@ -8,6 +11,12 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      checkout_ref:
+        description: 'Git ref to build (e.g. v2.0.15). Leave empty to build the workflow ref.'
+        required: false
+        type: string
+        default: ''
 
 concurrency:
   group: docker-publish-${{ github.ref }}
@@ -23,6 +32,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.checkout_ref != '' && github.event.inputs.checkout_ref || github.ref }}
 
       - name: Image name (lowercase for GHCR)
         id: img
@@ -35,31 +46,30 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Tag ref (push v* or workflow_dispatch with ref = tag): semver + latest.
-      - name: Docker meta (tag ref)
-        id: meta
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ steps.img.outputs.name }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
-
-      # workflow_dispatch on a branch only: VERSION + sha (no :latest).
-      - name: Image tags (branch manual)
-        id: manualtags
-        if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/')
+      # After checkout, classify "release" vs branch experiment using ref + optional input.
+      - name: Compute image tags
+        id: tags
+        shell: bash
         run: |
+          set -euo pipefail
           IMG="${{ steps.img.outputs.name }}"
           V=$(tr -d ' \r\n' < VERSION)
-          echo "tags=${IMG}:${V},${IMG}:sha-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          MINOR="${V%.*}"
+          WF_REF="${{ github.ref }}"
+          CR="${{ github.event.inputs.checkout_ref }}"
+          EV="${{ github.event_name }}"
+          isrel=0
+          if [[ "$WF_REF" == refs/tags/v* ]]; then isrel=1; fi
+          if [[ "$EV" == "workflow_dispatch" && -n "$CR" && "$CR" == v* ]]; then isrel=1; fi
+          if [[ "$isrel" -eq 1 ]]; then
+            echo "tags=${IMG}:${V},${IMG}:${MINOR},${IMG}:latest" >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=${IMG}:${V},${IMG}:sha-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ${{ startsWith(github.ref, 'refs/tags/v') && steps.meta.outputs.tags || steps.manualtags.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels || '' }}
+          tags: ${{ steps.tags.outputs.tags }}
