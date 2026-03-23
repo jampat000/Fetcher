@@ -66,7 +66,7 @@
   {% endif %}
 
   <div class="card gc card-stripe-purple">
-    <h2 class="gc-title">Automation</h2>
+    <div class="gc-title" role="heading" aria-level="2">Automation</div>
     <div class="automation-spec">
       {% if last_run %}
       <div class="automation-spec-row">
@@ -93,7 +93,7 @@
   </div>
 
   <div class="card gc" id="dashboard-overview">
-    <h2 class="gc-title">Overview</h2>
+    <div class="gc-title" role="heading" aria-level="2">Overview</div>
 
     <div class="g2">
       {{ arr_panel(
@@ -162,7 +162,7 @@
     </div>
 
     <div class="section dashboard-activity-section">
-      <h2 class="gc-title">Recent activity</h2>
+      <div class="gc-title" role="heading" aria-level="2">Recent activity</div>
       <p class="hint">Searches and Trimmer actions. Click a row with <strong>+N more</strong> for full titles. Open <a href="/activity">Activity</a> for the full list.</p>
       {% if activity %}
       <div class="activity-list">
