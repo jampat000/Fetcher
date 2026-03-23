@@ -1,0 +1,32 @@
+# Fetcher in Docker — persistent SQLite under /data.
+# Usage: docker compose up -d --build
+# UI: http://127.0.0.1:8765  (first visit: /setup for account + Arr)
+
+services:
+  fetcher:
+    build: .
+    image: fetcher:local
+    ports:
+      - "8765:8765"
+    environment:
+      FETCHER_DEV_DB_PATH: /data/fetcher.db
+      # Optional: TZ=Australia/Sydney
+      # Optional: FETCHER_LOG_LEVEL=INFO
+    volumes:
+      - fetcher-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/healthz', timeout=5)",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  fetcher-data:

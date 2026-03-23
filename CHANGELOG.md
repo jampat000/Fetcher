@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.15] - 2026-03-23
+
+### Added
+
+- **Docker:** **`Dockerfile`** (Python 3.11-slim, **`uvicorn`** on **`0.0.0.0:8765`**, persistent SQLite via **`FETCHER_DEV_DB_PATH=/data/fetcher.db`**, non-root user), **`docker-compose.yml`** with volume and **`/healthz`** healthcheck, **`.dockerignore`**, and **[`docs/DOCKER.md`](docs/DOCKER.md)**. **`README.md`** links Docker install.
+- **CI:** **`.github/workflows/docker-build.yml`** verifies **`docker build`** on changes to container inputs.
+
 ## [2.0.14] - 2026-03-23
 
 ### Changed
@@ -602,7 +609,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 7. If a **tag** exists but **Releases → Latest** never updated (no **`FetcherSetup.exe`** for that tag), check that **`vX.Y.Z`** points to the commit you mean — run **`git fetch origin master --tags`**, then compare **`git rev-parse vX.Y.Z`** vs **`git rev-parse origin/master`**. **Manual** **Build installer** / **`gh workflow run … --ref vX.Y.Z`** uses the **workflow YAML from that tag’s commit** — an **old** tag SHA can **build** but **skip** **release**. **Fix:** move the tag to the correct commit and **re-push** the tag, **or** bump **`VERSION`** and release again, **or** **`gh release create`** + attach **`FetcherSetup.exe`** from a green run artifact.
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.14...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.15...HEAD
+[2.0.15]: https://github.com/jampat000/Fetcher/compare/v2.0.14...v2.0.15
 [2.0.14]: https://github.com/jampat000/Fetcher/compare/v2.0.13...v2.0.14
 [2.0.13]: https://github.com/jampat000/Fetcher/compare/v2.0.12...v2.0.13
 [2.0.12]: https://github.com/jampat000/Fetcher/compare/v2.0.11...v2.0.12

@@ -34,6 +34,10 @@
 
 **Updates:** **Settings → Software updates** can install a newer **`FetcherSetup.exe`**, or install manually from [Releases](https://github.com/jampat000/Fetcher/releases).  
 
+## Docker (Linux / NAS / container hosts)
+
+**[`docs/DOCKER.md`](docs/DOCKER.md)** — build and run with **`docker compose up -d --build`**, then open **`http://127.0.0.1:8765`**. The database persists in a Docker volume under **`/data`**.
+
 ## Health checks (no login)
 
 - **`GET /healthz`** — JSON status for uptime monitoring  
@@ -46,6 +50,7 @@
 | `app/` | FastAPI app and scheduler |
 | `service/` | Windows service (WinSW) configuration |
 | `installer/` | Inno Setup → **`FetcherSetup.exe`** |
+| `Dockerfile`, `docker-compose.yml` | Linux/container install (see **`docs/DOCKER.md`**) |
 | `VERSION` | Release version (semver) |
 
 Optional **`config.yaml`** next to **`Fetcher.exe`** can supply API keys instead of (or overriding) the database — see **`app/config.py`** / **`app/resolvers/api_keys.py`**. **`config.example.yaml`** is a template (copy to **`config.yaml`**, gitignored).
