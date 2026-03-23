@@ -32,6 +32,17 @@
 3. On first visit you complete **setup** (account, then Sonarr / Radarr / Emby and options). After that, sign in at **`/login`** when your session expires.  
 4. Use **Fetcher settings** and **Trimmer** in the sidebar for ongoing configuration.  
 
+### Required service environment variable (JWT signing)
+
+Installed builds require **`FETCHER_JWT_SECRET`** at startup. Set it as a **persistent machine environment variable** (administrator PowerShell), then restart the service:
+
+```powershell
+[Environment]::SetEnvironmentVariable("FETCHER_JWT_SECRET","<your-32+char-random-secret>","Machine")
+Restart-Service Fetcher
+```
+
+If this variable is missing, Fetcher intentionally fails fast on startup (no fallback signing secret).
+
 **Security:** Password-protected UI (bcrypt + session cookie). Optional **IP allowlist** for trusted networks. See **[`SECURITY.md`](SECURITY.md)** for reporting issues, API keys, downloads, and lockout recovery.  
 
 **Updates:** **Settings → Software updates** can install a newer **`FetcherSetup.exe`**, or install manually from [Releases](https://github.com/jampat000/Fetcher/releases).  

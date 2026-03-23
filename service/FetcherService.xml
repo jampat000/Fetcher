@@ -7,6 +7,8 @@
   <executable>%BASE%\Fetcher.exe</executable>
   <!-- 0.0.0.0 = listen on all interfaces (LAN access). Use 127.0.0.1 to restrict to this machine. -->
   <arguments>--host 0.0.0.0 --port 8765</arguments>
+  <!-- Required: must be set as a machine/user env var before service start (no fallback secret). -->
+  <env name="FETCHER_JWT_SECRET" value="%FETCHER_JWT_SECRET%"/>
 
   <log mode="roll-by-size">
     <sizeThreshold>10240</sizeThreshold>
