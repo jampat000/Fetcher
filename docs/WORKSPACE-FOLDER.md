@@ -1,6 +1,6 @@
-# Local folder name: `Fetcher` (not `grabby`)
+# Local folder name: **`Fetcher`**
 
-The GitHub repo is **[jampat000/Fetcher](https://github.com/jampat000/Fetcher)**. The app was previously called **Grabby**, so your machine might still have a clone at **`C:\Users\User\grabby`**. That **does not** change how Git works, but it confuses humans and Cursor’s window title.
+The GitHub repo is **[jampat000/Fetcher](https://github.com/jampat000/Fetcher)**. Use a clone folder named **`Fetcher`** so paths and editor titles stay obvious. If you still have an older clone under another name, use **`scripts/rename-local-repo-folder.ps1`** (see below).
 
 ## Recommended layout
 
@@ -17,7 +17,7 @@ Then in **Cursor / VS Code**:
 - **File → Open Folder…** → choose **`…\Fetcher`**, **or**
 - **File → Open Workspace from File…** → open **`fetcher.code-workspace`** in the repo root (sidebar label shows **Fetcher**).
 
-## Rename an existing clone (`grabby` → `Fetcher`)
+## Rename an existing clone (any name → `Fetcher`)
 
 1. **Close Cursor / VS Code** (and stop **`dev-start.ps1`** if it’s running).
 2. From **any** shell **inside** the repo:

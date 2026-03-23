@@ -46,4 +46,6 @@ gh release delete v1.0.10 --repo jampat000/Fetcher --yes
 
 If **`vX.Y.Z`** predates a CI change (e.g. **release** job conditions), a run can **succeed** for **build** but **not** create a **GitHub Release**. **Before** relying on manual dispatch: `git fetch origin master --tags` and confirm the tag points to the commit you intend to ship; if not, **re-tag** on **`origin/master`** or ship a new **`VERSION`**.
 
+**Docker publish:** `gh workflow run docker-publish.yml --repo jampat000/Fetcher --ref master -f checkout_ref=vX.Y.Z` — use when you need GHCR without re-tagging (workflow YAML from **`master`**, image from the tag commit).
+
 See **`.cursor/rules/github-installer-workflow-ref-trap.mdc`** (agent-facing) and **CHANGELOG.md → Releasing**.

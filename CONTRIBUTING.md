@@ -2,7 +2,7 @@
 
 Thanks for helping improve Fetcher.
 
-**Clone path:** Prefer **`%USERPROFILE%\Fetcher`** so the folder name matches the repo (see **[`docs/WORKSPACE-FOLDER.md`](docs/WORKSPACE-FOLDER.md)** if you still use an old name like **`grabby`**).
+**Clone path:** Prefer **`%USERPROFILE%\Fetcher`** (see **[`docs/WORKSPACE-FOLDER.md`](docs/WORKSPACE-FOLDER.md)** if your folder name differs).
 
 ## Workflow (protected `master`)
 
@@ -24,6 +24,8 @@ py -m pip install -r requirements.txt -r requirements-dev.txt
 py -m playwright install chromium
 py -m pytest -q
 ```
+
+**Optional:** **`scripts/emby-api-inventory.py`** — ad-hoc Emby API exploration (not used by CI).
 
 ## Dependency updates
 

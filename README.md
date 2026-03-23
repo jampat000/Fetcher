@@ -65,6 +65,17 @@ Optional **`config.yaml`** next to **`Fetcher.exe`** can supply API keys instead
 
 **[`CHANGELOG.md`](CHANGELOG.md)** — includes maintainer **Releasing** notes.
 
+## More documentation
+
+| Doc | Purpose |
+| --- | --- |
+| **[`docs/DOCKER.md`](docs/DOCKER.md)** | Linux container install (**GHCR**, Compose) |
+| **[`HOWTO-RESTORE.md`](HOWTO-RESTORE.md)** | Settings backup JSON |
+| **[`docs/GITHUB-CLI.md`](docs/GITHUB-CLI.md)** | **`gh`**, workflows, ref trap |
+| **[`docs/PUBLIC-REPO-CHECKLIST.md`](docs/PUBLIC-REPO-CHECKLIST.md)** | Going public safely |
+| **[`docs/WORKSPACE-FOLDER.md`](docs/WORKSPACE-FOLDER.md)** | Clone path / rename folder |
+| **[`docs/PRUNE-OLD-RELEASES.md`](docs/PRUNE-OLD-RELEASES.md)** | Trim old GitHub releases |
+
 ## Contributing
 
 Pull requests welcome against **`master`**. See **[`CONTRIBUTING.md`](CONTRIBUTING.md)** for branch workflow, tests, and releases.

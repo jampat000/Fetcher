@@ -19,7 +19,7 @@ Use the **Web UI** so your **Fetcher** (Sonarr/Radarr) and **Trimmer** (Emby) se
 
 1. Install or start **Fetcher** on the new machine.
 2. Open **Settings** → **Backup & Restore** → **Restore from Backup**.
-3. Choose the `.json` file, check the confirmation box, click **Restore from Backup**.
+3. Choose the `.json` file, turn on the **confirmation** toggle, click **Restore from Backup**.
 4. **Restart** the **Fetcher** Windows service (or the app) so the scheduler reloads.
 
 **Note:** Import replaces **settings** only (**Fetcher** and **Trimmer**). **Activity** history is **not** in the JSON file.
