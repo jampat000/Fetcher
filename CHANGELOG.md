@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.12] - 2026-03-23
+
+### Fixed
+
+- **`VERSION` / default branch:** After rapid merges of **release** and **refactor/security** pull requests, **`master`** could report **`2.0.9`** in **`VERSION`** while **2.0.10** settings/update work was already merged — bump to **2.0.12** so **`VERSION`**, **`/healthz`**, and the changelog match the combined tree.
+
 ## [2.0.11] - 2026-03-23
 
 ### Added
@@ -17,6 +23,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Architecture:** Finalized modular FastAPI router structure and shared `httpx.AsyncClient` pooling lifecycle alignment.
 - **Runtime security:** Persisted `ActivityLog.detail` and `JobRunLog.message` strings are sanitized through centralized sensitive-text redaction before DB writes.
 - **Web defaults:** CLI host default remains loopback-only (`127.0.0.1`) and security headers (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`) are enforced via middleware.
+
+## [2.0.10] - 2026-03-23
+
+### Fixed
+
+- **Settings → Software updates → Apply upgrade:** One **if/else** path so **Upgrade now** is never left hidden while the confirmation toggle is visible; **`apply_supported`** is honored only when JSON **`true`** (`===` in script). Added a short hint to turn the confirmation on, then use **Upgrade now**; when in-app apply is unavailable, the toggle is hidden and a **manual install** line points to **Download FetcherSetup.exe** under **Release status**.
+
+### Changed
+
+- **`app.css`:** **`.btn:disabled`** visibility; **Apply upgrade** primary button uses full width (up to **20rem**) in the commit panel.
+
+## [2.0.9] - 2026-03-23
+
+### Added
+
+- **`.github/rulesets/protect-default-branch.json`:** Example **repository ruleset** (branch rules, not classic protection) for import or **`gh api …/rulesets`** — optional reference for **`master`** / default branch.
+
+### Changed
+
+- **Settings → Backup & restore:** **Choose backup file** uses app **button** styling; **Confirm restore** matches **Apply upgrade** (shared **`settings-step-*`** / **`settings-commit-*`** layout, **toggle** control, tinted commit panel).
+- **Settings → Software updates → Apply upgrade:** Same confirm UI pattern as backup restore; **`scripts/dev-start.ps1`** sets **`FETCHER_ALLOW_DEV_UPGRADE=1`** by default so source runs can use **Upgrade now** (use **`-NoDevUpgrade`** to keep the toggle hidden). **Development** hint only shows when an update exists and in-app apply is still unavailable.
 
 ## [2.0.8] - 2026-03-23
 
@@ -559,8 +586,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 7. If a **tag** exists but **Releases → Latest** never updated (no **`FetcherSetup.exe`** for that tag), check that **`vX.Y.Z`** points to the commit you mean — run **`git fetch origin master --tags`**, then compare **`git rev-parse vX.Y.Z`** vs **`git rev-parse origin/master`**. **Manual** **Build installer** / **`gh workflow run … --ref vX.Y.Z`** uses the **workflow YAML from that tag’s commit** — an **old** tag SHA can **build** but **skip** **release**. **Fix:** move the tag to the correct commit and **re-push** the tag, **or** bump **`VERSION`** and release again, **or** **`gh release create`** + attach **`FetcherSetup.exe`** from a green run artifact.
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.11...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.12...HEAD
+[2.0.12]: https://github.com/jampat000/Fetcher/compare/v2.0.11...v2.0.12
 [2.0.11]: https://github.com/jampat000/Fetcher/compare/v2.0.10...v2.0.11
+[2.0.10]: https://github.com/jampat000/Fetcher/compare/v2.0.9...v2.0.10
+[2.0.9]: https://github.com/jampat000/Fetcher/compare/v2.0.8...v2.0.9
 [2.0.8]: https://github.com/jampat000/Fetcher/compare/v2.0.7...v2.0.8
 [2.0.7]: https://github.com/jampat000/Fetcher/compare/v2.0.6...v2.0.7
 [2.0.6]: https://github.com/jampat000/Fetcher/compare/v2.0.5...v2.0.6
