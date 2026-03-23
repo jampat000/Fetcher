@@ -1099,6 +1099,13 @@ h2.gc-title,
   box-shadow: none;
 }
 
+.btn:disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 0 1px 8px rgba(37, 99, 235, 0.2);
+}
+
 .btn-row {
   display: flex;
   gap: var(--btn-row-gap);
@@ -2311,6 +2318,26 @@ th {
   align-items: flex-start;
   gap: var(--space-3);
   width: 100%;
+}
+
+.settings-commit-actions > .btn.backup-panel-btn {
+  width: 100%;
+  max-width: 20rem;
+  box-sizing: border-box;
+  justify-content: center;
+}
+
+.updates-upgrade-cta-hint {
+  margin: 0;
+  width: 100%;
+  max-width: 24rem;
+}
+
+#updates-manual-install-hint {
+  margin: 0;
+  width: 100%;
+  max-width: 24rem;
+  line-height: 1.45;
 }
 
 #updates-upgrade-shell.settings-step-group {
