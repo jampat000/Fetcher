@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **GitHub Releases:** every release now includes a standard **Install** section (**Windows** + **Docker**) above the auto-generated changelog (see **Build installer** workflow).
+
 ### Fixed
 
 - **Release automation:** **Tag release (from VERSION)** now dispatches **Docker publish** as well as **Build installer**, because tag pushes with the default **`GITHUB_TOKEN`** do not trigger **`on: push: tags`** workflows.
