@@ -1,0 +1,215 @@
+"""Shared helpers for server-rendered pages and settings persistence."""
+
+from __future__ import annotations
+
+import logging
+import re
+from typing import Any
+from urllib.parse import quote
+
+from sqlalchemy import desc, select
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db import fetch_latest_app_snapshots
+from app.display_helpers import _fmt_local, _truncate_display
+from app.models import ActivityLog, AppSettings, AppSnapshot, JobRunLog
+from app.schedule import DAY_NAMES, normalize_schedule_days_csv
+from app.scheduler import scheduler
+
+logger = logging.getLogger(__name__)
+
+# Activity list shows 5 title lines + “+N more”; full list is stored in ``ActivityLog.detail``.
+ACTIVITY_DETAIL_PREVIEW_LINES = 5
+_ACTIVITY_LOG_LEGACY_MORE = re.compile(r"^\+\d+ more$")
+
+
+def activity_log_title_lines(detail: str) -> list[str]:
+    """Split stored detail into display lines; drop legacy synthetic ``+N more`` rows."""
+    lines: list[str] = []
+    for raw in (detail or "").splitlines():
+        s = raw.strip()
+        if not s or _ACTIVITY_LOG_LEGACY_MORE.match(s):
+            continue
+        lines.append(s)
+    return lines
+
+
+def activity_display_row(e: ActivityLog, tz: str) -> dict[str, Any]:
+    raw_detail = (getattr(e, "detail", "") or "").strip()
+    return {
+        "id": e.id,
+        "time_local": _fmt_local(e.created_at, tz),
+        "app": e.app,
+        "kind": e.kind,
+        "status": (getattr(e, "status", "") or "ok").strip().lower(),
+        "count": e.count,
+        "detail_lines": activity_log_title_lines(raw_detail),
+    }
+
+
+def settings_save_redirect_tab(save_scope: str) -> str:
+    """Query ``tab=`` value for /settings after POST so the UI stays on the same section."""
+    s = (save_scope or "global").strip().lower()
+    if s == "all":
+        return "global"
+    if s in ("global", "sonarr", "radarr"):
+        return s
+    return "global"
+
+
+def trimmer_settings_fragment(trimmer_section: str | None) -> str:
+    key = (trimmer_section or "").strip().lower()
+    ids = {
+        "connection": "trimmer-connection",
+        "schedule": "trimmer-schedule",
+        "rules": "trimmer-rules",
+        "people": "trimmer-people",
+    }
+    fid = ids.get(key)
+    return f"#{fid}" if fid else ""
+
+
+def trimmer_settings_redirect_url(*, saved: bool, reason: str | None = None, section: str | None = None) -> str:
+    frag = trimmer_settings_fragment(section)
+    if saved:
+        return f"/trimmer/settings?saved=1{frag}"
+    err = quote(str(reason or "error").replace("\n", " ").strip()[:240], safe="")
+    return f"/trimmer/settings?save=fail&reason={err}{frag}"
+
+
+def settings_looks_like_existing_fetcher_install(settings: AppSettings) -> bool:
+    """True when Sonarr/Radarr/Emby were already configured — tailors setup step 0 for upgrades."""
+    return bool(
+        (settings.sonarr_url or "").strip()
+        or (settings.radarr_url or "").strip()
+        or (settings.emby_url or "").strip()
+        or settings.sonarr_enabled
+        or settings.radarr_enabled
+        or settings.emby_enabled
+    )
+
+
+async def try_commit_and_reschedule(session: AsyncSession) -> bool:
+    """Persist settings and refresh scheduler tick. False if SQLite could not commit (e.g. DB locked)."""
+    try:
+        await session.commit()
+    except SQLAlchemyError:
+        try:
+            await session.rollback()
+        except Exception:
+            logger.exception("rollback after failed settings commit")
+        return False
+    try:
+        await scheduler.reschedule()
+    except Exception:
+        logger.warning("scheduler.reschedule failed after settings commit", exc_info=True)
+    return True
+
+
+async def build_dashboard_status(
+    session: AsyncSession,
+    tz: str,
+    *,
+    snapshots: dict[str, AppSnapshot | None] | None = None,
+) -> dict[str, Any]:
+    """Shared JSON payload for dashboard live polling and server-rendered page."""
+    last_run = (
+        (await session.execute(select(JobRunLog).order_by(desc(JobRunLog.id)).limit(1))).scalars().first()
+    )
+    last_run_display: dict[str, Any] | None = None
+    if last_run:
+        last_run_display = {
+            "started_local": _fmt_local(last_run.started_at, tz),
+            "finished_local": _fmt_local(last_run.finished_at, tz) if last_run.finished_at else "",
+            "has_finished": last_run.finished_at is not None,
+            "ok": bool(last_run.ok),
+            "message": _truncate_display(last_run.message or ""),
+        }
+    next_tick = scheduler.next_fetcher_run_at()
+    next_tick_local = _fmt_local(next_tick, tz) if next_tick else ""
+    snaps = snapshots if snapshots is not None else await fetch_latest_app_snapshots(session)
+    sonarr_snap = snaps.get("sonarr")
+    radarr_snap = snaps.get("radarr")
+    emby_snap = snaps.get("emby")
+    return {
+        "last_run": last_run_display,
+        "next_scheduler_tick_local": next_tick_local,
+        "sonarr_missing": int(sonarr_snap.missing_total) if sonarr_snap else 0,
+        "sonarr_upgrades": int(sonarr_snap.cutoff_unmet_total) if sonarr_snap else 0,
+        "radarr_missing": int(radarr_snap.missing_total) if radarr_snap else 0,
+        "radarr_upgrades": int(radarr_snap.cutoff_unmet_total) if radarr_snap else 0,
+        "emby_matched": int(emby_snap.missing_total) if emby_snap else 0,
+    }
+
+
+def movie_credit_types_summary(types: frozenset[str]) -> str:
+    short = {
+        "actor": "Cast",
+        "director": "Director",
+        "writer": "Writer",
+        "producer": "Producer",
+        "gueststar": "Guest",
+    }
+    order = ("actor", "director", "writer", "producer", "gueststar")
+    parts = [short[k] for k in order if k in types]
+    return "+".join(parts) if parts else "Cast"
+
+
+def schedule_days_csv_from_named_day_checks(
+    mon: int,
+    tue: int,
+    wed: int,
+    thu: int,
+    fri: int,
+    sat: int,
+    sun: int,
+) -> str:
+    """One checkbox per day (`name=prefix_Mon` value=1). Uncheck all → store "" (not full week)."""
+    flags = (mon, tue, wed, thu, fri, sat, sun)
+    parts = [DAY_NAMES[i] for i, v in enumerate(flags) if int(v or 0) != 0]
+    if not parts:
+        return ""
+    return normalize_schedule_days_csv(",".join(parts))
+
+
+def schedule_weekdays_selected_dict(days_csv: str) -> dict[str, bool]:
+    """Per-day flags from DB column (raw). Empty stored value → all False."""
+    n = normalize_schedule_days_csv((days_csv or "").strip())
+    if not n.strip():
+        return {d: False for d in DAY_NAMES}
+    allowed = {p.strip() for p in n.split(",") if p.strip() in DAY_NAMES}
+    return {d: (d in allowed) for d in DAY_NAMES}
+
+
+def effective_emby_rules(settings: AppSettings) -> dict[str, int | bool]:
+    global_rating = max(0, int(settings.emby_rule_watched_rating_below or 0))
+    global_unwatched = max(0, int(settings.emby_rule_unwatched_days or 0))
+
+    movie_rating = max(0, int(settings.emby_rule_movie_watched_rating_below or 0)) or global_rating
+    movie_unwatched = max(0, int(settings.emby_rule_movie_unwatched_days or 0)) or global_unwatched
+    tv_delete_watched = bool(settings.emby_rule_tv_delete_watched)
+    tv_unwatched = max(0, int(settings.emby_rule_tv_unwatched_days or 0)) or global_unwatched
+
+    return {
+        "movie_rating_below": movie_rating,
+        "movie_unwatched_days": movie_unwatched,
+        "tv_delete_watched": tv_delete_watched,
+        "tv_unwatched_days": tv_unwatched,
+    }
+
+
+# Total wizard screens (0 .. WIZARD_LAST_STEP_INDEX inclusive). Last index is the "done" page.
+SETUP_WIZARD_STEPS = 6
+WIZARD_LAST_STEP_INDEX = SETUP_WIZARD_STEPS - 1
+
+
+def setup_wizard_step_title(step: int) -> str:
+    return {
+        0: "Account",
+        1: "Sonarr",
+        2: "Radarr",
+        3: "Emby",
+        4: "Schedule & timezone",
+        5: "What's next",
+    }.get(step, "Setup")

@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 
 from app.http_retry import httpx_request_with_retries
+from app.httpx_shared import get_shared_httpx_client
 
 # Emby Items API: fetch in pages so large libraries can exceed a single Limit cap.
 _DEFAULT_ITEMS_PAGE_SIZE = 2000
@@ -18,24 +19,44 @@ class EmbyConfig:
 
 
 class EmbyClient:
-    def __init__(self, cfg: EmbyConfig, *, timeout_s: float = 300.0) -> None:
-        self._client = httpx.AsyncClient(
-            base_url=cfg.base_url.rstrip("/"),
-            # Emby installs vary in how they validate API credentials; send
-            # both common token headers and api_key query param for compatibility.
-            headers={
-                "X-Emby-Token": cfg.api_key,
-                "X-MediaBrowser-Token": cfg.api_key,
-            },
-            params={"api_key": cfg.api_key},
-            timeout=timeout_s,
-        )
+    def __init__(
+        self,
+        cfg: EmbyConfig,
+        *,
+        timeout_s: float = 300.0,
+        http_client: httpx.AsyncClient | None = None,
+    ) -> None:
+        self._cfg = cfg
+        self._client = http_client if http_client is not None else get_shared_httpx_client()
+        self._timeout_s = timeout_s
+
+    def _abs_url(self, path: str) -> str:
+        base = self._cfg.base_url.rstrip("/")
+        p = path if path.startswith("/") else f"/{path}"
+        return f"{base}{p}"
 
     async def _req(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
-        return await httpx_request_with_retries(self._client, method, path, **kwargs)
+        opts: dict[str, Any] = dict(kwargs)
+        opts.setdefault("timeout", self._timeout_s)
+        # Emby installs vary in how they validate API credentials; send
+        # both common token headers and api_key query param for compatibility.
+        headers = dict(opts.pop("headers", {}))
+        headers.setdefault("X-Emby-Token", self._cfg.api_key)
+        headers.setdefault("X-MediaBrowser-Token", self._cfg.api_key)
+        raw_params = opts.pop("params", None)
+        if isinstance(raw_params, dict):
+            params: dict[str, Any] = {**raw_params, "api_key": self._cfg.api_key}
+        elif raw_params is None:
+            params = {"api_key": self._cfg.api_key}
+        else:
+            params = raw_params
+        return await httpx_request_with_retries(
+            self._client, method, self._abs_url(path), headers=headers, params=params, **opts
+        )
 
     async def aclose(self) -> None:
-        await self._client.aclose()
+        # Shared ``httpx.AsyncClient`` is owned by FastAPI lifespan — never close it here.
+        return None
 
     async def health(self) -> bool:
         # Simple health/probe endpoint.

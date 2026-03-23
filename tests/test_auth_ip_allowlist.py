@@ -69,7 +69,7 @@ def _client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     async def _noop_start() -> None:
         return None
 
-    def _noop_shutdown() -> None:
+    def _noop_shutdown(*_a: object, **_kw: object) -> None:
         return None
 
     monkeypatch.setattr("app.main.scheduler.start", _noop_start)

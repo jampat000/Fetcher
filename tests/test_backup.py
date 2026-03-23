@@ -118,7 +118,7 @@ def test_http_export_import_redirects_ok(monkeypatch: pytest.MonkeyPatch) -> Non
     async def _noop_start() -> None:
         return None
 
-    def _noop_shutdown() -> None:
+    def _noop_shutdown(*_a: object, **_kw: object) -> None:
         return None
 
     monkeypatch.setattr("app.main.scheduler.start", _noop_start)

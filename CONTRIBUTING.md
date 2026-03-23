@@ -43,7 +43,7 @@ py -m pytest -q
 
 Maintainers: see **Releasing** at the bottom of **[`CHANGELOG.md`](CHANGELOG.md)** and **`VERSION`**.
 
-**Easiest path:** on a **release branch** (e.g. **`release/vX.Y.Z`**), bump **`VERSION`** + changelog, commit, then **`.\scripts\ship-release.ps1`** — pushes that branch to **`origin`** and dispatches **Tag release (from VERSION)** so **`vX.Y.Z`** is created (if missing) and **Build installer** runs. No **`dev`** branch on GitHub is required. See **`README.md`** → **Ship a new version to GitHub (maintainers)**.
+**Easiest path:** on a **release branch** (e.g. **`release/vX.Y.Z`**), bump **`VERSION`** + changelog, commit, then **`.\scripts\ship-release.ps1`** — pushes that branch to **`origin`** and dispatches **Tag release (from VERSION)** so **`vX.Y.Z`** is created (if missing) and **Build installer** runs. No **`dev`** branch on GitHub is required. See **Releasing** in **`CHANGELOG.md`** for date and compare-link conventions.
 
 A push to **`master`** or **`main`** that changes **`VERSION`** also auto-runs that workflow.
 

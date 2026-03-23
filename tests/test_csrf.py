@@ -23,7 +23,7 @@ def _scheduler_noop(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _noop_start() -> None:
         return None
 
-    def _noop_shutdown() -> None:
+    def _noop_shutdown(*_a: object, **_kw: object) -> None:
         return None
 
     monkeypatch.setattr("app.main.scheduler.start", _noop_start)
@@ -100,7 +100,7 @@ def test_post_api_arr_search_now_without_csrf_succeeds(monkeypatch: pytest.Monke
     async def _fake_run_once(session, *, arr_manual_scope=None):
         return RunResult(ok=True, message="done")
 
-    monkeypatch.setattr("app.main.run_once", _fake_run_once)
+    monkeypatch.setattr("app.routers.api.run_once", _fake_run_once)
     with TestClient(app) as client:
         r = client.post("/api/arr/search-now", json={"scope": "sonarr_missing"})
     assert r.status_code == 200

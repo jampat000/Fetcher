@@ -111,10 +111,15 @@ class ServiceScheduler:
             return nrt.astimezone(timezone.utc).replace(tzinfo=None)
         return nrt
 
-    def shutdown(self) -> None:
+    def shutdown(self, *, wait: bool = True) -> None:
+        """Stop APScheduler. Use ``wait=False`` on process exit so the event loop is not blocked."""
         if not self._sched.running:
             return
         try:
-            self._sched.shutdown(wait=True)
+            self._sched.shutdown(wait=wait)
         except (RuntimeError, SchedulerNotRunningError):
             pass
+
+
+# Process-wide scheduler (``app.main`` re-exports as ``scheduler`` for route registration + tests).
+scheduler = ServiceScheduler()
