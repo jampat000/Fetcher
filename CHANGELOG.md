@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.12] - 2026-03-23
+
+### Fixed
+
+- **`VERSION` / default branch:** After merging the stacked **release** and **refactor/security** pull requests, **`master`** briefly reported **`2.0.9`** in **`VERSION`** while **2.0.10** settings/update work was already merged — restored semver alignment so **`VERSION`**, **`/healthz`**, and the changelog match the combined tree.
+
+### Added
+
+- **Security hardening (with refactor merge):** Resolved-path check for dashboard **log file** reads (**`403`** when outside the logs directory); centralized sensitive-text redaction for persisted **`ActivityLog.detail`** / **`JobRunLog.message`** (including **32-character hex** API key material); global response headers **`X-Content-Type-Options: nosniff`** and **`X-Frame-Options: DENY`**; CLI default bind **`127.0.0.1`**.
+
 ## [2.0.10] - 2026-03-23
 
 ### Fixed
@@ -568,7 +578,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 7. If a **tag** exists but **Releases → Latest** never updated (no **`FetcherSetup.exe`** for that tag), check that **`vX.Y.Z`** points to the commit you mean — run **`git fetch origin master --tags`**, then compare **`git rev-parse vX.Y.Z`** vs **`git rev-parse origin/master`**. **Manual** **Build installer** / **`gh workflow run … --ref vX.Y.Z`** uses the **workflow YAML from that tag’s commit** — an **old** tag SHA can **build** but **skip** **release**. **Fix:** move the tag to the correct commit and **re-push** the tag, **or** bump **`VERSION`** and release again, **or** **`gh release create`** + attach **`FetcherSetup.exe`** from a green run artifact.
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.8...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.12...HEAD
+[2.0.12]: https://github.com/jampat000/Fetcher/compare/v2.0.11...v2.0.12
+[2.0.11]: https://github.com/jampat000/Fetcher/compare/v2.0.10...v2.0.11
+[2.0.10]: https://github.com/jampat000/Fetcher/compare/v2.0.9...v2.0.10
+[2.0.9]: https://github.com/jampat000/Fetcher/compare/v2.0.8...v2.0.9
 [2.0.8]: https://github.com/jampat000/Fetcher/compare/v2.0.7...v2.0.8
 [2.0.7]: https://github.com/jampat000/Fetcher/compare/v2.0.6...v2.0.7
 [2.0.6]: https://github.com/jampat000/Fetcher/compare/v2.0.5...v2.0.6
