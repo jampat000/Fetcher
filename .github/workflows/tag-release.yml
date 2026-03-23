@@ -2,7 +2,7 @@
 # Manual: Actions → this workflow → Run workflow, or .\scripts\ship-release.ps1 (pushes current branch + dispatch).
 #
 # IMPORTANT: `git push` of the tag uses `GITHUB_TOKEN`, which does NOT fire other `on: push: tags`
-# workflows (GitHub security). So we explicitly dispatch "Build installer" for that tag ref.
+# workflows (GitHub security). So we explicitly dispatch "Build installer" and "Docker publish" for that tag ref.
 # Manual run: Actions → "Tag release (from VERSION)" → Run workflow (retry / if auto was skipped).
 name: Tag release (from VERSION)
 
@@ -17,7 +17,7 @@ on:
 
 permissions:
   contents: write
-  actions: write # required to workflow_dispatch "Build installer" after pushing the tag
+  actions: write # required to workflow_dispatch downstream workflows after pushing the tag
 
 concurrency:
   group: tag-release-${{ github.ref }}
@@ -31,19 +31,25 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Create and push tag if missing
-        id: tag_push
+      - name: Resolve release tag from VERSION
+        id: ver
         run: |
           set -e
-          echo "pushed=false" >> "$GITHUB_OUTPUT"
           V="$(tr -d ' \r\n' < VERSION)"
           if ! echo "$V" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "VERSION must be semver X.Y.Z, got: $V"
             exit 1
           fi
-          TAG="v${V}"
+          echo "tag=v${V}" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag if missing
+        id: tag_push
+        run: |
+          set -e
+          echo "pushed=false" >> "$GITHUB_OUTPUT"
+          TAG="${{ steps.ver.outputs.tag }}"
           if git ls-remote --tags origin "refs/tags/${TAG}" | grep -q .; then
-            echo "Tag $TAG already exists on origin — skipping (idempotent)."
+            echo "Tag $TAG already exists on origin — skipping push (idempotent)."
             exit 0
           fi
           git config user.name "github-actions[bot]"
@@ -51,20 +57,22 @@ jobs:
           git tag -a "$TAG" -m "$TAG"
           git push origin "$TAG"
           echo "pushed=true" >> "$GITHUB_OUTPUT"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "Pushed $TAG — dispatching Build installer…"
+          echo "Pushed $TAG — dispatching Build installer and Docker publish…"
 
-      - name: Dispatch Build installer
-        if: steps.tag_push.outputs.pushed == 'true'
+      - name: Dispatch Build installer and Docker publish
+        if: steps.tag_push.outputs.pushed == 'true' || github.event_name == 'workflow_dispatch'
         uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const tag = '${{ steps.tag_push.outputs.tag }}';
-            await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'build-installer.yml',
-              ref: tag,
-            });
-            core.info(`Dispatched build-installer.yml for ref ${tag}`);
+            const tag = '${{ steps.ver.outputs.tag }}';
+            const workflows = ['build-installer.yml', 'docker-publish.yml'];
+            for (const workflow_id of workflows) {
+              await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id,
+                ref: tag,
+              });
+              core.info(`Dispatched ${workflow_id} for ref ${tag}`);
+            }

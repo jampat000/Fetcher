@@ -10,7 +10,7 @@
   This script:
   1. **git push** so **origin** has your commit(s) with the new **VERSION**
   2. **gh workflow run "Tag release (from VERSION)" --ref &lt;current-branch&gt;** — reads **VERSION** on
-     that ref, creates **vX.Y.Z** if missing, dispatches **Build installer**
+     that ref, creates **vX.Y.Z** if missing, dispatches **Build installer** and **Docker publish** (tag ref)
 
   Auto-tag on push only runs when **VERSION** changes on **master** or **main** (see workflow).
   This dispatch works for **any** branch name you push — typical pattern: **release/vX.Y.Z** → script → tag + build.

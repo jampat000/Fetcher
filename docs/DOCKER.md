@@ -1,6 +1,33 @@
 # Fetcher in Docker
 
+**Windows vs Docker:** The normal **Windows** install is **`FetcherSetup.exe`** from [GitHub Releases](https://github.com/jampat000/Fetcher/releases) (built by **Build installer** in Actions). **Docker** is a **separate** Linux image for NAS / servers / Compose — it does **not** replace the Windows service installer.
+
 Fetcher is a **FastAPI** app with a **SQLite** database. The container listens on **port 8765** and stores the DB file on a **volume** under `/data`.
+
+## Pre-built image (GHCR)
+
+After a **`v*.*.*`** tag is pushed (or you run **Actions → Docker publish → Run workflow**), the image is published to **GitHub Container Registry** under the repository name in **lowercase**, for example:
+
+```text
+ghcr.io/jampat000/fetcher:2.0.15
+ghcr.io/jampat000/fetcher:latest
+```
+
+Pull and run (adjust tag; create a volume if needed):
+
+```bash
+docker pull ghcr.io/jampat000/fetcher:latest
+docker run -d --name fetcher \
+  -p 8765:8765 \
+  -e FETCHER_DEV_DB_PATH=/data/fetcher.db \
+  -v fetcher-data:/data \
+  --restart unless-stopped \
+  ghcr.io/jampat000/fetcher:latest
+```
+
+The package may be **private** until you set **Package settings → Change visibility** to public (one-time per org/repo policy).
+
+**Note:** The **Tag release (from VERSION)** workflow dispatches **Docker publish** for the new tag (token-pushed tags do not fire **`push: tags`**). For recovery, use **Actions → Docker publish → Run workflow** with ref **`v*.*.*`** or **`master`** (branch runs tag images as **`VERSION`** + **`sha-*`**, not **`latest`**).
 
 ## Requirements
 
