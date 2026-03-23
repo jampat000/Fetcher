@@ -2,7 +2,7 @@
 
 Thanks for helping improve Fetcher.
 
-**Clone path:** Prefer **`%USERPROFILE%\Fetcher`** (see **[`docs/WORKSPACE-FOLDER.md`](docs/WORKSPACE-FOLDER.md)** if your folder name differs).
+**Clone path:** Prefer **`%USERPROFILE%\Fetcher`** (see **[`docs/README.md`](docs/README.md)** / **[`docs/WORKSPACE-FOLDER.md`](docs/WORKSPACE-FOLDER.md)**).
 
 ## Workflow (protected `master`)
 

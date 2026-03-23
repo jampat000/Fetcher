@@ -1,6 +1,6 @@
 # GitHub CLI (`gh`) on Windows
 
-Use **`gh`** to merge PRs, manage releases, and delete old releases from the terminal (see also [`PRUNE-OLD-RELEASES.md`](PRUNE-OLD-RELEASES.md)).
+Use **`gh`** to merge PRs, manage releases, and optionally delete old releases (see **Prune old releases** below).
 
 ## One-time setup
 
@@ -49,3 +49,28 @@ If **`vX.Y.Z`** predates a CI change (e.g. **release** job conditions), a run ca
 **Docker publish:** `gh workflow run docker-publish.yml --repo jampat000/Fetcher --ref master -f checkout_ref=vX.Y.Z` — use when you need GHCR without re-tagging (workflow YAML from **`master`**, image from the tag commit).
 
 See **`.cursor/rules/github-installer-workflow-ref-trap.mdc`** (agent-facing) and **CHANGELOG.md → Releasing**.
+
+## Prune old releases (optional)
+
+GitHub keeps every **Release** and **tag** until you remove them. For **Fetcher**, only delete versions you are sure nobody should install anymore.
+
+- **Prefer keeping** several recent releases so users on older builds can still upgrade.
+- **Deleting** a release removes **notes** and **`FetcherSetup.exe`** for that tag from the Releases UI (people who already downloaded keep the file).
+- **In-app updates** need **at least one** good release with **`FetcherSetup.exe`** on **Latest**.
+
+**Website:** **Releases** → open an old release → **⋯** → **Delete release** (optionally delete the tag if offered).
+
+**CLI:**
+
+```powershell
+gh release list --repo jampat000/Fetcher
+gh release delete v1.0.10 --repo jampat000/Fetcher --yes
+```
+
+**Delete a tag only** (after removing the release, if needed):
+
+```powershell
+git push https://github.com/jampat000/Fetcher.git :refs/tags/v1.0.10
+```
+
+Use a PAT with **`repo`** if not using **`gh`** credentials.

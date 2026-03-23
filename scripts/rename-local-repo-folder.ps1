@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Rename the repo root folder (e.g. grabby -> Fetcher) to match GitHub / product name.
+  Rename the repo root folder (e.g. an old name -> Fetcher) to match GitHub / product name.
 
 .DESCRIPTION
   Close Cursor, VS Code, and any dev servers using this repo before running.

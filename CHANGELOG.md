@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **Docs:** Removed stale **Cursor** handoff and redundant **public repo audit** doc; **public checklist** now embeds quick audit steps and **CI-based** release instructions; **CONTRIBUTING** releasing notes aligned with **Docker publish**; removed deprecated **`ship-dev.ps1`** (use **`ship-release.ps1`**); **HOWTO-RESTORE** and backup UI copy use **toggle** wording; **CHANGELOG** compare links updated.
+- **Docs:** First pass removed stale **Cursor** handoff, **public repo audit**, and **`ship-dev.ps1`**; aligned **public checklist**, **CONTRIBUTING**, **CHANGELOG** releasing, **README**, **HOWTO-RESTORE**, backup UI copy (**toggle** wording). **Second pass:** **`docs/README.md`** index; **`PRUNE-OLD-RELEASES`** merged into **`docs/GITHUB-CLI.md`**; compare-link footer trimmed to **v2.x** (older tags → **Releases**); **IMPORT-BRANCH-PROTECTION** documents **`protect-default-branch`** ruleset.
 
 ## [2.0.16] - 2026-03-23
 
@@ -396,7 +396,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - **CI / releasing:** When **`VERSION`** changes on **`master`** or **`main`**, **Tag release (from VERSION)** runs automatically, creates **`vX.Y.Z`** if missing, and pushes it — **Build installer** then runs on that tag (no local `git tag` / `git push`). **Actions → Tag release (from VERSION) → Run workflow** remains available to retry or tag without editing `VERSION` again.
-- **Docs:** **[`docs/GITHUB-CLI.md`](docs/GITHUB-CLI.md)** (Windows **`gh`** PATH, **`gh auth login`**, merge/release commands) and **[`docs/PRUNE-OLD-RELEASES.md`](docs/PRUNE-OLD-RELEASES.md)**.
+- **Docs:** **[`docs/GITHUB-CLI.md`](docs/GITHUB-CLI.md)** (Windows **`gh`** PATH, **`gh auth login`**, merge/release commands, pruning old releases).
 
 ## [1.0.25] - 2026-03-21
 
@@ -626,6 +626,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 6. If tagging did not run, use **Actions → Tag release (from VERSION) → Run workflow** on **`master`** (or your release branch). Avoid hand-creating tags only from the **Releases** UI unless you know the commit matches **`VERSION`**.
 7. If a **tag** exists but **Releases → Latest** never updated (no **`FetcherSetup.exe`**), compare **`git rev-parse vX.Y.Z`** vs **`git rev-parse origin/master`**. An **old** tag SHA can **build** but **skip** the **release** job. **Fix:** move the tag, **or** bump **`VERSION`** and release again, **or** **`gh release create`** + attach **`FetcherSetup.exe`** from a green artifact.
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
+9. **Compare links** at the end of this file list **v2.0.x** diffs only. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
 [Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.16...HEAD
 [2.0.16]: https://github.com/jampat000/Fetcher/compare/v2.0.15...v2.0.16
@@ -645,33 +646,3 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [2.0.2]: https://github.com/jampat000/Fetcher/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/jampat000/Fetcher/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/jampat000/Fetcher/compare/v1.0.44...v2.0.0
-[1.0.44]: https://github.com/jampat000/Fetcher/compare/v1.0.43...v1.0.44
-[1.0.43]: https://github.com/jampat000/Fetcher/compare/v1.0.42...v1.0.43
-[1.0.42]: https://github.com/jampat000/Fetcher/compare/v1.0.41...v1.0.42
-[1.0.41]: https://github.com/jampat000/Fetcher/compare/v1.0.40...v1.0.41
-[1.0.40]: https://github.com/jampat000/Fetcher/compare/v1.0.39...v1.0.40
-[1.0.39]: https://github.com/jampat000/Fetcher/compare/v1.0.38...v1.0.39
-[1.0.38]: https://github.com/jampat000/Fetcher/compare/v1.0.37...v1.0.38
-[1.0.37]: https://github.com/jampat000/Fetcher/compare/v1.0.36...v1.0.37
-[1.0.36]: https://github.com/jampat000/Fetcher/compare/v1.0.35...v1.0.36
-[1.0.35]: https://github.com/jampat000/Fetcher/compare/v1.0.34...v1.0.35
-[1.0.34]: https://github.com/jampat000/Fetcher/compare/v1.0.33...v1.0.34
-[1.0.33]: https://github.com/jampat000/Fetcher/compare/v1.0.32...v1.0.33
-[1.0.32]: https://github.com/jampat000/Fetcher/compare/v1.0.31...v1.0.32
-[1.0.31]: https://github.com/jampat000/Fetcher/compare/v1.0.30...v1.0.31
-[1.0.30]: https://github.com/jampat000/Fetcher/compare/v1.0.29...v1.0.30
-[1.0.29]: https://github.com/jampat000/Fetcher/compare/v1.0.28...v1.0.29
-[1.0.28]: https://github.com/jampat000/Fetcher/compare/v1.0.27...v1.0.28
-[1.0.27]: https://github.com/jampat000/Fetcher/compare/v1.0.26...v1.0.27
-[1.0.26]: https://github.com/jampat000/Fetcher/compare/v1.0.25...v1.0.26
-[1.0.25]: https://github.com/jampat000/Fetcher/compare/v1.0.24...v1.0.25
-[1.0.8]: https://github.com/jampat000/Fetcher/compare/v1.0.7...v1.0.8
-[1.0.7]: https://github.com/jampat000/Fetcher/compare/v1.0.6...v1.0.7
-[1.0.6]: https://github.com/jampat000/Fetcher/compare/v1.0.5...v1.0.6
-[1.0.5]: https://github.com/jampat000/Fetcher/compare/v1.0.4...v1.0.5
-[1.0.4]: https://github.com/jampat000/Fetcher/compare/v1.0.3...v1.0.4
-[1.0.3]: https://github.com/jampat000/Fetcher/releases/tag/v1.0.3
-
-
-
-
