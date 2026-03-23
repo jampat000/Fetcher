@@ -6,15 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.16] - 2026-03-23
+
 ### Added
 
-- **GitHub Releases:** every release now includes a standard **Install** section (**Windows** + **Docker**) above the auto-generated changelog (see **Build installer** workflow).
+- **GitHub Releases:** standard **Install** section (**Windows** + **Docker** `docker pull`) above the auto-generated changelog (**Build installer** workflow).
+
+### Changed
+
+- **UI:** **First-run setup** and **Trimmer** settings use the same **toggle switches** as **Backup & restore** and **Fetcher settings** (enable Sonarr/Radarr/Emby, dry run, people **credit roles**). **`toggle_checkbox_value`** macro for grouped toggles.
 
 ### Fixed
 
-- **Release automation:** **Tag release (from VERSION)** now dispatches **Docker publish** as well as **Build installer**, because tag pushes with the default **`GITHUB_TOKEN`** do not trigger **`on: push: tags`** workflows.
-- **Docker publish:** Semver and **`latest`** tags are applied when the workflow runs as **`workflow_dispatch`** with ref **`v*.*.*`** (the same pattern **Tag release** uses), not only on real tag **`push`** events.
-- **Docker publish / ref trap:** **Tag release** dispatches **Docker publish** with **`ref` = default branch** and **`checkout_ref` = version tag**, so the workflow definition always comes from current **`master`** while the image still builds from the release commit (dispatching with **`ref: vX.Y.Z`** alone would use an old workflow snapshot and could miss **`workflow_dispatch`**).
+- **Release CI:** **Tag release** dispatches **Docker publish** and **Build installer**; **Docker publish** uses default-branch dispatch with **`checkout_ref`** so workflow YAML stays current while the image builds from the release tag (avoids the Actions **ref trap** on older tag commits).
 
 ## [2.0.15] - 2026-03-23
 

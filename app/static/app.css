@@ -1401,6 +1401,18 @@ h2.gc-title,
   font-size: 14px;
 }
 
+/* People rules: stacked role toggles (same control as restore / settings). */
+.people-credits-field .toggle-field.checkline-toggle {
+  align-items: flex-start;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 0 var(--space-2);
+}
+.people-credits-field .toggle-field.checkline-toggle .toggle {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
 /* ---- Settings page (Fetcher) ---- */
 .settings-tabs {
   display: flex;

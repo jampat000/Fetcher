@@ -1,6 +1,6 @@
 {% extends "layout.html" %}
 {% from "macros/schedule.html" import schedule_time_select, schedule_days_checkboxes %}
-{% from "macros/toggle.html" import toggle_checkbox %}
+{% from "macros/toggle.html" import toggle_checkbox, toggle_checkbox_value %}
 {% from "macros/trimmer_area.html" import trimmer_area_tabs %}
 {% block content %}
 <div class="wrap">
@@ -109,10 +109,7 @@
         </div>
       </div>
 
-      <div class="checkline">
-        <input type="checkbox" name="emby_dry_run" {% if settings.emby_dry_run %}checked{% endif %} />
-        Dry run (no actual deletes)
-      </div>
+      {% call toggle_checkbox("emby_dry_run", settings.emby_dry_run) %}Dry run (no actual deletes){% endcall %}
       <div class="small">Keep this on until review looks correct.</div>
 
       <div class="section section--push">
@@ -233,15 +230,7 @@
           <div class="field people-credits-field">
             <label>Match people in these credit roles</label>
             {% for value, role_label in people_credit_options %}
-            <div class="checkline">
-              <input
-                type="checkbox"
-                name="emby_rule_tv_people_credit_types"
-                value="{{ value }}"
-                {% if value.lower() in selected_tv_people_credit_types %}checked{% endif %}
-              />
-              {{ role_label }}
-            </div>
+            {% call toggle_checkbox_value("emby_rule_tv_people_credit_types", value, "emby-tv-credit-" ~ loop.index0, value.lower() in selected_tv_people_credit_types) %}{{ role_label }}{% endcall %}
             {% endfor %}
             <div class="small people-credits-hint"><strong>Default:</strong> Cast (actors) only. If none are checked, Cast is used when you save.</div>
           </div>
@@ -268,15 +257,7 @@
           <div class="field people-credits-field">
             <label>Match people in these credit roles</label>
             {% for value, role_label in people_credit_options %}
-            <div class="checkline">
-              <input
-                type="checkbox"
-                name="emby_rule_movie_people_credit_types"
-                value="{{ value }}"
-                {% if value.lower() in selected_movie_people_credit_types %}checked{% endif %}
-              />
-              {{ role_label }}
-            </div>
+            {% call toggle_checkbox_value("emby_rule_movie_people_credit_types", value, "emby-movie-credit-" ~ loop.index0, value.lower() in selected_movie_people_credit_types) %}{{ role_label }}{% endcall %}
             {% endfor %}
             <div class="small people-credits-hint"><strong>Default:</strong> Cast (actors) only. If none are checked, Cast is used when you save.</div>
           </div>
