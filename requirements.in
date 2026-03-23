@@ -18,3 +18,5 @@ bcrypt
 itsdangerous
 cryptography>=46.0.5
 pyjwt>=2.12.0
+passlib[argon2,bcrypt]
+slowapi
