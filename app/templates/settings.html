@@ -241,7 +241,7 @@
             <label for="sec_user_curr_pw">Current password (to confirm this change)</label>
             <input class="password" id="sec_user_curr_pw" type="password" name="current_password" autocomplete="current-password" required />
             <div class="btn-row">
-              <button class="btn secondary" type="submit">Save username change</button>
+              <button class="btn" type="submit">Save username change</button>
             </div>
           </form>
         </section>
@@ -259,7 +259,7 @@
             <label for="sec_pw_confirm">Confirm new password</label>
             <input class="password" id="sec_pw_confirm" type="password" name="confirm_new_password" autocomplete="new-password" minlength="8" required />
             <div class="btn-row">
-              <button class="btn secondary" type="submit">Save password change</button>
+              <button class="btn" type="submit">Save password change</button>
             </div>
           </form>
         </section>
@@ -275,7 +275,7 @@
           <textarea class="input input--textarea-mono" id="auth_ip_allowlist" name="auth_ip_allowlist" rows="6" placeholder="One IP or CIDR range per line, e.g.:&#10;192.168.1.50&#10;192.168.1.0/24&#10;10.0.0.0/8">{{ settings.auth_ip_allowlist or '' }}</textarea>
           <p class="hint hint-tight-after-input">Supports single IPs (192.168.1.50) and CIDR ranges (192.168.1.0/24). Leave empty to require sign-in from every device.</p>
           <div class="btn-row">
-            <button class="btn secondary" type="submit">Save access control</button>
+            <button class="btn" type="submit">Save access control</button>
           </div>
         </form>
       </section>
