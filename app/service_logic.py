@@ -49,6 +49,78 @@ class RunResult:
 
 ArrManualScope = Literal["sonarr_missing", "sonarr_upgrade", "radarr_missing", "radarr_upgrade"]
 
+
+@dataclass(frozen=True)
+class RunContext:
+    """Read-only, derived orchestration input computed once per run."""
+
+    settings: AppSettings
+    arr_manual_scope: ArrManualScope | None
+    son_key: str
+    rad_key: str
+    em_key: str
+    tz: str
+    sonarr_tick_m: int
+    radarr_tick_m: int
+    sonarr_cooldown_minutes: int
+    radarr_cooldown_minutes: int
+    emby_interval_m: int
+    now: datetime
+    do_sonarr_block: bool
+    do_radarr_block: bool
+
+
+def _build_run_context(settings: AppSettings, *, arr_manual_scope: ArrManualScope | None) -> RunContext:
+    # Keep this builder side-effect free; persistence and app execution remain in executors/coordinator.
+    son_key = resolve_sonarr_api_key(settings)
+    rad_key = resolve_radarr_api_key(settings)
+    em_key = resolve_emby_api_key(settings)
+    tz = (settings.timezone or "UTC").strip() or "UTC"
+    sonarr_tick_m = effective_arr_interval_minutes(settings.sonarr_interval_minutes)
+    radarr_tick_m = effective_arr_interval_minutes(settings.radarr_interval_minutes)
+    _cd = settings.arr_search_cooldown_minutes
+    try:
+        cd_raw = int(_cd) if _cd is not None else 0
+    except (TypeError, ValueError):
+        cd_raw = 0
+    # 0 = tie Arr cooldown fallback to that app's scheduler interval.
+    sonarr_cooldown_minutes = max(
+        1, sonarr_tick_m if cd_raw <= 0 else min(cd_raw, 365 * 24 * 60)
+    )
+    radarr_cooldown_minutes = max(
+        1, radarr_tick_m if cd_raw <= 0 else min(cd_raw, 365 * 24 * 60)
+    )
+    now = utc_now_naive()
+    emby_interval_m = max(5, int(settings.emby_interval_minutes or 60))
+    do_sonarr_block = bool(
+        settings.sonarr_enabled
+        and (settings.sonarr_url or "").strip()
+        and son_key
+        and (arr_manual_scope is None or arr_manual_scope in ("sonarr_missing", "sonarr_upgrade"))
+    )
+    do_radarr_block = bool(
+        settings.radarr_enabled
+        and (settings.radarr_url or "").strip()
+        and rad_key
+        and (arr_manual_scope is None or arr_manual_scope in ("radarr_missing", "radarr_upgrade"))
+    )
+    return RunContext(
+        settings=settings,
+        arr_manual_scope=arr_manual_scope,
+        son_key=son_key,
+        rad_key=rad_key,
+        em_key=em_key,
+        tz=tz,
+        sonarr_tick_m=sonarr_tick_m,
+        radarr_tick_m=radarr_tick_m,
+        sonarr_cooldown_minutes=sonarr_cooldown_minutes,
+        radarr_cooldown_minutes=radarr_cooldown_minutes,
+        emby_interval_m=emby_interval_m,
+        now=now,
+        do_sonarr_block=do_sonarr_block,
+        do_radarr_block=do_radarr_block,
+    )
+
 # One automation pass at a time (scheduler tick vs manual “search now”).
 _run_once_lock = asyncio.Lock()
 
@@ -629,11 +701,456 @@ async def apply_emby_trimmer_live_deletes(
     return actions
 
 
+async def _execute_sonarr_block(
+    session: AsyncSession,
+    *,
+    log: JobRunLog,
+    ctx: RunContext,
+    actions: list[str],
+    default_limit: int,
+) -> None:
+    """Owns Sonarr-specific orchestration and Sonarr side effects for one run."""
+
+    settings = ctx.settings
+    arr_manual_scope = ctx.arr_manual_scope
+    skip_sonarr = False
+    if arr_manual_scope is None:
+        if not in_window(
+            schedule_enabled=settings.sonarr_schedule_enabled,
+            schedule_days=settings.sonarr_schedule_days or "",
+            schedule_start=settings.sonarr_schedule_start,
+            schedule_end=settings.sonarr_schedule_end,
+            timezone=ctx.tz,
+        ):
+            actions.append("Sonarr: skipped (outside schedule window)")
+            skip_sonarr = True
+        else:
+            last_sonarr = settings.sonarr_last_run_at
+            if last_sonarr is not None and (ctx.now - last_sonarr).total_seconds() < ctx.sonarr_tick_m * 60:
+                actions.append(
+                    "Sonarr: skipped (run interval not elapsed — "
+                    + _interval_skip_detail(last_sonarr, ctx.now, ctx.sonarr_tick_m)
+                    + ")"
+                )
+                skip_sonarr = True
+    if skip_sonarr:
+        return
+
+    sonarr = ArrClient(ArrConfig(settings.sonarr_url, ctx.son_key))
+    try:
+        await sonarr.health()
+        sonarr_series_title_map: dict[int, str] = {}
+        try:
+            for s in await sonarr.series():
+                sid = _safe_int(s.get("id"))
+                title = str(s.get("title") or "").strip()
+                if sid and title:
+                    sonarr_series_title_map[sid] = title
+        except Exception:
+            # Keep run resilient if catalog fetch fails; labels still use record data.
+            sonarr_series_title_map = {}
+
+        sonarr_limit = max(1, int((settings.sonarr_max_items_per_run or 0) or default_limit))
+        sonarr_missing_enabled = bool(settings.sonarr_search_missing)
+        sonarr_upgrades_enabled = bool(settings.sonarr_search_upgrades)
+        if arr_manual_scope == "sonarr_missing":
+            want_missing, want_upgrade = True, False
+        elif arr_manual_scope == "sonarr_upgrade":
+            want_missing, want_upgrade = False, True
+        else:
+            want_missing = sonarr_missing_enabled
+            want_upgrade = sonarr_upgrades_enabled
+
+        missing_total = 0
+        cutoff_total = 0
+
+        if want_missing:
+            allowed_ids, allowed_records, missing_total = await _paginate_wanted_for_search(
+                sonarr,
+                session,
+                kind="missing",
+                id_keys=("episodeId", "id"),
+                item_type="episode",
+                app="sonarr",
+                action="missing",
+                limit=sonarr_limit,
+                cooldown_minutes=ctx.sonarr_cooldown_minutes,
+                now=ctx.now,
+            )
+            if allowed_ids:
+                # Tagging is best-effort; it should not block the search trigger.
+                try:
+                    tag_id = await sonarr.ensure_tag("fetcher-missing")
+                    series_ids = _sonarr_series_ids_for_episode_batch(
+                        allowed_records,
+                        "episodeId",
+                        "id",
+                        limit=len(allowed_records),
+                    )
+                    await sonarr.add_tags_to_series(series_ids=series_ids, tag_ids=[tag_id])
+                except Exception as e:  # noqa: BLE001
+                    actions.append(f"Sonarr: tag apply warning (fetcher-missing): {format_http_error_detail(e)}")
+
+                await trigger_sonarr_missing_search(sonarr, episode_ids=allowed_ids)
+                actions.append(f"Sonarr: missing search for {len(allowed_ids)} episode(s)")
+                labels = [
+                    _sonarr_episode_label_with_fallback(r, sonarr_series_title_map)
+                    for r in allowed_records
+                ]
+                session.add(
+                    ActivityLog(
+                        job_run_id=log.id,
+                        app="sonarr",
+                        kind="missing",
+                        count=len(allowed_ids),
+                        detail=_detail_from_labels(labels),
+                    )
+                )
+            elif missing_total > 0:
+                actions.append("Sonarr: missing search suppressed (cooldown)")
+            else:
+                actions.append("Sonarr: no missing episodes found")
+
+        if want_upgrade:
+            allowed_ids, allowed_records, cutoff_total = await _paginate_wanted_for_search(
+                sonarr,
+                session,
+                kind="cutoff",
+                id_keys=("episodeId", "id"),
+                item_type="episode",
+                app="sonarr",
+                action="upgrade",
+                limit=sonarr_limit,
+                cooldown_minutes=ctx.sonarr_cooldown_minutes,
+                now=ctx.now,
+            )
+            if allowed_ids:
+                try:
+                    tag_id = await sonarr.ensure_tag("fetcher-upgrade")
+                    series_ids = _sonarr_series_ids_for_episode_batch(
+                        allowed_records,
+                        "episodeId",
+                        "id",
+                        limit=len(allowed_records),
+                    )
+                    await sonarr.add_tags_to_series(series_ids=series_ids, tag_ids=[tag_id])
+                except Exception as e:  # noqa: BLE001
+                    actions.append(f"Sonarr: tag apply warning (fetcher-upgrade): {format_http_error_detail(e)}")
+
+                await trigger_sonarr_cutoff_search(sonarr, episode_ids=allowed_ids)
+                actions.append(f"Sonarr: cutoff-unmet search for {len(allowed_ids)} episode(s)")
+                labels = [
+                    _sonarr_episode_label_with_fallback(r, sonarr_series_title_map)
+                    for r in allowed_records
+                ]
+                session.add(
+                    ActivityLog(
+                        job_run_id=log.id,
+                        app="sonarr",
+                        kind="upgrade",
+                        count=len(allowed_ids),
+                        detail=_detail_from_labels(labels),
+                    )
+                )
+            elif cutoff_total > 0:
+                actions.append("Sonarr: cutoff-unmet search suppressed (cooldown)")
+            else:
+                actions.append("Sonarr: no cutoff-unmet episodes found")
+
+        if want_missing and not want_upgrade:
+            cutoff_total = await _wanted_queue_total(sonarr, kind="cutoff")
+        elif want_upgrade and not want_missing:
+            missing_total = await _wanted_queue_total(sonarr, kind="missing")
+
+        session.add(
+            AppSnapshot(
+                app="sonarr",
+                ok=True,
+                status_message="OK",
+                missing_total=missing_total,
+                cutoff_unmet_total=cutoff_total,
+            )
+        )
+        settings.sonarr_last_run_at = ctx.now
+    finally:
+        await sonarr.aclose()
+
+
+async def _execute_radarr_block(
+    session: AsyncSession,
+    *,
+    log: JobRunLog,
+    ctx: RunContext,
+    actions: list[str],
+    default_limit: int,
+) -> None:
+    """Owns Radarr-specific orchestration and Radarr side effects for one run."""
+
+    settings = ctx.settings
+    arr_manual_scope = ctx.arr_manual_scope
+    skip_radarr = False
+    if arr_manual_scope is None:
+        if not in_window(
+            schedule_enabled=settings.radarr_schedule_enabled,
+            schedule_days=settings.radarr_schedule_days or "",
+            schedule_start=settings.radarr_schedule_start,
+            schedule_end=settings.radarr_schedule_end,
+            timezone=ctx.tz,
+        ):
+            actions.append("Radarr: skipped (outside schedule window)")
+            skip_radarr = True
+        else:
+            last_radarr = settings.radarr_last_run_at
+            if last_radarr is not None and (ctx.now - last_radarr).total_seconds() < ctx.radarr_tick_m * 60:
+                actions.append(
+                    "Radarr: skipped (run interval not elapsed — "
+                    + _interval_skip_detail(last_radarr, ctx.now, ctx.radarr_tick_m)
+                    + ")"
+                )
+                skip_radarr = True
+    if skip_radarr:
+        return
+
+    radarr = ArrClient(ArrConfig(settings.radarr_url, ctx.rad_key))
+    try:
+        await radarr.health()
+
+        radarr_limit = max(1, int((settings.radarr_max_items_per_run or 0) or default_limit))
+        radarr_missing_enabled = bool(settings.radarr_search_missing)
+        radarr_upgrades_enabled = bool(settings.radarr_search_upgrades)
+        if arr_manual_scope == "radarr_missing":
+            want_missing, want_upgrade = True, False
+        elif arr_manual_scope == "radarr_upgrade":
+            want_missing, want_upgrade = False, True
+        else:
+            want_missing = radarr_missing_enabled
+            want_upgrade = radarr_upgrades_enabled
+
+        missing_total = 0
+        cutoff_total = 0
+
+        if want_missing:
+            allowed_ids, allowed_records, missing_total = await _paginate_wanted_for_search(
+                radarr,
+                session,
+                kind="missing",
+                id_keys=("movieId", "id"),
+                item_type="movie",
+                app="radarr",
+                action="missing",
+                limit=radarr_limit,
+                cooldown_minutes=ctx.radarr_cooldown_minutes,
+                now=ctx.now,
+            )
+            if allowed_ids:
+                try:
+                    tag_id = await radarr.ensure_tag("fetcher-missing")
+                    await radarr.add_tags_to_movies(movie_ids=allowed_ids, tag_ids=[tag_id])
+                except Exception as e:  # noqa: BLE001
+                    actions.append(f"Radarr: tag apply warning (fetcher-missing): {format_http_error_detail(e)}")
+
+                await trigger_radarr_missing_search(radarr, movie_ids=allowed_ids)
+                actions.append(f"Radarr: missing search for {len(allowed_ids)} movie(s)")
+                labels = [_radarr_movie_label(r) for r in allowed_records]
+                session.add(
+                    ActivityLog(
+                        job_run_id=log.id,
+                        app="radarr",
+                        kind="missing",
+                        count=len(allowed_ids),
+                        detail=_detail_from_labels(labels),
+                    )
+                )
+            elif missing_total > 0:
+                actions.append("Radarr: missing search suppressed (cooldown)")
+            else:
+                actions.append("Radarr: no missing movies found")
+
+        if want_upgrade:
+            allowed_ids, allowed_records, cutoff_total = await _paginate_wanted_for_search(
+                radarr,
+                session,
+                kind="cutoff",
+                id_keys=("movieId", "id"),
+                item_type="movie",
+                app="radarr",
+                action="upgrade",
+                limit=radarr_limit,
+                cooldown_minutes=ctx.radarr_cooldown_minutes,
+                now=ctx.now,
+            )
+            if allowed_ids:
+                try:
+                    tag_id = await radarr.ensure_tag("fetcher-upgrade")
+                    await radarr.add_tags_to_movies(movie_ids=allowed_ids, tag_ids=[tag_id])
+                except Exception as e:  # noqa: BLE001
+                    actions.append(f"Radarr: tag apply warning (fetcher-upgrade): {format_http_error_detail(e)}")
+
+                await trigger_radarr_cutoff_search(radarr, movie_ids=allowed_ids)
+                actions.append(f"Radarr: cutoff-unmet search for {len(allowed_ids)} movie(s)")
+                labels = [_radarr_movie_label(r) for r in allowed_records]
+                session.add(
+                    ActivityLog(
+                        job_run_id=log.id,
+                        app="radarr",
+                        kind="upgrade",
+                        count=len(allowed_ids),
+                        detail=_detail_from_labels(labels),
+                    )
+                )
+            elif cutoff_total > 0:
+                actions.append("Radarr: cutoff-unmet search suppressed (cooldown)")
+            else:
+                actions.append("Radarr: no cutoff-unmet movies found")
+
+        if want_missing and not want_upgrade:
+            cutoff_total = await _wanted_queue_total(radarr, kind="cutoff")
+        elif want_upgrade and not want_missing:
+            missing_total = await _wanted_queue_total(radarr, kind="missing")
+
+        session.add(
+            AppSnapshot(
+                app="radarr",
+                ok=True,
+                status_message="OK",
+                missing_total=missing_total,
+                cutoff_unmet_total=cutoff_total,
+            )
+        )
+        settings.radarr_last_run_at = ctx.now
+    finally:
+        await radarr.aclose()
+
+
+async def _execute_emby_block(
+    session: AsyncSession,
+    *,
+    log: JobRunLog,
+    ctx: RunContext,
+    actions: list[str],
+) -> None:
+    """Owns Emby-specific orchestration and Emby side effects for one run."""
+
+    settings = ctx.settings
+    last_emby = settings.emby_last_run_at
+    if last_emby is not None and (ctx.now - last_emby).total_seconds() < ctx.emby_interval_m * 60:
+        actions.append(
+            "Emby: skipped (run interval not elapsed — "
+            + _interval_skip_detail(last_emby, ctx.now, ctx.emby_interval_m)
+            + ")"
+        )
+        return
+
+    emby = EmbyClient(EmbyConfig(settings.emby_url, ctx.em_key))
+    try:
+        await emby.health()
+        users = await emby.users()
+        configured_user_id = (settings.emby_user_id or "").strip()
+        effective_user_id = configured_user_id
+        if not effective_user_id and users:
+            first_user = users[0]
+            effective_user_id = str(first_user.get("Id", "")).strip()
+            actions.append("Emby: no user configured, using first Emby user")
+        if not effective_user_id:
+            raise ValueError("Emby has no users available to query.")
+
+        _v_scan = settings.emby_max_items_scan
+        _raw_scan = int(_v_scan) if _v_scan is not None else 2000
+        scan_limit = 0 if _raw_scan <= 0 else max(1, min(100_000, _raw_scan))
+        max_deletes = max(1, int(settings.emby_max_deletes_per_run or 25))
+        global_rating = max(0, int(settings.emby_rule_watched_rating_below or 0))
+        global_unwatched = max(0, int(settings.emby_rule_unwatched_days or 0))
+        movie_rating_below = max(0, int(settings.emby_rule_movie_watched_rating_below or 0)) or global_rating
+        movie_unwatched_days = max(0, int(settings.emby_rule_movie_unwatched_days or 0)) or global_unwatched
+        selected_movie_genres = parse_genres_csv(settings.emby_rule_movie_genres_csv)
+        selected_movie_people = parse_movie_people_phrases(settings.emby_rule_movie_people_csv)
+        selected_movie_credit_types = parse_movie_people_credit_types_csv(
+            settings.emby_rule_movie_people_credit_types_csv
+        )
+        selected_tv_people = parse_movie_people_phrases(settings.emby_rule_tv_people_csv)
+        selected_tv_credit_types = parse_movie_people_credit_types_csv(
+            settings.emby_rule_tv_people_credit_types_csv
+        )
+        tv_delete_watched = bool(settings.emby_rule_tv_delete_watched)
+        selected_tv_genres = parse_genres_csv(settings.emby_rule_tv_genres_csv)
+        tv_unwatched_days = max(0, int(settings.emby_rule_tv_unwatched_days or 0)) or global_unwatched
+        dry_run = bool(settings.emby_dry_run)
+
+        if movie_rating_below <= 0 and movie_unwatched_days <= 0 and (not tv_delete_watched) and tv_unwatched_days <= 0:
+            actions.append("Emby: skipped (no Emby Trimmer rules enabled)")
+        else:
+            items = await emby.items_for_user(user_id=effective_user_id, limit=scan_limit)
+            candidates: list[tuple[str, str, str, dict[str, Any]]] = []
+            for item in items:
+                item_id = str(item.get("Id", "")).strip()
+                if not item_id:
+                    continue
+                is_candidate, _, _, _, _ = evaluate_candidate(
+                    item,
+                    movie_watched_rating_below=movie_rating_below,
+                    movie_unwatched_days=movie_unwatched_days,
+                    tv_delete_watched=tv_delete_watched,
+                    tv_unwatched_days=tv_unwatched_days,
+                )
+                item_type = str(item.get("Type", "")).strip()
+                if item_type == "Movie" and not movie_matches_selected_genres(item, selected_movie_genres):
+                    is_candidate = False
+                if item_type == "Movie" and not movie_matches_people(
+                    item, selected_movie_people, credit_types=selected_movie_credit_types
+                ):
+                    is_candidate = False
+                if item_type in {"Series", "Season", "Episode"} and not tv_matches_selected_genres(item, selected_tv_genres):
+                    is_candidate = False
+                if item_type in {"Series", "Season", "Episode"} and not movie_matches_people(
+                    item, selected_tv_people, credit_types=selected_tv_credit_types
+                ):
+                    is_candidate = False
+                if is_candidate:
+                    name = str(item.get("Name", "") or item_id)
+                    item_type = str(item.get("Type", "") or "").strip()
+                    candidates.append((item_id, name, item_type, item))
+                    if len(candidates) >= max_deletes:
+                        break
+
+            if dry_run:
+                actions.append(f"Emby: dry-run matched {len(candidates)} item(s)")
+            else:
+                actions.extend(
+                    await apply_emby_trimmer_live_deletes(
+                        settings, emby, candidates, son_key=ctx.son_key, rad_key=ctx.rad_key
+                    )
+                )
+
+            session.add(
+                AppSnapshot(
+                    app="emby",
+                    ok=True,
+                    status_message="OK",
+                    missing_total=len(candidates),
+                    cutoff_unmet_total=0 if dry_run else len(candidates),
+                )
+            )
+            session.add(
+                ActivityLog(
+                    job_run_id=log.id,
+                    app="emby",
+                    kind="trimmed",
+                    count=len(candidates),
+                    detail=_detail_from_labels([name for _, name, _, _ in candidates]),
+                )
+            )
+        settings.emby_last_run_at = ctx.now
+    finally:
+        await emby.aclose()
+
+
 async def _run_once_inner(
     session: AsyncSession,
     *,
     arr_manual_scope: ArrManualScope | None,
 ) -> RunResult:
+    # Outer coordinator: builds shared context once, dispatches app executors, and finalizes run outcome.
+    # Behavior/message/side-effect timing here is regression-sensitive; update tests before changing.
     settings = await _get_or_create_settings(session)
     await prune_old_records(session, settings)
 
@@ -644,48 +1161,29 @@ async def _run_once_inner(
     await session.refresh(log)
 
     try:
-        son_key = resolve_sonarr_api_key(settings)
-        rad_key = resolve_radarr_api_key(settings)
-        em_key = resolve_emby_api_key(settings)
+        ctx = _build_run_context(settings, arr_manual_scope=arr_manual_scope)
+        son_key = ctx.son_key
+        rad_key = ctx.rad_key
+        em_key = ctx.em_key
 
         actions: list[str] = []
         default_limit = 50
 
-        tz = (settings.timezone or "UTC").strip() or "UTC"
-        sonarr_tick_m = effective_arr_interval_minutes(settings.sonarr_interval_minutes)
-        radarr_tick_m = effective_arr_interval_minutes(settings.radarr_interval_minutes)
-        _cd = settings.arr_search_cooldown_minutes
-        try:
-            cd_raw = int(_cd) if _cd is not None else 0
-        except (TypeError, ValueError):
-            cd_raw = 0
-        # 0 = tie Arr cooldown fallback to that app's scheduler interval.
-        sonarr_cooldown_minutes = max(
-            1, sonarr_tick_m if cd_raw <= 0 else min(cd_raw, 365 * 24 * 60)
-        )
-        radarr_cooldown_minutes = max(
-            1, radarr_tick_m if cd_raw <= 0 else min(cd_raw, 365 * 24 * 60)
-        )
-        now = utc_now_naive()
-        emby_interval_m = max(5, int(settings.emby_interval_minutes or 60))
+        tz = ctx.tz
+        sonarr_tick_m = ctx.sonarr_tick_m
+        radarr_tick_m = ctx.radarr_tick_m
+        sonarr_cooldown_minutes = ctx.sonarr_cooldown_minutes
+        radarr_cooldown_minutes = ctx.radarr_cooldown_minutes
+        now = ctx.now
+        emby_interval_m = ctx.emby_interval_m
 
         if arr_manual_scope is not None:
             actions.append(
                 "Manual search: bypassing schedule windows and Sonarr/Radarr run-interval gates for this action only."
             )
 
-        do_sonarr_block = bool(
-            settings.sonarr_enabled
-            and (settings.sonarr_url or "").strip()
-            and son_key
-            and (arr_manual_scope is None or arr_manual_scope in ("sonarr_missing", "sonarr_upgrade"))
-        )
-        do_radarr_block = bool(
-            settings.radarr_enabled
-            and (settings.radarr_url or "").strip()
-            and rad_key
-            and (arr_manual_scope is None or arr_manual_scope in ("radarr_missing", "radarr_upgrade"))
-        )
+        do_sonarr_block = ctx.do_sonarr_block
+        do_radarr_block = ctx.do_radarr_block
 
         if arr_manual_scope in ("sonarr_missing", "sonarr_upgrade") and not do_sonarr_block:
             actions.append("Sonarr: skipped (enable Sonarr and set URL + API key in Settings)")
@@ -694,298 +1192,23 @@ async def _run_once_inner(
 
         # Sonarr (TV)
         if do_sonarr_block:
-            skip_sonarr = False
-            if arr_manual_scope is None:
-                if not in_window(
-                    schedule_enabled=settings.sonarr_schedule_enabled,
-                    schedule_days=settings.sonarr_schedule_days or "",
-                    schedule_start=settings.sonarr_schedule_start,
-                    schedule_end=settings.sonarr_schedule_end,
-                    timezone=tz,
-                ):
-                    actions.append("Sonarr: skipped (outside schedule window)")
-                    skip_sonarr = True
-                else:
-                    last_sonarr = settings.sonarr_last_run_at
-                    if last_sonarr is not None and (now - last_sonarr).total_seconds() < sonarr_tick_m * 60:
-                        actions.append(
-                            "Sonarr: skipped (run interval not elapsed — "
-                            + _interval_skip_detail(last_sonarr, now, sonarr_tick_m)
-                            + ")"
-                        )
-                        skip_sonarr = True
-            if not skip_sonarr:
-                sonarr = ArrClient(ArrConfig(settings.sonarr_url, son_key))
-                try:
-                    await sonarr.health()
-                    sonarr_series_title_map: dict[int, str] = {}
-                    try:
-                        for s in await sonarr.series():
-                            sid = _safe_int(s.get("id"))
-                            title = str(s.get("title") or "").strip()
-                            if sid and title:
-                                sonarr_series_title_map[sid] = title
-                    except Exception:
-                        # Keep run resilient if catalog fetch fails; labels still use record data.
-                        sonarr_series_title_map = {}
-
-                    sonarr_limit = max(1, int((settings.sonarr_max_items_per_run or 0) or default_limit))
-                    sonarr_missing_enabled = bool(settings.sonarr_search_missing)
-                    sonarr_upgrades_enabled = bool(settings.sonarr_search_upgrades)
-                    if arr_manual_scope == "sonarr_missing":
-                        want_missing, want_upgrade = True, False
-                    elif arr_manual_scope == "sonarr_upgrade":
-                        want_missing, want_upgrade = False, True
-                    else:
-                        want_missing = sonarr_missing_enabled
-                        want_upgrade = sonarr_upgrades_enabled
-
-                    missing_total = 0
-                    cutoff_total = 0
-
-                    if want_missing:
-                        allowed_ids, allowed_records, missing_total = await _paginate_wanted_for_search(
-                            sonarr,
-                            session,
-                            kind="missing",
-                            id_keys=("episodeId", "id"),
-                            item_type="episode",
-                            app="sonarr",
-                            action="missing",
-                            limit=sonarr_limit,
-                            cooldown_minutes=sonarr_cooldown_minutes,
-                            now=now,
-                        )
-                        if allowed_ids:
-                            # Tagging is best-effort; it should not block the search trigger.
-                            try:
-                                tag_id = await sonarr.ensure_tag("fetcher-missing")
-                                series_ids = _sonarr_series_ids_for_episode_batch(
-                                    allowed_records,
-                                    "episodeId",
-                                    "id",
-                                    limit=len(allowed_records),
-                                )
-                                await sonarr.add_tags_to_series(series_ids=series_ids, tag_ids=[tag_id])
-                            except Exception as e:  # noqa: BLE001
-                                actions.append(f"Sonarr: tag apply warning (fetcher-missing): {format_http_error_detail(e)}")
-
-                            await trigger_sonarr_missing_search(sonarr, episode_ids=allowed_ids)
-                            actions.append(f"Sonarr: missing search for {len(allowed_ids)} episode(s)")
-                            labels = [
-                                _sonarr_episode_label_with_fallback(r, sonarr_series_title_map)
-                                for r in allowed_records
-                            ]
-                            session.add(
-                                ActivityLog(
-                                    job_run_id=log.id,
-                                    app="sonarr",
-                                    kind="missing",
-                                    count=len(allowed_ids),
-                                    detail=_detail_from_labels(labels),
-                                )
-                            )
-                        elif missing_total > 0:
-                            actions.append("Sonarr: missing search suppressed (cooldown)")
-                        else:
-                            actions.append("Sonarr: no missing episodes found")
-
-                    if want_upgrade:
-                        allowed_ids, allowed_records, cutoff_total = await _paginate_wanted_for_search(
-                            sonarr,
-                            session,
-                            kind="cutoff",
-                            id_keys=("episodeId", "id"),
-                            item_type="episode",
-                            app="sonarr",
-                            action="upgrade",
-                            limit=sonarr_limit,
-                            cooldown_minutes=sonarr_cooldown_minutes,
-                            now=now,
-                        )
-                        if allowed_ids:
-                            try:
-                                tag_id = await sonarr.ensure_tag("fetcher-upgrade")
-                                series_ids = _sonarr_series_ids_for_episode_batch(
-                                    allowed_records,
-                                    "episodeId",
-                                    "id",
-                                    limit=len(allowed_records),
-                                )
-                                await sonarr.add_tags_to_series(series_ids=series_ids, tag_ids=[tag_id])
-                            except Exception as e:  # noqa: BLE001
-                                actions.append(f"Sonarr: tag apply warning (fetcher-upgrade): {format_http_error_detail(e)}")
-
-                            await trigger_sonarr_cutoff_search(sonarr, episode_ids=allowed_ids)
-                            actions.append(f"Sonarr: cutoff-unmet search for {len(allowed_ids)} episode(s)")
-                            labels = [
-                                _sonarr_episode_label_with_fallback(r, sonarr_series_title_map)
-                                for r in allowed_records
-                            ]
-                            session.add(
-                                ActivityLog(
-                                    job_run_id=log.id,
-                                    app="sonarr",
-                                    kind="upgrade",
-                                    count=len(allowed_ids),
-                                    detail=_detail_from_labels(labels),
-                                )
-                            )
-                        elif cutoff_total > 0:
-                            actions.append("Sonarr: cutoff-unmet search suppressed (cooldown)")
-                        else:
-                            actions.append("Sonarr: no cutoff-unmet episodes found")
-
-                    if want_missing and not want_upgrade:
-                        cutoff_total = await _wanted_queue_total(sonarr, kind="cutoff")
-                    elif want_upgrade and not want_missing:
-                        missing_total = await _wanted_queue_total(sonarr, kind="missing")
-
-                    session.add(
-                        AppSnapshot(
-                            app="sonarr",
-                            ok=True,
-                            status_message="OK",
-                            missing_total=missing_total,
-                            cutoff_unmet_total=cutoff_total,
-                        )
-                    )
-                    settings.sonarr_last_run_at = now
-                finally:
-                    await sonarr.aclose()
+            await _execute_sonarr_block(
+                session,
+                log=log,
+                ctx=ctx,
+                actions=actions,
+                default_limit=default_limit,
+            )
 
         # Radarr (movies)
         if do_radarr_block:
-            skip_radarr = False
-            if arr_manual_scope is None:
-                if not in_window(
-                    schedule_enabled=settings.radarr_schedule_enabled,
-                    schedule_days=settings.radarr_schedule_days or "",
-                    schedule_start=settings.radarr_schedule_start,
-                    schedule_end=settings.radarr_schedule_end,
-                    timezone=tz,
-                ):
-                    actions.append("Radarr: skipped (outside schedule window)")
-                    skip_radarr = True
-                else:
-                    last_radarr = settings.radarr_last_run_at
-                    if last_radarr is not None and (now - last_radarr).total_seconds() < radarr_tick_m * 60:
-                        actions.append(
-                            "Radarr: skipped (run interval not elapsed — "
-                            + _interval_skip_detail(last_radarr, now, radarr_tick_m)
-                            + ")"
-                        )
-                        skip_radarr = True
-            if not skip_radarr:
-                radarr = ArrClient(ArrConfig(settings.radarr_url, rad_key))
-                try:
-                    await radarr.health()
-
-                    radarr_limit = max(1, int((settings.radarr_max_items_per_run or 0) or default_limit))
-                    radarr_missing_enabled = bool(settings.radarr_search_missing)
-                    radarr_upgrades_enabled = bool(settings.radarr_search_upgrades)
-                    if arr_manual_scope == "radarr_missing":
-                        want_missing, want_upgrade = True, False
-                    elif arr_manual_scope == "radarr_upgrade":
-                        want_missing, want_upgrade = False, True
-                    else:
-                        want_missing = radarr_missing_enabled
-                        want_upgrade = radarr_upgrades_enabled
-
-                    missing_total = 0
-                    cutoff_total = 0
-
-                    if want_missing:
-                        allowed_ids, allowed_records, missing_total = await _paginate_wanted_for_search(
-                            radarr,
-                            session,
-                            kind="missing",
-                            id_keys=("movieId", "id"),
-                            item_type="movie",
-                            app="radarr",
-                            action="missing",
-                            limit=radarr_limit,
-                            cooldown_minutes=radarr_cooldown_minutes,
-                            now=now,
-                        )
-                        if allowed_ids:
-                            try:
-                                tag_id = await radarr.ensure_tag("fetcher-missing")
-                                await radarr.add_tags_to_movies(movie_ids=allowed_ids, tag_ids=[tag_id])
-                            except Exception as e:  # noqa: BLE001
-                                actions.append(f"Radarr: tag apply warning (fetcher-missing): {format_http_error_detail(e)}")
-
-                            await trigger_radarr_missing_search(radarr, movie_ids=allowed_ids)
-                            actions.append(f"Radarr: missing search for {len(allowed_ids)} movie(s)")
-                            labels = [_radarr_movie_label(r) for r in allowed_records]
-                            session.add(
-                                ActivityLog(
-                                    job_run_id=log.id,
-                                    app="radarr",
-                                    kind="missing",
-                                    count=len(allowed_ids),
-                                    detail=_detail_from_labels(labels),
-                                )
-                            )
-                        elif missing_total > 0:
-                            actions.append("Radarr: missing search suppressed (cooldown)")
-                        else:
-                            actions.append("Radarr: no missing movies found")
-
-                    if want_upgrade:
-                        allowed_ids, allowed_records, cutoff_total = await _paginate_wanted_for_search(
-                            radarr,
-                            session,
-                            kind="cutoff",
-                            id_keys=("movieId", "id"),
-                            item_type="movie",
-                            app="radarr",
-                            action="upgrade",
-                            limit=radarr_limit,
-                            cooldown_minutes=radarr_cooldown_minutes,
-                            now=now,
-                        )
-                        if allowed_ids:
-                            try:
-                                tag_id = await radarr.ensure_tag("fetcher-upgrade")
-                                await radarr.add_tags_to_movies(movie_ids=allowed_ids, tag_ids=[tag_id])
-                            except Exception as e:  # noqa: BLE001
-                                actions.append(f"Radarr: tag apply warning (fetcher-upgrade): {format_http_error_detail(e)}")
-
-                            await trigger_radarr_cutoff_search(radarr, movie_ids=allowed_ids)
-                            actions.append(f"Radarr: cutoff-unmet search for {len(allowed_ids)} movie(s)")
-                            labels = [_radarr_movie_label(r) for r in allowed_records]
-                            session.add(
-                                ActivityLog(
-                                    job_run_id=log.id,
-                                    app="radarr",
-                                    kind="upgrade",
-                                    count=len(allowed_ids),
-                                    detail=_detail_from_labels(labels),
-                                )
-                            )
-                        elif cutoff_total > 0:
-                            actions.append("Radarr: cutoff-unmet search suppressed (cooldown)")
-                        else:
-                            actions.append("Radarr: no cutoff-unmet movies found")
-
-                    if want_missing and not want_upgrade:
-                        cutoff_total = await _wanted_queue_total(radarr, kind="cutoff")
-                    elif want_upgrade and not want_missing:
-                        missing_total = await _wanted_queue_total(radarr, kind="missing")
-
-                    session.add(
-                        AppSnapshot(
-                            app="radarr",
-                            ok=True,
-                            status_message="OK",
-                            missing_total=missing_total,
-                            cutoff_unmet_total=cutoff_total,
-                        )
-                    )
-                    settings.radarr_last_run_at = now
-                finally:
-                    await radarr.aclose()
+            await _execute_radarr_block(
+                session,
+                log=log,
+                ctx=ctx,
+                actions=actions,
+                default_limit=default_limit,
+            )
 
         # Emby Trimmer (not part of manual Arr “search now”)
         if arr_manual_scope is None and settings.emby_enabled and settings.emby_url and em_key:
@@ -998,115 +1221,12 @@ async def _run_once_inner(
             ):
                 actions.append("Emby: skipped (outside schedule window)")
             else:
-                last_emby = settings.emby_last_run_at
-                if last_emby is not None and (now - last_emby).total_seconds() < emby_interval_m * 60:
-                    actions.append(
-                        "Emby: skipped (run interval not elapsed — "
-                        + _interval_skip_detail(last_emby, now, emby_interval_m)
-                        + ")"
-                    )
-                else:
-                    emby = EmbyClient(EmbyConfig(settings.emby_url, em_key))
-                    try:
-                        await emby.health()
-                        users = await emby.users()
-                        configured_user_id = (settings.emby_user_id or "").strip()
-                        effective_user_id = configured_user_id
-                        if not effective_user_id and users:
-                            first_user = users[0]
-                            effective_user_id = str(first_user.get("Id", "")).strip()
-                            actions.append("Emby: no user configured, using first Emby user")
-                        if not effective_user_id:
-                            raise ValueError("Emby has no users available to query.")
-
-                        _v_scan = settings.emby_max_items_scan
-                        _raw_scan = int(_v_scan) if _v_scan is not None else 2000
-                        scan_limit = 0 if _raw_scan <= 0 else max(1, min(100_000, _raw_scan))
-                        max_deletes = max(1, int(settings.emby_max_deletes_per_run or 25))
-                        global_rating = max(0, int(settings.emby_rule_watched_rating_below or 0))
-                        global_unwatched = max(0, int(settings.emby_rule_unwatched_days or 0))
-                        movie_rating_below = max(0, int(settings.emby_rule_movie_watched_rating_below or 0)) or global_rating
-                        movie_unwatched_days = max(0, int(settings.emby_rule_movie_unwatched_days or 0)) or global_unwatched
-                        selected_movie_genres = parse_genres_csv(settings.emby_rule_movie_genres_csv)
-                        selected_movie_people = parse_movie_people_phrases(settings.emby_rule_movie_people_csv)
-                        selected_movie_credit_types = parse_movie_people_credit_types_csv(
-                            settings.emby_rule_movie_people_credit_types_csv
-                        )
-                        selected_tv_people = parse_movie_people_phrases(settings.emby_rule_tv_people_csv)
-                        selected_tv_credit_types = parse_movie_people_credit_types_csv(
-                            settings.emby_rule_tv_people_credit_types_csv
-                        )
-                        tv_delete_watched = bool(settings.emby_rule_tv_delete_watched)
-                        selected_tv_genres = parse_genres_csv(settings.emby_rule_tv_genres_csv)
-                        tv_unwatched_days = max(0, int(settings.emby_rule_tv_unwatched_days or 0)) or global_unwatched
-                        dry_run = bool(settings.emby_dry_run)
-
-                        if movie_rating_below <= 0 and movie_unwatched_days <= 0 and (not tv_delete_watched) and tv_unwatched_days <= 0:
-                            actions.append("Emby: skipped (no Emby Trimmer rules enabled)")
-                        else:
-                            items = await emby.items_for_user(user_id=effective_user_id, limit=scan_limit)
-                            candidates: list[tuple[str, str, str, dict[str, Any]]] = []
-                            for item in items:
-                                item_id = str(item.get("Id", "")).strip()
-                                if not item_id:
-                                    continue
-                                is_candidate, _, _, _, _ = evaluate_candidate(
-                                    item,
-                                    movie_watched_rating_below=movie_rating_below,
-                                    movie_unwatched_days=movie_unwatched_days,
-                                    tv_delete_watched=tv_delete_watched,
-                                    tv_unwatched_days=tv_unwatched_days,
-                                )
-                                item_type = str(item.get("Type", "")).strip()
-                                if item_type == "Movie" and not movie_matches_selected_genres(item, selected_movie_genres):
-                                    is_candidate = False
-                                if item_type == "Movie" and not movie_matches_people(
-                                    item, selected_movie_people, credit_types=selected_movie_credit_types
-                                ):
-                                    is_candidate = False
-                                if item_type in {"Series", "Season", "Episode"} and not tv_matches_selected_genres(item, selected_tv_genres):
-                                    is_candidate = False
-                                if item_type in {"Series", "Season", "Episode"} and not movie_matches_people(
-                                    item, selected_tv_people, credit_types=selected_tv_credit_types
-                                ):
-                                    is_candidate = False
-                                if is_candidate:
-                                    name = str(item.get("Name", "") or item_id)
-                                    item_type = str(item.get("Type", "") or "").strip()
-                                    candidates.append((item_id, name, item_type, item))
-                                    if len(candidates) >= max_deletes:
-                                        break
-
-                            if dry_run:
-                                actions.append(f"Emby: dry-run matched {len(candidates)} item(s)")
-                            else:
-                                actions.extend(
-                                    await apply_emby_trimmer_live_deletes(
-                                        settings, emby, candidates, son_key=son_key, rad_key=rad_key
-                                    )
-                                )
-
-                            session.add(
-                                AppSnapshot(
-                                    app="emby",
-                                    ok=True,
-                                    status_message="OK",
-                                    missing_total=len(candidates),
-                                    cutoff_unmet_total=0 if dry_run else len(candidates),
-                                )
-                            )
-                            session.add(
-                                ActivityLog(
-                                    job_run_id=log.id,
-                                    app="emby",
-                                    kind="trimmed",
-                                    count=len(candidates),
-                                    detail=_detail_from_labels([name for _, name, _, _ in candidates]),
-                                )
-                            )
-                        settings.emby_last_run_at = now
-                    finally:
-                        await emby.aclose()
+                await _execute_emby_block(
+                    session,
+                    log=log,
+                    ctx=ctx,
+                    actions=actions,
+                )
         elif settings.emby_enabled:
             actions.append("Emby: skipped (missing URL/API key)")
 

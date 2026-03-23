@@ -1,4 +1,4 @@
-"""Resolvers (e.g. API keys from ``config.yaml`` + DB)."""
+"""Resolvers (e.g. API keys from environment variables + DB)."""
 
 from .api_keys import (
     resolve_emby_api_key,

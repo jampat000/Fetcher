@@ -9,6 +9,8 @@ from app.branding import APP_NAME, APP_TAGLINE
 from app.constants import _TIMEZONE_CHOICES
 from app.db import _get_or_create_settings, get_session
 from app.form_helpers import _normalize_base_url, _resolve_timezone_name
+from app.resolvers.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
+from app.security_utils import encrypt_secret_for_storage
 from app.time_util import utc_now_naive
 from app.display_helpers import _now_local
 from app.ui_templates import templates
@@ -36,6 +38,9 @@ async def setup_wizard_page(
     step: int, request: Request, session: AsyncSession = Depends(get_session)
 ) -> HTMLResponse | RedirectResponse:
     settings = await _get_or_create_settings(session)
+    settings.sonarr_api_key = resolve_sonarr_api_key(settings)
+    settings.radarr_api_key = resolve_radarr_api_key(settings)
+    settings.emby_api_key = resolve_emby_api_key(settings)
     if not (settings.auth_password_hash or "").strip():
         if step != 0:
             return RedirectResponse("/setup/0", status_code=302)
@@ -131,6 +136,8 @@ async def setup_wizard_save(
                 return RedirectResponse("/setup/0?error=short_password", status_code=303)
             row.auth_username = u
             row.auth_password_hash = hash_password(pw)
+            row.auth_refresh_token_hash = ""
+            row.auth_refresh_expires_at = None
             row.updated_at = utc_now_naive()
             if not await try_commit_and_reschedule(session):
                 return RedirectResponse("/setup/0?save=fail&reason=db_busy", status_code=303)
@@ -142,15 +149,15 @@ async def setup_wizard_save(
         if step == 1:
             row.sonarr_enabled = sonarr_enabled
             row.sonarr_url = _normalize_base_url(sonarr_url)
-            row.sonarr_api_key = (sonarr_api_key or "").strip()
+            row.sonarr_api_key = encrypt_secret_for_storage((sonarr_api_key or "").strip())
         elif step == 2:
             row.radarr_enabled = radarr_enabled
             row.radarr_url = _normalize_base_url(radarr_url)
-            row.radarr_api_key = (radarr_api_key or "").strip()
+            row.radarr_api_key = encrypt_secret_for_storage((radarr_api_key or "").strip())
         elif step == 3:
             row.emby_enabled = emby_enabled
             row.emby_url = _normalize_base_url(emby_url)
-            row.emby_api_key = (emby_api_key or "").strip()
+            row.emby_api_key = encrypt_secret_for_storage((emby_api_key or "").strip())
             row.emby_user_id = (emby_user_id or "").strip()
         elif step == 4:
             # Per-app intervals (same as Fetcher Settings / Trimmer Settings).

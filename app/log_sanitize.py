@@ -28,13 +28,13 @@ _URL_RE = re.compile(r"https?://[^\s\)\]\}\"\'<>]+", re.IGNORECASE)
 
 # key=value / key: value forms (logs, query fragments in bodies).
 _KV_SECRET_RE = re.compile(
-    r"(?i)\b(api_key|apikey|sonarr_key|radarr_key|access_token|refresh_token|password|secret|token)\b\s*[:=]\s*"
+    r"(?i)\b(api_key|apikey|x-api-key|sonarr_key|radarr_key|access_token|refresh_token|password|secret|token|set-cookie)\b\s*[:=]\s*"
     r'(?:\[[^\]]+\]|"[^"]*"|\'[^\']*\'|\S+)',
 )
 
 # JSON-style "key":"value" for sensitive keys.
 _JSON_SECRET_RE = re.compile(
-    r'(?i)("(?:api_key|apikey|sonarr_key|radarr_key|access_token|refresh_token|password|secret|token)"\s*:\s*)"[^"]*"',
+    r'(?i)("(?:api_key|apikey|x-api-key|sonarr_key|radarr_key|access_token|refresh_token|password|secret|token|set-cookie)"\s*:\s*)"[^"]*"',
 )
 
 _BEARER_RE = re.compile(r"(?i)Bearer\s+[\w\-.~+/=]+")

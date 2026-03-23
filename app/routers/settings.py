@@ -5,13 +5,11 @@ import os
 from datetime import datetime, timezone
 from urllib.parse import quote
 
-import httpx
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.arr_client import ArrClient, ArrConfig
 from app.auth import (
     get_csrf_token_for_template,
     hash_password,
@@ -22,6 +20,7 @@ from app.auth import (
 from app.backup import export_json_bytes, import_settings_replace
 from app.branding import APP_NAME, APP_TAGLINE
 from app.constants import _TIMEZONE_CHOICES
+from app.connection_test_service import ConnectionTestService
 from app.db import _get_or_create_settings, fetch_latest_app_snapshots, get_session
 from app.display_helpers import _fmt_local, _normalize_hhmm, _now_local, _time_select_orphan
 from app.form_helpers import _normalize_base_url, _people_credit_types_csv_from_form, _resolve_timezone_name
@@ -29,6 +28,7 @@ from app.models import AppSnapshot
 from app.resolvers.api_keys import resolve_radarr_api_key, resolve_sonarr_api_key
 from app.schemas import SettingsIn
 from app.schedule import normalize_schedule_days_csv, schedule_time_dropdown_choices
+from app.security_utils import encrypt_secret_for_storage
 from app.time_util import utc_now_naive
 from app.ui_templates import templates
 from app.web_common import (
@@ -48,6 +48,8 @@ router = APIRouter(dependencies=AUTH_DEPS)
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await _get_or_create_settings(session)
+    settings.sonarr_api_key = resolve_sonarr_api_key(settings)
+    settings.radarr_api_key = resolve_radarr_api_key(settings)
     snaps = await fetch_latest_app_snapshots(session)
     sonarr_snap = snaps.get("sonarr")
     radarr_snap = snaps.get("radarr")
@@ -149,6 +151,8 @@ async def settings_auth_credentials(
         if np != cf:
             return RedirectResponse("/settings?sec=pass_mismatch", status_code=303)
         row.auth_password_hash = hash_password(np)
+        row.auth_refresh_token_hash = ""
+        row.auth_refresh_expires_at = None
         row.updated_at = utc_now_naive()
         if not await try_commit_and_reschedule(session):
             return RedirectResponse("/settings?sec=save_fail", status_code=303)
@@ -263,7 +267,7 @@ async def save_settings(
         if scope in ("all", "sonarr", "global"):
             row.sonarr_enabled = data.sonarr_enabled
             row.sonarr_url = data.sonarr_url
-            row.sonarr_api_key = data.sonarr_api_key
+            row.sonarr_api_key = encrypt_secret_for_storage(data.sonarr_api_key)
             row.sonarr_search_missing = data.sonarr_search_missing
             row.sonarr_search_upgrades = data.sonarr_search_upgrades
             row.sonarr_max_items_per_run = data.sonarr_max_items_per_run
@@ -284,7 +288,7 @@ async def save_settings(
         if scope in ("all", "radarr", "global"):
             row.radarr_enabled = data.radarr_enabled
             row.radarr_url = data.radarr_url
-            row.radarr_api_key = data.radarr_api_key
+            row.radarr_api_key = encrypt_secret_for_storage(data.radarr_api_key)
             row.radarr_search_missing = data.radarr_search_missing
             row.radarr_search_upgrades = data.radarr_search_upgrades
             row.radarr_max_items_per_run = data.radarr_max_items_per_run
@@ -330,35 +334,50 @@ async def save_settings(
 
 @router.post("/test/sonarr", dependencies=AUTH_FORM_DEPS)
 async def test_sonarr(session: AsyncSession = Depends(get_session)) -> RedirectResponse:
+    # Keep route-owned side effects here: snapshot payload + redirect contract.
+    # Any message or redirect changes must be covered by connection-testing regression tests.
     settings = await _get_or_create_settings(session)
-    try:
-        c = ArrClient(ArrConfig(settings.sonarr_url, resolve_sonarr_api_key(settings)))
-        try:
-            await c.health()
-        finally:
-            await c.aclose()
+    result = await ConnectionTestService().check_arr_health(
+        url=settings.sonarr_url,
+        api_key=resolve_sonarr_api_key(settings),
+    )
+    if result.ok:
         session.add(AppSnapshot(app="sonarr", ok=True, status_message="Connection test succeeded.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
         return RedirectResponse("/settings?test=sonarr_ok", status_code=303)
-    except httpx.HTTPError as e:
-        session.add(AppSnapshot(app="sonarr", ok=False, status_message=f"Connection test failed: {type(e).__name__}: {e}", missing_total=0, cutoff_unmet_total=0))
-        await session.commit()
-        return RedirectResponse("/settings?test=sonarr_fail", status_code=303)
+    session.add(
+        AppSnapshot(
+            app="sonarr",
+            ok=False,
+            status_message=f"Connection test failed: {ConnectionTestService.message_with_exception_prefix(result)}",
+            missing_total=0,
+            cutoff_unmet_total=0,
+        )
+    )
+    await session.commit()
+    return RedirectResponse("/settings?test=sonarr_fail", status_code=303)
 
 
 @router.post("/test/radarr", dependencies=AUTH_FORM_DEPS)
 async def test_radarr(session: AsyncSession = Depends(get_session)) -> RedirectResponse:
+    # ConnectionTestService provides transport result primitives only; caller preserves UX contract.
     settings = await _get_or_create_settings(session)
-    try:
-        c = ArrClient(ArrConfig(settings.radarr_url, resolve_radarr_api_key(settings)))
-        try:
-            await c.health()
-        finally:
-            await c.aclose()
+    result = await ConnectionTestService().check_arr_health(
+        url=settings.radarr_url,
+        api_key=resolve_radarr_api_key(settings),
+    )
+    if result.ok:
         session.add(AppSnapshot(app="radarr", ok=True, status_message="Connection test succeeded.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
         return RedirectResponse("/settings?test=radarr_ok", status_code=303)
-    except httpx.HTTPError as e:
-        session.add(AppSnapshot(app="radarr", ok=False, status_message=f"Connection test failed: {type(e).__name__}: {e}", missing_total=0, cutoff_unmet_total=0))
-        await session.commit()
-        return RedirectResponse("/settings?test=radarr_fail", status_code=303)
+    session.add(
+        AppSnapshot(
+            app="radarr",
+            ok=False,
+            status_message=f"Connection test failed: {ConnectionTestService.message_with_exception_prefix(result)}",
+            missing_total=0,
+            cutoff_unmet_total=0,
+        )
+    )
+    await session.commit()
+    return RedirectResponse("/settings?test=radarr_fail", status_code=303)

@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.20] - 2026-03-23
+
+### Changed
+
+- **Security/Auth:** Hardened JWT and token refresh handling, centralized auth orchestration, enforced env-based secret loading, added rate limiting, and expanded auth/security regression coverage.
+- **Refactor:** Split Trimmer review/apply orchestration into focused services and extracted Sonarr/Radarr/Emby execution blocks from run orchestration into dedicated helpers without behavior changes.
+- **Testing/Operations:** Added focused regression suites for trimmer routes, connection-testing flows, and service run orchestration to freeze behavior before further refactors.
+
 ## [2.0.19] - 2026-03-23
 
 ### Changed
@@ -643,7 +651,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **v2.0.x** diffs only. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.19...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.20...HEAD
+[2.0.20]: https://github.com/jampat000/Fetcher/compare/v2.0.19...v2.0.20
 [2.0.19]: https://github.com/jampat000/Fetcher/compare/v2.0.18...v2.0.19
 [2.0.18]: https://github.com/jampat000/Fetcher/compare/v2.0.17...v2.0.18
 [2.0.17]: https://github.com/jampat000/Fetcher/compare/v2.0.16...v2.0.17

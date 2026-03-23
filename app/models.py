@@ -89,6 +89,8 @@ class AppSettings(Base):
     # Newline-separated IPs and CIDR ranges; empty = no IP-based bypass.
     auth_ip_allowlist: Mapped[str] = mapped_column(Text, default="")
     auth_session_secret: Mapped[str] = mapped_column(Text, default="")
+    auth_refresh_token_hash: Mapped[str] = mapped_column(Text, default="")
+    auth_refresh_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
 

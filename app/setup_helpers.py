@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import httpx
 
-from app.arr_client import ArrClient, ArrConfig
+from app.connection_test_service import ConnectionTestService
 from app.emby_client import EmbyClient, EmbyConfig
 from app.form_helpers import _looks_like_url, _normalize_base_url
 
@@ -19,49 +19,47 @@ def looks_like_url(raw: str) -> bool:
 
 
 async def test_sonarr_connection(url: str, api_key: str) -> tuple[bool, str]:
+    # Keep setup helper messaging stable; API routes pass these strings through directly.
     u = normalize_setup_url(url)
     k = (api_key or "").strip()
     if not u:
         return False, "Enter a Sonarr base URL (for example http://localhost:8989)."
     if not k:
         return False, "Enter your Sonarr API key."
-    try:
-        c = ArrClient(ArrConfig(u, k))
-        try:
-            await c.health()
-        finally:
-            await c.aclose()
+    result = await ConnectionTestService().check_arr_health(url=u, api_key=k)
+    if result.ok:
         return True, "Sonarr responded OK."
-    except httpx.HTTPStatusError as e:
-        msg = f"HTTP {e.response.status_code}"
-        if e.response.status_code in (401, 403):
-            msg += " — check the API key in Sonarr (Settings → General)."
-        return False, msg
-    except httpx.HTTPError as e:
-        return False, f"{type(e).__name__}: {e}"
+    if result.error_kind == "http_status":
+        return (
+            False,
+            ConnectionTestService.message_with_http_status_hint(
+                result,
+                auth_hint="check the API key in Sonarr (Settings → General).",
+            ),
+        )
+    return False, ConnectionTestService.message_with_exception_prefix(result)
 
 
 async def test_radarr_connection(url: str, api_key: str) -> tuple[bool, str]:
+    # Keep parity with existing setup UX; update regression tests before changing wording/branches.
     u = normalize_setup_url(url)
     k = (api_key or "").strip()
     if not u:
         return False, "Enter a Radarr base URL (for example http://localhost:7878)."
     if not k:
         return False, "Enter your Radarr API key."
-    try:
-        c = ArrClient(ArrConfig(u, k))
-        try:
-            await c.health()
-        finally:
-            await c.aclose()
+    result = await ConnectionTestService().check_arr_health(url=u, api_key=k)
+    if result.ok:
         return True, "Radarr responded OK."
-    except httpx.HTTPStatusError as e:
-        msg = f"HTTP {e.response.status_code}"
-        if e.response.status_code in (401, 403):
-            msg += " — check the API key in Radarr (Settings → General)."
-        return False, msg
-    except httpx.HTTPError as e:
-        return False, f"{type(e).__name__}: {e}"
+    if result.error_kind == "http_status":
+        return (
+            False,
+            ConnectionTestService.message_with_http_status_hint(
+                result,
+                auth_hint="check the API key in Radarr (Settings → General).",
+            ),
+        )
+    return False, ConnectionTestService.message_with_exception_prefix(result)
 
 
 async def test_emby_connection(url: str, api_key: str, user_id: str) -> tuple[bool, str]:
