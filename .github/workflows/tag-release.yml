@@ -59,6 +59,9 @@ jobs:
           echo "pushed=true" >> "$GITHUB_OUTPUT"
           echo "Pushed $TAG — dispatching Build installer and Docker publish…"
 
+      # Build installer must run at the tag commit (Windows bundle matches release).
+      # Docker publish must be dispatched with ref = default branch so workflow YAML is current;
+      # pass checkout_ref = tag so the image is built from the release commit (ref trap).
       - name: Dispatch Build installer and Docker publish
         if: steps.tag_push.outputs.pushed == 'true' || github.event_name == 'workflow_dispatch'
         uses: actions/github-script@v8
@@ -66,13 +69,19 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const tag = '${{ steps.ver.outputs.tag }}';
-            const workflows = ['build-installer.yml', 'docker-publish.yml'];
-            for (const workflow_id of workflows) {
-              await github.rest.actions.createWorkflowDispatch({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                workflow_id,
-                ref: tag,
-              });
-              core.info(`Dispatched ${workflow_id} for ref ${tag}`);
-            }
+            const defaultBranch = context.payload.repository.default_branch;
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'build-installer.yml',
+              ref: tag,
+            });
+            core.info(`Dispatched build-installer.yml for ref ${tag}`);
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'docker-publish.yml',
+              ref: defaultBranch,
+              inputs: { checkout_ref: tag },
+            });
+            core.info(`Dispatched docker-publish.yml on ${defaultBranch} with checkout_ref=${tag}`);

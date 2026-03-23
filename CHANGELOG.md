@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Release automation:** **Tag release (from VERSION)** now dispatches **Docker publish** as well as **Build installer**, because tag pushes with the default **`GITHUB_TOKEN`** do not trigger **`on: push: tags`** workflows.
 - **Docker publish:** Semver and **`latest`** tags are applied when the workflow runs as **`workflow_dispatch`** with ref **`v*.*.*`** (the same pattern **Tag release** uses), not only on real tag **`push`** events.
+- **Docker publish / ref trap:** **Tag release** dispatches **Docker publish** with **`ref` = default branch** and **`checkout_ref` = version tag**, so the workflow definition always comes from current **`master`** while the image still builds from the release commit (dispatching with **`ref: vX.Y.Z`** alone would use an old workflow snapshot and could miss **`workflow_dispatch`**).
 
 ## [2.0.15] - 2026-03-23
 

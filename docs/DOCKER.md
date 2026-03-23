@@ -27,7 +27,7 @@ docker run -d --name fetcher \
 
 The package may be **private** until you set **Package settings → Change visibility** to public (one-time per org/repo policy).
 
-**Note:** The **Tag release (from VERSION)** workflow dispatches **Docker publish** for the new tag (token-pushed tags do not fire **`push: tags`**). For recovery, use **Actions → Docker publish → Run workflow** with ref **`v*.*.*`** or **`master`** (branch runs tag images as **`VERSION`** + **`sha-*`**, not **`latest`**).
+**Note:** **Tag release** dispatches **Docker publish** on the **default branch** with **`checkout_ref` = `vX.Y.Z`**, so GitHub loads the **current** workflow file while the checkout still matches the release. For recovery: **Actions → Docker publish → Run workflow** — set **checkout_ref** to **`vX.Y.Z`** and run from **`master`**, or run from tag **`vX.Y.Z`** only if that tag’s commit already contains the latest **Docker publish** workflow.
 
 ## Requirements
 
