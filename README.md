@@ -36,7 +36,9 @@
 
 ## Docker (Linux / NAS / container hosts)
 
-**[`docs/DOCKER.md`](docs/DOCKER.md)** — build and run with **`docker compose up -d --build`**, then open **`http://127.0.0.1:8765`**. The database persists in a Docker volume under **`/data`**.
+**Separate from Windows:** use **`FetcherSetup.exe`** above for the Windows service. Docker is an optional **Linux** image (local build or **GHCR** after **Docker publish** — see **[`docs/DOCKER.md`](docs/DOCKER.md)**).
+
+**[`docs/DOCKER.md`](docs/DOCKER.md)** — **`docker compose up -d --build`** from git, or **`docker pull ghcr.io/jampat000/fetcher:latest`** when a published image exists. Open **`http://127.0.0.1:8765`**. The database persists in a volume under **`/data`**.
 
 ## Health checks (no login)
 
