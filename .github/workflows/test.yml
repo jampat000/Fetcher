@@ -11,6 +11,7 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  FETCHER_JWT_SECRET: ci-test-jwt-secret-only
 
 permissions:
   contents: read
