@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.24] - 2026-03-23
+
+### Fixed
+
+- **Installer/service runtime:** Added explicit WinSW env pass-through for **`FETCHER_JWT_SECRET`** and documented persistent service configuration so installed builds can start with required JWT configuration while preserving fail-fast behavior when unset.
+
 ## [2.0.23] - 2026-03-23
 
 ### Fixed
@@ -659,7 +665,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **v2.0.x** diffs only. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.23...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.24...HEAD
+[2.0.24]: https://github.com/jampat000/Fetcher/compare/v2.0.23...v2.0.24
 [2.0.23]: https://github.com/jampat000/Fetcher/compare/v2.0.20...v2.0.23
 [2.0.20]: https://github.com/jampat000/Fetcher/compare/v2.0.19...v2.0.20
 [2.0.19]: https://github.com/jampat000/Fetcher/compare/v2.0.18...v2.0.19
