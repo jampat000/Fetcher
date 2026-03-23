@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +23,7 @@ from app.emby_rules import (
     parse_movie_people_phrases,
 )
 from app.models import ActivityLog, JobRunLog
+from app.paths import LOGS_DIR, is_safe_path
 from app.time_util import utc_now_naive
 from app.ui_templates import templates
 from app.web_common import (
@@ -148,6 +151,21 @@ async def logs_page(request: Request, session: AsyncSession = Depends(get_sessio
             "csrf_token": await get_csrf_token_for_template(request, session),
         },
     )
+
+
+@router.get("/logs/file", response_class=PlainTextResponse)
+async def logs_file(name: str, _request: Request) -> PlainTextResponse:
+    """Read a log file only when it resolves under the designated logs directory."""
+    candidate = (LOGS_DIR / Path(name).name).resolve()
+    if not is_safe_path(candidate, LOGS_DIR.resolve()):
+        raise HTTPException(status_code=403, detail="Path escapes the logs directory")
+    if not candidate.is_file():
+        return PlainTextResponse("Log file not found", status_code=404)
+    try:
+        text = candidate.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return PlainTextResponse("Could not read log file", status_code=500)
+    return PlainTextResponse(text)
 
 
 @router.get("/activity", response_class=HTMLResponse)

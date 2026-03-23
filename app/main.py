@@ -86,6 +86,14 @@ async def _lifespan(_app: FastAPI):
 app = FastAPI(title=APP_NAME, lifespan=_lifespan)
 
 
+@app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    return response
+
+
 @app.exception_handler(FetcherAuthRequired)
 async def _fetcher_auth_redirect_handler(_request: Request, exc: FetcherAuthRequired) -> Response:
     """Depends(require_auth) cannot return RedirectResponse — FastAPI would ignore it."""
