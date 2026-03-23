@@ -312,15 +312,27 @@
         <p class="small backup-panel-desc">Replaces <strong>all</strong> saved <strong>Fetcher</strong> and <strong>Trimmer</strong> settings on this PC. Does not change dashboard <strong>Activity</strong> history.</p>
         <form method="post" action="/settings/backup/import" enctype="multipart/form-data" class="backup-restore-form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-          <div class="field backup-file-field">
-            <label class="backup-file-label" for="backup-file-input">Choose backup file</label>
-            <input id="backup-file-input" class="input backup-file-input" type="file" name="file" accept="application/json,.json,.JSON" required />
+          <div class="settings-step-group" role="group" aria-labelledby="backup-restore-step-file">
+            <p class="settings-step-legend" id="backup-restore-step-file">Select backup</p>
+            <div class="backup-file-picker">
+              <input id="backup-file-input" class="backup-file-input-native" type="file" name="file" accept="application/json,.json,.JSON" required aria-describedby="backup-file-name" />
+              <label for="backup-file-input" class="btn secondary backup-panel-btn backup-file-btn">Choose backup file</label>
+              <span class="backup-file-name small muted" id="backup-file-name" aria-live="polite">No file selected</span>
+            </div>
           </div>
-          <div class="checkline backup-confirm-line">
-            <input type="checkbox" name="confirm" value="yes" id="backup-confirm" />
-            <label for="backup-confirm">I understand this will <strong>overwrite</strong> my current <strong>Fetcher</strong> and <strong>Trimmer</strong> settings.</label>
+          <div class="settings-step-group" role="group" aria-labelledby="backup-restore-step-confirm">
+            <p class="settings-step-legend" id="backup-restore-step-confirm">Confirm restore</p>
+            <div class="settings-commit-panel">
+              <label class="toggle-field settings-commit-toggle">
+                <input type="checkbox" name="confirm" value="yes" id="backup-confirm" class="toggle-input" />
+                <span class="toggle" aria-hidden="true"><span class="toggle-knob"></span></span>
+                <span class="toggle-label">I understand this will <strong>overwrite</strong> my saved <strong>Fetcher</strong> and <strong>Trimmer</strong> settings on this PC. Dashboard <strong>Activity</strong> is not changed.</span>
+              </label>
+              <div class="settings-commit-actions">
+                <button type="submit" class="btn secondary backup-panel-btn backup-restore-submit">Restore from backup</button>
+              </div>
+            </div>
           </div>
-          <button type="submit" class="btn secondary backup-restore-submit">Restore from backup</button>
         </form>
       </div>
     </div>
@@ -328,6 +340,14 @@
       (function () {
         var form = document.querySelector("form.backup-restore-form");
         if (!form) return;
+        var fileInput = form.querySelector("#backup-file-input");
+        var fileNameEl = form.querySelector("#backup-file-name");
+        if (fileInput && fileNameEl) {
+          fileInput.addEventListener("change", function () {
+            var f = fileInput.files && fileInput.files[0];
+            fileNameEl.textContent = f ? f.name : "No file selected";
+          });
+        }
         form.addEventListener("submit", function (e) {
           var ok = form.querySelector("#backup-confirm");
           if (!ok || !ok.checked) {
@@ -365,13 +385,21 @@
         </div>
         <p class="small backup-panel-desc">When a newer release is available, confirm below and run the installer. Use <strong>release notes</strong> to see what changed.</p>
         <p class="small muted updates-idle-hint" id="updates-idle-hint">No action needed until a newer release is detected.</p>
-        <div class="checkline backup-confirm-line updates-confirm-line" id="updates-confirm-wrap" hidden>
-          <input type="checkbox" id="updates-confirm" />
-          <label for="updates-confirm">I understand the <strong>Fetcher</strong> service will restart and this page may disconnect until the upgrade finishes.</label>
-        </div>
-        <div class="btn-row updates-actions backup-panel-actions" id="updates-actions" hidden>
-          <button type="button" class="btn backup-panel-btn" id="updates-apply-btn" disabled>Upgrade now</button>
-          <a class="btn secondary backup-panel-btn" id="updates-notes-link" href="#" target="_blank" rel="noopener noreferrer">Release notes</a>
+        <div class="settings-step-group" id="updates-upgrade-shell" role="group" aria-labelledby="updates-apply-step-confirm" hidden>
+          <p class="settings-step-legend" id="updates-apply-step-confirm">Confirm upgrade</p>
+          <div class="settings-commit-panel">
+            <label class="toggle-field settings-commit-toggle" id="updates-confirm-wrap" hidden>
+              <input type="checkbox" id="updates-confirm" class="toggle-input" />
+              <span class="toggle" aria-hidden="true"><span class="toggle-knob"></span></span>
+              <span class="toggle-label">I understand the <strong>Fetcher</strong> service will restart and this page may disconnect until the upgrade finishes.</span>
+            </label>
+            <p class="small muted updates-upgrade-cta-hint" id="updates-upgrade-cta-hint" hidden>Turn the confirmation on, then click <strong>Upgrade now</strong> (below).</p>
+            <p class="small muted" id="updates-manual-install-hint" hidden>Automatic upgrade isn’t available for this run. Use <strong>Download FetcherSetup.exe</strong> under <strong>Release status</strong> (left), or install from <strong>Release notes</strong>.</p>
+            <div class="settings-commit-actions" id="updates-actions" hidden>
+              <button type="button" class="btn backup-panel-btn" id="updates-apply-btn" disabled>Upgrade now</button>
+              <a class="btn secondary backup-panel-btn" id="updates-notes-link" href="#" target="_blank" rel="noopener noreferrer">Release notes</a>
+            </div>
+          </div>
         </div>
         <p class="small muted backup-panel-desc updates-dev-hint" id="updates-dev-hint" hidden><strong>Development:</strong> in-app upgrade is off unless you set <code class="code-inline">FETCHER_ALLOW_DEV_UPGRADE=1</code>.</p>
       </div>
@@ -382,6 +410,7 @@
         if (!panel) return;
         var checkUrl = panel.getAttribute("data-check-url") || "/api/updates/check";
         var applyUrl = panel.getAttribute("data-apply-url") || "/api/updates/apply";
+        var upgradeShell = document.getElementById("updates-upgrade-shell");
         var confirmWrap = document.getElementById("updates-confirm-wrap");
         var confirmCb = document.getElementById("updates-confirm");
         var actions = document.getElementById("updates-actions");
@@ -390,6 +419,9 @@
         var notesLink = document.getElementById("updates-notes-link");
         var devHint = document.getElementById("updates-dev-hint");
         var idleHint = document.getElementById("updates-idle-hint");
+        var confirmLegend = document.getElementById("updates-apply-step-confirm");
+        var ctaHint = document.getElementById("updates-upgrade-cta-hint");
+        var manualInstallHint = document.getElementById("updates-manual-install-hint");
 
         function esc(s) {
           var d = document.createElement("div");
@@ -401,9 +433,30 @@
           if (idleHint) idleHint.hidden = !show;
         }
 
+        function resetUpgradeChrome() {
+          if (upgradeShell) upgradeShell.hidden = true;
+          if (confirmLegend) confirmLegend.hidden = false;
+          if (confirmWrap) confirmWrap.hidden = true;
+          if (actions) actions.hidden = true;
+          if (confirmCb) {
+            confirmCb.checked = false;
+            confirmCb.onchange = null;
+          }
+          if (applyBtn) {
+            applyBtn.style.display = "";
+            applyBtn.disabled = true;
+            applyBtn.textContent = "Upgrade now";
+            applyBtn.onclick = null;
+          }
+          if (devHint) devHint.hidden = true;
+          if (ctaHint) ctaHint.hidden = true;
+          if (manualInstallHint) manualInstallHint.hidden = true;
+        }
+
         function render(data) {
           panel.querySelector(".updates-loading") && panel.querySelector(".updates-loading").remove();
           setIdleVisible(false);
+          resetUpgradeChrome();
 
           var ver = esc(String(data.current_version || "?"));
           var kvStart = "<dl class=\"updates-kv\"><dt>Installed version</dt><dd>" + ver + "</dd>";
@@ -457,57 +510,71 @@
           if (notesLink && data.release_notes_url) {
             notesLink.href = data.release_notes_url;
           }
-          if (!data.apply_supported && devHint) {
+          var canApply = data.apply_supported === true;
+          if (!canApply && devHint && data.update_available) {
             devHint.hidden = false;
           }
-          if (data.update_available && data.apply_supported && confirmWrap && actions && applyBtn && confirmCb) {
-            confirmWrap.hidden = false;
-            actions.hidden = false;
-            applyBtn.disabled = !confirmCb.checked;
-            confirmCb.onchange = function () {
+          if (data.update_available && upgradeShell && actions) {
+            upgradeShell.hidden = false;
+            if (canApply && confirmWrap && applyBtn && confirmCb) {
+              if (confirmLegend) confirmLegend.hidden = false;
+              if (manualInstallHint) manualInstallHint.hidden = true;
+              if (ctaHint) ctaHint.hidden = false;
+              confirmWrap.hidden = false;
+              actions.hidden = false;
+              applyBtn.style.display = "";
               applyBtn.disabled = !confirmCb.checked;
-            };
-            applyBtn.onclick = function () {
-              if (!confirmCb.checked) return;
-              applyBtn.disabled = true;
-              applyBtn.textContent = "Starting…";
-              fetch(applyUrl, { method: "POST", headers: { Accept: "application/json" }, cache: "no-store" })
-                .then(function (r) {
-                  return r.json().then(function (j) {
-                    return { ok: r.ok, body: j };
-                  });
-                })
-                .then(function (res) {
-                  if (res.body && res.body.ok) {
-                    panel.insertAdjacentHTML(
-                      "beforeend",
-                      "<p class=\"banner banner-ok updates-status-msg\" role=\"status\">" +
-                        esc(res.body.message || "Upgrade started.") +
-                        "</p>"
-                    );
-                  } else {
+              confirmCb.onchange = function () {
+                applyBtn.disabled = !confirmCb.checked;
+              };
+              applyBtn.onclick = function () {
+                if (!confirmCb.checked) return;
+                applyBtn.disabled = true;
+                applyBtn.textContent = "Starting…";
+                fetch(applyUrl, { method: "POST", headers: { Accept: "application/json" }, cache: "no-store" })
+                  .then(function (r) {
+                    return r.json().then(function (j) {
+                      return { ok: r.ok, body: j };
+                    });
+                  })
+                  .then(function (res) {
+                    if (res.body && res.body.ok) {
+                      panel.insertAdjacentHTML(
+                        "beforeend",
+                        "<p class=\"banner banner-ok updates-status-msg\" role=\"status\">" +
+                          esc(res.body.message || "Upgrade started.") +
+                          "</p>"
+                      );
+                    } else {
+                      applyBtn.disabled = false;
+                      applyBtn.textContent = "Upgrade now";
+                      var err = (res.body && res.body.error) || "Request failed";
+                      panel.insertAdjacentHTML(
+                        "beforeend",
+                        "<div class=\"banner banner-warn updates-status-msg\" role=\"alert\">" + esc(err) + "</div>"
+                      );
+                    }
+                  })
+                  .catch(function () {
                     applyBtn.disabled = false;
                     applyBtn.textContent = "Upgrade now";
-                    var err = (res.body && res.body.error) || "Request failed";
                     panel.insertAdjacentHTML(
                       "beforeend",
-                      "<div class=\"banner banner-warn updates-status-msg\" role=\"alert\">" + esc(err) + "</div>"
+                      "<div class=\"banner banner-warn updates-status-msg\" role=\"alert\">Network error.</div>"
                     );
-                  }
-                })
-                .catch(function () {
-                  applyBtn.disabled = false;
-                  applyBtn.textContent = "Upgrade now";
-                  panel.insertAdjacentHTML(
-                    "beforeend",
-                    "<div class=\"banner banner-warn updates-status-msg\" role=\"alert\">Network error.</div>"
-                  );
-                });
-            };
-          }
-          if (data.update_available && !data.apply_supported && actions) {
-            actions.hidden = false;
-            if (applyBtn) applyBtn.style.display = "none";
+                  });
+              };
+            } else {
+              if (confirmLegend) confirmLegend.hidden = true;
+              if (confirmWrap) confirmWrap.hidden = true;
+              if (ctaHint) ctaHint.hidden = true;
+              if (manualInstallHint) manualInstallHint.hidden = false;
+              actions.hidden = false;
+              if (applyBtn) {
+                applyBtn.style.display = "none";
+                applyBtn.disabled = true;
+              }
+            }
           }
           if (data.ok && !data.update_available && !data.asset_missing) {
             panel.insertAdjacentHTML(

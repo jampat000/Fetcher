@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.10] - 2026-03-23
+
+### Fixed
+
+- **Settings → Software updates → Apply upgrade:** One **if/else** path so **Upgrade now** is never left hidden while the confirmation toggle is visible; **`apply_supported`** is honored only when JSON **`true`** (`===` in script). Added a short hint to turn the confirmation on, then use **Upgrade now**; when in-app apply is unavailable, the toggle is hidden and a **manual install** line points to **Download FetcherSetup.exe** under **Release status**.
+
+### Changed
+
+- **`app.css`:** **`.btn:disabled`** visibility; **Apply upgrade** primary button uses full width (up to **20rem**) in the commit panel.
+
+## [2.0.9] - 2026-03-23
+
+### Added
+
+- **`.github/rulesets/protect-default-branch.json`:** Example **repository ruleset** (branch rules, not classic protection) for import or **`gh api …/rulesets`** — optional reference for **`master`** / default branch.
+
+### Changed
+
+- **Settings → Backup & restore:** **Choose backup file** uses app **button** styling; **Confirm restore** matches **Apply upgrade** (shared **`settings-step-*`** / **`settings-commit-*`** layout, **toggle** control, tinted commit panel).
+- **Settings → Software updates → Apply upgrade:** Same confirm UI pattern as backup restore; **`scripts/dev-start.ps1`** sets **`FETCHER_ALLOW_DEV_UPGRADE=1`** by default so source runs can use **Upgrade now** (use **`-NoDevUpgrade`** to keep the toggle hidden). **Development** hint only shows when an update exists and in-app apply is still unavailable.
+
 ## [2.0.8] - 2026-03-23
 
 ### Added

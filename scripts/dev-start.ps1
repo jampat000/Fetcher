@@ -5,7 +5,9 @@ param(
   # Offer UAC once if normal kill failed (helps when another user/admin owns the listener).
   [switch]$TryElevatedKill,
   # Use the same SQLite file as the installed service (%LocalAppData%\Fetcher\fetcher.db). Stop the service first to avoid locks.
-  [switch]$SharedAppDb
+  [switch]$SharedAppDb,
+  # Do not set FETCHER_ALLOW_DEV_UPGRADE (Settings → Apply upgrade toggle stays off for source runs).
+  [switch]$NoDevUpgrade
 )
 
 $ErrorActionPreference = "Stop"
@@ -26,6 +28,17 @@ if ($SharedAppDb) {
   Write-Host "Dev DB: $devDb  (FETCHER_DEV_DB_PATH)  `[use -SharedAppDb for installed app database`]" -ForegroundColor DarkGray
 }
 Write-Host ""
+
+# Source runs are not "frozen"; without this, Settings hides the Apply upgrade toggle (see app/updates.py _apply_eligible).
+if ($NoDevUpgrade) {
+  Remove-Item Env:\FETCHER_ALLOW_DEV_UPGRADE -ErrorAction SilentlyContinue
+  Write-Host "Dev: in-app upgrade off for this process (-NoDevUpgrade)." -ForegroundColor DarkGray
+  Write-Host ""
+} else {
+  $env:FETCHER_ALLOW_DEV_UPGRADE = "1"
+  Write-Host "Dev: in-app upgrade enabled (FETCHER_ALLOW_DEV_UPGRADE=1). Use -NoDevUpgrade to match restricted UI." -ForegroundColor DarkGray
+  Write-Host ""
+}
 
 function Get-ProcessNameByPid {
   param([int]$ProcessId)
