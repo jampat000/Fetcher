@@ -55,6 +55,7 @@ jobs:
         env:
           FETCHER_CI_SMOKE: "1"
           FETCHER_DEV_DB_PATH: ${{ runner.temp }}/fetcher-ci-smoke.sqlite3
+          FETCHER_JWT_SECRET: ci-smoke-jwt-secret-only
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
