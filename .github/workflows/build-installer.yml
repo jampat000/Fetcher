@@ -129,9 +129,45 @@ jobs:
           name: FetcherSetup
           path: release-asset
 
+      # Prepended above GitHub-generated notes (softprops: body + generate_release_notes).
+      - name: Standard install section (Windows + Docker)
+        id: install
+        shell: bash
+        run: |
+          set -euo pipefail
+          V="${GITHUB_REF_NAME#v}"
+          MINOR="${V%.*}"
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          REPO_LOWER=$(echo "${GITHUB_REPOSITORY#*/}" | tr '[:upper:]' '[:lower:]')
+          IMG="ghcr.io/${OWNER}/${REPO_LOWER}"
+          PKG_URL="https://github.com/${GITHUB_REPOSITORY}/pkgs/container/${REPO_LOWER}"
+          {
+            echo 'body<<EOF'
+            echo "## Install"
+            echo ""
+            echo "### Windows"
+            echo "Download **FetcherSetup.exe** (attached below)."
+            echo ""
+            echo "### Docker (Linux)"
+            echo "Pull the image for this release (**${GITHUB_REF_NAME}**):"
+            echo ""
+            echo '```bash'
+            echo "docker pull ${IMG}:${V}"
+            echo '```'
+            echo ""
+            echo "Other tags: \`${IMG}:latest\`, \`${IMG}:${MINOR}\` (minor series)."
+            echo ""
+            echo "**Container registry:** [${IMG}](${PKG_URL})"
+            echo ""
+            echo "---"
+            echo ""
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2.6.1
         with:
+          body: ${{ steps.install.outputs.body }}
           files: release-asset/FetcherSetup.exe
           generate_release_notes: true
         env:

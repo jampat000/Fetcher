@@ -6,6 +6,8 @@ Fetcher is a **FastAPI** app with a **SQLite** database. The container listens o
 
 ## Pre-built image (GHCR)
 
+Each **[GitHub Release](https://github.com/jampat000/Fetcher/releases)** includes a standard **Install** section with **Windows** (the installer asset) and **Docker** (the **`docker pull`** line for that version), matching what CI publishes.
+
 After a **`v*.*.*`** tag is pushed (or you run **Actions → Docker publish → Run workflow**), the image is published to **GitHub Container Registry** under the repository name in **lowercase**, for example:
 
 ```text
