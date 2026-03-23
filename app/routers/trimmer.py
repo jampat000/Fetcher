@@ -17,23 +17,18 @@ from app.db import _get_or_create_settings, fetch_latest_app_snapshots, get_sess
 from app.display_helpers import _normalize_hhmm, _now_local, _time_select_orphan
 from app.emby_client import EmbyClient, EmbyConfig
 from app.emby_rules import (
-    evaluate_candidate,
-    movie_matches_people,
-    movie_matches_selected_genres,
     parse_genres_csv,
     parse_movie_people_credit_types_csv,
-    parse_movie_people_phrases,
-    tv_matches_selected_genres,
 )
 from app.form_helpers import _looks_like_url, _normalize_base_url, _people_credit_types_csv_from_form
 from app.models import AppSnapshot
-from app.resolvers.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
+from app.resolvers.api_keys import resolve_emby_api_key
 from app.schedule import normalize_schedule_days_csv, schedule_time_dropdown_choices
-from app.service_logic import apply_emby_trimmer_live_deletes
+from app.security_utils import encrypt_secret_for_storage
 from app.time_util import utc_now_naive
+from app.trimmer_service import TrimmerApplyService, TrimmerReviewService
 from app.ui_templates import templates
 from app.web_common import (
-    effective_emby_rules,
     movie_credit_types_summary,
     schedule_days_csv_from_named_day_checks,
     schedule_weekdays_selected_dict,
@@ -51,6 +46,7 @@ router = APIRouter(dependencies=AUTH_DEPS)
 @router.get("/trimmer/settings", response_class=HTMLResponse)
 async def trimmer_settings_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await _get_or_create_settings(session)
+    settings.emby_api_key = resolve_emby_api_key(settings)
     emby_snap = (await fetch_latest_app_snapshots(session)).get("emby")
     tz = settings.timezone or "UTC"
     time_choices = schedule_time_dropdown_choices(step_minutes=30)
@@ -97,119 +93,15 @@ async def trimmer_settings_page(request: Request, session: AsyncSession = Depend
 
 @router.get("/trimmer", response_class=HTMLResponse)
 async def trimmer_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
+    # Keep this route thin: parse request input, delegate orchestration to services, then render.
     settings = await _get_or_create_settings(session)
     tz = settings.timezone or "UTC"
-    rows: list[dict] = []
-    error = ""
-    used_user_id = (settings.emby_user_id or "").strip()
-    used_user_name = ""
-
-    rules = effective_emby_rules(settings)
-    movie_rating_below = rules["movie_rating_below"]
-    movie_unwatched_days = rules["movie_unwatched_days"]
-    tv_delete_watched = bool(rules["tv_delete_watched"])
-    tv_unwatched_days = rules["tv_unwatched_days"]
-    _v_scan = settings.emby_max_items_scan
-    _raw_scan = int(_v_scan) if _v_scan is not None else 2000
-    scan_limit = 0 if _raw_scan <= 0 else max(1, min(100_000, _raw_scan))
-    max_deletes = max(1, int(settings.emby_max_deletes_per_run or 25))
-    selected_movie_genres = parse_genres_csv(settings.emby_rule_movie_genres_csv)
-    selected_tv_genres = parse_genres_csv(settings.emby_rule_tv_genres_csv)
-    selected_movie_people = parse_movie_people_phrases(settings.emby_rule_movie_people_csv)
-    selected_movie_credit_types = parse_movie_people_credit_types_csv(
-        settings.emby_rule_movie_people_credit_types_csv
-    )
-    selected_tv_people = parse_movie_people_phrases(settings.emby_rule_tv_people_csv)
-    selected_tv_credit_types = parse_movie_people_credit_types_csv(
-        settings.emby_rule_tv_people_credit_types_csv
-    )
-
     _truthy = ("1", "true", "yes")
     qp = request.query_params
     run_emby_scan = qp.get("scan", "").strip().lower() in _truthy
-    scan_prompt = False
-    scan_loaded = False
-
-    _emby_key = resolve_emby_api_key(settings)
-    if not settings.emby_url or not _emby_key:
-        error = "Emby URL and API key are required."
-    elif movie_rating_below <= 0 and movie_unwatched_days <= 0 and (not tv_delete_watched) and tv_unwatched_days <= 0:
-        error = "No rules are enabled. Set at least one Emby Trimmer rule in Trimmer settings."
-    elif not run_emby_scan:
-        # Fast path: sidebar / default navigation should not scan the whole library.
-        scan_prompt = True
-    else:
-        client = EmbyClient(EmbyConfig(settings.emby_url, _emby_key))
-        try:
-            await client.health()
-            users = await client.users()
-            users_by_id = {str(u.get("Id", "")).strip(): str(u.get("Name", "")).strip() for u in users}
-            if not used_user_id and users:
-                used_user_id = str(users[0].get("Id", "")).strip()
-            used_user_name = users_by_id.get(used_user_id, "")
-            if not used_user_id:
-                error = "No Emby user available."
-            elif not used_user_name:
-                error = "Configured Emby user ID was not found."
-            else:
-                scan_loaded = True
-                items = await client.items_for_user(user_id=used_user_id, limit=scan_limit)
-                candidates: list[tuple[str, str, str, dict]] = []
-                for item in items:
-                    item_id = str(item.get("Id", "")).strip()
-                    if not item_id:
-                        continue
-                    is_candidate, reasons, age_days, rating, played = evaluate_candidate(
-                        item,
-                        movie_watched_rating_below=movie_rating_below,
-                        movie_unwatched_days=movie_unwatched_days,
-                        tv_delete_watched=tv_delete_watched,
-                        tv_unwatched_days=tv_unwatched_days,
-                    )
-                    item_type = str(item.get("Type", "")).strip()
-                    if item_type == "Movie" and not movie_matches_selected_genres(item, selected_movie_genres):
-                        is_candidate = False
-                    if item_type == "Movie" and not movie_matches_people(
-                        item, selected_movie_people, credit_types=selected_movie_credit_types
-                    ):
-                        is_candidate = False
-                    if item_type in {"Series", "Season", "Episode"} and not tv_matches_selected_genres(item, selected_tv_genres):
-                        is_candidate = False
-                    if item_type in {"Series", "Season", "Episode"} and not movie_matches_people(
-                        item, selected_tv_people, credit_types=selected_tv_credit_types
-                    ):
-                        is_candidate = False
-                    if not is_candidate:
-                        continue
-                    name = str(item.get("Name", "") or item_id)
-                    item_type = str(item.get("Type", "") or "").strip()
-                    candidates.append((item_id, name, item_type, item))
-                    rows.append(
-                        {
-                            "id": item_id,
-                            "name": name,
-                            "type": item_type or "-",
-                            "played": played,
-                            "rating": rating,
-                            "age_days": age_days,
-                            "reasons": reasons,
-                        }
-                    )
-                    if len(candidates) >= max_deletes:
-                        break
-                if candidates and not settings.emby_dry_run:
-                    sk = resolve_sonarr_api_key(settings)
-                    rk = resolve_radarr_api_key(settings)
-                    await apply_emby_trimmer_live_deletes(
-                        settings, client, candidates, son_key=sk, rad_key=rk
-                    )
-                    settings.emby_last_run_at = utc_now_naive()
-                    await session.commit()
-        except Exception as e:  # noqa: BLE001 - user-facing review path
-            error = f"Review failed: {type(e).__name__}: {e}"
-            scan_loaded = False
-        finally:
-            await client.aclose()
+    review = await TrimmerReviewService().build_review(settings, run_emby_scan=run_emby_scan)
+    # Side effects (live deletes + last-run persistence) stay in apply service, not in route logic.
+    await TrimmerApplyService().apply_live_delete_if_needed(settings, session, review)
 
     return templates.TemplateResponse(
         request,
@@ -220,26 +112,26 @@ async def trimmer_page(request: Request, session: AsyncSession = Depends(get_ses
             "title": f"{APP_NAME} — Trimmer",
             "subtitle": "Review exact titles matching Emby Trimmer rules",
             "settings": settings,
-            "rows": rows,
-            "error": error,
-            "used_user_id": used_user_id,
-            "used_user_name": used_user_name,
-            "movie_rating_below": movie_rating_below,
-            "movie_unwatched_days": movie_unwatched_days,
-            "tv_delete_watched": tv_delete_watched,
-            "tv_unwatched_days": tv_unwatched_days,
-            "scan_limit": scan_limit,
-            "max_deletes": max_deletes,
-            "selected_movie_genres_display": sorted(selected_movie_genres),
-            "selected_tv_genres_display": sorted(selected_tv_genres),
-            "selected_movie_people_display": selected_movie_people,
-            "movie_people_credit_summary": movie_credit_types_summary(selected_movie_credit_types),
-            "selected_tv_people_display": selected_tv_people,
-            "tv_people_credit_summary": movie_credit_types_summary(selected_tv_credit_types),
+            "rows": review.rows,
+            "error": review.error,
+            "used_user_id": review.used_user_id,
+            "used_user_name": review.used_user_name,
+            "movie_rating_below": review.movie_rating_below,
+            "movie_unwatched_days": review.movie_unwatched_days,
+            "tv_delete_watched": review.tv_delete_watched,
+            "tv_unwatched_days": review.tv_unwatched_days,
+            "scan_limit": review.scan_limit,
+            "max_deletes": review.max_deletes,
+            "selected_movie_genres_display": sorted(review.selected_movie_genres),
+            "selected_tv_genres_display": sorted(review.selected_tv_genres),
+            "selected_movie_people_display": review.selected_movie_people,
+            "movie_people_credit_summary": movie_credit_types_summary(review.selected_movie_credit_types),
+            "selected_tv_people_display": review.selected_tv_people,
+            "tv_people_credit_summary": movie_credit_types_summary(review.selected_tv_credit_types),
             "dry_run": bool(settings.emby_dry_run),
-            "matched_count": len(rows),
-            "scan_prompt": scan_prompt,
-            "scan_loaded": scan_loaded,
+            "matched_count": len(review.rows),
+            "scan_prompt": review.scan_prompt,
+            "scan_loaded": review.scan_loaded,
             "now": utc_now_naive(),
             "now_local": _now_local(tz),
             "timezone": tz,
@@ -261,7 +153,7 @@ async def save_emby_settings(
         row = await _get_or_create_settings(session)
         row.emby_enabled = emby_enabled
         row.emby_url = _normalize_base_url(emby_url)
-        row.emby_api_key = emby_api_key.strip()
+        row.emby_api_key = encrypt_secret_for_storage(emby_api_key.strip())
         row.emby_user_id = emby_user_id.strip()
         row.updated_at = utc_now_naive()
         if not await try_commit_and_reschedule(session):
@@ -308,7 +200,7 @@ async def save_emby_connection_settings(
         row = await _get_or_create_settings(session)
         row.emby_enabled = emby_enabled
         row.emby_url = _normalize_base_url(emby_url)
-        row.emby_api_key = emby_api_key.strip()
+        row.emby_api_key = encrypt_secret_for_storage(emby_api_key.strip())
         row.emby_user_id = emby_user_id.strip()
         row.updated_at = utc_now_naive()
         if not await try_commit_and_reschedule(session):
@@ -548,7 +440,7 @@ async def test_emby_from_form(
     # Persist entered connection values so users don't lose them after testing.
     row.emby_enabled = emby_enabled
     row.emby_url = emby_url_n
-    row.emby_api_key = emby_api_key_n
+    row.emby_api_key = encrypt_secret_for_storage(emby_api_key_n)
     row.emby_user_id = emby_user_id_n
     row.updated_at = utc_now_naive()
     await session.commit()

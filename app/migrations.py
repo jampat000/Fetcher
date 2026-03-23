@@ -356,6 +356,14 @@ async def _migrate_021_activity_trimmed_kind(engine: AsyncEngine) -> None:
         )
 
 
+async def _migrate_022_refresh_token_columns(engine: AsyncEngine) -> None:
+    table = "app_settings"
+    if not await _has_column(engine, table=table, column="auth_refresh_token_hash"):
+        await _add_column(engine, table=table, ddl="auth_refresh_token_hash TEXT NOT NULL DEFAULT ''")
+    if not await _has_column(engine, table=table, column="auth_refresh_expires_at"):
+        await _add_column(engine, table=table, ddl="auth_refresh_expires_at DATETIME")
+
+
 async def migrate(engine: AsyncEngine) -> None:
     await _migrate_001_sonarr_per_app_columns(engine)
     await _migrate_002_radarr_per_app_columns(engine)
@@ -378,3 +386,4 @@ async def migrate(engine: AsyncEngine) -> None:
     await _migrate_019_auth_ip_allowlist(engine)
     await _migrate_020_log_retention_days(engine)
     await _migrate_021_activity_trimmed_kind(engine)
+    await _migrate_022_refresh_token_columns(engine)

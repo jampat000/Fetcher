@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import AppSettings
+from app.security_utils import decrypt_secret_from_storage, encrypt_secret_for_storage
 
 BACKUP_MAGIC = "fetcher_settings_v1"
 BACKUP_FORMAT_VERSION = 2
@@ -68,7 +69,9 @@ def app_settings_to_plain(row: AppSettings) -> dict[str, Any]:
         if key == "id":
             continue
         val = getattr(row, key)
-        if isinstance(val, datetime):
+        if key in {"sonarr_api_key", "radarr_api_key", "emby_api_key"}:
+            out[key] = decrypt_secret_from_storage(val)
+        elif isinstance(val, datetime):
             out[key] = format_backup_datetime(val)
         else:
             out[key] = val
@@ -173,7 +176,10 @@ def apply_settings_dict(row: AppSettings, data: dict[str, Any]) -> None:
             continue
         if key not in data:
             continue
-        setattr(row, key, _coerce_for_column(col, data[key]))
+        coerced = _coerce_for_column(col, data[key])
+        if key in {"sonarr_api_key", "radarr_api_key", "emby_api_key"}:
+            coerced = encrypt_secret_for_storage(str(coerced))
+        setattr(row, key, coerced)
     row.updated_at = datetime.now(timezone.utc)
 
 

@@ -9,6 +9,9 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi import _rate_limit_exceeded_handler
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.auth import FetcherAuthRequired, bootstrap_auth_on_startup
@@ -19,7 +22,9 @@ from app.log_sanitize import configure_fetcher_logging
 from app.migrations import migrate
 from app.models import Base
 from app.paths import STATIC_DIR
+from app.rate_limit import limiter
 from app.scheduler import scheduler
+from app.security_utils import get_jwt_secret_from_env
 from app import updates as app_updates
 from app.routers import api as api_router
 from app.routers import auth as auth_router
@@ -36,6 +41,12 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     configure_fetcher_logging()
+    jwt_secret = (get_jwt_secret_from_env() or "").strip()
+    if not jwt_secret:
+        raise RuntimeError(
+            "Missing required JWT configuration: set FETCHER_JWT_SECRET to a stable, high-entropy value."
+        )
+    _app.state.jwt_secret = jwt_secret
     # When the Windows service holds fetcher.db, startup can block until SQLite times out — retry a few times.
     delays_sec = (0, 2, 5, 10, 15)
     last_err: BaseException | None = None
@@ -84,6 +95,9 @@ async def _lifespan(_app: FastAPI):
 
 
 app = FastAPI(title=APP_NAME, lifespan=_lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 
 @app.middleware("http")
