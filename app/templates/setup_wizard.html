@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% from "macros/toggle.html" import toggle_checkbox %}
 {% block content %}
 <div class="wrap">
   <div class="page-head">
@@ -62,10 +63,7 @@
       <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Sonarr</h2>
       <p class="hint">Base URL and API key from Sonarr → Settings → General. You can test the connection before saving.</p>
       <p class="small muted small--flush-top">Example URL: <code class="code-inline">http://192.168.1.10:8989</code> · <code class="code-inline">http://localhost:8989</code> · reverse proxy: <code class="code-inline">https://sonarr.example.com</code></p>
-      <div class="checkline">
-        <input type="checkbox" name="sonarr_enabled" id="sonarr_enabled" {% if settings.sonarr_enabled %}checked{% endif %} />
-        <label for="sonarr_enabled"><strong>Enable</strong> Sonarr automation</label>
-      </div>
+      {% call toggle_checkbox("sonarr_enabled", settings.sonarr_enabled) %}<strong>Enable</strong> Sonarr automation{% endcall %}
       <label for="sonarr_url">Sonarr URL</label>
       <input class="input" id="sonarr_url" name="sonarr_url" type="text" value="{{ settings.sonarr_url }}" placeholder="http://localhost:8989" inputmode="url" autocomplete="off" autocorrect="off" spellcheck="false" />
       <label for="sonarr_api_key">Sonarr API key</label>
@@ -81,10 +79,7 @@
       <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Radarr</h2>
       <p class="hint">Base URL and API key from Radarr → Settings → General.</p>
       <p class="small muted small--flush-top">Example URL: <code class="code-inline">http://192.168.1.10:7878</code> · <code class="code-inline">http://localhost:7878</code> · reverse proxy: <code class="code-inline">https://radarr.example.com</code></p>
-      <div class="checkline">
-        <input type="checkbox" name="radarr_enabled" id="radarr_enabled" {% if settings.radarr_enabled %}checked{% endif %} />
-        <label for="radarr_enabled"><strong>Enable</strong> Radarr automation</label>
-      </div>
+      {% call toggle_checkbox("radarr_enabled", settings.radarr_enabled) %}<strong>Enable</strong> Radarr automation{% endcall %}
       <label for="radarr_url">Radarr URL</label>
       <input class="input" id="radarr_url" name="radarr_url" type="text" value="{{ settings.radarr_url }}" placeholder="http://localhost:7878" inputmode="url" autocomplete="off" autocorrect="off" spellcheck="false" />
       <label for="radarr_api_key">Radarr API key</label>
@@ -100,10 +95,7 @@
       <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Emby (Trimmer)</h2>
       <p class="hint">Optional. Server URL, API key (Emby → API Keys), and your user ID if required by your server policy.</p>
       <p class="small muted small--flush-top">Example URL: <code class="code-inline">http://192.168.1.10:8096</code> · <code class="code-inline">http://localhost:8096</code> · reverse proxy: <code class="code-inline">https://emby.example.com</code></p>
-      <div class="checkline">
-        <input type="checkbox" name="emby_enabled" id="emby_enabled" {% if settings.emby_enabled %}checked{% endif %} />
-        <label for="emby_enabled"><strong>Enable</strong> Emby Trimmer</label>
-      </div>
+      {% call toggle_checkbox("emby_enabled", settings.emby_enabled) %}<strong>Enable</strong> Emby Trimmer{% endcall %}
       <label for="emby_url">Emby URL</label>
       <input class="input" id="emby_url" name="emby_url" type="text" value="{{ settings.emby_url }}" placeholder="http://localhost:8096" inputmode="url" autocomplete="off" autocorrect="off" spellcheck="false" />
       <label for="emby_api_key">Emby API key</label>
