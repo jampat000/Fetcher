@@ -492,13 +492,27 @@ def _detail_from_labels(labels: list[str]) -> str:
     """Join non-empty labels with newlines. Full list is stored; list UI previews first 5 lines."""
     parts: list[str] = []
     for raw in labels:
-        label = (raw or "").strip()
+        label = _sanitize_log_text(raw).strip()
         if label:
             parts.append(label)
     body = "\n".join(parts)
     if len(body) > ACTIVITY_DETAIL_MAX_CHARS:
         body = body[:ACTIVITY_DETAIL_MAX_CHARS] + "\n… (detail truncated)"
     return body
+
+
+def _sanitize_log_text(text: str | None) -> str:
+    """Apply log-text redaction before persisting ActivityLog / JobRunLog fields."""
+    return redact_sensitive_text(text)
+
+
+def _sanitize_pending_log_rows(session: AsyncSession) -> None:
+    """Sanitize log rows before commit so DB never stores raw secrets."""
+    for obj in session.new:
+        if isinstance(obj, JobRunLog):
+            obj.message = _sanitize_log_text(obj.message)
+        elif isinstance(obj, ActivityLog):
+            obj.detail = _sanitize_log_text(obj.detail)
 
 
 async def apply_emby_trimmer_live_deletes(
@@ -625,6 +639,7 @@ async def _run_once_inner(
 
     log = JobRunLog(started_at=utc_now_naive(), ok=False, message="")
     session.add(log)
+    _sanitize_pending_log_rows(session)
     await session.commit()
     await session.refresh(log)
 
@@ -1097,8 +1112,9 @@ async def _run_once_inner(
 
         msg = " | ".join(actions) if actions else "No actions (check enabled flags + URLs + API keys)."
         log.ok = True
-        log.message = msg
+        log.message = _sanitize_log_text(msg)
         log.finished_at = utc_now_naive()
+        _sanitize_pending_log_rows(session)
         await session.commit()
         return RunResult(ok=True, message=msg)
     except httpx.HTTPStatusError as e:
@@ -1114,7 +1130,7 @@ async def _run_once_inner(
         code = e.response.status_code
         hint = hint_for_http_status(code)
         hint_suffix = f" {hint}" if hint else ""
-        log.message = (
+        log.message = _sanitize_log_text(
             f"Run failed: HTTP {code} for {e.request.method} {safe_url}{hint_suffix} | "
             f"{redact_sensitive_text(body)}"
         )
@@ -1131,14 +1147,15 @@ async def _run_once_inner(
                     kind="error",
                     status="failed",
                     count=0,
-                    detail=(log.message or "")[:500],
+                    detail=_sanitize_log_text((log.message or "")[:500]),
                 )
             )
+        _sanitize_pending_log_rows(session)
         await session.commit()
         return RunResult(ok=False, message=log.message)
     except Exception as e:  # noqa: BLE001 - service boundary logging
         log.ok = False
-        log.message = redact_sensitive_text(f"Run failed: {type(e).__name__}: {e}")
+        log.message = _sanitize_log_text(f"Run failed: {type(e).__name__}: {e}")
         log.finished_at = utc_now_naive()
         session.add(
             ActivityLog(
@@ -1147,9 +1164,10 @@ async def _run_once_inner(
                 kind="error",
                 status="failed",
                 count=0,
-                detail=(log.message or "")[:500],
+                detail=_sanitize_log_text((log.message or "")[:500]),
             )
         )
+        _sanitize_pending_log_rows(session)
         await session.commit()
         return RunResult(ok=False, message=log.message)
 

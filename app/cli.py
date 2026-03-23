@@ -7,6 +7,7 @@ import uvicorn
 
 def main() -> None:
     p = argparse.ArgumentParser(prog="Fetcher")
+    # Defaulting to localhost for security. Bind to 0.0.0.0 only on trusted private networks.
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8765)
     args = p.parse_args()
