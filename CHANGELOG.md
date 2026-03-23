@@ -10,11 +10,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **`VERSION` / default branch:** After merging the stacked **release** and **refactor/security** pull requests, **`master`** briefly reported **`2.0.9`** in **`VERSION`** while **2.0.10** settings/update work was already merged — restored semver alignment so **`VERSION`**, **`/healthz`**, and the changelog match the combined tree.
+- **`VERSION` / default branch:** After rapid merges of **release** and **refactor/security** pull requests, **`master`** could report **`2.0.9`** in **`VERSION`** while **2.0.10** settings/update work was already merged — bump to **2.0.12** so **`VERSION`**, **`/healthz`**, and the changelog match the combined tree.
+
+## [2.0.11] - 2026-03-23
 
 ### Added
 
-- **Security hardening (with refactor merge):** Resolved-path check for dashboard **log file** reads (**`403`** when outside the logs directory); centralized sensitive-text redaction for persisted **`ActivityLog.detail`** / **`JobRunLog.message`** (including **32-character hex** API key material); global response headers **`X-Content-Type-Options: nosniff`** and **`X-Frame-Options: DENY`**; CLI default bind **`127.0.0.1`**.
+- **Security hardening:** Path-traversal guard for dashboard log-file reads now enforces resolved path containment and rejects escapes with **403**.
+
+### Changed
+
+- **Architecture:** Finalized modular FastAPI router structure and shared `httpx.AsyncClient` pooling lifecycle alignment.
+- **Runtime security:** Persisted `ActivityLog.detail` and `JobRunLog.message` strings are sanitized through centralized sensitive-text redaction before DB writes.
+- **Web defaults:** CLI host default remains loopback-only (`127.0.0.1`) and security headers (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`) are enforced via middleware.
 
 ## [2.0.10] - 2026-03-23
 
