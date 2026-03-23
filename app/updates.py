@@ -296,6 +296,7 @@ def _launch_installer_detached(exe_path: Path) -> None:
         "/VERYSILENT",
         "/SUPPRESSMSGBOXES",
         "/NORESTART",
+        "/CLOSEAPPLICATIONS",
     ]
     subprocess.Popen(
         cmd,
@@ -448,6 +449,7 @@ async def api_updates_apply() -> dict[str, Any]:
         return {"ok": False, "error": "An upgrade is already in progress."}
 
     tmp_path: Path | None = None
+    previous_version = get_app_version()
     try:
         check = await _compute_updates_check_payload()
         if not check.get("ok"):
@@ -457,6 +459,10 @@ async def api_updates_apply() -> dict[str, Any]:
         url = check.get("download_url")
         if not url or not isinstance(url, str):
             return {"ok": False, "error": "Release has no FetcherSetup.exe asset."}
+
+        target_version = check.get("latest_version")
+        if target_version is not None:
+            target_version = str(target_version).strip()
 
         fd, name = tempfile.mkstemp(suffix=".exe", prefix="FetcherUpgrade-")
         os.close(fd)
@@ -478,4 +484,6 @@ async def api_updates_apply() -> dict[str, Any]:
     return {
         "ok": True,
         "message": "Installer started. The Fetcher service will stop briefly during upgrade, then start again.",
+        "previous_version": previous_version,
+        "target_version": target_version,
     }
