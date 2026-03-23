@@ -179,6 +179,9 @@ def test_trimmer_scan_dry_run_skips_live_delete_and_last_run_commit(monkeypatch:
 
 def test_trimmer_scan_live_mode_calls_delete_and_persists_last_run(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+    # Keep this regression test stable even when CI injects ARR API keys in env.
+    monkeypatch.delenv("FETCHER_SONARR_API_KEY", raising=False)
+    monkeypatch.delenv("FETCHER_RADARR_API_KEY", raising=False)
     _capture_template_context(monkeypatch)
     _install_fake_scan_dependencies(monkeypatch)
     called = {"live_delete": 0, "candidates": 0}

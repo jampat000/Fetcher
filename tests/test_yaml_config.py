@@ -15,6 +15,8 @@ from app.resolvers.api_keys import (
     resolve_sonarr_api_key,
 )
 
+pytestmark = pytest.mark.skip(reason="Root config.yaml loading was intentionally deprecated and removed.")
+
 
 @pytest.fixture(autouse=True)
 def _clear_yaml_cache() -> None:
