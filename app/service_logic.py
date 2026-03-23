@@ -232,6 +232,10 @@ async def _filter_ids_by_cooldown(
     return allowed
 
 
+# Safety cap for wanted-queue pagination (tests may monkeypatch for deterministic coverage).
+_PAGINATE_WANTED_FOR_SEARCH_MAX_PAGES = 250
+
+
 async def _paginate_wanted_for_search(
     client: ArrClient,
     session: AsyncSession,
@@ -257,12 +261,20 @@ async def _paginate_wanted_for_search(
     seen: set[int] = set()
     total_records = 0
     page = 1
-    max_pages = 250  # safety: ~25k rows at page_size 100
+    max_pages = _PAGINATE_WANTED_FOR_SEARCH_MAX_PAGES
 
     fetch = client.wanted_missing if kind == "missing" else client.wanted_cutoff_unmet
 
+    # At most one HTTP fetch runs ahead of the current page: while cooldown+merge runs for
+    # page N, page N+1 may be in flight (bounded overlap; strict page order preserved).
+    pending_prefetch: asyncio.Task | None = None
+
     while len(allowed_ids) < limit and page <= max_pages:
-        data = await fetch(page=page, page_size=page_size)
+        if pending_prefetch is not None:
+            data = await pending_prefetch
+            pending_prefetch = None
+        else:
+            data = await fetch(page=page, page_size=page_size)
         records = data.get("records") or []
         if page == 1:
             total_records = int(data.get("totalRecords") or 0)
@@ -277,6 +289,12 @@ async def _paginate_wanted_for_search(
 
         batch_ids = [i for i, _ in candidates]
         need = limit - len(allowed_ids)
+        # Prefetch only when this page cannot supply enough distinct ids to satisfy ``need``
+        # even if all passed cooldown — avoids an extra HTTP when the current batch alone
+        # could fill the remainder (matches single-page fetch patterns in tests).
+        if page + 1 <= max_pages and len(batch_ids) < need:
+            pending_prefetch = asyncio.create_task(fetch(page=page + 1, page_size=page_size))
+
         newly = await _filter_ids_by_cooldown(
             session,
             app=app,
@@ -295,6 +313,13 @@ async def _paginate_wanted_for_search(
                 allowed_recs.append(r)
                 if len(allowed_ids) >= limit:
                     break
+        if len(allowed_ids) >= limit and pending_prefetch is not None:
+            pending_prefetch.cancel()
+            try:
+                await pending_prefetch
+            except asyncio.CancelledError:
+                pass
+            pending_prefetch = None
         page += 1
 
     return allowed_ids, allowed_recs, total_records
@@ -505,6 +530,239 @@ def _sonarr_episode_file_id(episode: dict[str, Any]) -> int | None:
     return None
 
 
+# Bounded concurrent Sonarr episode-file DELETEs (Emby trimmer live apply). Intentionally
+# parallelizes HTTP up to this limit; see ``_delete_sonarr_episode_files_bounded``.
+_SONARR_TRIMMER_EPISODE_FILE_DELETE_CONCURRENCY = 5
+
+# Bounded concurrent Emby ``DELETE /Items/{id}`` (Emby trimmer live apply). Intentionally
+# caps parallel HTTP deletes for latency vs load; see ``_delete_emby_items_bounded``.
+_EMBY_TRIMMER_ITEM_DELETE_CONCURRENCY = 5
+
+_SONARR_EPISODE_DELETE_FAILURE_DETAIL_MAX_CHARS = 240
+_EMBY_ITEM_DELETE_FAILURE_DETAIL_MAX_CHARS = 240
+
+
+@dataclass(frozen=True)
+class SonarrEpisodeFileDeleteResult:
+    """Aggregated outcome after bounded concurrent ``DELETE /api/v3/episodeFile/{id}`` calls.
+
+    Fields align with :func:`_delete_sonarr_episode_files_bounded`: per-id results are
+    combined (not fail-fast). ``failure_summaries`` parallels ``failed_episode_file_ids``.
+    """
+
+    success_count: int
+    failed_episode_file_ids: list[int]
+    failure_summaries: list[str]
+
+
+def _sonarr_episode_delete_action_line(
+    *,
+    success_count: int,
+    episode_count: int,
+    failed_episode_file_ids: list[int],
+    failure_summaries: list[str],
+) -> str:
+    """Build the JobRunLog / UI action string for Sonarr on-disk file deletes.
+
+    **Regression-sensitive:** wording and structure are asserted in tests (full success vs
+    partial failure, including the ``; N failed —`` suffix and failure detail shape).
+    """
+    if not failed_episode_file_ids:
+        return (
+            f"Sonarr: deleted {success_count} on-disk episode file(s) "
+            f"for {episode_count} episode(s)"
+        )
+    n_fail = len(failed_episode_file_ids)
+    detail = _truncate_sonarr_episode_delete_failure_detail(
+        failed_episode_file_ids, failure_summaries
+    )
+    return (
+        f"Sonarr: deleted {success_count} on-disk episode file(s) "
+        f"for {episode_count} episode(s); {n_fail} failed — {detail}"
+    )
+
+
+def _truncate_sonarr_episode_delete_failure_detail(
+    failed_episode_file_ids: list[int],
+    failure_summaries: list[str],
+) -> str:
+    """Keep log lines readable; dedupe repeated error text."""
+    id_part = ",".join(str(i) for i in failed_episode_file_ids[:16])
+    if len(failed_episode_file_ids) > 16:
+        id_part += ",…"
+    uniq: list[str] = []
+    seen: set[str] = set()
+    for raw in failure_summaries:
+        t = (raw or "").strip()
+        if not t:
+            t = "(no detail)"
+        if t not in seen:
+            seen.add(t)
+            uniq.append(t[:120])
+    err_part = " | ".join(uniq)
+    out = f"episode file id(s) [{id_part}]: {err_part}"
+    if len(out) > _SONARR_EPISODE_DELETE_FAILURE_DETAIL_MAX_CHARS:
+        return out[: _SONARR_EPISODE_DELETE_FAILURE_DETAIL_MAX_CHARS - 1] + "…"
+    return out
+
+
+async def _delete_sonarr_episode_files_bounded(
+    sonarr: ArrClient,
+    episode_file_ids: list[int],
+) -> SonarrEpisodeFileDeleteResult:
+    """Delete on-disk episode files via Sonarr with bounded concurrency.
+
+    **Concurrency:** Uses ``asyncio.Semaphore`` + ``gather`` so up to
+    ``_SONARR_TRIMMER_EPISODE_FILE_DELETE_CONCURRENCY`` deletes run in flight (performance
+    intent; not a single sequential await chain).
+
+    **Deduping:** ``episode_file_ids`` is reduced with ``dict.fromkeys`` before scheduling
+    so each distinct id is attempted once; order is first-seen.
+
+    **Failures:** Exceptions are caught per id and recorded; all scheduled ids are
+    attempted—no fail-fast abort from this helper.
+
+    **Regression-sensitive:** Pair with :func:`_sonarr_episode_delete_action_line` and
+    ``tests/test_apply_emby_trimmer_sonarr_tv.py`` when changing semantics.
+    """
+    unique = list(dict.fromkeys(episode_file_ids))
+    if not unique:
+        return SonarrEpisodeFileDeleteResult(0, [], [])
+
+    sem = asyncio.Semaphore(_SONARR_TRIMMER_EPISODE_FILE_DELETE_CONCURRENCY)
+
+    async def _attempt(efid: int) -> tuple[int, Exception | None]:
+        async with sem:
+            try:
+                await sonarr.delete_episode_file(episode_file_id=efid)
+                return (efid, None)
+            except Exception as e:  # noqa: BLE001
+                return (efid, e)
+
+    pairs = await asyncio.gather(*(_attempt(e) for e in unique))
+    success_count = 0
+    failed_ids: list[int] = []
+    summaries: list[str] = []
+    for efid, err in pairs:
+        if err is None:
+            success_count += 1
+        else:
+            failed_ids.append(efid)
+            summaries.append(format_http_error_detail(err))
+    return SonarrEpisodeFileDeleteResult(
+        success_count=success_count,
+        failed_episode_file_ids=failed_ids,
+        failure_summaries=summaries,
+    )
+
+
+@dataclass(frozen=True)
+class EmbyItemDeleteResult:
+    """Aggregated outcome after bounded concurrent Emby ``delete_item`` calls.
+
+    **Concurrency:** Results from :func:`_delete_emby_items_bounded` (semaphore + gather).
+
+    **No dedupe:** One row per scheduled attempt; duplicate candidate ids appear multiple times.
+
+    **Failures:** Aggregated per attempt (not fail-fast); ``failure_summaries`` pairs with
+    ``failed_item_ids`` by position.
+    """
+
+    success_count: int
+    failed_item_ids: list[str]
+    failure_summaries: list[str]
+
+
+def _emby_item_delete_action_line(
+    *,
+    success_count: int,
+    failed_item_ids: list[str],
+    failure_summaries: list[str],
+) -> str:
+    """Build the JobRunLog / UI action string for Emby library item deletes.
+
+    Reflects bounded concurrent deletes: ``success_count`` is successful attempts only;
+    partial runs append ``; N failed —`` plus truncated detail (see
+    :func:`_truncate_emby_item_delete_failure_detail`).
+
+    **Regression-sensitive:** Wording and structure are asserted in
+    ``tests/test_apply_emby_trimmer_emby_delete_phase.py`` (full success vs partial failure).
+    """
+    if not failed_item_ids:
+        return f"Emby: deleted {success_count} item(s)"
+    n_fail = len(failed_item_ids)
+    detail = _truncate_emby_item_delete_failure_detail(failed_item_ids, failure_summaries)
+    return f"Emby: deleted {success_count} item(s); {n_fail} failed — {detail}"
+
+
+def _truncate_emby_item_delete_failure_detail(
+    failed_item_ids: list[str],
+    failure_summaries: list[str],
+) -> str:
+    """Keep log lines readable; dedupe repeated error text."""
+    id_part = ",".join(failed_item_ids[:16])
+    if len(failed_item_ids) > 16:
+        id_part += ",…"
+    uniq: list[str] = []
+    seen: set[str] = set()
+    for raw in failure_summaries:
+        t = (raw or "").strip()
+        if not t:
+            t = "(no detail)"
+        if t not in seen:
+            seen.add(t)
+            uniq.append(t[:120])
+    err_part = " | ".join(uniq)
+    out = f"item id(s) [{id_part}]: {err_part}"
+    if len(out) > _EMBY_ITEM_DELETE_FAILURE_DETAIL_MAX_CHARS:
+        return out[: _EMBY_ITEM_DELETE_FAILURE_DETAIL_MAX_CHARS - 1] + "…"
+    return out
+
+
+async def _delete_emby_items_bounded(emby: EmbyClient, item_ids: list[str]) -> EmbyItemDeleteResult:
+    """Delete Emby library items with bounded concurrency (not fail-fast).
+
+    **Concurrency:** ``asyncio.Semaphore`` + ``asyncio.gather`` — up to
+    ``_EMBY_TRIMMER_ITEM_DELETE_CONCURRENCY`` deletes in flight (intentional cap).
+
+    **No dedupe:** ``item_ids`` is scheduled as-is; duplicate ids mean duplicate HTTP attempts.
+
+    **Failures:** Per-attempt exceptions are caught and rolled into :class:`EmbyItemDeleteResult`;
+    every scheduled id is attempted (aggregated failures, not fail-fast).
+
+    **Regression-sensitive:** Pair with :func:`_emby_item_delete_action_line` and
+    ``tests/test_apply_emby_trimmer_emby_delete_phase.py`` when changing semantics.
+    """
+    if not item_ids:
+        return EmbyItemDeleteResult(0, [], [])
+
+    sem = asyncio.Semaphore(_EMBY_TRIMMER_ITEM_DELETE_CONCURRENCY)
+
+    async def _attempt(iid: str) -> tuple[str, Exception | None]:
+        async with sem:
+            try:
+                await emby.delete_item(iid)
+                return (iid, None)
+            except Exception as e:  # noqa: BLE001
+                return (iid, e)
+
+    pairs = await asyncio.gather(*(_attempt(iid) for iid in item_ids))
+    success_count = 0
+    failed_ids: list[str] = []
+    summaries: list[str] = []
+    for iid, err in pairs:
+        if err is None:
+            success_count += 1
+        else:
+            failed_ids.append(iid)
+            summaries.append(format_http_error_detail(err))
+    return EmbyItemDeleteResult(
+        success_count=success_count,
+        failed_item_ids=failed_ids,
+        failure_summaries=summaries,
+    )
+
+
 def _sonarr_episode_label(rec: dict[str, Any]) -> str:
     series_obj = rec.get("series") if isinstance(rec.get("series"), dict) else {}
     title = str(
@@ -595,7 +853,11 @@ async def apply_emby_trimmer_live_deletes(
     son_key: str | None,
     rad_key: str | None,
 ) -> list[str]:
-    """Radarr/Sonarr sync, then delete matched Emby items (same operations as scheduled live trimmer)."""
+    """Radarr/Sonarr sync, then delete matched Emby items (same operations as scheduled live trimmer).
+
+    Emby ``DELETE`` calls run with bounded concurrency (see ``_delete_emby_items_bounded``); per-item
+    failures are collected and reported without failing the whole batch.
+    """
     actions: list[str] = []
     movie_candidates = [raw for _, _, t, raw in candidates if t == "Movie"]
     tv_candidates = [raw for _, _, t, raw in candidates if t in {"Series", "Season", "Episode"}]
@@ -661,17 +923,23 @@ async def apply_emby_trimmer_live_deletes(
                         episode_by_id[eid] = ep
 
             all_tv_episode_ids = list(dict.fromkeys(to_keep_monitored + to_unmonitor))
-            deleted_files = 0
             if all_tv_episode_ids:
+                episode_file_ids_to_delete: list[int] = []
                 for eid in all_tv_episode_ids:
                     ep = episode_by_id.get(eid) or {}
                     efid = _sonarr_episode_file_id(ep)
                     if efid:
-                        await sonarr2.delete_episode_file(episode_file_id=efid)
-                        deleted_files += 1
+                        episode_file_ids_to_delete.append(efid)
+                delete_result = await _delete_sonarr_episode_files_bounded(
+                    sonarr2, episode_file_ids_to_delete
+                )
                 actions.append(
-                    f"Sonarr: deleted {deleted_files} on-disk episode file(s) "
-                    f"for {len(all_tv_episode_ids)} episode(s)"
+                    _sonarr_episode_delete_action_line(
+                        success_count=delete_result.success_count,
+                        episode_count=len(all_tv_episode_ids),
+                        failed_episode_file_ids=delete_result.failed_episode_file_ids,
+                        failure_summaries=delete_result.failure_summaries,
+                    )
                 )
 
             if to_keep_monitored:
@@ -695,9 +963,15 @@ async def apply_emby_trimmer_live_deletes(
         finally:
             await sonarr2.aclose()
 
-    for item_id, _, _, _ in candidates:
-        await emby.delete_item(item_id)
-    actions.append(f"Emby: deleted {len(candidates)} item(s)")
+    item_ids = [item_id for item_id, _, _, _ in candidates]
+    emby_result = await _delete_emby_items_bounded(emby, item_ids)
+    actions.append(
+        _emby_item_delete_action_line(
+            success_count=emby_result.success_count,
+            failed_item_ids=emby_result.failed_item_ids,
+            failure_summaries=emby_result.failure_summaries,
+        )
+    )
     return actions
 
 
