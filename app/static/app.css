@@ -2327,6 +2327,20 @@ th {
   justify-content: center;
 }
 
+/* Apply upgrade: primary + release notes on one row so the panel height stays stable */
+.settings-commit-actions.settings-commit-actions--row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.settings-commit-actions.settings-commit-actions--row > .backup-panel-btn {
+  width: auto;
+  max-width: none;
+  flex: 0 1 auto;
+  justify-content: center;
+}
+
 .updates-upgrade-cta-hint {
   margin: 0;
   width: 100%;
