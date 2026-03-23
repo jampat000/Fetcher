@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.19] - 2026-03-23
+
+### Changed
+
+- **Docs:** **README** (overview, GHCR **`docker pull`**, GitHub **About** copy-paste table), **CONTRIBUTING** (rulesets vs classic, solo approvals, **Tag release** → Windows + Docker), **SECURITY** (supported builds, CSRF tokens, **`master`** rules), **LICENSE** copyright years, **docs/README** index.
+
 ## [2.0.18] - 2026-03-23
 
 ### Changed
@@ -637,7 +643,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **v2.0.x** diffs only. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.18...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.19...HEAD
+[2.0.19]: https://github.com/jampat000/Fetcher/compare/v2.0.18...v2.0.19
 [2.0.18]: https://github.com/jampat000/Fetcher/compare/v2.0.17...v2.0.18
 [2.0.17]: https://github.com/jampat000/Fetcher/compare/v2.0.16...v2.0.17
 [2.0.16]: https://github.com/jampat000/Fetcher/compare/v2.0.15...v2.0.16
