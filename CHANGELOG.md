@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.7] - 2026-03-23
+
+### Changed
+
+- **Fetcher settings:** After **Save**, redirects include **`tab=`** (Global / Sonarr / Radarr) so the same section stays open. **Security** access-control saves use **`tab=security`**. Scroll restore is skipped when **`tab=`** is present so it does not override the chosen panel.
+- **Trimmer settings:** Save redirects append a section **hash** (**`#trimmer-connection`**, **`#trimmer-schedule`**, **`#trimmer-rules`**, **`#trimmer-people`**) via **`formaction`** query **`trimmer_section`**. Scroll restore is skipped when a hash is present.
+- **Dashboard overview:** Sonarr/Radarr **Search** tile shows **Missing** and **Upgrades** **On**/**Off** in one metric cell (not two separate tiles).
+
 ## [2.0.6] - 2026-03-23
 
 ### Added
@@ -520,7 +528,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 7. If a **tag** exists but **Releases → Latest** never updated (no **`FetcherSetup.exe`** for that tag), check that **`vX.Y.Z`** points to the commit you mean — run **`git fetch origin master --tags`**, then compare **`git rev-parse vX.Y.Z`** vs **`git rev-parse origin/master`**. **Manual** **Build installer** / **`gh workflow run … --ref vX.Y.Z`** uses the **workflow YAML from that tag’s commit** — an **old** tag SHA can **build** but **skip** **release**. **Fix:** move the tag to the correct commit and **re-push** the tag, **or** bump **`VERSION`** and release again, **or** **`gh release create`** + attach **`FetcherSetup.exe`** from a green run artifact.
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.6...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.0.7...HEAD
+[2.0.7]: https://github.com/jampat000/Fetcher/compare/v2.0.6...v2.0.7
 [2.0.6]: https://github.com/jampat000/Fetcher/compare/v2.0.5...v2.0.6
 [2.0.5]: https://github.com/jampat000/Fetcher/compare/v2.0.4...v2.0.5
 [2.0.4]: https://github.com/jampat000/Fetcher/compare/v2.0.3...v2.0.4

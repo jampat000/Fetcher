@@ -1,4 +1,4 @@
-{% macro arr_panel(app_name, app_key, enabled, snap, schedule_enabled, schedule_days_display, schedule_time_friendly, search_missing, interval_minutes, max_items_per_run, stripe_class="") %}
+{% macro arr_panel(app_name, app_key, enabled, snap, schedule_enabled, schedule_days_display, schedule_time_friendly, search_missing, search_upgrades, interval_minutes, max_items_per_run, stripe_class="") %}
       <div class="card dashboard-panel gc {{ stripe_class }}{% if not enabled %} arr-panel-disabled{% endif %}">
         {% if not enabled %}
         <div class="arr-panel-disabled-veil" aria-hidden="true"></div>
@@ -40,14 +40,25 @@
               {% endif %}
             </div>
           </div>
-          <div class="m">
+          <div class="m m--arr-search-combo">
             <div class="m-lbl">Search</div>
-            <div class="m-val m-val--badge">
-              {% if enabled %}
-                {% if search_missing %}<span class="badge b-on">On</span>{% else %}<span class="badge b-off">Off</span>{% endif %}
-              {% else %}
-                <span class="badge b-off">Off</span>
-              {% endif %}
+            <div class="m-arr-search-rows">
+              <div class="m-arr-search-row">
+                <span class="m-arr-search-name">Missing</span>
+                {% if enabled %}
+                  {% if search_missing %}<span class="badge b-on">On</span>{% else %}<span class="badge b-off">Off</span>{% endif %}
+                {% else %}
+                  <span class="badge b-off">Off</span>
+                {% endif %}
+              </div>
+              <div class="m-arr-search-row">
+                <span class="m-arr-search-name">Upgrades</span>
+                {% if enabled %}
+                  {% if search_upgrades %}<span class="badge b-on">On</span>{% else %}<span class="badge b-off">Off</span>{% endif %}
+                {% else %}
+                  <span class="badge b-off">Off</span>
+                {% endif %}
+              </div>
             </div>
           </div>
         </div>

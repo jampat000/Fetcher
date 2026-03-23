@@ -964,6 +964,27 @@ h2.gc-title,
   min-height: 2rem;
 }
 
+.m-grid .m.m--arr-search-combo .m-arr-search-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 2px;
+}
+.m-grid .m.m--arr-search-combo .m-arr-search-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 1.75rem;
+}
+.m-grid .m.m--arr-search-combo .m-arr-search-name {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.45);
+  text-transform: none;
+}
+
 .m-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
