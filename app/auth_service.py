@@ -23,6 +23,7 @@ from app.auth_runtime import (
     record_login_failure,
 )
 from app.db import _get_or_create_settings
+from app.models import AppSettings
 from app.security_utils import (
     hash_password,
     hash_refresh_token,
@@ -50,11 +51,11 @@ class LoginFlowResult:
 
 
 class AuthService:
-    async def get_settings(self, session: AsyncSession):
+    async def get_settings(self, session: AsyncSession) -> AppSettings:
         return await _get_or_create_settings(session)
 
     @staticmethod
-    def _upgrade_password_hash_if_needed(*, password: str, settings) -> None:
+    def _upgrade_password_hash_if_needed(*, password: str, settings: AppSettings) -> None:
         current = (settings.auth_password_hash or "").strip()
         if current and needs_password_rehash(current):
             settings.auth_password_hash = hash_password(password)
