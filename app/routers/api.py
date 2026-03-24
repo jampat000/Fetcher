@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import asyncio
+import logging
+
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.branding import APP_NAME
-from app.db import _get_or_create_settings, get_session
+from app.db import SessionLocal, _get_or_create_settings, get_session
 from app.resolvers.api_keys import resolve_setup_api_key
 from app.schemas import ArrSearchNowIn, SetupConnTestIn, SetupEmbyTestIn
 from app.service_logic import run_once
@@ -16,6 +19,20 @@ from app.web_common import build_dashboard_status
 from app.routers.deps import AUTH_DEPS
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+async def _run_manual_search_task(scope: str) -> None:
+    async with SessionLocal() as session:
+        try:
+            await run_once(session, arr_manual_scope=scope)
+        except Exception:  # noqa: BLE001 - background task boundary
+            logger.exception("Manual Arr search task failed for scope=%s", scope)
+
+
+def enqueue_manual_arr_search(scope: str) -> None:
+    """Queue manual Arr search in background and return immediately to caller."""
+    asyncio.create_task(_run_manual_search_task(scope))
 
 
 @router.get("/healthz")
@@ -56,10 +73,10 @@ async def api_setup_test_emby(body: SetupEmbyTestIn) -> JSONResponse:
 
 
 @router.post("/api/arr/search-now", dependencies=AUTH_DEPS)
-async def api_arr_search_now(body: ArrSearchNowIn, session: AsyncSession = Depends(get_session)) -> JSONResponse:
-    """One-shot missing or upgrade search for Sonarr (TV) or Radarr (movies); bypasses schedule + run-interval gates."""
-    result = await run_once(session, arr_manual_scope=body.scope)
-    return JSONResponse({"ok": result.ok, "message": result.message})
+async def api_arr_search_now(body: ArrSearchNowIn) -> JSONResponse:
+    """Queue one-shot missing/upgrade Arr search and return immediately."""
+    enqueue_manual_arr_search(body.scope)
+    return JSONResponse({"ok": True, "queued": True, "message": "Manual search queued."})
 
 
 @router.get("/api/dashboard/status", dependencies=AUTH_DEPS)

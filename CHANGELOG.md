@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.3.10] - 2026-03-24
+
+### Fixed
+
+- **Manual search responsiveness:** Changed Sonarr/Radarr manual search API to queue work in the background and return immediately so the UI no longer blocks on full orchestration runtime.
+- **Manual search API contract:** Added explicit queued response semantics for manual search requests while preserving existing backend execution behavior.
+
 ## [2.3.9] - 2026-03-24
 
 ### Fixed
@@ -776,7 +783,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.9...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.10...HEAD
+[2.3.10]: https://github.com/jampat000/Fetcher/compare/v2.3.9...v2.3.10
 [2.3.9]: https://github.com/jampat000/Fetcher/compare/v2.3.8...v2.3.9
 [2.3.8]: https://github.com/jampat000/Fetcher/compare/v2.3.7...v2.3.8
 [2.3.7]: https://github.com/jampat000/Fetcher/compare/v2.3.6...v2.3.7
