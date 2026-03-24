@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-03-24
+
+### Changed
+
+- **Scheduler independence:** Replaced the shared minimum-interval automation tick with independent scheduler jobs for **Sonarr**, **Radarr**, and **Trimmer**. Each job now has its own cadence and next-run state, and scheduled runs execute only their own app scope.
+- **Run cadence semantics:** Removed internal per-app run-interval suppression from `run_once` scheduled execution paths so scheduled cadence is owned by each scheduler job; manual Arr actions remain serialized safely but no longer re-phase normal scheduler timing.
+- **Dashboard status:** Updated scheduler status payload/UI wiring to report independent next-run values for Sonarr, Radarr, and Trimmer.
+
 ## [2.2.0] - 2026-03-24
 
 ### Added
@@ -700,7 +708,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/jampat000/Fetcher/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/jampat000/Fetcher/compare/v2.1.1...v2.2.0
 [2.1.1]: https://github.com/jampat000/Fetcher/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/jampat000/Fetcher/compare/v2.0.25...v2.1.0

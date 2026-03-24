@@ -39,69 +39,98 @@ def _emby_configured(settings: AppSettings) -> bool:
     )
 
 
-def compute_fetcher_tick_minutes(settings: AppSettings) -> int:
-    """How often the Fetcher scheduler wakes: minimum effective Sonarr/Radarr run intervals in play."""
-    tick: int | None = None
+def compute_job_intervals_minutes(settings: AppSettings) -> dict[str, int]:
+    """Independent scheduler intervals per configured app job."""
+    out: dict[str, int] = {}
     if _sonarr_configured(settings):
-        s_int = effective_arr_interval_minutes(getattr(settings, "sonarr_interval_minutes", None))
-        tick = s_int if tick is None else min(tick, s_int)
+        out["sonarr"] = effective_arr_interval_minutes(getattr(settings, "sonarr_interval_minutes", None))
     if _radarr_configured(settings):
-        r_int = effective_arr_interval_minutes(getattr(settings, "radarr_interval_minutes", None))
-        tick = r_int if tick is None else min(tick, r_int)
-    if tick is None:
-        return effective_arr_interval_minutes(0)
-    return max(5, tick)
+        out["radarr"] = effective_arr_interval_minutes(getattr(settings, "radarr_interval_minutes", None))
+    if _emby_configured(settings):
+        out["trimmer"] = max(5, int(settings.emby_interval_minutes or 60))
+    return out
 
 
 class ServiceScheduler:
     def __init__(self) -> None:
         self._sched = AsyncIOScheduler()
-        self._lock = asyncio.Lock()
-        self._job_id = "fetcher"
+        self._run_lock = asyncio.Lock()
+        self._job_ids = {
+            "sonarr": "fetcher_sonarr",
+            "radarr": "fetcher_radarr",
+            "trimmer": "fetcher_trimmer",
+        }
 
-    async def _current_tick_minutes(self) -> int:
+    async def _current_job_intervals_minutes(self) -> dict[str, int]:
         async with SessionLocal() as session:
             settings = (await session.execute(select(AppSettings).order_by(AppSettings.id.asc()).limit(1))).scalars().first()
             if not settings:
-                return 60
-            return compute_fetcher_tick_minutes(settings)
+                return {}
+            return compute_job_intervals_minutes(settings)
 
-    async def _job(self) -> None:
-        if self._lock.locked():
+    async def _run_scope(self, scope: str) -> None:
+        if self._run_lock.locked():
             return
-        async with self._lock:
+        async with self._run_lock:
             async with SessionLocal() as session:
-                await run_once(session)
+                await run_once(session, scheduled_scope=scope)
+
+    async def _job_sonarr(self) -> None:
+        await self._run_scope("sonarr")
+
+    async def _job_radarr(self) -> None:
+        await self._run_scope("radarr")
+
+    async def _job_trimmer(self) -> None:
+        await self._run_scope("trimmer")
+
+    def _job_fn_for_scope(self, scope: str):
+        if scope == "sonarr":
+            return self._job_sonarr
+        if scope == "radarr":
+            return self._job_radarr
+        return self._job_trimmer
 
     async def start(self) -> None:
-        interval = await self._current_tick_minutes()
-        self._sched.add_job(
-            self._job,
-            "interval",
-            minutes=interval,
-            id=self._job_id,
-            replace_existing=True,
-            next_run_time=utc_now_naive(),
-        )
+        intervals = await self._current_job_intervals_minutes()
+        for scope, minutes in intervals.items():
+            self._sched.add_job(
+                self._job_fn_for_scope(scope),
+                "interval",
+                minutes=minutes,
+                id=self._job_ids[scope],
+                replace_existing=True,
+                next_run_time=utc_now_naive(),
+            )
         self._sched.start()
 
-    async def reschedule(self) -> None:
+    async def reschedule(self, *, targets: set[str] | None = None) -> None:
         if not self._sched.running:
             return
-        interval = await self._current_tick_minutes()
-        self._sched.add_job(
-            self._job,
-            "interval",
-            minutes=interval,
-            id=self._job_id,
-            replace_existing=True,
-        )
+        intervals = await self._current_job_intervals_minutes()
+        active_targets = {"sonarr", "radarr", "trimmer"} if targets is None else set(targets)
+        for scope in active_targets:
+            if scope not in self._job_ids:
+                continue
+            minutes = intervals.get(scope)
+            job_id = self._job_ids[scope]
+            if minutes is None:
+                job = self._sched.get_job(job_id)
+                if job:
+                    self._sched.remove_job(job_id)
+                continue
+            self._sched.add_job(
+                self._job_fn_for_scope(scope),
+                "interval",
+                minutes=minutes,
+                id=job_id,
+                replace_existing=True,
+            )
 
-    def next_fetcher_run_at(self) -> datetime | None:
-        """Next scheduled tick for the main automation job (naive UTC if job uses naive)."""
+    def _job_next_run_at(self, scope: str) -> datetime | None:
         if not self._sched.running:
             return None
-        job = self._sched.get_job(self._job_id)
+        job = self._sched.get_job(self._job_ids[scope])
         if not job:
             return None
         nrt = job.next_run_time
@@ -110,6 +139,18 @@ class ServiceScheduler:
         if nrt.tzinfo is not None:
             return nrt.astimezone(timezone.utc).replace(tzinfo=None)
         return nrt
+
+    def next_runs_by_job(self) -> dict[str, datetime | None]:
+        return {
+            "sonarr": self._job_next_run_at("sonarr"),
+            "radarr": self._job_next_run_at("radarr"),
+            "trimmer": self._job_next_run_at("trimmer"),
+        }
+
+    def next_fetcher_run_at(self) -> datetime | None:
+        """Compatibility: earliest next scheduled job run across independent jobs."""
+        runs = [d for d in self.next_runs_by_job().values() if d is not None]
+        return min(runs) if runs else None
 
     def shutdown(self, *, wait: bool = True) -> None:
         """Stop APScheduler. Use ``wait=False`` on process exit so the event loop is not blocked."""

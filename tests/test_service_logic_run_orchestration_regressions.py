@@ -80,6 +80,11 @@ async def _run_once(scope: ArrManualScope | None = None):
         return await run_once(s, arr_manual_scope=scope)
 
 
+async def _run_once_scheduled(app_scope: str):
+    async with SessionLocal() as s:
+        return await run_once(s, scheduled_scope=app_scope)
+
+
 def test_run_once_sonarr_schedule_skip_branch(monkeypatch: pytest.MonkeyPatch) -> None:
     asyncio.run(_clear_run_tables())
     asyncio.run(
@@ -116,7 +121,7 @@ def test_run_once_sonarr_schedule_skip_branch(monkeypatch: pytest.MonkeyPatch) -
     assert asyncio.run(_settings_row()).sonarr_last_run_at is None
 
 
-def test_run_once_sonarr_interval_skip_branch(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_once_sonarr_no_internal_interval_skip_anymore(monkeypatch: pytest.MonkeyPatch) -> None:
     fixed_now = datetime(2026, 3, 23, 12, 0, 0)
     asyncio.run(_clear_run_tables())
     asyncio.run(
@@ -135,12 +140,107 @@ def test_run_once_sonarr_interval_skip_branch(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr("app.service_logic.resolve_sonarr_api_key", lambda _s: "k")
     monkeypatch.setattr("app.service_logic.resolve_radarr_api_key", lambda _s: "")
     monkeypatch.setattr("app.service_logic.resolve_emby_api_key", lambda _s: "")
+    seen = {"health": 0}
+
+    class _FakeArrClient:
+        def __init__(self, _cfg):
+            pass
+
+        async def health(self):
+            seen["health"] += 1
+
+        async def series(self):
+            return []
+
+        async def wanted_missing(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def wanted_cutoff_unmet(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def aclose(self):
+            return None
+
     monkeypatch.setattr("app.service_logic.in_window", lambda **_kw: True)
-    monkeypatch.setattr("app.service_logic.ArrClient", lambda _cfg: (_ for _ in ()).throw(AssertionError("client should not be constructed on interval skip")))
+    monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
+    async def _paginate(*args, **kwargs):
+        return [], [], 0
+
+    monkeypatch.setattr("app.service_logic._paginate_wanted_for_search", _paginate)
     result = asyncio.run(_run_once())
     assert result.ok is True
-    assert "Sonarr: skipped (run interval not elapsed —" in result.message
-    assert asyncio.run(_settings_row()).sonarr_last_run_at == fixed_now - timedelta(minutes=5)
+    assert "Sonarr: no missing episodes found" in result.message
+    assert seen["health"] == 1
+    assert asyncio.run(_settings_row()).sonarr_last_run_at == fixed_now
+
+
+def test_scheduled_scoped_run_sonarr_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    asyncio.run(_clear_run_tables())
+    asyncio.run(
+        _set_settings(
+            sonarr_enabled=True,
+            sonarr_url="http://localhost:8989",
+            sonarr_search_missing=False,
+            sonarr_search_upgrades=False,
+            sonarr_last_run_at=None,
+            radarr_enabled=True,
+            radarr_url="http://localhost:7878",
+            radarr_search_missing=False,
+            radarr_search_upgrades=False,
+            radarr_last_run_at=None,
+            emby_enabled=True,
+            emby_url="http://localhost:8096",
+        )
+    )
+    seen = {"sonarr": 0, "radarr": 0, "emby": 0}
+
+    class _FakeArrClient:
+        def __init__(self, cfg):
+            self._base = str(getattr(cfg, "base_url", ""))
+
+        async def health(self):
+            if ":8989" in self._base:
+                seen["sonarr"] += 1
+            elif ":7878" in self._base:
+                seen["radarr"] += 1
+
+        async def series(self):
+            return []
+
+        async def aclose(self):
+            return None
+
+    class _FakeEmbyClient:
+        def __init__(self, _cfg):
+            pass
+
+        async def health(self):
+            seen["emby"] += 1
+
+        async def users(self):
+            return [{"Id": "u1", "Name": "U"}]
+
+        async def items_for_user(self, **kwargs):
+            return []
+
+        async def aclose(self):
+            return None
+
+    monkeypatch.setattr("app.service_logic.resolve_sonarr_api_key", lambda _s: "sk")
+    monkeypatch.setattr("app.service_logic.resolve_radarr_api_key", lambda _s: "rk")
+    monkeypatch.setattr("app.service_logic.resolve_emby_api_key", lambda _s: "ek")
+    monkeypatch.setattr("app.service_logic.in_window", lambda **_kw: True)
+    monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
+    monkeypatch.setattr("app.service_logic.EmbyClient", _FakeEmbyClient)
+    async def _should_not_search(*args, **kwargs):
+        raise AssertionError("should not search")
+
+    monkeypatch.setattr("app.service_logic._paginate_wanted_for_search", _should_not_search)
+    result = asyncio.run(_run_once_scheduled("sonarr"))
+    assert result.ok is True
+    assert seen["sonarr"] == 1
+    assert seen["radarr"] == 0
+    assert seen["emby"] == 0
 
 
 def test_run_once_manual_scope_gating_sonarr_missing_skip_message(monkeypatch: pytest.MonkeyPatch) -> None:

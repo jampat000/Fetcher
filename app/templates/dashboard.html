@@ -84,9 +84,21 @@
       {% endif %}
 
       <div class="automation-spec-row">
-        <div class="automation-spec-label">Next tick</div>
+        <div class="automation-spec-label">Next Sonarr run</div>
         <div class="automation-spec-value">
-          <span id="dash-next-tick">{% if next_scheduler_tick_local %}{{ next_scheduler_tick_local }}{% else %}<span class="muted">—</span>{% endif %}</span>
+          <span id="dash-next-sonarr-tick">{% if next_sonarr_tick_local %}{{ next_sonarr_tick_local }}{% else %}<span class="muted">—</span>{% endif %}</span>
+        </div>
+      </div>
+      <div class="automation-spec-row">
+        <div class="automation-spec-label">Next Radarr run</div>
+        <div class="automation-spec-value">
+          <span id="dash-next-radarr-tick">{% if next_radarr_tick_local %}{{ next_radarr_tick_local }}{% else %}<span class="muted">—</span>{% endif %}</span>
+        </div>
+      </div>
+      <div class="automation-spec-row">
+        <div class="automation-spec-label">Next Trimmer run</div>
+        <div class="automation-spec-value">
+          <span id="dash-next-trimmer-tick">{% if next_trimmer_tick_local %}{{ next_trimmer_tick_local }}{% else %}<span class="muted">—</span>{% endif %}</span>
         </div>
       </div>
     </div>

@@ -377,11 +377,23 @@ function applyDashboardStatusPayload(data) {
     upgMov.setAttribute("data-target", String(data.radarr_upgrades ?? 0));
   }
 
-  const nextEl = document.getElementById("dash-next-tick");
-  if (nextEl) {
-    const t = data.next_scheduler_tick_local;
-    if (t) nextEl.textContent = t;
-    else nextEl.innerHTML = '<span class="muted">—</span>';
+  const nextSonarr = document.getElementById("dash-next-sonarr-tick");
+  if (nextSonarr) {
+    const t = data.next_sonarr_tick_local;
+    if (t) nextSonarr.textContent = t;
+    else nextSonarr.innerHTML = '<span class="muted">—</span>';
+  }
+  const nextRadarr = document.getElementById("dash-next-radarr-tick");
+  if (nextRadarr) {
+    const t = data.next_radarr_tick_local;
+    if (t) nextRadarr.textContent = t;
+    else nextRadarr.innerHTML = '<span class="muted">—</span>';
+  }
+  const nextTrimmer = document.getElementById("dash-next-trimmer-tick");
+  if (nextTrimmer) {
+    const t = data.next_trimmer_tick_local;
+    if (t) nextTrimmer.textContent = t;
+    else nextTrimmer.innerHTML = '<span class="muted">—</span>';
   }
 
   const emM = document.getElementById("dash-emby-matched");

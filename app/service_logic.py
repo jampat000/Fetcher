@@ -49,6 +49,7 @@ class RunResult:
 
 
 ArrManualScope = Literal["sonarr_missing", "sonarr_upgrade", "radarr_missing", "radarr_upgrade"]
+ScheduledScope = Literal["all", "sonarr", "radarr", "trimmer"]
 
 
 @dataclass(frozen=True)
@@ -126,9 +127,18 @@ def _build_run_context(settings: AppSettings, *, arr_manual_scope: ArrManualScop
 _run_once_lock = asyncio.Lock()
 
 
-async def run_once(session: AsyncSession, *, arr_manual_scope: ArrManualScope | None = None) -> RunResult:
+async def run_once(
+    session: AsyncSession,
+    *,
+    arr_manual_scope: ArrManualScope | None = None,
+    scheduled_scope: ScheduledScope = "all",
+) -> RunResult:
     async with _run_once_lock:
-        return await _run_once_inner(session, arr_manual_scope=arr_manual_scope)
+        return await _run_once_inner(
+            session,
+            arr_manual_scope=arr_manual_scope,
+            scheduled_scope=scheduled_scope,
+        )
 
 
 def _take_int_ids(records: list[dict[str, Any]], *keys: str, limit: int) -> list[int]:
@@ -999,15 +1009,6 @@ async def _execute_sonarr_block(
         ):
             actions.append("Sonarr: skipped (outside schedule window)")
             skip_sonarr = True
-        else:
-            last_sonarr = settings.sonarr_last_run_at
-            if last_sonarr is not None and (ctx.now - last_sonarr).total_seconds() < ctx.sonarr_tick_m * 60:
-                actions.append(
-                    "Sonarr: skipped (run interval not elapsed — "
-                    + _interval_skip_detail(last_sonarr, ctx.now, ctx.sonarr_tick_m)
-                    + ")"
-                )
-                skip_sonarr = True
     if skip_sonarr:
         return
 
@@ -1174,15 +1175,6 @@ async def _execute_radarr_block(
         ):
             actions.append("Radarr: skipped (outside schedule window)")
             skip_radarr = True
-        else:
-            last_radarr = settings.radarr_last_run_at
-            if last_radarr is not None and (ctx.now - last_radarr).total_seconds() < ctx.radarr_tick_m * 60:
-                actions.append(
-                    "Radarr: skipped (run interval not elapsed — "
-                    + _interval_skip_detail(last_radarr, ctx.now, ctx.radarr_tick_m)
-                    + ")"
-                )
-                skip_radarr = True
     if skip_radarr:
         return
 
@@ -1315,14 +1307,6 @@ async def _execute_emby_block(
     """Owns Emby-specific orchestration and Emby side effects for one run."""
 
     settings = ctx.settings
-    last_emby = settings.emby_last_run_at
-    if last_emby is not None and (ctx.now - last_emby).total_seconds() < ctx.emby_interval_m * 60:
-        actions.append(
-            "Emby: skipped (run interval not elapsed — "
-            + _interval_skip_detail(last_emby, ctx.now, ctx.emby_interval_m)
-            + ")"
-        )
-        return
 
     emby = EmbyClient(EmbyConfig(settings.emby_url, ctx.em_key))
     try:
@@ -1431,6 +1415,7 @@ async def _run_once_inner(
     session: AsyncSession,
     *,
     arr_manual_scope: ArrManualScope | None,
+    scheduled_scope: ScheduledScope,
 ) -> RunResult:
     # Outer coordinator: builds shared context once, dispatches app executors, and finalizes run outcome.
     # Behavior/message/side-effect timing here is regression-sensitive; update tests before changing.
@@ -1465,8 +1450,9 @@ async def _run_once_inner(
                 "Manual search: bypassing schedule windows and Sonarr/Radarr run-interval gates for this action only."
             )
 
-        do_sonarr_block = ctx.do_sonarr_block
-        do_radarr_block = ctx.do_radarr_block
+        do_sonarr_block = ctx.do_sonarr_block and scheduled_scope in ("all", "sonarr")
+        do_radarr_block = ctx.do_radarr_block and scheduled_scope in ("all", "radarr")
+        do_trimmer_block = scheduled_scope in ("all", "trimmer")
 
         if arr_manual_scope in ("sonarr_missing", "sonarr_upgrade") and not do_sonarr_block:
             actions.append("Sonarr: skipped (enable Sonarr and set URL + API key in Settings)")
@@ -1494,7 +1480,7 @@ async def _run_once_inner(
             )
 
         # Emby Trimmer (not part of manual Arr “search now”)
-        if arr_manual_scope is None and settings.emby_enabled and settings.emby_url and em_key:
+        if do_trimmer_block and arr_manual_scope is None and settings.emby_enabled and settings.emby_url and em_key:
             if not in_window(
                 schedule_enabled=settings.emby_schedule_enabled,
                 schedule_days=settings.emby_schedule_days or "",
@@ -1510,7 +1496,7 @@ async def _run_once_inner(
                     ctx=ctx,
                     actions=actions,
                 )
-        elif settings.emby_enabled:
+        elif do_trimmer_block and settings.emby_enabled:
             actions.append("Emby: skipped (missing URL/API key)")
 
         msg = " | ".join(actions) if actions else "No actions (check enabled flags + URLs + API keys)."
