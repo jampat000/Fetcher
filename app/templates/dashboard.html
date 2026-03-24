@@ -240,6 +240,12 @@
             statusEl.className =
               "dashboard-arr-search-status " + (ok ? "dashboard-arr-search-status-ok" : "dashboard-arr-search-status-warn");
             statusEl.textContent = msg;
+            if (typeof window.fetcherDashboardPollNow === "function") {
+              window.fetcherDashboardPollNow();
+            }
+            if (typeof window.fetcherLiveTilesPollNow === "function") {
+              window.fetcherLiveTilesPollNow();
+            }
           })
           .catch(function () {
             statusEl.className = "dashboard-arr-search-status dashboard-arr-search-status-warn";

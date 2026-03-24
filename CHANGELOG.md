@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.3.11] - 2026-03-24
+
+### Fixed
+
+- **Manual search immediacy:** Restored immediate Sonarr/Radarr command triggering for manual missing/upgrade actions so clicks are reflected on Arr side right away.
+- **Live UI feedback:** Triggered immediate in-page dashboard/activity/log refresh after manual-search responses so users can see updates without waiting for the periodic poll cycle.
+
 ## [2.3.10] - 2026-03-24
 
 ### Fixed
@@ -783,7 +790,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.10...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.11...HEAD
+[2.3.11]: https://github.com/jampat000/Fetcher/compare/v2.3.10...v2.3.11
 [2.3.10]: https://github.com/jampat000/Fetcher/compare/v2.3.9...v2.3.10
 [2.3.9]: https://github.com/jampat000/Fetcher/compare/v2.3.8...v2.3.9
 [2.3.8]: https://github.com/jampat000/Fetcher/compare/v2.3.7...v2.3.8

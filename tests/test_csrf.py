@@ -95,14 +95,14 @@ def test_post_login_without_csrf_succeeds(monkeypatch: pytest.MonkeyPatch) -> No
 def test_post_api_arr_search_now_without_csrf_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
     _scheduler_noop(monkeypatch)
 
-    def _fake_enqueue(_scope: str):
+    async def _fake_trigger(_scope: str, _session):
         return None
 
-    monkeypatch.setattr("app.routers.api.enqueue_manual_arr_search", _fake_enqueue)
+    monkeypatch.setattr("app.routers.api.trigger_manual_arr_search_now", _fake_trigger)
     with TestClient(app) as client:
         r = client.post("/api/arr/search-now", json={"scope": "sonarr_missing"})
     assert r.status_code == 200
-    assert r.json() == {"ok": True, "queued": True, "message": "Manual search queued."}
+    assert r.json() == {"ok": True, "queued": False, "message": "Manual search triggered."}
 
 
 def test_expired_csrf_token_returns_403(monkeypatch: pytest.MonkeyPatch) -> None:

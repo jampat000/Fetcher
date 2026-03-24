@@ -1,17 +1,25 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.arr_client import (
+    ArrClient,
+    ArrConfig,
+    trigger_radarr_cutoff_search,
+    trigger_radarr_missing_search,
+    trigger_sonarr_cutoff_search,
+    trigger_sonarr_missing_search,
+)
 from app.branding import APP_NAME
-from app.db import SessionLocal, _get_or_create_settings, get_session
+from app.db import _get_or_create_settings, get_session
+from app.models import ActivityLog
 from app.resolvers.api_keys import resolve_setup_api_key
+from app.resolvers.api_keys import resolve_radarr_api_key, resolve_sonarr_api_key
 from app.schemas import ArrSearchNowIn, SetupConnTestIn, SetupEmbyTestIn
-from app.service_logic import run_once
 from app.setup_helpers import test_emby_connection, test_radarr_connection, test_sonarr_connection
 from app.version_info import get_app_version
 from app.web_common import build_dashboard_status
@@ -22,17 +30,55 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-async def _run_manual_search_task(scope: str) -> None:
-    async with SessionLocal() as session:
+async def trigger_manual_arr_search_now(scope: str, session: AsyncSession) -> None:
+    """Dispatch the Arr search command immediately for manual button clicks."""
+    settings = await _get_or_create_settings(session)
+    kind = "missing" if scope.endswith("_missing") else "upgrade"
+    if scope.startswith("sonarr_"):
+        son_key = resolve_sonarr_api_key(settings)
+        if not (settings.sonarr_enabled and settings.sonarr_url and son_key):
+            raise RuntimeError("Sonarr is not enabled or missing URL/API key.")
+        client = ArrClient(ArrConfig(settings.sonarr_url, son_key))
         try:
-            await run_once(session, arr_manual_scope=scope)
-        except Exception:  # noqa: BLE001 - background task boundary
-            logger.exception("Manual Arr search task failed for scope=%s", scope)
+            await client.health()
+            if scope == "sonarr_missing":
+                await trigger_sonarr_missing_search(client)
+            else:
+                await trigger_sonarr_cutoff_search(client)
+        finally:
+            await client.aclose()
+        session.add(
+            ActivityLog(
+                app="sonarr",
+                kind=kind,
+                count=0,
+                detail=f"Manual {kind} search: command triggered immediately.",
+            )
+        )
+        await session.commit()
+        return
 
-
-def enqueue_manual_arr_search(scope: str) -> None:
-    """Queue manual Arr search in background and return immediately to caller."""
-    asyncio.create_task(_run_manual_search_task(scope))
+    rad_key = resolve_radarr_api_key(settings)
+    if not (settings.radarr_enabled and settings.radarr_url and rad_key):
+        raise RuntimeError("Radarr is not enabled or missing URL/API key.")
+    client = ArrClient(ArrConfig(settings.radarr_url, rad_key))
+    try:
+        await client.health()
+        if scope == "radarr_missing":
+            await trigger_radarr_missing_search(client)
+        else:
+            await trigger_radarr_cutoff_search(client)
+    finally:
+        await client.aclose()
+    session.add(
+        ActivityLog(
+            app="radarr",
+            kind=kind,
+            count=0,
+            detail=f"Manual {kind} search: command triggered immediately.",
+        )
+    )
+    await session.commit()
 
 
 @router.get("/healthz")
@@ -73,10 +119,24 @@ async def api_setup_test_emby(body: SetupEmbyTestIn) -> JSONResponse:
 
 
 @router.post("/api/arr/search-now", dependencies=AUTH_DEPS)
-async def api_arr_search_now(body: ArrSearchNowIn) -> JSONResponse:
-    """Queue one-shot missing/upgrade Arr search and return immediately."""
-    enqueue_manual_arr_search(body.scope)
-    return JSONResponse({"ok": True, "queued": True, "message": "Manual search queued."})
+async def api_arr_search_now(body: ArrSearchNowIn, session: AsyncSession = Depends(get_session)) -> JSONResponse:
+    """Trigger Arr search command immediately for manual action."""
+    try:
+        await trigger_manual_arr_search_now(body.scope, session)
+        return JSONResponse({"ok": True, "queued": False, "message": "Manual search triggered."})
+    except Exception as e:  # noqa: BLE001 - API boundary
+        logger.warning("Manual Arr search failed for scope=%s: %s", body.scope, e)
+        session.add(
+            ActivityLog(
+                app="sonarr" if body.scope.startswith("sonarr_") else "radarr",
+                kind="error",
+                status="failed",
+                count=0,
+                detail=f"Manual search failed: {type(e).__name__}: {e}",
+            )
+        )
+        await session.commit()
+        return JSONResponse({"ok": False, "queued": False, "message": f"Manual search failed: {e}"})
 
 
 @router.get("/api/dashboard/status", dependencies=AUTH_DEPS)
