@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.3.9] - 2026-03-24
+
+### Fixed
+
+- **Live activity/log visibility:** Fixed live-updated Activity and Logs rows disappearing after refresh by reapplying entry animation classes to swapped-in rows.
+
 ## [2.3.8] - 2026-03-24
 
 ### Changed
@@ -770,7 +776,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.8...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.9...HEAD
+[2.3.9]: https://github.com/jampat000/Fetcher/compare/v2.3.8...v2.3.9
 [2.3.8]: https://github.com/jampat000/Fetcher/compare/v2.3.7...v2.3.8
 [2.3.7]: https://github.com/jampat000/Fetcher/compare/v2.3.6...v2.3.7
 [2.3.6]: https://github.com/jampat000/Fetcher/compare/v2.3.5...v2.3.6
