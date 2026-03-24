@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
+import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -18,14 +20,78 @@ _SQLITE_CONNECT_TIMEOUT_S = 10.0
 _SQLITE_BUSY_TIMEOUT_MS = 10_000
 
 
+def _windows_program_data_fetcher_dir() -> Path:
+    return Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "Fetcher"
+
+
+def _legacy_windows_sqlite_path() -> Path:
+    """Pre-canonical default: ``%USERPROFILE%\\AppData\\Local\\Fetcher\\fetcher.db`` (e.g. LocalSystem profile)."""
+    return Path.home() / "AppData" / "Local" / "Fetcher" / "fetcher.db"
+
+
+def _migrate_legacy_sqlite_if_needed(canonical_db: Path, legacy_db: Path) -> None:
+    """Copy legacy DB into the canonical folder once if canonical file is missing. Never overwrites canonical."""
+    if canonical_db.is_file():
+        return
+    if not legacy_db.is_file():
+        return
+    canonical_db.parent.mkdir(parents=True, exist_ok=True)
+    legacy_dir = legacy_db.parent
+    try:
+        for name in ("fetcher.db", "fetcher.db-wal", "fetcher.db-shm"):
+            src = legacy_dir / name
+            if src.is_file():
+                shutil.copy2(src, canonical_db.parent / name)
+    except OSError as e:
+        logger.exception(
+            "Could not migrate SQLite from %s to %s (%s). Stop the Fetcher service so files are not locked, then restart.",
+            legacy_db,
+            canonical_db,
+            e,
+        )
+        raise RuntimeError(
+            f"SQLite migration failed ({legacy_db} -> {canonical_db}). "
+            "Stop the Fetcher service and retry."
+        ) from e
+    logger.info(
+        "Migrated SQLite from legacy path %s to canonical path %s (one-time copy; runtime uses canonical only).",
+        legacy_db,
+        canonical_db,
+    )
+
+
+def _ensure_windows_frozen_sqlite_migrated() -> None:
+    """One-time file copy before engine creation; skipped when dev path or FETCHER_DATA_DIR is set."""
+    if sys.platform != "win32" or not getattr(sys, "frozen", False):
+        return
+    if (os.environ.get("FETCHER_DEV_DB_PATH") or "").strip():
+        return
+    if (os.environ.get("FETCHER_DATA_DIR") or "").strip():
+        return
+    canonical_db = _windows_program_data_fetcher_dir() / "fetcher.db"
+    _migrate_legacy_sqlite_if_needed(canonical_db, _legacy_windows_sqlite_path())
+
+
 def default_data_dir() -> Path:
+    if sys.platform == "win32" and getattr(sys, "frozen", False):
+        base = _windows_program_data_fetcher_dir()
+        base.mkdir(parents=True, exist_ok=True)
+        return base
     base = Path.home() / "AppData" / "Local" / "Fetcher"
     base.mkdir(parents=True, exist_ok=True)
     return base
 
 
 def db_path() -> Path:
-    """SQLite file path. Set ``FETCHER_DEV_DB_PATH`` before importing ``app.db`` for a separate dev database."""
+    """Resolve SQLite file path.
+
+    Precedence:
+
+    1. ``FETCHER_DEV_DB_PATH`` — full path to the database file (dev/tests/Docker).
+    2. ``FETCHER_DATA_DIR`` — directory containing ``fetcher.db`` (recommended for fixed production layout).
+    3. ``default_data_dir()`` / ``fetcher.db`` — frozen Windows builds use ``%ProgramData%\\Fetcher``
+       after a one-time migration from the legacy profile path if needed (see module startup).
+    """
     override = (os.environ.get("FETCHER_DEV_DB_PATH") or "").strip()
     if override:
         p = Path(override).expanduser()
@@ -35,7 +101,19 @@ def db_path() -> Path:
             p = Path(override).expanduser()
         p.parent.mkdir(parents=True, exist_ok=True)
         return p
+    data_dir = (os.environ.get("FETCHER_DATA_DIR") or "").strip()
+    if data_dir:
+        root = Path(data_dir).expanduser()
+        try:
+            root = root.resolve()
+        except OSError:
+            root = Path(data_dir).expanduser()
+        root.mkdir(parents=True, exist_ok=True)
+        return root / "fetcher.db"
     return default_data_dir() / "fetcher.db"
+
+
+_ensure_windows_frozen_sqlite_migrated()
 
 
 def create_engine() -> AsyncEngine:

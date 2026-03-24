@@ -74,7 +74,7 @@ def test_settings_test_sonarr_redirect_snapshot_and_key_resolution(monkeypatch: 
     with _client(monkeypatch) as client:
         resp = client.post("/test/sonarr", follow_redirects=False)
     assert resp.status_code == 303
-    assert resp.headers.get("location") == "/settings?test=sonarr_ok"
+    assert resp.headers.get("location") == "/settings?test=sonarr_ok&tab=sonarr"
     assert seen["resolver_called"] == 1
     assert seen["service_called"] == 1
     assert seen["api_key"] == "resolved-sonarr-key"
@@ -84,6 +84,28 @@ def test_settings_test_sonarr_redirect_snapshot_and_key_resolution(monkeypatch: 
     assert snap.status_message == "Connection test succeeded."
     assert snap.missing_total == 0
     assert snap.cutoff_unmet_total == 0
+
+
+def test_settings_test_sonarr_async_header_returns_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+    asyncio.run(_clear_snapshots())
+    asyncio.run(_set_settings(sonarr_url="http://sonarr.local:8989", sonarr_api_key="db-key"))
+
+    async def _check_arr_health(self, *, url: str, api_key: str):
+        from app.connection_test_service import ArrHealthCheckResult
+
+        return ArrHealthCheckResult(ok=True, error_kind="none")
+
+    monkeypatch.setattr("app.routers.settings.resolve_sonarr_api_key", lambda _row: "k")
+    monkeypatch.setattr("app.routers.settings.ConnectionTestService.check_arr_health", _check_arr_health)
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/test/sonarr",
+            headers={"X-Fetcher-Settings-Async": "1"},
+        )
+    assert resp.status_code == 200
+    assert "application/json" in (resp.headers.get("content-type") or "")
+    assert resp.json() == {"ok": True, "tab": "sonarr", "test": "sonarr_ok"}
 
 
 def test_settings_test_radarr_httpstatuserror_message_and_lifecycle(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -111,7 +133,7 @@ def test_settings_test_radarr_httpstatuserror_message_and_lifecycle(monkeypatch:
     with _client(monkeypatch) as client:
         resp = client.post("/test/radarr", follow_redirects=False)
     assert resp.status_code == 303
-    assert resp.headers.get("location") == "/settings?test=radarr_fail"
+    assert resp.headers.get("location") == "/settings?test=radarr_fail&tab=radarr"
     assert seen["service_called"] == 1
     snap = asyncio.run(_latest_snapshot())
     assert snap.app == "radarr"
@@ -119,6 +141,34 @@ def test_settings_test_radarr_httpstatuserror_message_and_lifecycle(monkeypatch:
     assert snap.status_message == "Connection test failed: HTTPStatusError: 401 Unauthorized"
     assert snap.missing_total == 0
     assert snap.cutoff_unmet_total == 0
+
+
+def test_settings_test_radarr_async_header_returns_json_on_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+    asyncio.run(_clear_snapshots())
+    asyncio.run(_set_settings(radarr_url="http://radarr.local:7878", radarr_api_key="db-key"))
+
+    async def _check_arr_health(self, *, url: str, api_key: str):
+        from app.connection_test_service import ArrHealthCheckResult
+
+        return ArrHealthCheckResult(
+            ok=False,
+            error_kind="http_status",
+            status_code=401,
+            error_message="401 Unauthorized",
+            error_name="HTTPStatusError",
+        )
+
+    monkeypatch.setattr("app.routers.settings.resolve_radarr_api_key", lambda _row: "k")
+    monkeypatch.setattr("app.routers.settings.ConnectionTestService.check_arr_health", _check_arr_health)
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/test/radarr",
+            headers={"X-Fetcher-Settings-Async": "1"},
+        )
+    assert resp.status_code == 200
+    assert "application/json" in (resp.headers.get("content-type") or "")
+    assert resp.json() == {"ok": False, "tab": "radarr", "test": "radarr_fail"}
 
 
 def test_setup_helper_httpstatuserror_differs_from_settings_style(monkeypatch: pytest.MonkeyPatch) -> None:

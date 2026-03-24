@@ -1,6 +1,12 @@
 {% extends "layout.html" %}
 {% from "macros/schedule.html" import schedule_time_select, schedule_days_checkboxes %}
 {% from "macros/toggle.html" import toggle_checkbox %}
+{% macro settings_fetcher_save_fail_banner() -%}
+{% if request.query_params.get('save') == 'fail' and request.query_params.get('reason') != 'invalid_ip' %}
+{% set _sr = (request.query_params.get('reason') or '') %}
+<div class="banner banner-warn settings-fetcher-save-fail" role="alert">{% if _sr == 'db_busy' %}Save failed — the database was busy. Try again.{% elif _sr == 'invalid' %}Save failed — check this form and try again.{% elif _sr == 'invalid_scope' %}Save failed — reload the page and try again.{% else %}Save failed — try again.{% endif %}</div>
+{% endif %}
+{%- endmacro %}
 {% macro arr_connection_hints() %}
       <div class="hint">Use <span class="kbd">http://</span> for direct Sonarr/Radarr/Emby connections unless you have HTTPS configured.</div>
       <p class="hint">New here? <a href="/setup"><strong>Run the setup wizard</strong></a> to connect Sonarr, Radarr, and Emby step by step (with connection tests).</p>
@@ -36,14 +42,13 @@
     <div class="card gc stripe-gray" id="section-global">
     <form id="fetcher-settings-global" class="fetcher-settings-save-form" method="post" action="/settings" data-fetcher-async-settings="1">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="save_scope" value="global" />
       <div class="settings-async-feedback" hidden role="status" aria-live="polite"></div>
       <div class="gc-title">Global</div>
       {% if request.query_params.get('saved') == '1' %}
       <div class="banner banner-ok" role="status">Settings saved.</div>
-      {% elif request.query_params.get('save') == 'fail' and request.query_params.get('reason') != 'invalid_ip' %}
-      {% set _sr = (request.query_params.get('reason') or '') %}
-      <div class="banner banner-warn" role="alert">{% if _sr == 'db_busy' %}Save failed — the database was busy. Try again.{% elif _sr == 'invalid' %}Save failed — check this form and try again.{% else %}Save failed — try again.{% endif %}</div>
       {% endif %}
+      {{ settings_fetcher_save_fail_banner() }}
       {% if im == 'ok' %}
       <div class="banner banner-ok" role="status"><strong>Settings</strong> restored from backup. <strong>Restart</strong> the <strong>Fetcher</strong> Windows service (or the app) so schedules pick up changes.</div>
       {% elif im == 'need_confirm' %}
@@ -77,7 +82,7 @@
       </div>
 
       <div class="btn-row">
-        <button class="btn" type="submit" name="save_scope" value="global">Save global settings</button>
+        <button class="btn" type="submit">Save global settings</button>
         <a class="btn secondary" href="/">Back to dashboard</a>
       </div>
       <p class="small muted">Saves <strong>only</strong> this tab: cooldown, log retention, and timezone. Sonarr and Radarr each have their own save button.</p>
@@ -89,8 +94,10 @@
     <div class="card gc stripe-blue" id="section-sonarr">
     <form id="fetcher-settings-sonarr" class="fetcher-settings-save-form" method="post" action="/settings" data-fetcher-async-settings="1">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="save_scope" value="sonarr" />
       <div class="settings-async-feedback" hidden role="status" aria-live="polite"></div>
       <div class="gc-title">Sonarr</div>
+      {{ settings_fetcher_save_fail_banner() }}
       {% if tst == 'sonarr_ok' %}
       <div class="banner banner-ok" role="status">Sonarr connection succeeded.</div>
       {% elif tst == 'sonarr_fail' %}
@@ -138,9 +145,10 @@
       </div>
 
       <div class="btn-row">
-        <button class="btn" type="submit" name="save_scope" value="sonarr">Save Sonarr settings</button>
+        <button class="btn" type="submit">Save Sonarr settings</button>
         <button type="submit" class="btn secondary" form="test-sonarr">Test Sonarr</button>
       </div>
+      <p class="small muted">Test uses the <strong>saved</strong> URL and API key — <strong>Save</strong> first if you changed them. Test does not write settings; it records a <strong>connection status</strong> row for the dashboard.</p>
     </form>
     </div>
     </div>
@@ -149,8 +157,10 @@
     <div class="card gc stripe-green" id="section-radarr">
     <form id="fetcher-settings-radarr" class="fetcher-settings-save-form" method="post" action="/settings" data-fetcher-async-settings="1">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="save_scope" value="radarr" />
       <div class="settings-async-feedback" hidden role="status" aria-live="polite"></div>
       <div class="gc-title">Radarr</div>
+      {{ settings_fetcher_save_fail_banner() }}
       {% if tst == 'radarr_ok' %}
       <div class="banner banner-ok" role="status">Radarr connection succeeded.</div>
       {% elif tst == 'radarr_fail' %}
@@ -200,9 +210,10 @@
       </div>
 
       <div class="btn-row">
-        <button class="btn" type="submit" name="save_scope" value="radarr">Save Radarr settings</button>
+        <button class="btn" type="submit">Save Radarr settings</button>
         <button type="submit" class="btn secondary" form="test-radarr">Test Radarr</button>
       </div>
+      <p class="small muted">Test uses the <strong>saved</strong> URL and API key — <strong>Save</strong> first if you changed them. Test does not write settings; it records a <strong>connection status</strong> row for the dashboard.</p>
     </form>
     </div>
     </div>
@@ -295,10 +306,10 @@
     </div>
   </div>
 
-  <form id="test-sonarr" method="post" action="/test/sonarr">
+  <form id="test-sonarr" method="post" action="/test/sonarr" data-fetcher-async-test="1" data-fetcher-test-panel="sonarr">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
   </form>
-  <form id="test-radarr" method="post" action="/test/radarr">
+  <form id="test-radarr" method="post" action="/test/radarr" data-fetcher-async-test="1" data-fetcher-test-panel="radarr">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
   </form>
 

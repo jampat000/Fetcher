@@ -36,6 +36,26 @@ WinSW releases are available on GitHub (search “WinSW releases”).
 
 No fallback JWT secret is used; missing secret causes intentional fail-fast startup.
 
+## SQLite data directory (settings, activity, etc.)
+
+By default, **packaged** Fetcher on Windows uses **`%ProgramData%\Fetcher\fetcher.db`**. On first start, if that file is **missing** but a legacy file exists under the service profile’s **`AppData\Local\Fetcher\fetcher.db`** (e.g. Local System under **`…\systemprofile\…`**), Fetcher **copies** it there **once** and then uses ProgramData only. An existing canonical **`fetcher.db`** is **never** overwritten.
+
+To use a different folder explicitly, set a **machine** environment variable and restart the service:
+
+```powershell
+[Environment]::SetEnvironmentVariable("FETCHER_DATA_DIR","C:\\ProgramData\\Fetcher","Machine")
+```
+
+Then copy your existing **`fetcher.db`** into that folder (with Fetcher **stopped**), or point **`FETCHER_DATA_DIR`** at the folder that already contains **`fetcher.db`**.
+
+Add to **`winsw.xml`** next to the other `<env>` entries:
+
+```xml
+<env name="FETCHER_DATA_DIR" value="C:\ProgramData\Fetcher"/>
+```
+
+Startup logs include **`SQLite database path:`** with the resolved file.
+
 ## Listen address (LAN vs localhost)
 
 `FetcherService.xml` passes **`--host`** to `Fetcher.exe`. **`0.0.0.0`** listens on all interfaces so you can use **`http://<this-pc-ip>:8765`** from other devices on your network. Use **`127.0.0.1`** if you want the Web UI only on this machine. Open **TCP 8765** in Windows Firewall when using `0.0.0.0`. The Web UI uses **username + password** (and optional **IP allowlist** in Settings); see root **`SECURITY.md`**.

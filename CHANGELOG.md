@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-03-25
+
+### Fixed
+
+- **Windows persistence (packaged builds):** Canonical SQLite path is **`%ProgramData%\Fetcher\fetcher.db`**. On first start after upgrade, if that file is missing but a legacy database exists under the service profile’s **`AppData\Local\Fetcher\fetcher.db`** (e.g. Local System under **`…\systemprofile\…`**), Fetcher performs a **one-time file copy** (including **`-wal`** / **`-shm`** sidecars when present) into ProgramData. If the canonical database **already exists**, migration **does not** run and nothing is overwritten or merged. Normal runtime does **not** probe legacy paths after this decision.
+
+### Changed
+
+- **Operations:** **`FETCHER_DATA_DIR`** still overrides the data directory. Startup logs the resolved database path (**`SQLite database path:`**); when migration runs, logs **`Migrated SQLite from legacy path…`**.
+- **Settings UX (summary for this release):** **Separate** Global, Sonarr, and Radarr **forms**; **async** saves without full-page refresh; **Saving…** / **Settings saved.** / error **feedback**; **scoped** persistence (global vs per-app); **consistent wording** for save and session-related messages.
+- **Settings save contract:** **`POST /settings`** accepts only **`save_scope`** values **`global`**, **`sonarr`**, and **`radarr`**. Missing, empty, or any other value (including legacy **`all`**) fails with **`invalid_scope`** — no broad or cross-section write path.
+- **Connection test clarity:** **Test Sonarr / Test Radarr** use **saved** URL and API key only; they do **not** update **`AppSettings`** configuration. They still append an **`AppSnapshot`** row so dashboard connection status stays accurate (same intentional behavior as before, now documented in code and UI copy).
+- **Non-JS settings flows:** Save failures show the same **section-local** warning on **Global / Sonarr / Radarr** tabs (not only Global). **`invalid_scope`** redirects always use **`tab=global`** so the error message is visible. **Malformed-field** validation (handled as **`save=fail&reason=invalid`**) preserves **`tab=`** from **`save_scope`** when it is **`global`**, **`sonarr`**, or **`radarr`**; otherwise **`tab=global`**. **`POST /settings/auth`** validation failures redirect with **`tab=security`**. Test redirects include **`tab=`** alongside **`test=`** for consistent tab restoration.
+- **In-place (fetch) errors:** Failed async Save/Test responses still apply **`tab=`** from JSON to the address bar so the active section matches the server.
+
 ## [2.3.17] - 2026-03-25
 
 ### Changed

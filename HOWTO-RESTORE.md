@@ -2,7 +2,9 @@
 
 Fetcher stores your **settings** (Sonarr, Radarr, Emby, API keys, schedules) in a **local SQLite database** under your profile:
 
-- **Windows:** `%LOCALAPPDATA%\Fetcher\fetcher.db` (usually `C:\Users\You\AppData\Local\Fetcher\fetcher.db`)
+- **Windows (installed `Fetcher.exe` / service):** The canonical database is **`%ProgramData%\Fetcher\fetcher.db`**. On first start after upgrading from a build that used the service profile path (e.g. **`%SystemRoot%\System32\config\systemprofile\AppData\Local\Fetcher\fetcher.db`** for **Local System**), Fetcher performs a **one-time copy** into ProgramData if the canonical file is missing; it does **not** overwrite an existing canonical database. Check the **Fetcher** log at startup for **`SQLite database path:`** (and optional **`Migrated SQLite`**).
+- **Windows (run as your user / dev with shared DB):** `%LOCALAPPDATA%\Fetcher\fetcher.db` (e.g. `C:\Users\You\AppData\Local\Fetcher\fetcher.db`).
+- **Override:** set machine env **`FETCHER_DATA_DIR`** to a folder; Fetcher uses **`fetcher.db`** inside it (see **`service/README.md`**).
 
 ## One-file backup (recommended)
 

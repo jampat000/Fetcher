@@ -47,6 +47,7 @@ async def _lifespan(_app: FastAPI):
             "Missing required JWT configuration: set FETCHER_JWT_SECRET to a stable, high-entropy value."
         )
     _app.state.jwt_secret = jwt_secret
+    logger.info("SQLite database path: %s", db_path())
     # When the Windows service holds fetcher.db, startup can block until SQLite times out — retry a few times.
     delays_sec = (0, 2, 5, 10, 15)
     last_err: BaseException | None = None
@@ -118,11 +119,22 @@ async def _fetcher_auth_redirect_handler(_request: Request, exc: FetcherAuthRequ
 async def _form_validation_redirect(request: Request, exc: RequestValidationError) -> Response:
     """Browser form posts expect a redirect/HTML — avoid a raw 422 JSON body ('page isn't working')."""
     if request.method == "POST" and request.url.path == "/settings":
-        return RedirectResponse("/settings?save=fail&reason=invalid", status_code=303)
+        tab_q = "global"
+        try:
+            form = await request.form()
+            raw = form.get("save_scope")
+            if isinstance(raw, list):
+                raw = raw[0] if raw else ""
+            s = (str(raw) if raw is not None else "").strip().lower()
+            if s in ("global", "sonarr", "radarr"):
+                tab_q = s
+        except Exception:
+            pass
+        return RedirectResponse(f"/settings?save=fail&reason=invalid&tab={tab_q}", status_code=303)
     if request.method == "POST" and request.url.path == "/trimmer/settings/cleaner":
         return RedirectResponse("/trimmer/settings?save=fail&reason=invalid", status_code=303)
     if request.method == "POST" and request.url.path.startswith("/settings/auth"):
-        return RedirectResponse("/settings?save=fail&reason=invalid", status_code=303)
+        return RedirectResponse("/settings?save=fail&reason=invalid&tab=security", status_code=303)
     return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
 

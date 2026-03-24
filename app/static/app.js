@@ -85,6 +85,7 @@ let fetcherPendingMainScroll = null;
 function bindScrollRestoreOnFormSubmit() {
   document.querySelectorAll('form[method="post"]').forEach((form) => {
     if (form.getAttribute("data-fetcher-async-settings") === "1") return;
+    if (form.getAttribute("data-fetcher-async-test") === "1") return;
     form.addEventListener("submit", persistScrollForAfterRedirect, true);
     form
       .querySelectorAll('button[type="submit"], button:not([type]), input[type="submit"]')
@@ -283,7 +284,7 @@ function initSettingsPageCollapses() {
       if (sc === "sonarr") return { sonarr: true };
       if (sc === "radarr") return { radarr: true };
       if (sc === "global") return { global: true };
-      return "all";
+      return { openAll: true };
     }
     if (sp.get("sec")) return { security: true };
     return null;
@@ -323,7 +324,7 @@ function initSettingsPageCollapses() {
   const sections = ["sonarr", "radarr", "global", "security"];
   sections.forEach((section) => {
     let open;
-    if (forced === "all") open = true;
+    if (forced && forced.openAll) open = true;
     else if (forced && forced[section]) open = true;
     else if (forced && typeof forced === "object") open = readStored(section);
     else open = readStored(section);
@@ -674,15 +675,24 @@ function startLiveTilePolling() {
   });
 }
 
-const FETCHER_SETTINGS_ASYNC_HEADER = "X-Fetcher-Settings-Async";
+/** Section Save + Arr Test POSTs: ask server for JSON instead of 303 (transport only; same routes as full form POST). */
+const FETCHER_SETTINGS_INPLACE_JSON_HEADER = "X-Fetcher-Settings-Async";
 const FETCHER_SETTINGS_SAVE_REASON_TEXT = {
   db_busy: "The database was busy — try again in a moment.",
   db_error: "Save failed — try again.",
   invalid: "Save failed — check this form and try again.",
+  invalid_scope: "Save failed — reload the page and try again.",
   error: "Save failed — try again.",
 };
 const FETCHER_SETTINGS_SAVE_PENDING_LABEL = "Saving…";
 const FETCHER_SETTINGS_SAVE_SUCCESS_BANNER = "Settings saved.";
+const FETCHER_SETTINGS_TEST_PENDING_LABEL = "Testing…";
+const FETCHER_SETTINGS_TEST_RESULT_TEXT = {
+  sonarr_ok: "Sonarr connection succeeded.",
+  sonarr_fail: "Sonarr connection failed — check URL, API key, and that Sonarr is reachable.",
+  radarr_ok: "Radarr connection succeeded.",
+  radarr_fail: "Radarr connection failed — check URL, API key, and that Radarr is reachable.",
+};
 
 function clearSettingsSaveFeedbackTimer(form) {
   const t = form._fetcherSaveFeedbackTimer;
@@ -692,7 +702,8 @@ function clearSettingsSaveFeedbackTimer(form) {
   }
 }
 
-function setSettingsAsyncFeedback(feedbackEl, kind, text) {
+/** Section-local banner strip for Fetcher /settings in-place Save + Test only (not other pages). */
+function setFetcherSettingsInPlaceFeedback(feedbackEl, kind, text) {
   if (!feedbackEl) return;
   if (!text) {
     feedbackEl.textContent = "";
@@ -744,7 +755,7 @@ function setSaveButtonsPending(saveButtons, pending) {
   });
 }
 
-function syncSettingsUrlAfterAsyncSave(tabKey) {
+function syncFetcherSettingsUrlAfterInPlacePost(tabKey) {
   try {
     const u = new URL(window.location.href);
     if (tabKey) u.searchParams.set("tab", tabKey);
@@ -789,14 +800,18 @@ function initFetcherSettingsAsyncSave() {
       stashSaveButtonLabels(saveButtons);
       setBusy(true);
       setSaveButtonsPending(saveButtons, true);
-      setSettingsAsyncFeedback(feedback, "pending", FETCHER_SETTINGS_SAVE_PENDING_LABEL);
+      setFetcherSettingsInPlaceFeedback(feedback, "pending", FETCHER_SETTINGS_SAVE_PENDING_LABEL);
 
-      const fd = new FormData(form);
+      const sub = e.submitter;
+      const fd =
+        sub instanceof HTMLButtonElement || sub instanceof HTMLInputElement
+          ? new FormData(form, sub)
+          : new FormData(form);
       fetch(action, {
         method: "POST",
         body: fd,
         credentials: "same-origin",
-        headers: { [FETCHER_SETTINGS_ASYNC_HEADER]: "1", Accept: "application/json" },
+        headers: { [FETCHER_SETTINGS_INPLACE_JSON_HEADER]: "1", Accept: "application/json" },
       })
         .then((res) => {
           if (res.status === 403) {
@@ -817,32 +832,126 @@ function initFetcherSettingsAsyncSave() {
           }
           if (data && typeof data.ok === "boolean") {
             if (data.ok) {
-              setSettingsAsyncFeedback(feedback, "ok", FETCHER_SETTINGS_SAVE_SUCCESS_BANNER);
-              syncSettingsUrlAfterAsyncSave(data.tab || "");
+              setFetcherSettingsInPlaceFeedback(feedback, "ok", FETCHER_SETTINGS_SAVE_SUCCESS_BANNER);
+              syncFetcherSettingsUrlAfterInPlacePost(data.tab || "");
               clearSettingsSaveFeedbackTimer(form);
               form._fetcherSaveFeedbackTimer = window.setTimeout(() => {
                 form._fetcherSaveFeedbackTimer = null;
                 if (form._fetcherSaveGen !== saveGen) return;
                 if (feedback && feedback.textContent === FETCHER_SETTINGS_SAVE_SUCCESS_BANNER) {
-                  setSettingsAsyncFeedback(feedback, "ok", "");
+                  setFetcherSettingsInPlaceFeedback(feedback, "ok", "");
                 }
               }, 2600);
               return;
             }
+            if (data.tab) syncFetcherSettingsUrlAfterInPlacePost(data.tab);
             const r = data.reason ? String(data.reason) : "error";
             const msg = FETCHER_SETTINGS_SAVE_REASON_TEXT[r] || FETCHER_SETTINGS_SAVE_REASON_TEXT.error;
-            setSettingsAsyncFeedback(feedback, "err", msg);
+            setFetcherSettingsInPlaceFeedback(feedback, "err", msg);
             return;
           }
           throw new Error(FETCHER_SETTINGS_SAVE_REASON_TEXT.error);
         })
         .catch((err) => {
           const m = err && err.message ? err.message : FETCHER_SETTINGS_SAVE_REASON_TEXT.error;
-          setSettingsAsyncFeedback(feedback, "err", m);
+          setFetcherSettingsInPlaceFeedback(feedback, "err", m);
         })
         .finally(() => {
           restoreSaveButtonLabels(saveButtons);
           setBusy(false);
+        });
+    });
+  });
+}
+
+/** In-place Sonarr/Radarr connection tests (same CSRF + header contract as async save; no full-page navigation). */
+function initFetcherSettingsAsyncTest() {
+  document.querySelectorAll('form[data-fetcher-async-test="1"]').forEach((form) => {
+    const panel = (form.getAttribute("data-fetcher-test-panel") || "").trim();
+    if (panel !== "sonarr" && panel !== "radarr") return;
+    const saveFormId = panel === "sonarr" ? "fetcher-settings-sonarr" : "fetcher-settings-radarr";
+    const saveForm = document.getElementById(saveFormId);
+    const feedback = saveForm ? saveForm.querySelector(".settings-async-feedback") : null;
+    const fid = form.getAttribute("id") || "";
+    const triggerBtns = fid ? Array.from(document.querySelectorAll(`button[form="${fid}"]`)) : [];
+    let okFadeTimer = null;
+
+    form.addEventListener("submit", (e) => {
+      if (form.dataset.fetcherTestPending === "1") {
+        e.preventDefault();
+        return;
+      }
+      e.preventDefault();
+      const action = form.getAttribute("action") || "/settings";
+
+      triggerBtns.forEach((b) => {
+        if (b.dataset.fetcherTestLabel == null || b.dataset.fetcherTestLabel === "") {
+          b.dataset.fetcherTestLabel = (b.textContent || "").trim();
+        }
+        b.disabled = true;
+        b.setAttribute("aria-busy", "true");
+        b.textContent = FETCHER_SETTINGS_TEST_PENDING_LABEL;
+      });
+      form.dataset.fetcherTestPending = "1";
+      setFetcherSettingsInPlaceFeedback(feedback, "pending", FETCHER_SETTINGS_TEST_PENDING_LABEL);
+
+      const fd = new FormData(form);
+      fetch(action, {
+        method: "POST",
+        body: fd,
+        credentials: "same-origin",
+        headers: { [FETCHER_SETTINGS_INPLACE_JSON_HEADER]: "1", Accept: "application/json" },
+      })
+        .then((res) => {
+          if (res.status === 403) {
+            return Promise.reject(
+              new Error("Your session may have expired — reload the page and sign in again."),
+            );
+          }
+          const ct = (res.headers.get("content-type") || "").toLowerCase();
+          if (ct.indexOf("application/json") >= 0) {
+            return res.json().then((data) => ({ res, data }));
+          }
+          return res.text().then((text) => ({ res, data: null, text }));
+        })
+        .then((out) => {
+          const { res, data, text } = out;
+          if (!res.ok && !data) {
+            throw new Error(text || "Connection test failed — try again.");
+          }
+          if (data && typeof data.ok === "boolean" && data.test) {
+            const k = String(data.test);
+            const msg = FETCHER_SETTINGS_TEST_RESULT_TEXT[k];
+            if (data.ok) {
+              setFetcherSettingsInPlaceFeedback(feedback, "ok", msg || "Connection succeeded.");
+              syncFetcherSettingsUrlAfterInPlacePost(data.tab || panel);
+              if (okFadeTimer) window.clearTimeout(okFadeTimer);
+              okFadeTimer = window.setTimeout(() => {
+                okFadeTimer = null;
+                if (feedback && msg && feedback.textContent === msg) {
+                  setFetcherSettingsInPlaceFeedback(feedback, "ok", "");
+                }
+              }, 3200);
+            } else {
+              if (data.tab) syncFetcherSettingsUrlAfterInPlacePost(data.tab);
+              setFetcherSettingsInPlaceFeedback(feedback, "err", msg || "Connection failed.");
+            }
+            return;
+          }
+          throw new Error("Connection test failed — try again.");
+        })
+        .catch((err) => {
+          const m = err && err.message ? err.message : "Connection test failed — try again.";
+          setFetcherSettingsInPlaceFeedback(feedback, "err", m);
+        })
+        .finally(() => {
+          form.dataset.fetcherTestPending = "";
+          triggerBtns.forEach((b) => {
+            b.disabled = false;
+            b.removeAttribute("aria-busy");
+            const o = b.dataset.fetcherTestLabel;
+            if (o != null && o !== "") b.textContent = o;
+          });
         });
     });
   });
@@ -939,6 +1048,7 @@ window.addEventListener("DOMContentLoaded", () => {
   injectMeshAndNoise();
   bindInternalLinksTargetTop();
   initFetcherSettingsAsyncSave();
+  initFetcherSettingsAsyncTest();
   bindScrollRestoreOnFormSubmit();
   restoreScrollAfterFormRedirect();
   bindRevealButtons();

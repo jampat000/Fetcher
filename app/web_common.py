@@ -50,16 +50,6 @@ def activity_display_row(e: ActivityLog, tz: str) -> dict[str, Any]:
     }
 
 
-def settings_save_redirect_tab(save_scope: str) -> str:
-    """Query ``tab=`` value for /settings after POST so the UI stays on the same section."""
-    s = (save_scope or "global").strip().lower()
-    if s == "all":
-        return "global"
-    if s in ("global", "sonarr", "radarr"):
-        return s
-    return "global"
-
-
 def trimmer_settings_fragment(trimmer_section: str | None) -> str:
     key = (trimmer_section or "").strip().lower()
     ids = {

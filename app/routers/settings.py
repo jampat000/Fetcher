@@ -34,7 +34,6 @@ from app.ui_templates import templates
 from app.web_common import (
     schedule_days_csv_from_named_day_checks,
     schedule_weekdays_selected_dict,
-    settings_save_redirect_tab,
     try_commit_and_reschedule,
 )
 
@@ -44,8 +43,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(dependencies=AUTH_DEPS)
 
-# Fetch sends this header to receive JSON instead of a 303 redirect (same validation + CSRF as normal POST).
-SETTINGS_SAVE_ASYNC_HEADER = "x-fetcher-settings-async"
+# In-place POSTs (section Save + Arr connection Test) send this header for JSON instead of a 303 redirect.
+SETTINGS_INPLACE_JSON_HEADER = "x-fetcher-settings-async"
+
+# ``POST /settings`` (Fetcher settings forms only): exactly one of these scopes per request — no legacy "all".
+_SETTINGS_POST_SAVE_SCOPES = frozenset({"global", "sonarr", "radarr"})
 
 
 @router.get("/settings", response_class=HTMLResponse)
@@ -243,12 +245,15 @@ async def save_settings(
     arr_search_cooldown_minutes: int = Form(1440),
     log_retention_days: int = Form(90),
     timezone: str = Form("UTC"),
-    save_scope: str = Form("all"),
+    save_scope: str = Form(""),
     session: AsyncSession = Depends(get_session),
 ) -> RedirectResponse | JSONResponse:
-    tab_key = settings_save_redirect_tab(save_scope)
+    """Write **one** Fetcher settings section per request (``global`` | ``sonarr`` | ``radarr`` only)."""
+    scope = (save_scope or "").strip().lower()
+    # ``invalid_scope`` messages render on the Global tab only — always land there for that error.
+    tab_key = "global" if scope not in _SETTINGS_POST_SAVE_SCOPES else scope
     tab_q = quote(tab_key, safe="")
-    want_json = (request.headers.get(SETTINGS_SAVE_ASYNC_HEADER) or "").strip() == "1"
+    want_json = (request.headers.get(SETTINGS_INPLACE_JSON_HEADER) or "").strip() == "1"
 
     def respond(*, saved: bool, reason: str | None = None) -> RedirectResponse | JSONResponse:
         if want_json:
@@ -264,17 +269,18 @@ async def save_settings(
             status_code=303,
         )
 
+    if scope not in _SETTINGS_POST_SAVE_SCOPES:
+        return respond(saved=False, reason="invalid_scope")
+
     try:
         row = await _get_or_create_settings(session)
-        scope = (save_scope or "all").strip().lower()
-        # Partial saves: merge run intervals from DB for apps not updated by this POST so
-        # SettingsIn does not pick up Form() defaults (60) for missing/stale fields.
-        # Global save only persists cooldown / log retention / timezone — Sonarr & Radarr from DB here.
+        # Merge intervals from DB for the app not being saved so SettingsIn is well-formed without
+        # applying Form defaults to the other app's interval.
         son_im = sonarr_interval_minutes
         rad_im = radarr_interval_minutes
-        if scope not in ("all", "sonarr"):
+        if scope != "sonarr":
             son_im = row.sonarr_interval_minutes if row.sonarr_interval_minutes is not None else 60
-        if scope not in ("all", "radarr"):
+        if scope != "radarr":
             rad_im = row.radarr_interval_minutes if row.radarr_interval_minutes is not None else 60
         data = SettingsIn(
             sonarr_enabled=sonarr_enabled,
@@ -295,8 +301,7 @@ async def save_settings(
             radarr_interval_minutes=rad_im,
             arr_search_cooldown_minutes=arr_search_cooldown_minutes,
         )
-        # Sonarr/Radarr: persist on app-specific save or legacy full save (save_scope=all).
-        if scope in ("all", "sonarr"):
+        if scope == "sonarr":
             row.sonarr_enabled = data.sonarr_enabled
             row.sonarr_url = data.sonarr_url
             row.sonarr_api_key = encrypt_secret_for_storage(data.sonarr_api_key)
@@ -317,7 +322,7 @@ async def save_settings(
             row.sonarr_schedule_start = _normalize_hhmm(sonarr_schedule_start, "00:00")
             row.sonarr_schedule_end = _normalize_hhmm(sonarr_schedule_end, "23:59")
 
-        if scope in ("all", "radarr"):
+        if scope == "radarr":
             row.radarr_enabled = data.radarr_enabled
             row.radarr_url = data.radarr_url
             row.radarr_api_key = encrypt_secret_for_storage(data.radarr_api_key)
@@ -339,7 +344,7 @@ async def save_settings(
             row.radarr_schedule_start = _normalize_hhmm(radarr_schedule_start, "00:00")
             row.radarr_schedule_end = _normalize_hhmm(radarr_schedule_end, "23:59")
 
-        if scope in ("all", "global"):
+        if scope == "global":
             row.arr_search_cooldown_minutes = data.arr_search_cooldown_minutes
             row.log_retention_days = max(7, min(3650, int(log_retention_days or 90)))
             row.timezone = _resolve_timezone_name(timezone)
@@ -349,10 +354,8 @@ async def save_settings(
             sched_targets = {"sonarr"}
         elif scope == "radarr":
             sched_targets = {"radarr"}
-        elif scope == "global":
-            sched_targets = set()
         else:
-            sched_targets = None
+            sched_targets = set()
         if not await try_commit_and_reschedule(session, targets=sched_targets):
             return respond(saved=False, reason="db_busy")
         return respond(saved=True)
@@ -373,10 +376,17 @@ async def save_settings(
         return respond(saved=False, reason="error")
 
 
-@router.post("/test/sonarr", dependencies=AUTH_FORM_DEPS)
-async def test_sonarr(session: AsyncSession = Depends(get_session)) -> RedirectResponse:
-    # Keep route-owned side effects here: snapshot payload + redirect contract.
-    # Any message or redirect changes must be covered by connection-testing regression tests.
+@router.post("/test/sonarr", dependencies=AUTH_FORM_DEPS, response_model=None)
+async def test_sonarr(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> RedirectResponse | JSONResponse:
+    """Health check against **saved** Sonarr URL/API key (``AppSettings`` is read-only here).
+
+    Writes **AppSnapshot** only — dashboard / settings tiles use latest snapshot per app.
+    Does **not** change configuration columns on ``AppSettings``.
+    """
+    want_json = (request.headers.get(SETTINGS_INPLACE_JSON_HEADER) or "").strip() == "1"
     settings = await _get_or_create_settings(session)
     result = await ConnectionTestService().check_arr_health(
         url=settings.sonarr_url,
@@ -385,7 +395,9 @@ async def test_sonarr(session: AsyncSession = Depends(get_session)) -> RedirectR
     if result.ok:
         session.add(AppSnapshot(app="sonarr", ok=True, status_message="Connection test succeeded.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
-        return RedirectResponse("/settings?test=sonarr_ok", status_code=303)
+        if want_json:
+            return JSONResponse({"ok": True, "tab": "sonarr", "test": "sonarr_ok"})
+        return RedirectResponse("/settings?test=sonarr_ok&tab=sonarr", status_code=303)
     session.add(
         AppSnapshot(
             app="sonarr",
@@ -396,12 +408,22 @@ async def test_sonarr(session: AsyncSession = Depends(get_session)) -> RedirectR
         )
     )
     await session.commit()
-    return RedirectResponse("/settings?test=sonarr_fail", status_code=303)
+    if want_json:
+        return JSONResponse({"ok": False, "tab": "sonarr", "test": "sonarr_fail"})
+    return RedirectResponse("/settings?test=sonarr_fail&tab=sonarr", status_code=303)
 
 
-@router.post("/test/radarr", dependencies=AUTH_FORM_DEPS)
-async def test_radarr(session: AsyncSession = Depends(get_session)) -> RedirectResponse:
-    # ConnectionTestService provides transport result primitives only; caller preserves UX contract.
+@router.post("/test/radarr", dependencies=AUTH_FORM_DEPS, response_model=None)
+async def test_radarr(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> RedirectResponse | JSONResponse:
+    """Health check against **saved** Radarr URL/API key (``AppSettings`` is read-only here).
+
+    Writes **AppSnapshot** only — dashboard / settings tiles use latest snapshot per app.
+    Does **not** change configuration columns on ``AppSettings``.
+    """
+    want_json = (request.headers.get(SETTINGS_INPLACE_JSON_HEADER) or "").strip() == "1"
     settings = await _get_or_create_settings(session)
     result = await ConnectionTestService().check_arr_health(
         url=settings.radarr_url,
@@ -410,7 +432,9 @@ async def test_radarr(session: AsyncSession = Depends(get_session)) -> RedirectR
     if result.ok:
         session.add(AppSnapshot(app="radarr", ok=True, status_message="Connection test succeeded.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
-        return RedirectResponse("/settings?test=radarr_ok", status_code=303)
+        if want_json:
+            return JSONResponse({"ok": True, "tab": "radarr", "test": "radarr_ok"})
+        return RedirectResponse("/settings?test=radarr_ok&tab=radarr", status_code=303)
     session.add(
         AppSnapshot(
             app="radarr",
@@ -421,4 +445,6 @@ async def test_radarr(session: AsyncSession = Depends(get_session)) -> RedirectR
         )
     )
     await session.commit()
-    return RedirectResponse("/settings?test=radarr_fail", status_code=303)
+    if want_json:
+        return JSONResponse({"ok": False, "tab": "radarr", "test": "radarr_fail"})
+    return RedirectResponse("/settings?test=radarr_fail&tab=radarr", status_code=303)

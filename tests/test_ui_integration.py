@@ -42,6 +42,9 @@ def _client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
         "/settings",
         "/settings?saved=1",
         "/settings?save=fail&reason=db_busy",
+        "/settings?save=fail&reason=db_busy&tab=sonarr",
+        "/settings?save=fail&reason=invalid_scope&tab=global",
+        "/settings?test=sonarr_ok&tab=sonarr",
         "/trimmer/settings",
         "/trimmer/settings?saved=1",
         "/trimmer/settings?save=fail&reason=db_busy",
@@ -86,6 +89,20 @@ def test_settings_page_has_forms(monkeypatch: pytest.MonkeyPatch) -> None:
     assert b"radarr_url" in r.content
     assert b"section-trimmer" not in r.content
     assert b"Trimmer settings" in r.content
+
+
+def test_settings_page_hidden_save_scope_per_section_form(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression: fetch/FormData must always send save_scope (submit button name is not in FormData)."""
+    with _client(monkeypatch) as client:
+        r = client.get("/settings")
+    html = r.text
+    assert html.count('name="save_scope"') == 3
+    assert 'value="global"' in html
+    assert 'value="sonarr"' in html
+    assert 'value="radarr"' in html
+    assert 'type="hidden"' in html
+    assert 'type="submit" name="save_scope"' not in html
+    assert 'data-fetcher-async-test="1"' in html
 
 
 def test_trimmer_settings_has_content_criteria(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -222,6 +239,7 @@ def test_post_settings_validation_error_redirects_not_422(monkeypatch: pytest.Mo
         "arr_search_cooldown_minutes": "1440",
         "log_retention_days": "90",
         "timezone": "UTC",
+        "save_scope": "sonarr",
     }
     form: list[tuple[str, str]] = [(k, str(v)) for k, v in payload.items()]
     form.extend(_schedule_flag_pairs("sonarr_schedule"))
@@ -239,48 +257,28 @@ def test_post_settings_validation_error_redirects_not_422(monkeypatch: pytest.Mo
     assert "/settings" in loc
     assert "save=fail" in loc
     assert "reason=invalid" in loc
+    assert "tab=sonarr" in loc
 
 
 def test_post_settings_save_redirects(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Minimal Fetcher settings form post."""
+    """Minimal global Fetcher settings form post (strict save_scope)."""
     payload = {
-        "sonarr_enabled": "false",
-        "sonarr_url": "",
-        "sonarr_api_key": "",
-        "sonarr_search_missing": "true",
-        "sonarr_search_upgrades": "true",
-        "sonarr_max_items_per_run": "50",
-        "sonarr_schedule_enabled": "false",
-        "sonarr_schedule_start": "00:00",
-        "sonarr_schedule_end": "23:59",
-        "radarr_enabled": "false",
-        "radarr_url": "",
-        "radarr_api_key": "",
-        "radarr_search_missing": "true",
-        "radarr_search_upgrades": "true",
-        "radarr_max_items_per_run": "50",
-        "radarr_schedule_enabled": "false",
-        "radarr_schedule_start": "00:00",
-        "radarr_schedule_end": "23:59",
-        "sonarr_interval_minutes": "0",
-        "radarr_interval_minutes": "0",
         "arr_search_cooldown_minutes": "1440",
         "log_retention_days": "90",
         "timezone": "UTC",
+        "save_scope": "global",
     }
-    form: list[tuple[str, str]] = [(k, str(v)) for k, v in payload.items()]
-    form.extend(_schedule_flag_pairs("sonarr_schedule"))
-    form.extend(_schedule_flag_pairs("radarr_schedule"))
-    encoded = urlencode(form)
     with _client(monkeypatch) as client:
         resp = client.post(
             "/settings",
-            content=encoded,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            data=payload,
             follow_redirects=False,
         )
     assert resp.status_code == 303
-    assert resp.headers.get("location", "").startswith("/settings")
+    loc = resp.headers.get("location", "")
+    assert loc.startswith("/settings")
+    assert "saved=1" in loc
+    assert "tab=global" in loc
 
 
 def test_post_emby_connection_save(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -361,6 +359,132 @@ def test_post_settings_async_header_returns_json(monkeypatch: pytest.MonkeyPatch
             assert row.arr_search_cooldown_minutes == 2000
 
     asyncio.run(verify_cooldown())
+
+
+def test_post_settings_rejects_missing_save_scope(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/settings",
+            data={
+                "arr_search_cooldown_minutes": "100",
+                "log_retention_days": "90",
+                "timezone": "UTC",
+            },
+            follow_redirects=False,
+        )
+    assert resp.status_code == 303
+    loc = resp.headers.get("location") or ""
+    assert "save=fail" in loc
+    assert "invalid_scope" in loc
+    assert "tab=global" in loc
+
+
+def test_post_settings_rejects_legacy_save_scope_all(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/settings",
+            data={
+                "arr_search_cooldown_minutes": "100",
+                "log_retention_days": "90",
+                "timezone": "UTC",
+                "save_scope": "all",
+            },
+            follow_redirects=False,
+        )
+    assert resp.status_code == 303
+    loc = resp.headers.get("location") or ""
+    assert "invalid_scope" in loc
+    assert "tab=global" in loc
+
+
+def test_post_settings_async_rejects_invalid_save_scope_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/settings",
+            data={"save_scope": "all", "timezone": "UTC"},
+            headers={"X-Fetcher-Settings-Async": "1"},
+        )
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": False, "tab": "global", "reason": "invalid_scope"}
+
+
+def test_post_settings_invalid_scope_does_not_change_database(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def seed() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.arr_search_cooldown_minutes = 7777
+            await session.commit()
+
+    asyncio.run(seed())
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/settings",
+            data={
+                "save_scope": "all",
+                "arr_search_cooldown_minutes": "1111",
+                "log_retention_days": "90",
+                "timezone": "UTC",
+            },
+            follow_redirects=False,
+        )
+    assert resp.status_code == 303
+
+    async def verify() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            assert row.arr_search_cooldown_minutes == 7777
+
+    asyncio.run(verify())
+
+
+def test_get_settings_save_fail_banner_visible_on_sonarr_tab(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        r = client.get("/settings?save=fail&reason=db_busy&tab=sonarr")
+    assert r.status_code == 200
+    html = r.text
+    assert "settings-fetcher-save-fail" in html
+    assert "database was busy" in html
+
+
+def test_test_sonarr_post_does_not_mutate_app_settings_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+
+    async def seed() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.sonarr_url = "http://unchanged.example:8989"
+            row.sonarr_api_key = ""
+            await session.commit()
+
+    asyncio.run(seed())
+
+    async def _check_arr_health(self, *, url: str, api_key: str):
+        from app.connection_test_service import ArrHealthCheckResult
+
+        return ArrHealthCheckResult(ok=True, error_kind="none")
+
+    monkeypatch.setattr("app.routers.settings.ConnectionTestService.check_arr_health", _check_arr_health)
+    try:
+        with _client(monkeypatch) as client:
+            resp = client.post("/test/sonarr", follow_redirects=False)
+        assert resp.status_code == 303
+        assert "tab=sonarr" in (resp.headers.get("location") or "")
+
+        async def verify_url() -> None:
+            async with SessionLocal() as session:
+                row = await _get_or_create_settings(session)
+                assert row.sonarr_url == "http://unchanged.example:8989"
+
+        asyncio.run(verify_url())
+    finally:
+
+        async def reset_url() -> None:
+            async with SessionLocal() as session:
+                row = await _get_or_create_settings(session)
+                row.sonarr_url = ""
+                await session.commit()
+
+        asyncio.run(reset_url())
 
 
 def test_global_save_updates_only_cooldown_retention_timezone(monkeypatch: pytest.MonkeyPatch) -> None:
