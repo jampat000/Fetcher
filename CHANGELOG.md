@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.3.14] - 2026-03-24
+
+### Changed
+
+- **Missing count semantics:** Sonarr and Radarr dashboard "missing" totals now include monitored items that are not yet available, matching Arr expectations for monitored missing counts.
+- **Dashboard wording clarity:** Updated hero tile subtitles to concise, consistent phrasing for monitored missing counts.
+
 ## [2.3.13] - 2026-03-24
 
 ### Fixed
@@ -805,7 +812,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.13...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.14...HEAD
+[2.3.14]: https://github.com/jampat000/Fetcher/compare/v2.3.13...v2.3.14
 [2.3.13]: https://github.com/jampat000/Fetcher/compare/v2.3.12...v2.3.13
 [2.3.12]: https://github.com/jampat000/Fetcher/compare/v2.3.11...v2.3.12
 [2.3.11]: https://github.com/jampat000/Fetcher/compare/v2.3.10...v2.3.11

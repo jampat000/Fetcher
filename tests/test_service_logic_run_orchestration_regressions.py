@@ -163,7 +163,18 @@ def test_run_once_sonarr_no_internal_interval_skip_anymore(monkeypatch: pytest.M
             seen["health"] += 1
 
         async def series(self):
-            return []
+            return [{"id": 10}]
+
+        async def episodes_for_series(self, *, series_id: int):
+            assert series_id == 10
+            return [
+                {"monitored": True, "hasFile": False},
+                {"monitored": True, "hasFile": False},
+                {"monitored": True, "hasFile": False},
+                {"monitored": True, "hasFile": False},
+                {"monitored": True, "hasFile": True},
+                {"monitored": False, "hasFile": False},
+            ]
 
         async def wanted_missing(self, **kwargs):
             return {"records": [], "totalRecords": 0}
@@ -382,7 +393,18 @@ def test_sonarr_due_outside_window_skips_then_runs_when_window_opens(monkeypatch
             seen["health"] += 1
 
         async def series(self):
-            return []
+            return [{"id": 10}]
+
+        async def episodes_for_series(self, *, series_id: int):
+            assert series_id == 10
+            return [
+                {"monitored": True, "hasFile": False},
+                {"monitored": True, "hasFile": False},
+                {"monitored": True, "hasFile": False},
+                {"monitored": True, "hasFile": False},
+                {"monitored": True, "hasFile": True},
+                {"monitored": False, "hasFile": False},
+            ]
 
         async def wanted_missing(self, **kwargs):
             return {"records": [], "totalRecords": 0}
@@ -464,7 +486,18 @@ def test_run_once_sonarr_suppressed_cooldown_snapshot_and_lifecycle(monkeypatch:
             seen["health"] += 1
 
         async def series(self):
-            return []
+            return [{"id": 10}]
+
+        async def episodes_for_series(self, *, series_id: int):
+            assert series_id == 10
+            return [
+                {"monitored": True, "hasFile": False},
+                {"monitored": True, "hasFile": False},
+                {"monitored": True, "hasFile": False},
+                {"monitored": True, "hasFile": False},
+                {"monitored": True, "hasFile": True},
+                {"monitored": False, "hasFile": False},
+            ]
 
         async def aclose(self):
             seen["aclose"] += 1
@@ -493,7 +526,7 @@ def test_run_once_sonarr_suppressed_cooldown_snapshot_and_lifecycle(monkeypatch:
     assert snap.app == "sonarr"
     assert snap.ok is True
     assert snap.status_message == "OK"
-    assert snap.missing_total == 3
+    assert snap.missing_total == 4
     assert snap.cutoff_unmet_total == 7
     assert asyncio.run(_latest_activity()) is None
     assert asyncio.run(_settings_row()).sonarr_last_run_at == fixed_now
@@ -527,6 +560,15 @@ def test_run_once_radarr_manual_upgrade_success_activity_snapshot(monkeypatch: p
 
         async def add_tags_to_movies(self, **kwargs):
             return None
+
+        async def movies(self):
+            return [
+                {"monitored": True, "hasFile": False},
+                {"monitored": True, "hasFile": False},
+                {"monitored": True, "hasFile": False},
+                {"monitored": True, "hasFile": False},
+                {"monitored": True, "hasFile": False},
+            ]
 
         async def aclose(self):
             seen["aclose"] += 1
@@ -562,7 +604,7 @@ def test_run_once_radarr_manual_upgrade_success_activity_snapshot(monkeypatch: p
     assert snap.app == "radarr"
     assert snap.ok is True
     assert snap.status_message == "OK"
-    assert snap.missing_total == 4
+    assert snap.missing_total == 5
     assert snap.cutoff_unmet_total == 9
     act = asyncio.run(_latest_activity())
     assert act is not None

@@ -343,6 +343,46 @@ async def _wanted_queue_total(client: ArrClient, *, kind: str) -> int:
     return int(data.get("totalRecords") or 0)
 
 
+def _radarr_missing_total_including_unreleased(movies: list[dict[str, Any]]) -> int:
+    """Count monitored Radarr titles missing files, including unreleased/unavailable items."""
+    total = 0
+    for movie in movies:
+        if not isinstance(movie, dict):
+            continue
+        if not bool(movie.get("monitored")):
+            continue
+        if bool(movie.get("hasFile")):
+            continue
+        total += 1
+    return total
+
+
+async def _sonarr_missing_total_including_unreleased(client: ArrClient) -> int:
+    """Count monitored Sonarr episodes missing files, including unreleased/unavailable episodes."""
+    total = 0
+    series_list = await client.series()
+    for series in series_list:
+        if not isinstance(series, dict):
+            continue
+        raw_id = series.get("id")
+        try:
+            sid = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        if sid <= 0:
+            continue
+        episodes = await client.episodes_for_series(series_id=sid)
+        for episode in episodes:
+            if not isinstance(episode, dict):
+                continue
+            if not bool(episode.get("monitored")):
+                continue
+            if bool(episode.get("hasFile")):
+                continue
+            total += 1
+    return total
+
+
 async def prune_old_records(session: AsyncSession, settings: AppSettings | None = None) -> None:
     """Delete old log/snapshot rows in one transaction batch (committed with the next run commit).
 
@@ -1038,7 +1078,14 @@ async def _execute_sonarr_block(
             want_upgrade = sonarr_upgrades_enabled
 
         missing_total = 0
+        missing_total_including_unreleased = 0
+        include_count_ready = False
         cutoff_total = 0
+        try:
+            missing_total_including_unreleased = await _sonarr_missing_total_including_unreleased(sonarr)
+            include_count_ready = True
+        except Exception as e:  # noqa: BLE001
+            actions.append(f"Sonarr: missing (including unreleased) count unavailable ({format_http_error_detail(e)})")
 
         if want_missing:
             allowed_ids, allowed_records, missing_total = await _paginate_wanted_for_search(
@@ -1178,6 +1225,12 @@ async def _execute_sonarr_block(
         elif want_upgrade and not want_missing:
             missing_total = await _wanted_queue_total(sonarr, kind="missing")
 
+        if include_count_ready:
+            missing_total = missing_total_including_unreleased
+        elif not want_missing:
+            # Keep previous behavior if inclusive count could not be computed and missing wasn't loaded above.
+            missing_total = await _wanted_queue_total(sonarr, kind="missing")
+
         session.add(
             AppSnapshot(
                 app="sonarr",
@@ -1242,7 +1295,14 @@ async def _execute_radarr_block(
             want_upgrade = radarr_upgrades_enabled
 
         missing_total = 0
+        missing_total_including_unreleased = 0
+        include_count_ready = False
         cutoff_total = 0
+        try:
+            missing_total_including_unreleased = _radarr_missing_total_including_unreleased(await radarr.movies())
+            include_count_ready = True
+        except Exception as e:  # noqa: BLE001
+            actions.append(f"Radarr: missing (including unreleased) count unavailable ({format_http_error_detail(e)})")
 
         if want_missing:
             allowed_ids, allowed_records, missing_total = await _paginate_wanted_for_search(
@@ -1361,6 +1421,12 @@ async def _execute_radarr_block(
         if want_missing and not want_upgrade:
             cutoff_total = await _wanted_queue_total(radarr, kind="cutoff")
         elif want_upgrade and not want_missing:
+            missing_total = await _wanted_queue_total(radarr, kind="missing")
+
+        # Product preference: Radarr "missing" card includes unreleased/unavailable monitored titles.
+        if include_count_ready:
+            missing_total = missing_total_including_unreleased
+        elif not want_missing:
             missing_total = await _wanted_queue_total(radarr, kind="missing")
 
         session.add(
