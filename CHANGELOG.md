@@ -6,7 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [2.1.0] - 2026-03-25
+## [2.1.1] - 2026-03-24
+
+### Fixed
+
+- **Settings (Fetcher):** Global / Security / Sonarr / Radarr tab buttons switch panels again via shared **`initSettingsTabs()`** in **`app/static/app.js`**, **`.settings-tab-target`** visibility in **`app/static/app.css`**, **`aria-selected`** / **`is-active`** state, **`#section-*`** deep links, and **`history.replaceState`** on tab clicks (no scroll jump). Inline settings tab script removed (it matched every **`[data-settings-panel]`**, including non-tab slices, which broke panel toggling).
+
+## [2.1.0] - 2026-03-24
 
 ### Added
 
@@ -688,7 +694,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.1.1...HEAD
+[2.1.1]: https://github.com/jampat000/Fetcher/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/jampat000/Fetcher/compare/v2.0.25...v2.1.0
 [2.0.25]: https://github.com/jampat000/Fetcher/compare/v2.0.24...v2.0.25
 [2.0.24]: https://github.com/jampat000/Fetcher/compare/v2.0.23...v2.0.24

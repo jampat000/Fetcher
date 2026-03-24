@@ -1424,6 +1424,12 @@ h2.gc-title,
   margin-bottom: var(--space-8);
   flex-wrap: wrap;
 }
+.settings-tab-target {
+  display: none;
+}
+.settings-tab-target.is-active {
+  display: block;
+}
 button.settings-tab.settings-tab-btn {
   font: inherit;
   cursor: pointer;
