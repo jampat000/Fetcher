@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.3.4] - 2026-03-24
+
+### Changed
+
+- **Automation card final polish:** Removed inner subsystem boxes and refined spacing for a cleaner, more intentional Sonarr/Radarr/Trimmer layout.
+- **Hierarchy and readability:** Tightened visual hierarchy so subsystem titles are primary and Last run/Next run labels stay muted and aligned.
+- **Empty-state messaging:** Replaced placeholder dashes with explicit states (`Not yet run`, `Pending`, `No activity yet`) for clearer, production-ready UX.
+- **Latest system event presentation:** Kept the row secondary at the bottom and improved contextual readability for event + time + status.
+
 ## [2.3.3] - 2026-03-24
 
 ### Changed
@@ -731,7 +740,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.3...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.4...HEAD
+[2.3.4]: https://github.com/jampat000/Fetcher/compare/v2.3.3...v2.3.4
 [2.3.3]: https://github.com/jampat000/Fetcher/compare/v2.3.2...v2.3.3
 [2.3.2]: https://github.com/jampat000/Fetcher/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/jampat000/Fetcher/compare/v2.3.0...v2.3.1

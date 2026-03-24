@@ -98,6 +98,33 @@ def test_dashboard_route_renders_per_app_success_failure_badges(monkeypatch) -> 
     assert b"Failed" in resp.content
 
 
+def test_dashboard_route_empty_states_are_intentional(monkeypatch) -> None:
+    async def _fake_status(_session, _tz, *, snapshots=None):  # noqa: ARG001
+        return {
+            "last_run": None,
+            "latest_system_event": None,
+            "last_sonarr_run": {"time_local": "", "ok": None},
+            "last_radarr_run": {"time_local": "", "ok": None},
+            "last_trimmer_run": {"time_local": "", "ok": None},
+            "next_sonarr_tick_local": "",
+            "next_radarr_tick_local": "",
+            "next_trimmer_tick_local": "",
+            "sonarr_missing": 0,
+            "sonarr_upgrades": 0,
+            "radarr_missing": 0,
+            "radarr_upgrades": 0,
+            "emby_matched": 0,
+        }
+
+    monkeypatch.setattr("app.routers.dashboard.build_dashboard_status", _fake_status)
+    with _build_client(monkeypatch) as client:
+        resp = client.get("/")
+    assert resp.status_code == 200
+    assert b"Not yet run" in resp.content
+    assert b"Pending" in resp.content
+    assert b"No activity yet" in resp.content
+
+
 def test_cleaner_default_skips_emby_client_when_ready(monkeypatch) -> None:
     """Sidebar /trimmer must not scan Emby until ?scan=1 (fast navigation)."""
 
