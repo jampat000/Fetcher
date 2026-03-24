@@ -62,8 +62,8 @@ def test_dashboard_route_smoke(monkeypatch) -> None:
         resp = client.get("/")
     assert resp.status_code == 200
     assert b"Sonarr" in resp.content
-    assert b"Last run" in resp.content
-    assert b"Latest system event" in resp.content
+    assert b"Latest event" in resp.content
+    assert b"automation-cards" in resp.content
     assert b"Sonarr" in resp.content
     assert b"Radarr" in resp.content
     assert b"Trimmer" in resp.content
@@ -121,7 +121,7 @@ def test_dashboard_route_empty_states_are_intentional(monkeypatch) -> None:
         resp = client.get("/")
     assert resp.status_code == 200
     assert b"Not yet run" in resp.content
-    assert b"Pending" in resp.content
+    assert b"Scheduled" in resp.content
     assert b"No activity yet" in resp.content
 
 

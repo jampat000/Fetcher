@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.3.6] - 2026-03-24
+
+### Changed
+
+- **Automation 4-card redesign:** Rebuilt Automation as a compact 4-card layout (Sonarr, Radarr, Trimmer, Latest event) for faster status scanning.
+- **Dashboard visual alignment:** Updated Automation cards to match the summary-card visual language and responsive grid behavior.
+- **Readability polish:** Reduced vertical bulk and clarified primary/secondary status lines, including improved contextual latest-event presentation.
+
 ## [2.3.5] - 2026-03-24
 
 ### Changed
@@ -748,7 +756,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.5...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.6...HEAD
+[2.3.6]: https://github.com/jampat000/Fetcher/compare/v2.3.5...v2.3.6
 [2.3.5]: https://github.com/jampat000/Fetcher/compare/v2.3.4...v2.3.5
 [2.3.4]: https://github.com/jampat000/Fetcher/compare/v2.3.3...v2.3.4
 [2.3.3]: https://github.com/jampat000/Fetcher/compare/v2.3.2...v2.3.3
