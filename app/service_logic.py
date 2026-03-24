@@ -1084,8 +1084,28 @@ async def _execute_sonarr_block(
                 )
             elif missing_total > 0:
                 actions.append("Sonarr: missing search suppressed (cooldown)")
+                if arr_manual_scope == "sonarr_missing":
+                    session.add(
+                        ActivityLog(
+                            job_run_id=log.id,
+                            app="sonarr",
+                            kind="missing",
+                            count=0,
+                            detail="Manual missing search: suppressed by cooldown (no search triggered).",
+                        )
+                    )
             else:
                 actions.append("Sonarr: no missing episodes found")
+                if arr_manual_scope == "sonarr_missing":
+                    session.add(
+                        ActivityLog(
+                            job_run_id=log.id,
+                            app="sonarr",
+                            kind="missing",
+                            count=0,
+                            detail="Manual missing search: no missing episodes found.",
+                        )
+                    )
 
         if want_upgrade:
             allowed_ids, allowed_records, cutoff_total = await _paginate_wanted_for_search(
@@ -1130,8 +1150,28 @@ async def _execute_sonarr_block(
                 )
             elif cutoff_total > 0:
                 actions.append("Sonarr: cutoff-unmet search suppressed (cooldown)")
+                if arr_manual_scope == "sonarr_upgrade":
+                    session.add(
+                        ActivityLog(
+                            job_run_id=log.id,
+                            app="sonarr",
+                            kind="upgrade",
+                            count=0,
+                            detail="Manual upgrade search: suppressed by cooldown (no search triggered).",
+                        )
+                    )
             else:
                 actions.append("Sonarr: no cutoff-unmet episodes found")
+                if arr_manual_scope == "sonarr_upgrade":
+                    session.add(
+                        ActivityLog(
+                            job_run_id=log.id,
+                            app="sonarr",
+                            kind="upgrade",
+                            count=0,
+                            detail="Manual upgrade search: no cutoff-unmet episodes found.",
+                        )
+                    )
 
         if want_missing and not want_upgrade:
             cutoff_total = await _wanted_queue_total(sonarr, kind="cutoff")
@@ -1238,8 +1278,28 @@ async def _execute_radarr_block(
                 )
             elif missing_total > 0:
                 actions.append("Radarr: missing search suppressed (cooldown)")
+                if arr_manual_scope == "radarr_missing":
+                    session.add(
+                        ActivityLog(
+                            job_run_id=log.id,
+                            app="radarr",
+                            kind="missing",
+                            count=0,
+                            detail="Manual missing search: suppressed by cooldown (no search triggered).",
+                        )
+                    )
             else:
                 actions.append("Radarr: no missing movies found")
+                if arr_manual_scope == "radarr_missing":
+                    session.add(
+                        ActivityLog(
+                            job_run_id=log.id,
+                            app="radarr",
+                            kind="missing",
+                            count=0,
+                            detail="Manual missing search: no missing movies found.",
+                        )
+                    )
 
         if want_upgrade:
             allowed_ids, allowed_records, cutoff_total = await _paginate_wanted_for_search(
@@ -1275,8 +1335,28 @@ async def _execute_radarr_block(
                 )
             elif cutoff_total > 0:
                 actions.append("Radarr: cutoff-unmet search suppressed (cooldown)")
+                if arr_manual_scope == "radarr_upgrade":
+                    session.add(
+                        ActivityLog(
+                            job_run_id=log.id,
+                            app="radarr",
+                            kind="upgrade",
+                            count=0,
+                            detail="Manual upgrade search: suppressed by cooldown (no search triggered).",
+                        )
+                    )
             else:
                 actions.append("Radarr: no cutoff-unmet movies found")
+                if arr_manual_scope == "radarr_upgrade":
+                    session.add(
+                        ActivityLog(
+                            job_run_id=log.id,
+                            app="radarr",
+                            kind="upgrade",
+                            count=0,
+                            detail="Manual upgrade search: no cutoff-unmet movies found.",
+                        )
+                    )
 
         if want_missing and not want_upgrade:
             cutoff_total = await _wanted_queue_total(radarr, kind="cutoff")

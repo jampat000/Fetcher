@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.3.7] - 2026-03-24
+
+### Fixed
+
+- **Manual Arr search activity logging:** Fixed Sonarr and Radarr manual searches so successful manual actions now always create Activity entries, including no-results/cooldown outcomes.
+
 ## [2.3.6] - 2026-03-24
 
 ### Changed
@@ -756,7 +762,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.6...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.7...HEAD
+[2.3.7]: https://github.com/jampat000/Fetcher/compare/v2.3.6...v2.3.7
 [2.3.6]: https://github.com/jampat000/Fetcher/compare/v2.3.5...v2.3.6
 [2.3.5]: https://github.com/jampat000/Fetcher/compare/v2.3.4...v2.3.5
 [2.3.4]: https://github.com/jampat000/Fetcher/compare/v2.3.3...v2.3.4
