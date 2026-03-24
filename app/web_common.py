@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import timedelta
 from typing import Any
 from urllib.parse import quote
 
+from app.arr_intervals import effective_arr_interval_minutes
 from sqlalchemy import desc, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -138,18 +140,47 @@ async def build_dashboard_status(
     next_radarr_local = _fmt_local(next_radarr, tz) if next_radarr else ""
     next_trimmer_local = _fmt_local(next_trimmer, tz) if next_trimmer else ""
     settings = await _get_or_create_settings(session)
-    last_sonarr_local = _fmt_local(settings.sonarr_last_run_at, tz) if settings.sonarr_last_run_at else ""
-    last_radarr_local = _fmt_local(settings.radarr_last_run_at, tz) if settings.radarr_last_run_at else ""
-    last_trimmer_local = _fmt_local(settings.emby_last_run_at, tz) if settings.emby_last_run_at else ""
     snaps = snapshots if snapshots is not None else await fetch_latest_app_snapshots(session)
+
+    def _latest_snapshot_for(app_name: str) -> AppSnapshot | None:
+        snap = snaps.get(app_name)
+        return snap if isinstance(snap, AppSnapshot) else None
+
+    def _last_from(settings_dt: Any, snap: AppSnapshot | None) -> dict[str, Any]:
+        dt = snap.created_at if snap and getattr(snap, "created_at", None) else settings_dt
+        if not dt:
+            return {"time_local": "", "ok": None}
+        return {"time_local": _fmt_local(dt, tz), "ok": (bool(snap.ok) if snap is not None else None)}
+
+    # Snapshots capture per-app run outcomes (ok/failed) and are the primary source for per-app status.
+    sonarr_snap = snaps.get("sonarr")
+    radarr_snap = snaps.get("radarr")
+    emby_snap = snaps.get("emby")
+    last_sonarr = _last_from(settings.sonarr_last_run_at, _latest_snapshot_for("sonarr"))
+    last_radarr = _last_from(settings.radarr_last_run_at, _latest_snapshot_for("radarr"))
+    last_trimmer = _last_from(settings.emby_last_run_at, _latest_snapshot_for("emby"))
+
+    # If scheduler next-run is unavailable in this process, keep useful per-app timing by estimating from last+interval.
+    if not next_sonarr and settings.sonarr_enabled and last_sonarr["time_local"]:
+        dt = settings.sonarr_last_run_at
+        if dt:
+            next_sonarr_local = _fmt_local(dt + timedelta(minutes=effective_arr_interval_minutes(settings.sonarr_interval_minutes)), tz)
+    if not next_radarr and settings.radarr_enabled and last_radarr["time_local"]:
+        dt = settings.radarr_last_run_at
+        if dt:
+            next_radarr_local = _fmt_local(dt + timedelta(minutes=effective_arr_interval_minutes(settings.radarr_interval_minutes)), tz)
+    if not next_trimmer and settings.emby_enabled and last_trimmer["time_local"]:
+        dt = settings.emby_last_run_at
+        if dt:
+            next_trimmer_local = _fmt_local(dt + timedelta(minutes=max(5, int(settings.emby_interval_minutes or 60))), tz)
     sonarr_snap = snaps.get("sonarr")
     radarr_snap = snaps.get("radarr")
     emby_snap = snaps.get("emby")
     return {
         "last_run": last_run_display,
-        "last_sonarr_run_local": last_sonarr_local,
-        "last_radarr_run_local": last_radarr_local,
-        "last_trimmer_run_local": last_trimmer_local,
+        "last_sonarr_run": last_sonarr,
+        "last_radarr_run": last_radarr,
+        "last_trimmer_run": last_trimmer,
         "next_sonarr_tick_local": next_sonarr_local,
         "next_radarr_tick_local": next_radarr_local,
         "next_trimmer_tick_local": next_trimmer_local,

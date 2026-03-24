@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.3.2] - 2026-03-24
+
+### Fixed
+
+- **Dashboard status population:** Fixed per-subsystem scheduler status payload/render alignment so Sonarr, Radarr, and Trimmer last/next run fields populate from matching backend keys and fallback timing data when in-memory scheduler next-run is unavailable.
+- **Per-subsystem run outcome badges:** Added Sonarr/Radarr/Trimmer success/failure badges on each subsystem’s last-run row using latest per-app snapshot outcome.
+- **Dashboard hierarchy alignment:** Demoted the generic run row to **Latest system event** so independent per-subsystem Last/Next status is the primary scheduling signal.
+
 ## [2.3.1] - 2026-03-24
 
 ### Changed
@@ -715,7 +723,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.1...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.2...HEAD
+[2.3.2]: https://github.com/jampat000/Fetcher/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/jampat000/Fetcher/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/jampat000/Fetcher/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/jampat000/Fetcher/compare/v2.1.1...v2.2.0
