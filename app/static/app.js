@@ -355,7 +355,23 @@ function setMetricTile(metricKey, value) {
   tile.textContent = String(value);
 }
 
-function applyDashboardStatusPayload(data) {
+function fetchDashboardStatusJson() {
+  if (document.visibilityState === "hidden") {
+    return Promise.resolve(null);
+  }
+  return fetch("/api/dashboard/status", {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      "X-CSRF-Token": typeof getCSRFToken === "function" ? getCSRFToken() : "",
+    },
+    credentials: "same-origin",
+    cache: "no-store",
+  }).then((r) => (r.ok ? r.json() : null));
+}
+
+function applyDashboardHeroMetrics(data) {
+  if (!data) return;
   const tv = document.querySelector(".hero-stat.hs-tv .hs-val");
   const mov = document.querySelector(".hero-stat.hs-mov .hs-val");
   const upgTv = document.querySelector(".hero-stat.hs-upg-tv .hs-val");
@@ -377,6 +393,13 @@ function applyDashboardStatusPayload(data) {
     upgMov.setAttribute("data-target", String(data.radarr_upgrades ?? 0));
   }
 
+  const emM = document.getElementById("dash-emby-matched");
+  if (emM) emM.textContent = String(data.emby_matched ?? 0);
+  setMetricTile("emby-matched", data.emby_matched ?? 0);
+}
+
+function applyDashboardAutomationStatus(data) {
+  if (!data) return;
   const nextSonarr = document.getElementById("dash-next-sonarr-tick");
   if (nextSonarr) {
     const t = data.next_sonarr_tick_local;
@@ -395,10 +418,6 @@ function applyDashboardStatusPayload(data) {
     if (t) nextTrimmer.textContent = t;
     else nextTrimmer.innerHTML = '<span class="muted automation-value-pending">Scheduled</span>';
   }
-
-  const emM = document.getElementById("dash-emby-matched");
-  if (emM) emM.textContent = String(data.emby_matched ?? 0);
-  setMetricTile("emby-matched", data.emby_matched ?? 0);
 
   const lastContext = document.getElementById("dash-last-context");
   const lastHost = document.getElementById("dash-automation-last");
@@ -457,36 +476,103 @@ function applyDashboardStatusPayload(data) {
   }
 }
 
+function applyDashboardStatusPayload(data) {
+  applyDashboardHeroMetrics(data);
+  applyDashboardAutomationStatus(data);
+}
+
+const _heroMetricsPoll = {
+  minGapMs: 3500,
+  lastStart: 0,
+  inFlight: false,
+  queued: false,
+  rescheduleTimer: null,
+};
+
+function runHeroMetricsFetchFromServer() {
+  if (_heroMetricsPoll.inFlight) {
+    _heroMetricsPoll.queued = true;
+    return;
+  }
+  _heroMetricsPoll.inFlight = true;
+  fetchDashboardStatusJson()
+    .then((payload) => {
+      if (payload) applyDashboardHeroMetrics(payload);
+    })
+    .catch(() => {})
+    .finally(() => {
+      _heroMetricsPoll.inFlight = false;
+      if (_heroMetricsPoll.queued) {
+        _heroMetricsPoll.queued = false;
+        runHeroMetricsFetchFromServer();
+      }
+    });
+}
+
+function requestHeroMetricsRefresh() {
+  if (!document.getElementById("dashboard-hero-stats")) return;
+  const now = Date.now();
+  const gap = now - _heroMetricsPoll.lastStart;
+  if (gap < _heroMetricsPoll.minGapMs) {
+    if (_heroMetricsPoll.rescheduleTimer !== null) {
+      window.clearTimeout(_heroMetricsPoll.rescheduleTimer);
+    }
+    _heroMetricsPoll.rescheduleTimer = window.setTimeout(() => {
+      _heroMetricsPoll.rescheduleTimer = null;
+      requestHeroMetricsRefresh();
+    }, _heroMetricsPoll.minGapMs - gap);
+    return;
+  }
+  _heroMetricsPoll.lastStart = Date.now();
+  runHeroMetricsFetchFromServer();
+}
+
+function startHeroMetricsPolling() {
+  const root = document.getElementById("dashboard-hero-stats");
+  if (!root) return;
+  const tiles = root.querySelectorAll(".hero-stat[data-hero-poll-ms]");
+  tiles.forEach((tile) => {
+    const raw = tile.getAttribute("data-hero-poll-ms");
+    const ms = parseInt(raw, 10);
+    if (!Number.isFinite(ms) || ms < 8000) return;
+    window.setInterval(requestHeroMetricsRefresh, ms);
+  });
+  window.fetcherHeroMetricsPollNow = requestHeroMetricsRefresh;
+  requestHeroMetricsRefresh();
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") requestHeroMetricsRefresh();
+  });
+}
+
 function startDashboardStatusPolling() {
   if (!document.getElementById("dashboard-hero-stats")) return;
   const intervalMs = 60000;
   let timerId = null;
-  const poll = () => {
+  const pollAutomation = () => {
     if (document.visibilityState === "hidden") return;
-    fetch("/api/dashboard/status", {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        "X-CSRF-Token": typeof getCSRFToken === "function" ? getCSRFToken() : "",
-      },
-      credentials: "same-origin",
-      cache: "no-store",
-    })
-      .then((r) => (r.ok ? r.json() : null))
+    fetchDashboardStatusJson()
+      .then((data) => {
+        if (data) applyDashboardAutomationStatus(data);
+      })
+      .catch(() => {});
+  };
+  const pollFull = () => {
+    if (document.visibilityState === "hidden") return;
+    fetchDashboardStatusJson()
       .then((data) => {
         if (data) applyDashboardStatusPayload(data);
       })
       .catch(() => {});
   };
-  window.fetcherDashboardPollNow = poll;
+  window.fetcherDashboardPollNow = pollFull;
   const arm = () => {
     if (timerId !== null) {
       clearInterval(timerId);
       timerId = null;
     }
-    timerId = window.setInterval(poll, intervalMs);
+    timerId = window.setInterval(pollAutomation, intervalMs);
   };
-  poll();
+  pollAutomation();
   arm();
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
@@ -495,7 +581,7 @@ function startDashboardStatusPolling() {
         timerId = null;
       }
     } else {
-      poll();
+      pollAutomation();
       arm();
     }
   });
@@ -698,6 +784,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
   window.setTimeout(runHeroCountUp, 200);
 
+  startHeroMetricsPolling();
   startDashboardStatusPolling();
   startLiveTilePolling();
 
