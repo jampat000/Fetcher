@@ -14,6 +14,8 @@
               Missing search for {{ e.count }} {{ "episode" if e.app == "sonarr" else "movie" }}{{ "s" if e.count != 1 else "" }}
             {% elif e.kind == "trimmed" %}
               {{ e.count }} item{{ "s" if e.count != 1 else "" }} matched Emby Trimmer rules
+            {% elif e.kind == "cleanup" %}
+              Radarr: removed failed import from queue ({{ e.count }} item{{ "s" if e.count != 1 else "" }})
             {% else %}
               Upgrade search for {{ e.count }} {{ "episode" if e.app == "sonarr" else "movie" }}{{ "s" if e.count != 1 else "" }}
             {% endif %}

@@ -223,6 +223,7 @@ async def save_settings(
     radarr_api_key: str = Form(""),
     radarr_search_missing: bool = Form(False),
     radarr_search_upgrades: bool = Form(False),
+    radarr_remove_failed_imports: bool = Form(False),
     radarr_max_items_per_run: int = Form(50),
     radarr_interval_minutes: int = Form(60),
     radarr_schedule_enabled: bool = Form(False),
@@ -258,6 +259,7 @@ async def save_settings(
             radarr_api_key=radarr_api_key.strip(),
             radarr_search_missing=radarr_search_missing,
             radarr_search_upgrades=radarr_search_upgrades,
+            radarr_remove_failed_imports=radarr_remove_failed_imports,
             radarr_max_items_per_run=radarr_max_items_per_run,
             radarr_interval_minutes=radarr_interval_minutes,
             arr_search_cooldown_minutes=arr_search_cooldown_minutes,
@@ -291,6 +293,7 @@ async def save_settings(
             row.radarr_api_key = encrypt_secret_for_storage(data.radarr_api_key)
             row.radarr_search_missing = data.radarr_search_missing
             row.radarr_search_upgrades = data.radarr_search_upgrades
+            row.radarr_remove_failed_imports = data.radarr_remove_failed_imports
             row.radarr_max_items_per_run = data.radarr_max_items_per_run
             row.radarr_interval_minutes = data.radarr_interval_minutes
             row.radarr_schedule_enabled = radarr_schedule_enabled

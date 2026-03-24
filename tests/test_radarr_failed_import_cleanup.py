@@ -1,0 +1,291 @@
+from __future__ import annotations
+
+import asyncio
+from typing import Any
+
+import pytest
+from sqlalchemy import delete, desc, select
+from app.db import SessionLocal, _get_or_create_settings
+from app.models import ActivityLog, AppSnapshot, JobRunLog
+from app.radarr_failed_import_cleanup import (
+    classify_queue_matches_by_download_id,
+    is_radarr_import_failed_record,
+    parse_radarr_import_failed_reason,
+    run_radarr_failed_import_queue_cleanup,
+)
+
+
+def test_is_radarr_import_failed_record_accepts_string() -> None:
+    assert is_radarr_import_failed_record({"eventType": "importFailed"}) is True
+    assert is_radarr_import_failed_record({"eventType": "IMPORTFAILED"}) is True
+    assert is_radarr_import_failed_record({"eventType": "downloadFailed"}) is False
+
+
+def test_is_radarr_import_failed_record_accepts_int_nine() -> None:
+    assert is_radarr_import_failed_record({"eventType": 9}) is True
+    assert is_radarr_import_failed_record({"eventType": 8}) is False
+
+
+def test_classify_queue_matches_none() -> None:
+    kind, qid = classify_queue_matches_by_download_id(
+        "abc",
+        [{"id": 1, "downloadId": "other"}],
+    )
+    assert kind == "none" and qid is None
+
+
+def test_classify_queue_matches_one() -> None:
+    kind, qid = classify_queue_matches_by_download_id(
+        "dl-1",
+        [
+            {"id": 10, "downloadId": "dl-1"},
+            {"id": 11, "downloadId": "x"},
+        ],
+    )
+    assert kind == "one" and qid == 10
+
+
+def test_classify_queue_matches_many_distinct_ids() -> None:
+    kind, qid = classify_queue_matches_by_download_id(
+        "dup",
+        [
+            {"id": 1, "downloadId": "dup"},
+            {"id": 2, "downloadId": "dup"},
+        ],
+    )
+    assert kind == "many" and qid is None
+
+
+def test_classify_queue_matches_duplicate_rows_same_id_is_one() -> None:
+    """Duplicate API rows pointing at the same queue id → still exactly one target."""
+    kind, qid = classify_queue_matches_by_download_id(
+        "same",
+        [
+            {"id": 5, "downloadId": "same"},
+            {"id": 5, "downloadId": "same"},
+        ],
+    )
+    assert kind == "one" and qid == 5
+
+
+def test_parse_radarr_import_failed_reason_top_level() -> None:
+    assert parse_radarr_import_failed_reason({"reason": " bad "}) == "bad"
+
+
+def test_parse_radarr_import_failed_reason_nested_data() -> None:
+    rec: dict[str, Any] = {"data": {"message": "nested msg"}}
+    assert parse_radarr_import_failed_reason(rec) == "nested msg"
+
+
+def test_parse_radarr_import_failed_reason_missing_is_empty() -> None:
+    assert parse_radarr_import_failed_reason({}) == ""
+    assert parse_radarr_import_failed_reason({"data": None}) == ""
+    assert parse_radarr_import_failed_reason({"data": "not-a-dict"}) == ""
+
+
+def test_parse_radarr_import_failed_reason_non_string_values_ignored() -> None:
+    assert parse_radarr_import_failed_reason({"reason": 123}) == ""
+
+
+class _FakeRadarrClient:
+    def __init__(self) -> None:
+        self.deleted: list[int] = []
+
+    async def history_page(self, *, page: int, page_size: int) -> dict[str, Any]:
+        if page != 1:
+            return {"records": [], "totalRecords": 1}
+        return {
+            "records": [
+                {
+                    "eventType": "importFailed",
+                    "downloadId": "d1",
+                    "sourceTitle": "Test Movie",
+                    "reason": "corrupt",
+                }
+            ],
+            "totalRecords": 1,
+        }
+
+    async def queue_page(self, *, page: int, page_size: int) -> dict[str, Any]:
+        if page != 1:
+            return {"records": [], "totalRecords": 1}
+        return {
+            "records": [{"id": 42, "downloadId": "d1"}],
+            "totalRecords": 1,
+        }
+
+    async def delete_queue_item(self, *, queue_id: int) -> None:
+        self.deleted.append(int(queue_id))
+
+
+def test_run_cleanup_success_removes_queue_and_writes_activity() -> None:
+    asyncio.run(_run_cleanup_success())
+
+
+async def _run_cleanup_success() -> None:
+    client = _FakeRadarrClient()
+    actions: list[str] = []
+    async with SessionLocal() as session:
+        log = JobRunLog(ok=True, message="")
+        session.add(log)
+        await session.commit()
+        await session.refresh(log)
+        await run_radarr_failed_import_queue_cleanup(
+            client,
+            session=session,
+            job_run_id=log.id,
+            actions=actions,
+        )
+        await session.commit()
+
+    assert client.deleted == [42]
+    assert any("removed failed import" in a.lower() for a in actions)
+
+    async with SessionLocal() as session:
+        row = (
+            (await session.execute(select(ActivityLog).order_by(desc(ActivityLog.id)).limit(1)))
+            .scalars()
+            .first()
+        )
+        assert row is not None
+        assert row.app == "radarr"
+        assert row.kind == "cleanup"
+        assert row.count == 1
+        assert "Test Movie" in (row.detail or "")
+        assert "Reason: corrupt" in (row.detail or "")
+        assert "removed from download queue" in (row.detail or "").lower()
+        await session.execute(delete(ActivityLog))
+        await session.execute(delete(JobRunLog))
+        await session.commit()
+
+
+class _FakeNoMatchClient(_FakeRadarrClient):
+    async def queue_page(self, *, page: int, page_size: int) -> dict[str, Any]:
+        return {"records": [{"id": 1, "downloadId": "other"}], "totalRecords": 1}
+
+
+def test_run_cleanup_no_match_no_delete() -> None:
+    asyncio.run(_run_no_match())
+
+
+async def _run_no_match() -> None:
+    client = _FakeNoMatchClient()
+    actions: list[str] = []
+    async with SessionLocal() as session:
+        await run_radarr_failed_import_queue_cleanup(
+            client,
+            session=session,
+            job_run_id=None,
+            actions=actions,
+        )
+        await session.commit()
+    assert client.deleted == []
+
+
+class _FakeAmbiguousClient(_FakeRadarrClient):
+    async def queue_page(self, *, page: int, page_size: int) -> dict[str, Any]:
+        return {
+            "records": [
+                {"id": 1, "downloadId": "d1"},
+                {"id": 2, "downloadId": "d1"},
+            ],
+            "totalRecords": 2,
+        }
+
+
+def test_run_cleanup_ambiguous_no_delete() -> None:
+    asyncio.run(_run_ambiguous())
+
+
+async def _run_ambiguous() -> None:
+    client = _FakeAmbiguousClient()
+    actions: list[str] = []
+    async with SessionLocal() as session:
+        await run_radarr_failed_import_queue_cleanup(
+            client,
+            session=session,
+            job_run_id=None,
+            actions=actions,
+        )
+        await session.commit()
+    assert client.deleted == []
+    assert any("ambiguous" in a.lower() for a in actions)
+
+
+def test_run_once_radarr_failed_import_cleanup_disabled_skips_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import datetime
+
+    from app.service_logic import run_once
+
+    async def _prep() -> None:
+        async with SessionLocal() as s:
+            row = await _get_or_create_settings(s)
+            row.radarr_remove_failed_imports = False
+            await s.commit()
+            await s.execute(delete(ActivityLog))
+            await s.execute(delete(AppSnapshot))
+            await s.execute(delete(JobRunLog))
+            await s.commit()
+
+    asyncio.run(_prep())
+
+    called = {"history": 0, "queue": 0, "delete": 0}
+
+    class _FakeArrClient:
+        def __init__(self, _cfg: object) -> None:
+            pass
+
+        async def health(self) -> bool:
+            return True
+
+        async def history_page(self, **kwargs: Any) -> dict[str, Any]:
+            called["history"] += 1
+            return {"records": [], "totalRecords": 0}
+
+        async def queue_page(self, **kwargs: Any) -> dict[str, Any]:
+            called["queue"] += 1
+            return {"records": [], "totalRecords": 0}
+
+        async def delete_queue_item(self, **kwargs: Any) -> None:
+            called["delete"] += 1
+
+        async def aclose(self) -> None:
+            return None
+
+    async def _paginate(*args: Any, **kwargs: Any) -> tuple[list[int], list[dict[str, Any]], int]:
+        return [], [], 0
+
+    async def _wanted_total(*args: Any, **kwargs: Any) -> int:
+        return 0
+
+    fixed_now = datetime(2026, 3, 23, 15, 0, 0)
+    monkeypatch.setattr("app.service_logic.utc_now_naive", lambda: fixed_now)
+    monkeypatch.setattr("app.service_logic.resolve_sonarr_api_key", lambda _s: "")
+    monkeypatch.setattr("app.service_logic.resolve_radarr_api_key", lambda _s: "rk")
+    monkeypatch.setattr("app.service_logic.resolve_emby_api_key", lambda _s: "")
+    monkeypatch.setattr("app.service_logic.in_window", lambda **_kw: True)
+    monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
+    monkeypatch.setattr("app.service_logic._paginate_wanted_for_search", _paginate)
+    monkeypatch.setattr("app.service_logic._wanted_queue_total", _wanted_total)
+
+    async def _set_radarr() -> None:
+        async with SessionLocal() as s:
+            row = await _get_or_create_settings(s)
+            row.radarr_enabled = True
+            row.radarr_url = "http://localhost:7878"
+            row.radarr_search_missing = False
+            row.radarr_search_upgrades = False
+            row.radarr_last_run_at = None
+            row.radarr_remove_failed_imports = False
+            await s.commit()
+
+    asyncio.run(_set_radarr())
+
+    async def _go() -> None:
+        async with SessionLocal() as s:
+            await run_once(s)
+
+    asyncio.run(_go())
+    assert called["history"] == 0
+    assert called["queue"] == 0
+    assert called["delete"] == 0

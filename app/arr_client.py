@@ -176,6 +176,48 @@ class ArrClient:
         r = await self._req("DELETE", f"/api/v3/episodeFile/{int(episode_file_id)}")
         r.raise_for_status()
 
+    async def history_page(self, *, page: int = 1, page_size: int = 250) -> dict[str, Any]:
+        """Sonarr/Radarr paginated history (``records``, ``totalRecords``)."""
+        r = await self._req(
+            "GET",
+            "/api/v3/history",
+            params={"page": int(page), "pageSize": int(page_size)},
+        )
+        r.raise_for_status()
+        data = r.json()
+        return data if isinstance(data, dict) else {}
+
+    async def queue_page(self, *, page: int = 1, page_size: int = 200) -> dict[str, Any]:
+        """Sonarr/Radarr download queue page (``records``, ``totalRecords``)."""
+        r = await self._req(
+            "GET",
+            "/api/v3/queue",
+            params={"page": int(page), "pageSize": int(page_size)},
+        )
+        r.raise_for_status()
+        data = r.json()
+        return data if isinstance(data, dict) else {}
+
+    async def delete_queue_item(
+        self,
+        *,
+        queue_id: int,
+        remove_from_client: bool = False,
+        blocklist: bool = False,
+    ) -> None:
+        """Remove one queue row by id (Radarr/Sonarr *arr queue API)."""
+        r = await self._req(
+            "DELETE",
+            f"/api/v3/queue/{int(queue_id)}",
+            params={
+                "removeFromClient": "true" if remove_from_client else "false",
+                "blocklist": "true" if blocklist else "false",
+                "changeCategory": "false",
+                "skipRedownload": "false",
+            },
+        )
+        r.raise_for_status()
+
 
 async def trigger_sonarr_missing_search(client: ArrClient, *, series_id: int | None = None, episode_ids: list[int] | None = None) -> None:
     if episode_ids:

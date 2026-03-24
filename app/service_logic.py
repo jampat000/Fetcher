@@ -36,6 +36,7 @@ from app.emby_rules import (
     parse_movie_people_phrases,
     tv_matches_selected_genres,
 )
+from app.radarr_failed_import_cleanup import run_radarr_failed_import_queue_cleanup
 from app.resolvers.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
 
 logger = logging.getLogger(__name__)
@@ -1188,6 +1189,14 @@ async def _execute_radarr_block(
     radarr = ArrClient(ArrConfig(settings.radarr_url, ctx.rad_key))
     try:
         await radarr.health()
+
+        if settings.radarr_remove_failed_imports:
+            await run_radarr_failed_import_queue_cleanup(
+                radarr,
+                session=session,
+                job_run_id=log.id,
+                actions=actions,
+            )
 
         radarr_limit = max(1, int((settings.radarr_max_items_per_run or 0) or default_limit))
         radarr_missing_enabled = bool(settings.radarr_search_missing)
