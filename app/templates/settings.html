@@ -29,18 +29,20 @@
     </button>
   </nav>
 
-  <form method="post" action="/settings">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-    {% set tst = request.query_params.get('test', '') %}
-    {% set im = request.query_params.get('import', '') %}
+  {% set tst = request.query_params.get('test', '') %}
+  {% set im = request.query_params.get('import', '') %}
 
     <div class="settings-tab-target is-active" data-settings-panel="global" role="tabpanel" aria-labelledby="fetcher-tab-global">
     <div class="card gc stripe-gray" id="section-global">
+    <form id="fetcher-settings-global" class="fetcher-settings-save-form" method="post" action="/settings" data-fetcher-async-settings="1">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <div class="settings-async-feedback" hidden role="status" aria-live="polite"></div>
       <div class="gc-title">Global</div>
       {% if request.query_params.get('saved') == '1' %}
       <div class="banner banner-ok" role="status">Settings saved.</div>
       {% elif request.query_params.get('save') == 'fail' and request.query_params.get('reason') != 'invalid_ip' %}
-      <div class="banner banner-warn" role="alert">Could not save settings{% if request.query_params.get('reason') %}: {{ request.query_params.get('reason') | e }}{% endif %}.</div>
+      {% set _sr = (request.query_params.get('reason') or '') %}
+      <div class="banner banner-warn" role="alert">{% if _sr == 'db_busy' %}Save failed — the database was busy. Try again.{% elif _sr == 'invalid' %}Save failed — check this form and try again.{% else %}Save failed — try again.{% endif %}</div>
       {% endif %}
       {% if im == 'ok' %}
       <div class="banner banner-ok" role="status"><strong>Settings</strong> restored from backup. <strong>Restart</strong> the <strong>Fetcher</strong> Windows service (or the app) so schedules pick up changes.</div>
@@ -78,11 +80,16 @@
         <button class="btn" type="submit" name="save_scope" value="global">Save global settings</button>
         <a class="btn secondary" href="/">Back to dashboard</a>
       </div>
+      <p class="small muted">Saves <strong>only</strong> this tab: cooldown, log retention, and timezone. Sonarr and Radarr each have their own save button.</p>
+    </form>
     </div>
     </div>
 
     <div class="settings-tab-target" data-settings-panel="sonarr" role="tabpanel" aria-labelledby="fetcher-tab-sonarr" hidden>
     <div class="card gc stripe-blue" id="section-sonarr">
+    <form id="fetcher-settings-sonarr" class="fetcher-settings-save-form" method="post" action="/settings" data-fetcher-async-settings="1">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <div class="settings-async-feedback" hidden role="status" aria-live="polite"></div>
       <div class="gc-title">Sonarr</div>
       {% if tst == 'sonarr_ok' %}
       <div class="banner banner-ok" role="status">Sonarr connection succeeded.</div>
@@ -124,7 +131,7 @@
             <div class="field">
               <label>Run interval (minutes)</label>
               <input class="number" type="number" name="sonarr_interval_minutes" value="{{ settings.sonarr_interval_minutes }}" min="1" max="10080" placeholder="60" />
-              <div class="small">How often Sonarr automation becomes due. The schedule window only restricts allowed run times. Used for <strong>TV</strong> (missing searches, upgrades). Use <strong>Save Sonarr settings</strong> (or <strong>Save global settings</strong>) so this value is persisted.</div>
+              <div class="small">How often Sonarr runs are due; the schedule window only limits when runs may start. Applies to <strong>TV</strong> (missing and upgrade searches). <strong>Save Sonarr settings</strong> saves only this tab.</div>
             </div>
           </div>
         </div>
@@ -134,11 +141,15 @@
         <button class="btn" type="submit" name="save_scope" value="sonarr">Save Sonarr settings</button>
         <button type="submit" class="btn secondary" form="test-sonarr">Test Sonarr</button>
       </div>
+    </form>
     </div>
     </div>
 
     <div class="settings-tab-target" data-settings-panel="radarr" role="tabpanel" aria-labelledby="fetcher-tab-radarr" hidden>
     <div class="card gc stripe-green" id="section-radarr">
+    <form id="fetcher-settings-radarr" class="fetcher-settings-save-form" method="post" action="/settings" data-fetcher-async-settings="1">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <div class="settings-async-feedback" hidden role="status" aria-live="polite"></div>
       <div class="gc-title">Radarr</div>
       {% if tst == 'radarr_ok' %}
       <div class="banner banner-ok" role="status">Radarr connection succeeded.</div>
@@ -182,7 +193,7 @@
             <div class="field">
               <label>Run interval (minutes)</label>
               <input class="number" type="number" name="radarr_interval_minutes" value="{{ settings.radarr_interval_minutes }}" min="1" max="10080" placeholder="60" />
-              <div class="small">How often Radarr automation becomes due. The schedule window only restricts allowed run times. Used for <strong>movies</strong> (missing searches, upgrades). Use <strong>Save Radarr settings</strong> so this value is persisted and only the Radarr job is rescheduled — saving the Sonarr tab alone does not update Radarr.</div>
+              <div class="small">How often Radarr runs are due; the schedule window only limits when runs may start. Applies to <strong>movies</strong> (missing and upgrade searches). <strong>Save Radarr settings</strong> saves only this tab and reschedules Radarr — Sonarr is unchanged.</div>
             </div>
           </div>
         </div>
@@ -192,9 +203,9 @@
         <button class="btn" type="submit" name="save_scope" value="radarr">Save Radarr settings</button>
         <button type="submit" class="btn secondary" form="test-radarr">Test Radarr</button>
       </div>
+    </form>
     </div>
     </div>
-  </form>
 
   <div class="settings-tab-target" data-settings-panel="security" role="tabpanel" aria-labelledby="fetcher-tab-security" hidden>
     <div class="card gc stripe-purple" id="section-security">

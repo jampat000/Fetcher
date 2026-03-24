@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,6 +43,9 @@ from app.routers.deps import AUTH_DEPS, AUTH_FORM_DEPS
 logger = logging.getLogger(__name__)
 
 router = APIRouter(dependencies=AUTH_DEPS)
+
+# Fetch sends this header to receive JSON instead of a 303 redirect (same validation + CSRF as normal POST).
+SETTINGS_SAVE_ASYNC_HEADER = "x-fetcher-settings-async"
 
 
 @router.get("/settings", response_class=HTMLResponse)
@@ -199,8 +202,9 @@ async def settings_backup_import(
     return RedirectResponse("/settings?import=ok", status_code=303)
 
 
-@router.post("/settings", dependencies=AUTH_FORM_DEPS)
+@router.post("/settings", dependencies=AUTH_FORM_DEPS, response_model=None)
 async def save_settings(
+    request: Request,
     sonarr_enabled: bool = Form(False),
     sonarr_url: str = Form(""),
     sonarr_api_key: str = Form(""),
@@ -241,10 +245,37 @@ async def save_settings(
     timezone: str = Form("UTC"),
     save_scope: str = Form("all"),
     session: AsyncSession = Depends(get_session),
-) -> RedirectResponse:
-    tab_q = quote(settings_save_redirect_tab(save_scope), safe="")
+) -> RedirectResponse | JSONResponse:
+    tab_key = settings_save_redirect_tab(save_scope)
+    tab_q = quote(tab_key, safe="")
+    want_json = (request.headers.get(SETTINGS_SAVE_ASYNC_HEADER) or "").strip() == "1"
+
+    def respond(*, saved: bool, reason: str | None = None) -> RedirectResponse | JSONResponse:
+        if want_json:
+            payload: dict[str, str | bool] = {"ok": saved, "tab": tab_key}
+            if not saved:
+                payload["reason"] = reason or "error"
+            return JSONResponse(payload)
+        if saved:
+            return RedirectResponse(f"/settings?saved=1&tab={tab_q}", status_code=303)
+        r = reason or "error"
+        return RedirectResponse(
+            f"/settings?save=fail&reason={quote(r, safe='')}&tab={tab_q}",
+            status_code=303,
+        )
+
     try:
         row = await _get_or_create_settings(session)
+        scope = (save_scope or "all").strip().lower()
+        # Partial saves: merge run intervals from DB for apps not updated by this POST so
+        # SettingsIn does not pick up Form() defaults (60) for missing/stale fields.
+        # Global save only persists cooldown / log retention / timezone — Sonarr & Radarr from DB here.
+        son_im = sonarr_interval_minutes
+        rad_im = radarr_interval_minutes
+        if scope not in ("all", "sonarr"):
+            son_im = row.sonarr_interval_minutes if row.sonarr_interval_minutes is not None else 60
+        if scope not in ("all", "radarr"):
+            rad_im = row.radarr_interval_minutes if row.radarr_interval_minutes is not None else 60
         data = SettingsIn(
             sonarr_enabled=sonarr_enabled,
             sonarr_url=_normalize_base_url(sonarr_url),
@@ -252,7 +283,7 @@ async def save_settings(
             sonarr_search_missing=sonarr_search_missing,
             sonarr_search_upgrades=sonarr_search_upgrades,
             sonarr_max_items_per_run=sonarr_max_items_per_run,
-            sonarr_interval_minutes=sonarr_interval_minutes,
+            sonarr_interval_minutes=son_im,
             # schedule fields are not in SettingsIn; set on ORM row below
             radarr_enabled=radarr_enabled,
             radarr_url=_normalize_base_url(radarr_url),
@@ -261,12 +292,11 @@ async def save_settings(
             radarr_search_upgrades=radarr_search_upgrades,
             radarr_remove_failed_imports=radarr_remove_failed_imports,
             radarr_max_items_per_run=radarr_max_items_per_run,
-            radarr_interval_minutes=radarr_interval_minutes,
+            radarr_interval_minutes=rad_im,
             arr_search_cooldown_minutes=arr_search_cooldown_minutes,
         )
-        scope = (save_scope or "all").strip().lower()
-        # Sonarr/Radarr: persist on app-specific save OR "Save Global" (same form posts all fields).
-        if scope in ("all", "sonarr", "global"):
+        # Sonarr/Radarr: persist on app-specific save or legacy full save (save_scope=all).
+        if scope in ("all", "sonarr"):
             row.sonarr_enabled = data.sonarr_enabled
             row.sonarr_url = data.sonarr_url
             row.sonarr_api_key = encrypt_secret_for_storage(data.sonarr_api_key)
@@ -287,7 +317,7 @@ async def save_settings(
             row.sonarr_schedule_start = _normalize_hhmm(sonarr_schedule_start, "00:00")
             row.sonarr_schedule_end = _normalize_hhmm(sonarr_schedule_end, "23:59")
 
-        if scope in ("all", "radarr", "global"):
+        if scope in ("all", "radarr"):
             row.radarr_enabled = data.radarr_enabled
             row.radarr_url = data.radarr_url
             row.radarr_api_key = encrypt_secret_for_storage(data.radarr_api_key)
@@ -320,18 +350,18 @@ async def save_settings(
         elif scope == "radarr":
             sched_targets = {"radarr"}
         elif scope == "global":
-            sched_targets = {"sonarr", "radarr", "trimmer"}
+            sched_targets = set()
         else:
             sched_targets = None
         if not await try_commit_and_reschedule(session, targets=sched_targets):
-            return RedirectResponse(f"/settings?save=fail&reason=db_busy&tab={tab_q}", status_code=303)
-        return RedirectResponse(f"/settings?saved=1&tab={tab_q}", status_code=303)
+            return respond(saved=False, reason="db_busy")
+        return respond(saved=True)
     except SQLAlchemyError:
         logger.exception("POST /settings SQLAlchemyError")
-        return RedirectResponse(f"/settings?save=fail&reason=db_error&tab={tab_q}", status_code=303)
+        return respond(saved=False, reason="db_error")
     except ValueError:
         logger.exception("POST /settings ValueError")
-        return RedirectResponse(f"/settings?save=fail&reason=invalid&tab={tab_q}", status_code=303)
+        return respond(saved=False, reason="invalid")
     except Exception:
         logger.exception("POST /settings failed")
         try:
@@ -340,7 +370,7 @@ async def save_settings(
             pass
         if (os.environ.get("FETCHER_LOG_LEVEL") or "").strip().upper() == "DEBUG":
             raise
-        return RedirectResponse(f"/settings?save=fail&reason=error&tab={tab_q}", status_code=303)
+        return respond(saved=False, reason="error")
 
 
 @router.post("/test/sonarr", dependencies=AUTH_FORM_DEPS)

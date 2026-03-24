@@ -84,6 +84,7 @@ let fetcherPendingMainScroll = null;
 /** Remember scroll when saving (303 redirect reloads at top). */
 function bindScrollRestoreOnFormSubmit() {
   document.querySelectorAll('form[method="post"]').forEach((form) => {
+    if (form.getAttribute("data-fetcher-async-settings") === "1") return;
     form.addEventListener("submit", persistScrollForAfterRedirect, true);
     form
       .querySelectorAll('button[type="submit"], button:not([type]), input[type="submit"]')
@@ -673,6 +674,180 @@ function startLiveTilePolling() {
   });
 }
 
+const FETCHER_SETTINGS_ASYNC_HEADER = "X-Fetcher-Settings-Async";
+const FETCHER_SETTINGS_SAVE_REASON_TEXT = {
+  db_busy: "The database was busy — try again in a moment.",
+  db_error: "Save failed — try again.",
+  invalid: "Save failed — check this form and try again.",
+  error: "Save failed — try again.",
+};
+const FETCHER_SETTINGS_SAVE_PENDING_LABEL = "Saving…";
+const FETCHER_SETTINGS_SAVE_SUCCESS_BANNER = "Settings saved.";
+
+function clearSettingsSaveFeedbackTimer(form) {
+  const t = form._fetcherSaveFeedbackTimer;
+  if (t) {
+    window.clearTimeout(t);
+    form._fetcherSaveFeedbackTimer = null;
+  }
+}
+
+function setSettingsAsyncFeedback(feedbackEl, kind, text) {
+  if (!feedbackEl) return;
+  if (!text) {
+    feedbackEl.textContent = "";
+    feedbackEl.hidden = true;
+    feedbackEl.className = "settings-async-feedback";
+    feedbackEl.removeAttribute("role");
+    feedbackEl.removeAttribute("aria-busy");
+    return;
+  }
+  feedbackEl.textContent = text;
+  feedbackEl.hidden = false;
+  if (kind === "ok") {
+    feedbackEl.className = "settings-async-feedback banner banner-ok";
+    feedbackEl.setAttribute("role", "status");
+    feedbackEl.removeAttribute("aria-busy");
+  } else if (kind === "err") {
+    feedbackEl.className = "settings-async-feedback banner banner-warn";
+    feedbackEl.setAttribute("role", "alert");
+    feedbackEl.removeAttribute("aria-busy");
+  } else if (kind === "pending") {
+    feedbackEl.className = "settings-async-feedback settings-async-feedback--pending";
+    feedbackEl.setAttribute("role", "status");
+    feedbackEl.setAttribute("aria-busy", "true");
+  }
+}
+
+function stashSaveButtonLabels(saveButtons) {
+  saveButtons.forEach((btn) => {
+    if (btn.dataset.fetcherSaveLabel == null || btn.dataset.fetcherSaveLabel === "") {
+      btn.dataset.fetcherSaveLabel = (btn.textContent || "").trim();
+    }
+  });
+}
+
+function restoreSaveButtonLabels(saveButtons) {
+  saveButtons.forEach((btn) => {
+    const orig = btn.dataset.fetcherSaveLabel;
+    if (orig != null && orig !== "") btn.textContent = orig;
+    btn.removeAttribute("aria-busy");
+  });
+}
+
+function setSaveButtonsPending(saveButtons, pending) {
+  saveButtons.forEach((btn) => {
+    if (pending) {
+      btn.textContent = FETCHER_SETTINGS_SAVE_PENDING_LABEL;
+      btn.setAttribute("aria-busy", "true");
+    }
+  });
+}
+
+function syncSettingsUrlAfterAsyncSave(tabKey) {
+  try {
+    const u = new URL(window.location.href);
+    if (tabKey) u.searchParams.set("tab", tabKey);
+    ["saved", "save", "reason", "test", "import", "sec"].forEach((k) => u.searchParams.delete(k));
+    const h = window.location.hash || "";
+    history.replaceState(null, "", u.pathname + (u.search ? u.search : "") + h);
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+/** In-place save for Fetcher /settings section forms (Global / Sonarr / Radarr); normal POST remains if JS disabled. */
+function initFetcherSettingsAsyncSave() {
+  const forms = document.querySelectorAll('form[data-fetcher-async-settings="1"]');
+  if (!forms.length) return;
+
+  forms.forEach((form) => {
+    form.addEventListener("submit", (e) => {
+      if (form.dataset.fetcherSettingsSaving === "1") {
+        e.preventDefault();
+        return;
+      }
+      e.preventDefault();
+      const action = form.getAttribute("action") || "/settings";
+      const feedback = form.querySelector(".settings-async-feedback");
+      const saveButtons = Array.from(form.querySelectorAll('button[type="submit"]')).filter(
+        (b) => !b.getAttribute("form"),
+      );
+
+      function setBusy(on) {
+        form.dataset.fetcherSettingsSaving = on ? "1" : "";
+        form.setAttribute("aria-busy", on ? "true" : "false");
+        saveButtons.forEach((btn) => {
+          btn.disabled = on;
+        });
+      }
+
+      clearSettingsSaveFeedbackTimer(form);
+      form._fetcherSaveGen = (form._fetcherSaveGen || 0) + 1;
+      const saveGen = form._fetcherSaveGen;
+
+      stashSaveButtonLabels(saveButtons);
+      setBusy(true);
+      setSaveButtonsPending(saveButtons, true);
+      setSettingsAsyncFeedback(feedback, "pending", FETCHER_SETTINGS_SAVE_PENDING_LABEL);
+
+      const fd = new FormData(form);
+      fetch(action, {
+        method: "POST",
+        body: fd,
+        credentials: "same-origin",
+        headers: { [FETCHER_SETTINGS_ASYNC_HEADER]: "1", Accept: "application/json" },
+      })
+        .then((res) => {
+          if (res.status === 403) {
+            return Promise.reject(
+              new Error("Your session may have expired — reload the page and sign in again."),
+            );
+          }
+          const ct = (res.headers.get("content-type") || "").toLowerCase();
+          if (ct.indexOf("application/json") >= 0) {
+            return res.json().then((data) => ({ res, data }));
+          }
+          return res.text().then((text) => ({ res, data: null, text }));
+        })
+        .then((out) => {
+          const { res, data, text } = out;
+          if (!res.ok && !data) {
+            throw new Error(text || "Save failed — try again.");
+          }
+          if (data && typeof data.ok === "boolean") {
+            if (data.ok) {
+              setSettingsAsyncFeedback(feedback, "ok", FETCHER_SETTINGS_SAVE_SUCCESS_BANNER);
+              syncSettingsUrlAfterAsyncSave(data.tab || "");
+              clearSettingsSaveFeedbackTimer(form);
+              form._fetcherSaveFeedbackTimer = window.setTimeout(() => {
+                form._fetcherSaveFeedbackTimer = null;
+                if (form._fetcherSaveGen !== saveGen) return;
+                if (feedback && feedback.textContent === FETCHER_SETTINGS_SAVE_SUCCESS_BANNER) {
+                  setSettingsAsyncFeedback(feedback, "ok", "");
+                }
+              }, 2600);
+              return;
+            }
+            const r = data.reason ? String(data.reason) : "error";
+            const msg = FETCHER_SETTINGS_SAVE_REASON_TEXT[r] || FETCHER_SETTINGS_SAVE_REASON_TEXT.error;
+            setSettingsAsyncFeedback(feedback, "err", msg);
+            return;
+          }
+          throw new Error(FETCHER_SETTINGS_SAVE_REASON_TEXT.error);
+        })
+        .catch((err) => {
+          const m = err && err.message ? err.message : FETCHER_SETTINGS_SAVE_REASON_TEXT.error;
+          setSettingsAsyncFeedback(feedback, "err", m);
+        })
+        .finally(() => {
+          restoreSaveButtonLabels(saveButtons);
+          setBusy(false);
+        });
+    });
+  });
+}
+
 function initSettingsTabs() {
   const tabButtons = document.querySelectorAll(".settings-tab-btn[data-settings-tab]");
   const panels = document.querySelectorAll(".settings-tab-target[data-settings-panel]");
@@ -763,6 +938,7 @@ function initSettingsTabs() {
 window.addEventListener("DOMContentLoaded", () => {
   injectMeshAndNoise();
   bindInternalLinksTargetTop();
+  initFetcherSettingsAsyncSave();
   bindScrollRestoreOnFormSubmit();
   restoreScrollAfterFormRedirect();
   bindRevealButtons();
@@ -788,7 +964,7 @@ window.addEventListener("DOMContentLoaded", () => {
   startDashboardStatusPolling();
   startLiveTilePolling();
 
-  if (qs("saved") === "1") showToast("Settings saved");
+  if (qs("saved") === "1") showToast("Settings saved.");
   if (qs("ran") === "1") showToast("Run triggered");
   if (qs("test") === "sonarr_ok") showToast("Sonarr connection succeeded");
   if (qs("test") === "sonarr_fail") showToast("Sonarr connection failed");

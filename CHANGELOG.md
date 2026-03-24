@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.3.16] - 2026-03-25
+
+### Changed
+
+- **Settings UX:** Global, Sonarr, and Radarr each have a dedicated form. Saves use in-page requests (no full reload), stay on the current tab, and show immediate **Saving…** / **Settings saved.** / error feedback.
+- **Save scope:** Global save stores only cooldown, log retention, and timezone; Sonarr and Radarr saves remain independent. Section helper text states that only that tab is saved where it helps.
+- **Copy:** Save success, failure, and non-JS redirect messages use consistent, plain language; session/CSRF errors suggest reloading and signing in again.
+
 ## [2.3.15] - 2026-03-25
 
 ### Changed

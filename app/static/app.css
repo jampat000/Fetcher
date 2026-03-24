@@ -1418,6 +1418,16 @@ h2.gc-title,
 }
 
 /* ---- Settings page (Fetcher) ---- */
+.settings-async-feedback.banner {
+  margin-bottom: var(--space-4);
+}
+.settings-async-feedback--pending {
+  margin-bottom: var(--space-3);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text2, rgba(255, 255, 255, 0.55));
+  letter-spacing: 0.02em;
+}
 .settings-tabs {
   display: flex;
   gap: var(--space-2);

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from urllib.parse import urlencode
 
@@ -9,6 +10,7 @@ import pytest
 import httpx
 from fastapi.testclient import TestClient
 
+from app.db import SessionLocal, _get_or_create_settings
 from app.main import app
 
 _WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
@@ -334,6 +336,166 @@ def test_post_trimmer_settings_full(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "saved=1" in str(resp.url) or "?saved=1" in str(resp.url)
     assert "Test Actor" in body
     assert "Show Runner" in body
+
+
+def test_post_settings_async_header_returns_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """XHR/fetch path: JSON body instead of 303 (same scoping as normal POST)."""
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/settings",
+            data={
+                "arr_search_cooldown_minutes": "2000",
+                "log_retention_days": "90",
+                "timezone": "UTC",
+                "save_scope": "global",
+            },
+            headers={"X-Fetcher-Settings-Async": "1"},
+        )
+    assert resp.status_code == 200
+    assert "application/json" in (resp.headers.get("content-type") or "")
+    assert resp.json() == {"ok": True, "tab": "global"}
+
+    async def verify_cooldown() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            assert row.arr_search_cooldown_minutes == 2000
+
+    asyncio.run(verify_cooldown())
+
+
+def test_global_save_updates_only_cooldown_retention_timezone(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Save global settings must not apply Sonarr/Radarr fields from the posted form."""
+
+    async def seed() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.sonarr_interval_minutes = 33
+            row.radarr_interval_minutes = 44
+            row.sonarr_max_items_per_run = 50
+            row.arr_search_cooldown_minutes = 1440
+            row.log_retention_days = 90
+            row.timezone = "UTC"
+            await session.commit()
+
+    asyncio.run(seed())
+    payload = {
+        "sonarr_enabled": "true",
+        "sonarr_url": "http://localhost:8989",
+        "sonarr_api_key": "abc",
+        "sonarr_search_missing": "true",
+        "sonarr_search_upgrades": "true",
+        "sonarr_max_items_per_run": "999",
+        "sonarr_schedule_enabled": "false",
+        "sonarr_schedule_start": "00:00",
+        "sonarr_schedule_end": "23:59",
+        "sonarr_interval_minutes": "99",
+        "radarr_enabled": "true",
+        "radarr_url": "http://localhost:7878",
+        "radarr_api_key": "def",
+        "radarr_search_missing": "true",
+        "radarr_search_upgrades": "true",
+        "radarr_remove_failed_imports": "false",
+        "radarr_max_items_per_run": "888",
+        "radarr_schedule_enabled": "false",
+        "radarr_schedule_start": "00:00",
+        "radarr_schedule_end": "23:59",
+        "radarr_interval_minutes": "88",
+        "arr_search_cooldown_minutes": "720",
+        "log_retention_days": "120",
+        "timezone": "Europe/Berlin",
+        "save_scope": "global",
+    }
+    form: list[tuple[str, str]] = [(k, str(v)) for k, v in payload.items()]
+    form.extend(_schedule_flag_pairs("sonarr_schedule"))
+    form.extend(_schedule_flag_pairs("radarr_schedule"))
+    encoded = urlencode(form)
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/settings",
+            content=encoded,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+
+    async def verify_db() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            assert row.sonarr_interval_minutes == 33
+            assert row.radarr_interval_minutes == 44
+            assert row.sonarr_max_items_per_run == 50
+            assert row.arr_search_cooldown_minutes == 720
+            assert row.log_retention_days == 120
+            assert row.timezone == "Europe/Berlin"
+            assert (row.sonarr_url or "").strip() == ""
+
+    asyncio.run(verify_db())
+
+
+def test_sonarr_save_preserves_radarr_interval_when_post_includes_wrong_radarr_interval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: Sonarr-only save must not let a bogus radarr_interval in the POST affect the DB."""
+
+    async def seed() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.radarr_interval_minutes = 30
+            row.sonarr_interval_minutes = 45
+            await session.commit()
+
+    asyncio.run(seed())
+    payload = {
+        "sonarr_enabled": "true",
+        "sonarr_url": "http://localhost:8989",
+        "sonarr_api_key": "abc",
+        "sonarr_search_missing": "true",
+        "sonarr_search_upgrades": "true",
+        "sonarr_max_items_per_run": "50",
+        "sonarr_schedule_enabled": "false",
+        "sonarr_schedule_start": "00:00",
+        "sonarr_schedule_end": "23:59",
+        "sonarr_interval_minutes": "45",
+        "radarr_enabled": "false",
+        "radarr_url": "",
+        "radarr_api_key": "",
+        "radarr_search_missing": "true",
+        "radarr_search_upgrades": "true",
+        "radarr_remove_failed_imports": "false",
+        "radarr_max_items_per_run": "50",
+        "radarr_schedule_enabled": "false",
+        "radarr_schedule_start": "00:00",
+        "radarr_schedule_end": "23:59",
+        "radarr_interval_minutes": "999",
+        "arr_search_cooldown_minutes": "1440",
+        "log_retention_days": "90",
+        "timezone": "UTC",
+        "save_scope": "sonarr",
+    }
+    form: list[tuple[str, str]] = [(k, str(v)) for k, v in payload.items()]
+    form.extend(_schedule_flag_pairs("sonarr_schedule"))
+    form.extend(_schedule_flag_pairs("radarr_schedule"))
+    encoded = urlencode(form)
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/settings",
+            content=encoded,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        page = client.get("/settings")
+    html = page.text
+    assert re.search(r'name="radarr_interval_minutes"[^>]*\bvalue="30"', html) or re.search(
+        r'value="30"[^>]*name="radarr_interval_minutes"', html
+    )
+
+    async def verify_db() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            assert row.radarr_interval_minutes == 30
+
+    asyncio.run(verify_db())
 
 
 def test_sonarr_schedule_all_days_stays_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
