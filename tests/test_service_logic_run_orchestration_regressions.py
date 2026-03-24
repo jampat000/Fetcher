@@ -70,6 +70,19 @@ async def _latest_activity() -> ActivityLog | None:
         )
 
 
+async def _activity_count_for(app: str, kind: str) -> int:
+    async with SessionLocal() as s:
+        return len(
+            (
+                await s.execute(
+                    select(ActivityLog).where(ActivityLog.app == app, ActivityLog.kind == kind)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+
 async def _settings_row() -> Any:
     async with SessionLocal() as s:
         return await _get_or_create_settings(s)
@@ -556,7 +569,141 @@ def test_run_once_radarr_manual_upgrade_success_activity_snapshot(monkeypatch: p
     assert act.app == "radarr"
     assert act.kind == "upgrade"
     assert act.count == 2
+    assert asyncio.run(_activity_count_for("radarr", "upgrade")) == 1
     assert asyncio.run(_settings_row()).radarr_last_run_at == fixed_now
+
+
+def test_run_once_manual_sonarr_missing_no_results_writes_activity(monkeypatch: pytest.MonkeyPatch) -> None:
+    asyncio.run(_clear_run_tables())
+    asyncio.run(
+        _set_settings(
+            sonarr_enabled=True,
+            sonarr_url="http://localhost:8989",
+            sonarr_search_missing=True,
+            sonarr_search_upgrades=False,
+            radarr_enabled=False,
+            emby_enabled=False,
+        )
+    )
+
+    class _FakeArrClient:
+        def __init__(self, _cfg):
+            pass
+
+        async def health(self):
+            return None
+
+        async def series(self):
+            return []
+
+        async def aclose(self):
+            return None
+
+    async def _paginate(*args, **kwargs):
+        return [], [], 0
+
+    async def _wanted_total(*args, **kwargs):
+        return 0
+
+    monkeypatch.setattr("app.service_logic.resolve_sonarr_api_key", lambda _s: "k")
+    monkeypatch.setattr("app.service_logic.resolve_radarr_api_key", lambda _s: "")
+    monkeypatch.setattr("app.service_logic.resolve_emby_api_key", lambda _s: "")
+    monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
+    monkeypatch.setattr("app.service_logic._paginate_wanted_for_search", _paginate)
+    monkeypatch.setattr("app.service_logic._wanted_queue_total", _wanted_total)
+    result = asyncio.run(_run_once("sonarr_missing"))
+    assert result.ok is True
+    assert "Sonarr: no missing episodes found" in result.message
+    act = asyncio.run(_latest_activity())
+    assert act is not None
+    assert act.app == "sonarr"
+    assert act.kind == "missing"
+    assert act.count == 0
+    assert asyncio.run(_activity_count_for("sonarr", "missing")) == 1
+
+
+def test_run_once_manual_radarr_missing_no_results_writes_activity(monkeypatch: pytest.MonkeyPatch) -> None:
+    asyncio.run(_clear_run_tables())
+    asyncio.run(
+        _set_settings(
+            sonarr_enabled=False,
+            radarr_enabled=True,
+            radarr_url="http://localhost:7878",
+            radarr_search_missing=True,
+            radarr_search_upgrades=False,
+            emby_enabled=False,
+        )
+    )
+
+    class _FakeArrClient:
+        def __init__(self, _cfg):
+            pass
+
+        async def health(self):
+            return None
+
+        async def aclose(self):
+            return None
+
+    async def _paginate(*args, **kwargs):
+        return [], [], 0
+
+    async def _wanted_total(*args, **kwargs):
+        return 0
+
+    monkeypatch.setattr("app.service_logic.resolve_sonarr_api_key", lambda _s: "")
+    monkeypatch.setattr("app.service_logic.resolve_radarr_api_key", lambda _s: "rk")
+    monkeypatch.setattr("app.service_logic.resolve_emby_api_key", lambda _s: "")
+    monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
+    monkeypatch.setattr("app.service_logic._paginate_wanted_for_search", _paginate)
+    monkeypatch.setattr("app.service_logic._wanted_queue_total", _wanted_total)
+    result = asyncio.run(_run_once("radarr_missing"))
+    assert result.ok is True
+    assert "Radarr: no missing movies found" in result.message
+    act = asyncio.run(_latest_activity())
+    assert act is not None
+    assert act.app == "radarr"
+    assert act.kind == "missing"
+    assert act.count == 0
+    assert asyncio.run(_activity_count_for("radarr", "missing")) == 1
+
+
+def test_run_once_manual_radarr_failure_writes_failed_activity(monkeypatch: pytest.MonkeyPatch) -> None:
+    asyncio.run(_clear_run_tables())
+    asyncio.run(
+        _set_settings(
+            sonarr_enabled=False,
+            radarr_enabled=True,
+            radarr_url="http://localhost:7878",
+            radarr_search_missing=True,
+            radarr_search_upgrades=False,
+            emby_enabled=False,
+        )
+    )
+
+    class _FakeArrClient:
+        def __init__(self, _cfg):
+            pass
+
+        async def health(self):
+            req = httpx.Request("GET", "http://localhost:7878/api/v3/system/status")
+            resp = httpx.Response(503, request=req, text="service unavailable")
+            raise httpx.HTTPStatusError("boom", request=req, response=resp)
+
+        async def aclose(self):
+            return None
+
+    monkeypatch.setattr("app.service_logic.resolve_sonarr_api_key", lambda _s: "")
+    monkeypatch.setattr("app.service_logic.resolve_radarr_api_key", lambda _s: "rk")
+    monkeypatch.setattr("app.service_logic.resolve_emby_api_key", lambda _s: "")
+    monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
+    result = asyncio.run(_run_once("radarr_missing"))
+    assert result.ok is False
+    act = asyncio.run(_latest_activity())
+    assert act is not None
+    assert act.app == "radarr"
+    assert act.kind == "error"
+    assert act.status == "failed"
 
 
 def test_run_once_tag_warning_is_nonfatal(monkeypatch: pytest.MonkeyPatch) -> None:
