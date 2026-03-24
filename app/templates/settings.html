@@ -34,7 +34,7 @@
     {% set tst = request.query_params.get('test', '') %}
     {% set im = request.query_params.get('import', '') %}
 
-    <div class="settings-tab-target" data-settings-panel="global" role="tabpanel" aria-labelledby="fetcher-tab-global">
+    <div class="settings-tab-target is-active" data-settings-panel="global" role="tabpanel" aria-labelledby="fetcher-tab-global">
     <div class="card gc stripe-gray" id="section-global">
       <div class="gc-title">Global</div>
       {% if request.query_params.get('saved') == '1' %}
@@ -705,51 +705,5 @@
   </div>
   </div>
 
-  <script>
-    (function () {
-      var tablist = document.querySelector(".settings-tabs-buttons");
-      if (!tablist) return;
-      var tabs = tablist.querySelectorAll("[data-settings-tab]");
-      var panels = document.querySelectorAll("[data-settings-panel]");
-      function showPanel(key) {
-        panels.forEach(function (el) {
-          el.hidden = el.getAttribute("data-settings-panel") !== key;
-        });
-        tabs.forEach(function (btn) {
-          var on = btn.getAttribute("data-settings-tab") === key;
-          btn.classList.toggle("is-active", on);
-          btn.setAttribute("aria-selected", on ? "true" : "false");
-        });
-      }
-      function initialPanel() {
-        var q;
-        try {
-          q = new URLSearchParams(window.location.search);
-        } catch (e) {
-          q = new URLSearchParams();
-        }
-        var tab = (q.get("tab") || "").toLowerCase();
-        if (tab === "global" || tab === "security" || tab === "sonarr" || tab === "radarr") return tab;
-        if ((q.get("sec") || "").trim()) return "security";
-        if ((q.get("import") || "").trim()) return "global";
-        var test = (q.get("test") || "").toLowerCase();
-        if (test.indexOf("sonarr") === 0) return "sonarr";
-        if (test.indexOf("radarr") === 0) return "radarr";
-        var h = (window.location.hash || "").toLowerCase();
-        if (h.indexOf("section-security") >= 0 || h.indexOf("security-") >= 0) return "security";
-        if (h.indexOf("section-sonarr") >= 0) return "sonarr";
-        if (h.indexOf("section-radarr") >= 0) return "radarr";
-        if (h.indexOf("section-global") >= 0) return "global";
-        return "global";
-      }
-      showPanel(initialPanel());
-      tabs.forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          var key = btn.getAttribute("data-settings-tab");
-          if (key) showPanel(key);
-        });
-      });
-    })();
-  </script>
 </div>
 {% endblock %}

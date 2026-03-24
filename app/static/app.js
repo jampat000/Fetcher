@@ -445,6 +445,93 @@ function startDashboardStatusPolling() {
   });
 }
 
+function initSettingsTabs() {
+  const tabButtons = document.querySelectorAll(".settings-tab-btn[data-settings-tab]");
+  const panels = document.querySelectorAll(".settings-tab-target[data-settings-panel]");
+  if (!tabButtons.length || !panels.length) return;
+
+  const validKeys = new Set(
+    Array.from(panels)
+      .map((p) => p.getAttribute("data-settings-panel"))
+      .filter(Boolean)
+  );
+
+  function panelKeyExists(key) {
+    return Boolean(key && validKeys.has(key));
+  }
+
+  function getInitialTabKey() {
+    try {
+      const q = new URLSearchParams(window.location.search);
+      const tab = (q.get("tab") || "").toLowerCase();
+      if (tab === "global" || tab === "security" || tab === "sonarr" || tab === "radarr") {
+        return tab;
+      }
+      if ((q.get("sec") || "").trim()) return "security";
+      if ((q.get("import") || "").trim()) return "global";
+      const test = (q.get("test") || "").toLowerCase();
+      if (test.indexOf("sonarr") === 0) return "sonarr";
+      if (test.indexOf("radarr") === 0) return "radarr";
+    } catch (e) {
+      /* ignore */
+    }
+
+    const raw = (window.location.hash || "").slice(1);
+    if (!raw) return null;
+    const h = raw.toLowerCase();
+
+    if (h.startsWith("section-")) {
+      const key = h.slice("section-".length);
+      if (key === "global" || key === "security" || key === "sonarr" || key === "radarr") {
+        return key;
+      }
+    }
+    if (h === "global" || h === "security" || h === "sonarr" || h === "radarr") return h;
+    if (h.includes("section-security") || h.includes("security-")) return "security";
+    if (h.includes("section-sonarr")) return "sonarr";
+    if (h.includes("section-radarr")) return "radarr";
+    if (h.includes("section-global")) return "global";
+
+    return null;
+  }
+
+  function showTab(key, { updateHash } = { updateHash: true }) {
+    if (!panelKeyExists(key)) return;
+
+    tabButtons.forEach((btn) => {
+      const k = btn.getAttribute("data-settings-tab");
+      const on = k === key;
+      btn.classList.toggle("is-active", on);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
+    });
+
+    panels.forEach((panel) => {
+      const pk = panel.getAttribute("data-settings-panel");
+      const on = pk === key;
+      panel.classList.toggle("is-active", on);
+      panel.removeAttribute("hidden");
+    });
+
+    if (updateHash) {
+      const url = `${window.location.pathname}${window.location.search}#section-${key}`;
+      history.replaceState(null, "", url);
+    }
+  }
+
+  let initial = getInitialTabKey();
+  if (!initial || !panelKeyExists(initial)) {
+    initial = tabButtons[0].getAttribute("data-settings-tab") || "global";
+  }
+  showTab(initial, { updateHash: false });
+
+  tabButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.getAttribute("data-settings-tab");
+      if (key) showTab(key, { updateHash: true });
+    });
+  });
+}
+
 window.addEventListener("DOMContentLoaded", () => {
   injectMeshAndNoise();
   bindInternalLinksTargetTop();
@@ -454,6 +541,7 @@ window.addEventListener("DOMContentLoaded", () => {
   bindDashboardDismissibles();
   initActivityFilterPills();
   initActivityDetailExpand();
+  initSettingsTabs();
   initSettingsPageCollapses();
 
   staggerClass(".hero-stat", 0, 60, "anim-in");
