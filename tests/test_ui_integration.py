@@ -105,19 +105,16 @@ def test_trimmer_settings_has_content_criteria(monkeypatch: pytest.MonkeyPatch) 
     ["sonarr_missing", "sonarr_upgrade", "radarr_missing", "radarr_upgrade"],
 )
 def test_post_api_arr_search_now(monkeypatch: pytest.MonkeyPatch, scope: str) -> None:
-    from app.service_logic import RunResult
-
     seen: dict[str, str | None] = {"scope": None}
 
-    async def _fake_run_once(session, *, arr_manual_scope=None):
-        seen["scope"] = arr_manual_scope
-        return RunResult(ok=True, message="done")
+    def _fake_enqueue(s: str):
+        seen["scope"] = s
 
-    monkeypatch.setattr("app.routers.api.run_once", _fake_run_once)
+    monkeypatch.setattr("app.routers.api.enqueue_manual_arr_search", _fake_enqueue)
     with _client(monkeypatch) as client:
         resp = client.post("/api/arr/search-now", json={"scope": scope})
     assert resp.status_code == 200
-    assert resp.json() == {"ok": True, "message": "done"}
+    assert resp.json() == {"ok": True, "queued": True, "message": "Manual search queued."}
     assert seen["scope"] == scope
 
 

@@ -93,18 +93,16 @@ def test_post_login_without_csrf_succeeds(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_post_api_arr_search_now_without_csrf_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.service_logic import RunResult
-
     _scheduler_noop(monkeypatch)
 
-    async def _fake_run_once(session, *, arr_manual_scope=None):
-        return RunResult(ok=True, message="done")
+    def _fake_enqueue(_scope: str):
+        return None
 
-    monkeypatch.setattr("app.routers.api.run_once", _fake_run_once)
+    monkeypatch.setattr("app.routers.api.enqueue_manual_arr_search", _fake_enqueue)
     with TestClient(app) as client:
         r = client.post("/api/arr/search-now", json={"scope": "sonarr_missing"})
     assert r.status_code == 200
-    assert r.json() == {"ok": True, "message": "done"}
+    assert r.json() == {"ok": True, "queued": True, "message": "Manual search queued."}
 
 
 def test_expired_csrf_token_returns_403(monkeypatch: pytest.MonkeyPatch) -> None:
