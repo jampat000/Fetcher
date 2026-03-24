@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.3.17] - 2026-03-25
+
+### Changed
+
+- **Release:** Patch version bump for installer and release pipeline; no application behavior changes from v2.3.16.
+
 ## [2.3.16] - 2026-03-25
 
 ### Changed
