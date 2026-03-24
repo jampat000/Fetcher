@@ -478,6 +478,7 @@ function startDashboardStatusPolling() {
       })
       .catch(() => {});
   };
+  window.fetcherDashboardPollNow = poll;
   const arm = () => {
     if (timerId !== null) {
       clearInterval(timerId);
@@ -561,6 +562,7 @@ function startLiveTilePolling() {
       });
     }
   };
+  window.fetcherLiveTilesPollNow = poll;
 
   const arm = () => {
     if (timerId !== null) {
