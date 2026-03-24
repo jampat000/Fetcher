@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.3.8] - 2026-03-24
+
+### Changed
+
+- **Live status surfaces:** Added automatic live refresh behavior for dashboard recent activity, full Activity, and Logs views so run/search results appear without manual page reloads.
+- **Automation/dashboard polish follow-up:** Included latest dashboard/automation UI refinements and related frontend alignment updates shipped together in this build.
+- **Manual Arr search visibility:** Included manual Sonarr/Radarr search activity logging fixes so manual actions are reflected in Activity consistently.
+
 ## [2.3.7] - 2026-03-24
 
 ### Fixed
@@ -762,7 +770,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.7...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.8...HEAD
+[2.3.8]: https://github.com/jampat000/Fetcher/compare/v2.3.7...v2.3.8
 [2.3.7]: https://github.com/jampat000/Fetcher/compare/v2.3.6...v2.3.7
 [2.3.6]: https://github.com/jampat000/Fetcher/compare/v2.3.5...v2.3.6
 [2.3.5]: https://github.com/jampat000/Fetcher/compare/v2.3.4...v2.3.5
