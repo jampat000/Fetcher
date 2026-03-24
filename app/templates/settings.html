@@ -51,7 +51,7 @@
       {% elif im == 'fail' %}
       <div class="banner banner-warn" role="alert"><strong>Import</strong> failed: {{ request.query_params.get('reason', 'Unknown error') | e }}</div>
       {% endif %}
-      <p class="small muted lead-muted"><strong>Emby Trimmer</strong> is configured separately: use <strong>Trimmer</strong> in the sidebar → <a href="/trimmer/settings">Trimmer settings</a>. The Fetcher scheduler <strong>wake interval</strong> is the <strong>minimum</strong> of your Sonarr and Radarr <strong>run intervals</strong> (under the Sonarr and Radarr tabs).</p>
+      <p class="small muted lead-muted"><strong>Emby Trimmer</strong> is configured separately: use <strong>Trimmer</strong> in the sidebar → <a href="/trimmer/settings">Trimmer settings</a>. <strong>Sonarr</strong>, <strong>Radarr</strong>, and <strong>Emby Trimmer</strong> each use their own run interval and scheduled job — they are not tied to a shared “minimum wake” cadence.</p>
       <div class="settings-global-stack">
         <div class="field settings-global-field">
           <label>Arr search cooldown (minutes)</label>
@@ -124,7 +124,7 @@
             <div class="field">
               <label>Run interval (minutes)</label>
               <input class="number" type="number" name="sonarr_interval_minutes" value="{{ settings.sonarr_interval_minutes }}" min="1" max="10080" placeholder="60" />
-              <div class="small">How often Sonarr automation becomes due. The schedule window only restricts allowed run times. Used for <strong>TV</strong> (missing searches, upgrades).</div>
+              <div class="small">How often Sonarr automation becomes due. The schedule window only restricts allowed run times. Used for <strong>TV</strong> (missing searches, upgrades). Use <strong>Save Sonarr settings</strong> (or <strong>Save global settings</strong>) so this value is persisted.</div>
             </div>
           </div>
         </div>
@@ -182,7 +182,7 @@
             <div class="field">
               <label>Run interval (minutes)</label>
               <input class="number" type="number" name="radarr_interval_minutes" value="{{ settings.radarr_interval_minutes }}" min="1" max="10080" placeholder="60" />
-              <div class="small">How often Radarr automation becomes due. The schedule window only restricts allowed run times. Used for <strong>movies</strong> (missing searches, upgrades).</div>
+              <div class="small">How often Radarr automation becomes due. The schedule window only restricts allowed run times. Used for <strong>movies</strong> (missing searches, upgrades). Use <strong>Save Radarr settings</strong> so this value is persisted and only the Radarr job is rescheduled — saving the Sonarr tab alone does not update Radarr.</div>
             </div>
           </div>
         </div>

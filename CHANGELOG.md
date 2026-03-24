@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.3.15] - 2026-03-25
+
+### Changed
+
+- **Dashboard hero metrics refresh:** Summary tiles (Sonarr/Radarr missing and upgrades) poll on independent staggered timers with debounced API calls; automation cards still refresh on their own cadence so counts are not delayed until the next full status tick.
+- **Settings documentation:** Corrected global help text to match independent Sonarr/Radarr/Trimmer scheduler jobs; clarified that per-tab saves are required for each app’s run interval to persist.
+
 ## [2.3.14] - 2026-03-24
 
 ### Changed
@@ -812,7 +819,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.14...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.15...HEAD
+[2.3.15]: https://github.com/jampat000/Fetcher/compare/v2.3.14...v2.3.15
 [2.3.14]: https://github.com/jampat000/Fetcher/compare/v2.3.13...v2.3.14
 [2.3.13]: https://github.com/jampat000/Fetcher/compare/v2.3.12...v2.3.13
 [2.3.12]: https://github.com/jampat000/Fetcher/compare/v2.3.11...v2.3.12
