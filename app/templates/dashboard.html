@@ -67,64 +67,51 @@
 
   <div class="card gc card-stripe-purple">
     <div class="gc-title" role="heading" aria-level="2">Automation</div>
-    <div class="automation-spec">
-      <div class="automation-subsystem-block">
-        <div class="automation-subsystem-title">Sonarr</div>
-        <div class="automation-subsystem-row">
-          <div class="automation-subsystem-label">Last run</div>
-          <div class="automation-subsystem-value" id="dash-last-sonarr-run">
-            {% if last_sonarr_run.time_local %}
-              {{ last_sonarr_run.time_local }}
-              {% if last_sonarr_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif last_sonarr_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
-            {% else %}<span class="muted">Not yet run</span>{% endif %}
-          </div>
+    <div class="automation-cards">
+      <div class="automation-card" data-automation-card="sonarr">
+        <div class="automation-card-title">Sonarr</div>
+        <div class="automation-card-main" id="dash-last-sonarr-run">
+          {% if last_sonarr_run.time_local %}
+            {{ last_sonarr_run.time_local }}
+            {% if last_sonarr_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif last_sonarr_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
+          {% else %}<span class="muted">Not yet run</span>{% endif %}
         </div>
-        <div class="automation-subsystem-row">
-          <div class="automation-subsystem-label">Next run</div>
-          <div class="automation-subsystem-value" id="dash-next-sonarr-tick">{% if next_sonarr_tick_local %}{{ next_sonarr_tick_local }}{% else %}<span class="muted automation-value-pending">Pending</span>{% endif %}</div>
-        </div>
+        <div class="automation-card-subline">Next: <span id="dash-next-sonarr-tick">{% if next_sonarr_tick_local %}{{ next_sonarr_tick_local }}{% else %}<span class="muted automation-value-pending">Scheduled</span>{% endif %}</span></div>
       </div>
 
-      <div class="automation-subsystem-block">
-        <div class="automation-subsystem-title">Radarr</div>
-        <div class="automation-subsystem-row">
-          <div class="automation-subsystem-label">Last run</div>
-          <div class="automation-subsystem-value" id="dash-last-radarr-run">
-            {% if last_radarr_run.time_local %}
-              {{ last_radarr_run.time_local }}
-              {% if last_radarr_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif last_radarr_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
-            {% else %}<span class="muted">Not yet run</span>{% endif %}
-          </div>
+      <div class="automation-card" data-automation-card="radarr">
+        <div class="automation-card-title">Radarr</div>
+        <div class="automation-card-main" id="dash-last-radarr-run">
+          {% if last_radarr_run.time_local %}
+            {{ last_radarr_run.time_local }}
+            {% if last_radarr_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif last_radarr_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
+          {% else %}<span class="muted">Not yet run</span>{% endif %}
         </div>
-        <div class="automation-subsystem-row">
-          <div class="automation-subsystem-label">Next run</div>
-          <div class="automation-subsystem-value" id="dash-next-radarr-tick">{% if next_radarr_tick_local %}{{ next_radarr_tick_local }}{% else %}<span class="muted automation-value-pending">Pending</span>{% endif %}</div>
-        </div>
+        <div class="automation-card-subline">Next: <span id="dash-next-radarr-tick">{% if next_radarr_tick_local %}{{ next_radarr_tick_local }}{% else %}<span class="muted automation-value-pending">Scheduled</span>{% endif %}</span></div>
       </div>
 
-      <div class="automation-subsystem-block">
-        <div class="automation-subsystem-title">Trimmer</div>
-        <div class="automation-subsystem-row">
-          <div class="automation-subsystem-label">Last run</div>
-          <div class="automation-subsystem-value" id="dash-last-trimmer-run">
-            {% if last_trimmer_run.time_local %}
-              {{ last_trimmer_run.time_local }}
-              {% if last_trimmer_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif last_trimmer_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
-            {% else %}<span class="muted">Not yet run</span>{% endif %}
-          </div>
+      <div class="automation-card" data-automation-card="trimmer">
+        <div class="automation-card-title">Trimmer</div>
+        <div class="automation-card-main" id="dash-last-trimmer-run">
+          {% if last_trimmer_run.time_local %}
+            {{ last_trimmer_run.time_local }}
+            {% if last_trimmer_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif last_trimmer_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
+          {% else %}<span class="muted">Not yet run</span>{% endif %}
         </div>
-        <div class="automation-subsystem-row">
-          <div class="automation-subsystem-label">Next run</div>
-          <div class="automation-subsystem-value" id="dash-next-trimmer-tick">{% if next_trimmer_tick_local %}{{ next_trimmer_tick_local }}{% else %}<span class="muted automation-value-pending">Pending</span>{% endif %}</div>
-        </div>
+        <div class="automation-card-subline">Next: <span id="dash-next-trimmer-tick">{% if next_trimmer_tick_local %}{{ next_trimmer_tick_local }}{% else %}<span class="muted automation-value-pending">Scheduled</span>{% endif %}</span></div>
       </div>
 
-      <div class="automation-spec-divider" role="separator" aria-hidden="true"></div>
-      <div class="automation-system-event">
-        <div class="automation-spec-label">Latest system event</div>
-        <div class="automation-system-event-value" id="dash-automation-last">
+      <div class="automation-card automation-card-event" data-automation-card="latest-event">
+        <div class="automation-card-title">Latest event</div>
+        <div class="automation-card-main" id="dash-last-context">
           {% if latest_system_event %}
-            <span id="dash-last-context">{{ latest_system_event.context }}</span>
+            {{ latest_system_event.context }}
+          {% else %}
+            <span class="muted">No activity yet</span>
+          {% endif %}
+        </div>
+        <div class="automation-card-subline" id="dash-automation-last">
+          {% if latest_system_event %}
             <span id="dash-last-started">{{ latest_system_event.time_local }}</span>
             {% if latest_system_event.ok %}<span class="status-pill status-pill-ok">Succeeded</span>{% else %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
           {% else %}

@@ -381,35 +381,38 @@ function applyDashboardStatusPayload(data) {
   if (nextSonarr) {
     const t = data.next_sonarr_tick_local;
     if (t) nextSonarr.textContent = t;
-    else nextSonarr.innerHTML = '<span class="muted automation-value-pending">Pending</span>';
+    else nextSonarr.innerHTML = '<span class="muted automation-value-pending">Scheduled</span>';
   }
   const nextRadarr = document.getElementById("dash-next-radarr-tick");
   if (nextRadarr) {
     const t = data.next_radarr_tick_local;
     if (t) nextRadarr.textContent = t;
-    else nextRadarr.innerHTML = '<span class="muted automation-value-pending">Pending</span>';
+    else nextRadarr.innerHTML = '<span class="muted automation-value-pending">Scheduled</span>';
   }
   const nextTrimmer = document.getElementById("dash-next-trimmer-tick");
   if (nextTrimmer) {
     const t = data.next_trimmer_tick_local;
     if (t) nextTrimmer.textContent = t;
-    else nextTrimmer.innerHTML = '<span class="muted automation-value-pending">Pending</span>';
+    else nextTrimmer.innerHTML = '<span class="muted automation-value-pending">Scheduled</span>';
   }
 
   const emM = document.getElementById("dash-emby-matched");
   if (emM) emM.textContent = String(data.emby_matched ?? 0);
   setMetricTile("emby-matched", data.emby_matched ?? 0);
 
+  const lastContext = document.getElementById("dash-last-context");
   const lastHost = document.getElementById("dash-automation-last");
   if (lastHost && data.latest_system_event) {
-    lastHost.className = "automation-system-event-value";
+    lastHost.className = "automation-card-subline";
     const ev = data.latest_system_event;
     const ok = ev.ok
       ? '<span class="status-pill status-pill-ok">Succeeded</span>'
       : '<span class="status-pill status-pill-fail">Failed</span>';
-    lastHost.innerHTML = `<span id="dash-last-context">${escapeHtml(ev.context || "System • Event")}</span> <span id="dash-last-started">${escapeHtml(ev.time_local || "")}</span> ${ok}`;
+    if (lastContext) lastContext.innerHTML = escapeHtml(ev.context || "System • Event");
+    lastHost.innerHTML = `<span id="dash-last-started">${escapeHtml(ev.time_local || "")}</span> ${ok}`;
   } else if (lastHost && !data.latest_system_event) {
-    lastHost.className = "automation-system-event-value muted";
+    if (lastContext) lastContext.innerHTML = '<span class="muted">No activity yet</span>';
+    lastHost.className = "automation-card-subline muted";
     lastHost.textContent = "No activity yet";
   }
 
