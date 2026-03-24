@@ -45,6 +45,8 @@ class AppSettings(Base):
     # Minutes between Radarr runs when schedule allows (minimum 1; invalid/low values coerced to 60 on startup/save).
     radarr_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     radarr_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Radarr-only: when enabled, remove queue rows that match import-failed history by exact downloadId.
+    radarr_remove_failed_imports: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # How often Emby Trimmer may run (Trimmer Settings only; independent of Sonarr/Radarr).
     emby_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
@@ -128,7 +130,7 @@ class ActivityLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
 
     app: Mapped[str] = mapped_column(String(16))   # "sonarr" | "radarr"
-    kind: Mapped[str] = mapped_column(String(16))  # "missing" | "upgrade"
+    kind: Mapped[str] = mapped_column(String(16))  # "missing" | "upgrade" | "cleanup" | ...
     status: Mapped[str] = mapped_column(String(16), default="ok")  # "ok" | "failed"
     count: Mapped[int] = mapped_column(Integer, default=0)
     detail: Mapped[str] = mapped_column(Text, default="")

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-03-24
+
+### Added
+
+- **Radarr (opt-in):** **Remove failed imports from queue** — when enabled under Radarr settings, each automation run scans Radarr history for explicit **import failed** events, matches the **download queue** by exact **download ID** only, and removes the queue item when there is exactly one match (no title/fuzzy matching, no blocklist, no re-search). Successful removals are recorded in **Activity** with title and reason when available. No-match and ambiguous multi-match cases skip safely without deleting.
+
 ## [2.1.1] - 2026-03-24
 
 ### Fixed
@@ -694,7 +700,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.1.1...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/jampat000/Fetcher/compare/v2.1.1...v2.2.0
 [2.1.1]: https://github.com/jampat000/Fetcher/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/jampat000/Fetcher/compare/v2.0.25...v2.1.0
 [2.0.25]: https://github.com/jampat000/Fetcher/compare/v2.0.24...v2.0.25

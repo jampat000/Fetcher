@@ -364,6 +364,12 @@ async def _migrate_022_refresh_token_columns(engine: AsyncEngine) -> None:
         await _add_column(engine, table=table, ddl="auth_refresh_expires_at DATETIME")
 
 
+async def _migrate_023_radarr_remove_failed_imports(engine: AsyncEngine) -> None:
+    table = "app_settings"
+    if not await _has_column(engine, table=table, column="radarr_remove_failed_imports"):
+        await _add_column(engine, table=table, ddl="radarr_remove_failed_imports BOOLEAN NOT NULL DEFAULT 0")
+
+
 async def migrate(engine: AsyncEngine) -> None:
     await _migrate_001_sonarr_per_app_columns(engine)
     await _migrate_002_radarr_per_app_columns(engine)
@@ -387,3 +393,4 @@ async def migrate(engine: AsyncEngine) -> None:
     await _migrate_020_log_retention_days(engine)
     await _migrate_021_activity_trimmed_kind(engine)
     await _migrate_022_refresh_token_columns(engine)
+    await _migrate_023_radarr_remove_failed_imports(engine)

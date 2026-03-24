@@ -19,6 +19,7 @@ class SettingsIn(BaseModel):
     radarr_api_key: str = ""
     radarr_search_missing: bool = True
     radarr_search_upgrades: bool = True
+    radarr_remove_failed_imports: bool = False
     radarr_max_items_per_run: int = Field(default=50, ge=1, le=1000)
     radarr_interval_minutes: int = Field(default=60, ge=1, le=7 * 24 * 60)
 
