@@ -17,21 +17,21 @@
     {% set upg_mov = (radarr.cutoff_unmet_total if radarr else 0) %}
     <div class="hero-stat hs-tv">
       <div class="hs-glow" aria-hidden="true"></div>
-      <div class="hs-lbl">TV missing</div>
+      <div class="hs-lbl">Sonarr missing</div>
       <div class="hs-val" data-target="{{ tv_miss }}">0</div>
       <div class="hs-sub">Episodes in Sonarr queue</div>
-    </div>
-    <div class="hero-stat hs-mov">
-      <div class="hs-glow" aria-hidden="true"></div>
-      <div class="hs-lbl">Movies missing</div>
-      <div class="hs-val" data-target="{{ mov_miss }}">0</div>
-      <div class="hs-sub">In Radarr queue</div>
     </div>
     <div class="hero-stat hs-upg-tv">
       <div class="hs-glow" aria-hidden="true"></div>
       <div class="hs-lbl">Sonarr upgrades</div>
       <div class="hs-val" data-target="{{ upg_tv }}">0</div>
       <div class="hs-sub">Sonarr cutoff unmet</div>
+    </div>
+    <div class="hero-stat hs-mov">
+      <div class="hs-glow" aria-hidden="true"></div>
+      <div class="hs-lbl">Radarr missing</div>
+      <div class="hs-val" data-target="{{ mov_miss }}">0</div>
+      <div class="hs-sub">In Radarr queue</div>
     </div>
     <div class="hero-stat hs-upg-mov">
       <div class="hs-glow" aria-hidden="true"></div>

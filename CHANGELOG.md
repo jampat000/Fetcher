@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.3.13] - 2026-03-24
+
+### Fixed
+
+- **Manual Arr search reliability/consistency:** Improved immediate manual search triggering by selecting concrete wanted item IDs with per-app max-items limits, and kept activity detail output aligned with searched items.
+- **Dashboard manual search UX:** Reduced stale status messaging after manual actions by refreshing/clearing dashboard feedback promptly.
+- **Top dashboard label clarity:** Renamed/reordered summary tiles to explicit Sonarr/Radarr missing/upgrades labels for clearer at-a-glance context.
+
 ## [2.3.12] - 2026-03-24
 
 ### Fixed
@@ -797,7 +805,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.12...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.13...HEAD
+[2.3.13]: https://github.com/jampat000/Fetcher/compare/v2.3.12...v2.3.13
 [2.3.12]: https://github.com/jampat000/Fetcher/compare/v2.3.11...v2.3.12
 [2.3.11]: https://github.com/jampat000/Fetcher/compare/v2.3.10...v2.3.11
 [2.3.10]: https://github.com/jampat000/Fetcher/compare/v2.3.9...v2.3.10
