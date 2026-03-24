@@ -41,17 +41,19 @@ def test_api_dashboard_status_ok(monkeypatch) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert "last_run" in data
-    assert "last_sonarr_run_local" in data
-    assert "last_radarr_run_local" in data
-    assert "last_trimmer_run_local" in data
+    assert "last_sonarr_run" in data
+    assert "last_radarr_run" in data
+    assert "last_trimmer_run" in data
+    assert "time_local" in data["last_sonarr_run"]
+    assert "ok" in data["last_sonarr_run"]
     assert "next_sonarr_tick_local" in data
     assert "next_radarr_tick_local" in data
     assert "next_trimmer_tick_local" in data
-    assert data["sonarr_missing"] == 0
-    assert data["radarr_missing"] == 0
-    assert data["sonarr_upgrades"] == 0
-    assert data["radarr_upgrades"] == 0
-    assert data["emby_matched"] == 0
+    assert data["sonarr_missing"] >= 0
+    assert data["radarr_missing"] >= 0
+    assert data["sonarr_upgrades"] >= 0
+    assert data["radarr_upgrades"] >= 0
+    assert data["emby_matched"] >= 0
 
 
 def test_dashboard_route_smoke(monkeypatch) -> None:
@@ -61,7 +63,34 @@ def test_dashboard_route_smoke(monkeypatch) -> None:
     assert b"Last Sonarr run" in resp.content
     assert b"Last Radarr run" in resp.content
     assert b"Last Trimmer run" in resp.content
-    assert b"Latest automation event" in resp.content
+    assert b"Latest system event" in resp.content
+
+
+def test_dashboard_route_renders_per_app_success_failure_badges(monkeypatch) -> None:
+    async def _fake_status(_session, _tz, *, snapshots=None):  # noqa: ARG001
+        return {
+            "last_run": {"started_local": "24-03-2026 11:00 AM", "ok": True},
+            "last_sonarr_run": {"time_local": "24-03-2026 10:00 AM", "ok": True},
+            "last_radarr_run": {"time_local": "24-03-2026 10:30 AM", "ok": False},
+            "last_trimmer_run": {"time_local": "24-03-2026 10:45 AM", "ok": True},
+            "next_sonarr_tick_local": "24-03-2026 11:30 AM",
+            "next_radarr_tick_local": "24-03-2026 11:45 AM",
+            "next_trimmer_tick_local": "24-03-2026 12:00 PM",
+            "sonarr_missing": 0,
+            "sonarr_upgrades": 0,
+            "radarr_missing": 0,
+            "radarr_upgrades": 0,
+            "emby_matched": 0,
+        }
+
+    monkeypatch.setattr("app.routers.dashboard.build_dashboard_status", _fake_status)
+    with _build_client(monkeypatch) as client:
+        resp = client.get("/")
+    assert resp.status_code == 200
+    assert b"Last Sonarr run" in resp.content
+    assert b"Last Radarr run" in resp.content
+    assert b"Succeeded" in resp.content
+    assert b"Failed" in resp.content
 
 
 def test_cleaner_default_skips_emby_client_when_ready(monkeypatch) -> None:

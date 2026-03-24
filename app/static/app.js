@@ -415,21 +415,42 @@ function applyDashboardStatusPayload(data) {
 
   const lastSonarr = document.getElementById("dash-last-sonarr-run");
   if (lastSonarr) {
-    const t = data.last_sonarr_run_local;
-    if (t) lastSonarr.textContent = t;
-    else lastSonarr.innerHTML = '<span class="muted">—</span>';
+    const r = data.last_sonarr_run || {};
+    if (r.time_local) {
+      const ok =
+        r.ok === true
+          ? ' <span class="status-pill status-pill-ok">Succeeded</span>'
+          : r.ok === false
+            ? ' <span class="status-pill status-pill-fail">Failed</span>'
+            : "";
+      lastSonarr.innerHTML = `${escapeHtml(r.time_local)}${ok}`;
+    } else lastSonarr.innerHTML = '<span class="muted">—</span>';
   }
   const lastRadarr = document.getElementById("dash-last-radarr-run");
   if (lastRadarr) {
-    const t = data.last_radarr_run_local;
-    if (t) lastRadarr.textContent = t;
-    else lastRadarr.innerHTML = '<span class="muted">—</span>';
+    const r = data.last_radarr_run || {};
+    if (r.time_local) {
+      const ok =
+        r.ok === true
+          ? ' <span class="status-pill status-pill-ok">Succeeded</span>'
+          : r.ok === false
+            ? ' <span class="status-pill status-pill-fail">Failed</span>'
+            : "";
+      lastRadarr.innerHTML = `${escapeHtml(r.time_local)}${ok}`;
+    } else lastRadarr.innerHTML = '<span class="muted">—</span>';
   }
   const lastTrimmer = document.getElementById("dash-last-trimmer-run");
   if (lastTrimmer) {
-    const t = data.last_trimmer_run_local;
-    if (t) lastTrimmer.textContent = t;
-    else lastTrimmer.innerHTML = '<span class="muted">—</span>';
+    const r = data.last_trimmer_run || {};
+    if (r.time_local) {
+      const ok =
+        r.ok === true
+          ? ' <span class="status-pill status-pill-ok">Succeeded</span>'
+          : r.ok === false
+            ? ' <span class="status-pill status-pill-fail">Failed</span>'
+            : "";
+      lastTrimmer.innerHTML = `${escapeHtml(r.time_local)}${ok}`;
+    } else lastTrimmer.innerHTML = '<span class="muted">—</span>';
   }
 }
 
