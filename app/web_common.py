@@ -120,6 +120,7 @@ async def build_dashboard_status(
     snapshots: dict[str, AppSnapshot | None] | None = None,
 ) -> dict[str, Any]:
     """Shared JSON payload for dashboard live polling and server-rendered page."""
+    snaps = snapshots if snapshots is not None else await fetch_latest_app_snapshots(session)
     last_run = (
         (await session.execute(select(JobRunLog).order_by(desc(JobRunLog.id)).limit(1))).scalars().first()
     )
@@ -156,6 +157,34 @@ async def build_dashboard_status(
     sonarr_snap = snaps.get("sonarr")
     radarr_snap = snaps.get("radarr")
     emby_snap = snaps.get("emby")
+
+    latest_activity = (
+        (await session.execute(select(ActivityLog).order_by(desc(ActivityLog.id)).limit(1))).scalars().first()
+    )
+    latest_system_event: dict[str, Any] | None = None
+    if latest_activity is not None:
+        app_raw = (latest_activity.app or "").strip().lower()
+        app_name = "System"
+        if app_raw == "sonarr":
+            app_name = "Sonarr"
+        elif app_raw == "radarr":
+            app_name = "Radarr"
+        elif app_raw == "emby":
+            app_name = "Trimmer"
+        kind = (latest_activity.kind or "").strip().lower()
+        event_name_map = {
+            "missing": "Missing search",
+            "upgrade": "Upgrade search",
+            "trimmed": "Trimmer run",
+            "cleanup": "Queue cleanup",
+            "error": "Run error",
+        }
+        event_name = event_name_map.get(kind, kind.replace("_", " ").title() if kind else "Activity event")
+        latest_system_event = {
+            "context": f"{app_name} • {event_name}",
+            "time_local": _fmt_local(latest_activity.created_at, tz),
+            "ok": (latest_activity.status or "ok").strip().lower() != "failed",
+        }
     last_sonarr = _last_from(settings.sonarr_last_run_at, _latest_snapshot_for("sonarr"))
     last_radarr = _last_from(settings.radarr_last_run_at, _latest_snapshot_for("radarr"))
     last_trimmer = _last_from(settings.emby_last_run_at, _latest_snapshot_for("emby"))
@@ -181,6 +210,7 @@ async def build_dashboard_status(
         "last_sonarr_run": last_sonarr,
         "last_radarr_run": last_radarr,
         "last_trimmer_run": last_trimmer,
+        "latest_system_event": latest_system_event,
         "next_sonarr_tick_local": next_sonarr_local,
         "next_radarr_tick_local": next_radarr_local,
         "next_trimmer_tick_local": next_trimmer_local,

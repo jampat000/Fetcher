@@ -41,6 +41,7 @@ def test_api_dashboard_status_ok(monkeypatch) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert "last_run" in data
+    assert "latest_system_event" in data
     assert "last_sonarr_run" in data
     assert "last_radarr_run" in data
     assert "last_trimmer_run" in data
@@ -60,16 +61,19 @@ def test_dashboard_route_smoke(monkeypatch) -> None:
     with _build_client(monkeypatch) as client:
         resp = client.get("/")
     assert resp.status_code == 200
-    assert b"Last Sonarr run" in resp.content
-    assert b"Last Radarr run" in resp.content
-    assert b"Last Trimmer run" in resp.content
+    assert b"Sonarr" in resp.content
+    assert b"Last run" in resp.content
     assert b"Latest system event" in resp.content
+    assert b"Sonarr" in resp.content
+    assert b"Radarr" in resp.content
+    assert b"Trimmer" in resp.content
 
 
 def test_dashboard_route_renders_per_app_success_failure_badges(monkeypatch) -> None:
     async def _fake_status(_session, _tz, *, snapshots=None):  # noqa: ARG001
         return {
             "last_run": {"started_local": "24-03-2026 11:00 AM", "ok": True},
+            "latest_system_event": {"context": "Radarr | Upgrade search", "time_local": "24-03-2026 11:00 AM", "ok": True},
             "last_sonarr_run": {"time_local": "24-03-2026 10:00 AM", "ok": True},
             "last_radarr_run": {"time_local": "24-03-2026 10:30 AM", "ok": False},
             "last_trimmer_run": {"time_local": "24-03-2026 10:45 AM", "ok": True},
@@ -87,8 +91,9 @@ def test_dashboard_route_renders_per_app_success_failure_badges(monkeypatch) -> 
     with _build_client(monkeypatch) as client:
         resp = client.get("/")
     assert resp.status_code == 200
-    assert b"Last Sonarr run" in resp.content
-    assert b"Last Radarr run" in resp.content
+    assert b"Sonarr" in resp.content
+    assert b"Radarr" in resp.content
+    assert b"Upgrade search" in resp.content
     assert b"Succeeded" in resp.content
     assert b"Failed" in resp.content
 

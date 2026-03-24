@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.3.3] - 2026-03-24
+
+### Changed
+
+- **Automation card polish:** Reworked dashboard Automation presentation into clear Sonarr/Radarr/Trimmer subsystem blocks with stronger hierarchy and cleaner spacing, including intentional empty-state rendering.
+- **Independent scheduler alignment:** Kept per-subsystem Last/Next scheduling rows primary and moved the global row to a secondary **Latest system event** section.
+- **Latest event context:** Latest system event now shows contextual label (`{Subsystem} • {Event name}`) with timestamp + status badge for clearer operational signal.
+
 ## [2.3.2] - 2026-03-24
 
 ### Fixed
@@ -723,7 +731,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.2...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.3...HEAD
+[2.3.3]: https://github.com/jampat000/Fetcher/compare/v2.3.2...v2.3.3
 [2.3.2]: https://github.com/jampat000/Fetcher/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/jampat000/Fetcher/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/jampat000/Fetcher/compare/v2.2.0...v2.3.0
