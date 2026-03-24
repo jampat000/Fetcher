@@ -41,7 +41,9 @@ def test_api_dashboard_status_ok(monkeypatch) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert "last_run" in data
-    assert "next_scheduler_tick_local" in data
+    assert "next_sonarr_tick_local" in data
+    assert "next_radarr_tick_local" in data
+    assert "next_trimmer_tick_local" in data
     assert data["sonarr_missing"] == 0
     assert data["radarr_missing"] == 0
     assert data["sonarr_upgrades"] == 0

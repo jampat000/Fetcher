@@ -315,7 +315,15 @@ async def save_settings(
             row.timezone = _resolve_timezone_name(timezone)
 
         row.updated_at = utc_now_naive()
-        if not await try_commit_and_reschedule(session):
+        if scope == "sonarr":
+            sched_targets = {"sonarr"}
+        elif scope == "radarr":
+            sched_targets = {"radarr"}
+        elif scope == "global":
+            sched_targets = {"sonarr", "radarr", "trimmer"}
+        else:
+            sched_targets = None
+        if not await try_commit_and_reschedule(session, targets=sched_targets):
             return RedirectResponse(f"/settings?save=fail&reason=db_busy&tab={tab_q}", status_code=303)
         return RedirectResponse(f"/settings?saved=1&tab={tab_q}", status_code=303)
     except SQLAlchemyError:

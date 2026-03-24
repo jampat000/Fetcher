@@ -90,7 +90,11 @@ def settings_looks_like_existing_fetcher_install(settings: AppSettings) -> bool:
     )
 
 
-async def try_commit_and_reschedule(session: AsyncSession) -> bool:
+async def try_commit_and_reschedule(
+    session: AsyncSession,
+    *,
+    targets: set[str] | None = None,
+) -> bool:
     """Persist settings and refresh scheduler tick. False if SQLite could not commit (e.g. DB locked)."""
     try:
         await session.commit()
@@ -101,7 +105,7 @@ async def try_commit_and_reschedule(session: AsyncSession) -> bool:
             logger.exception("rollback after failed settings commit")
         return False
     try:
-        await scheduler.reschedule()
+        await scheduler.reschedule(targets=targets)
     except Exception:
         logger.warning("scheduler.reschedule failed after settings commit", exc_info=True)
     return True
@@ -126,15 +130,22 @@ async def build_dashboard_status(
             "ok": bool(last_run.ok),
             "message": _truncate_display(last_run.message or ""),
         }
-    next_tick = scheduler.next_fetcher_run_at()
-    next_tick_local = _fmt_local(next_tick, tz) if next_tick else ""
+    next_runs = scheduler.next_runs_by_job()
+    next_sonarr = next_runs.get("sonarr")
+    next_radarr = next_runs.get("radarr")
+    next_trimmer = next_runs.get("trimmer")
+    next_sonarr_local = _fmt_local(next_sonarr, tz) if next_sonarr else ""
+    next_radarr_local = _fmt_local(next_radarr, tz) if next_radarr else ""
+    next_trimmer_local = _fmt_local(next_trimmer, tz) if next_trimmer else ""
     snaps = snapshots if snapshots is not None else await fetch_latest_app_snapshots(session)
     sonarr_snap = snaps.get("sonarr")
     radarr_snap = snaps.get("radarr")
     emby_snap = snaps.get("emby")
     return {
         "last_run": last_run_display,
-        "next_scheduler_tick_local": next_tick_local,
+        "next_sonarr_tick_local": next_sonarr_local,
+        "next_radarr_tick_local": next_radarr_local,
+        "next_trimmer_tick_local": next_trimmer_local,
         "sonarr_missing": int(sonarr_snap.missing_total) if sonarr_snap else 0,
         "sonarr_upgrades": int(sonarr_snap.cutoff_unmet_total) if sonarr_snap else 0,
         "radarr_missing": int(radarr_snap.missing_total) if radarr_snap else 0,

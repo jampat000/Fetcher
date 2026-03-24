@@ -156,7 +156,7 @@ async def save_emby_settings(
         row.emby_api_key = encrypt_secret_for_storage(emby_api_key.strip())
         row.emby_user_id = emby_user_id.strip()
         row.updated_at = utc_now_naive()
-        if not await try_commit_and_reschedule(session):
+        if not await try_commit_and_reschedule(session, targets={"trimmer"}):
             return RedirectResponse(
                 trimmer_settings_redirect_url(saved=False, reason="db_busy", section="connection"),
                 status_code=303,
@@ -203,7 +203,7 @@ async def save_emby_connection_settings(
         row.emby_api_key = encrypt_secret_for_storage(emby_api_key.strip())
         row.emby_user_id = emby_user_id.strip()
         row.updated_at = utc_now_naive()
-        if not await try_commit_and_reschedule(session):
+        if not await try_commit_and_reschedule(session, targets={"trimmer"}):
             return RedirectResponse(
                 trimmer_settings_redirect_url(saved=False, reason="db_busy", section="connection"),
                 status_code=303,
@@ -316,7 +316,7 @@ async def save_trimmer_settings(
             row.emby_rule_tv_unwatched_days,
         )
         row.updated_at = utc_now_naive()
-        if not await try_commit_and_reschedule(session):
+        if not await try_commit_and_reschedule(session, targets={"trimmer"}):
             return RedirectResponse(
                 trimmer_settings_redirect_url(saved=False, reason="db_busy", section=trimmer_section),
                 status_code=303,

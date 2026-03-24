@@ -56,7 +56,9 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
     snapshots = await fetch_latest_app_snapshots(session)
     dash_status = await build_dashboard_status(session, tz, snapshots=snapshots)
     last_run_display = dash_status["last_run"]
-    next_tick_local = dash_status["next_scheduler_tick_local"]
+    next_sonarr_tick_local = dash_status["next_sonarr_tick_local"]
+    next_radarr_tick_local = dash_status["next_radarr_tick_local"]
+    next_trimmer_tick_local = dash_status["next_trimmer_tick_local"]
     sonarr_snap = snapshots.get("sonarr")
     radarr_snap = snapshots.get("radarr")
     emby_snap = snapshots.get("emby")
@@ -87,7 +89,9 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
             "settings": settings,
             "suggest_setup_wizard": suggest_setup_wizard,
             "last_run": last_run_display,
-            "next_scheduler_tick_local": next_tick_local,
+            "next_sonarr_tick_local": next_sonarr_tick_local,
+            "next_radarr_tick_local": next_radarr_tick_local,
+            "next_trimmer_tick_local": next_trimmer_tick_local,
             "emby_schedule_start_display": emby_schedule_start_display,
             "emby_schedule_end_display": emby_schedule_end_display,
             "sonarr_schedule_start_display": sonarr_schedule_start_display,
