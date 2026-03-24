@@ -500,6 +500,81 @@ function startDashboardStatusPolling() {
   });
 }
 
+function replaceLiveRegionFromUrl(targetSelector, sourceSelector, url, afterSwap) {
+  const target = document.querySelector(targetSelector);
+  if (!target) return Promise.resolve();
+  return fetch(url, {
+    method: "GET",
+    headers: { Accept: "text/html" },
+    credentials: "same-origin",
+    cache: "no-store",
+  })
+    .then((r) => (r.ok ? r.text() : null))
+    .then((html) => {
+      if (!html) return;
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const src = doc.querySelector(sourceSelector);
+      if (!src) return;
+      target.outerHTML = src.outerHTML;
+      if (typeof afterSwap === "function") afterSwap();
+    })
+    .catch(() => {});
+}
+
+function startLiveTilePolling() {
+  const intervalMs = 60000;
+  let timerId = null;
+  const isDashboard = Boolean(document.getElementById("dashboard-hero-stats"));
+  const isActivityPage = Boolean(document.getElementById("activity-live-root"));
+  const isLogsPage = Boolean(document.getElementById("logs-live-root"));
+  if (!isDashboard && !isActivityPage && !isLogsPage) return;
+
+  const poll = () => {
+    if (document.visibilityState === "hidden") return;
+    if (isDashboard) {
+      replaceLiveRegionFromUrl(
+        "#dashboard-activity-live-root",
+        "#dashboard-activity-live-root",
+        "/",
+        () => {
+          initActivityDetailExpand();
+        }
+      );
+    }
+    if (isActivityPage) {
+      replaceLiveRegionFromUrl("#activity-live-root", "#activity-live-root", "/activity", () => {
+        initActivityFilterPills();
+        initActivityDetailExpand();
+      });
+    }
+    if (isLogsPage) {
+      replaceLiveRegionFromUrl("#logs-live-root", "#logs-live-root", "/logs");
+    }
+  };
+
+  const arm = () => {
+    if (timerId !== null) {
+      clearInterval(timerId);
+      timerId = null;
+    }
+    timerId = window.setInterval(poll, intervalMs);
+  };
+
+  poll();
+  arm();
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      if (timerId !== null) {
+        clearInterval(timerId);
+        timerId = null;
+      }
+    } else {
+      poll();
+      arm();
+    }
+  });
+}
+
 function initSettingsTabs() {
   const tabButtons = document.querySelectorAll(".settings-tab-btn[data-settings-tab]");
   const panels = document.querySelectorAll(".settings-tab-target[data-settings-panel]");
@@ -612,6 +687,7 @@ window.addEventListener("DOMContentLoaded", () => {
   window.setTimeout(runHeroCountUp, 200);
 
   startDashboardStatusPolling();
+  startLiveTilePolling();
 
   if (qs("saved") === "1") showToast("Settings saved");
   if (qs("ran") === "1") showToast("Run triggered");
