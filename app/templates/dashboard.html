@@ -246,6 +246,11 @@
             if (typeof window.fetcherLiveTilesPollNow === "function") {
               window.fetcherLiveTilesPollNow();
             }
+            if (ok) {
+              window.setTimeout(function () {
+                statusEl.hidden = true;
+              }, 3500);
+            }
           })
           .catch(function () {
             statusEl.className = "dashboard-arr-search-status dashboard-arr-search-status-warn";

@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.3.12] - 2026-03-24
+
+### Fixed
+
+- **Manual search activity detail parity:** Improved manual missing/upgrade activity entries to include meaningful wanted-item details and counts (matching scheduled-action readability).
+- **Manual search status UX:** Refined dashboard manual-search status behavior to auto-clear after successful trigger + live refresh, reducing stale “triggered/queued” messages.
+
 ## [2.3.11] - 2026-03-24
 
 ### Fixed
@@ -790,7 +797,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.11...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.12...HEAD
+[2.3.12]: https://github.com/jampat000/Fetcher/compare/v2.3.11...v2.3.12
 [2.3.11]: https://github.com/jampat000/Fetcher/compare/v2.3.10...v2.3.11
 [2.3.10]: https://github.com/jampat000/Fetcher/compare/v2.3.9...v2.3.10
 [2.3.9]: https://github.com/jampat000/Fetcher/compare/v2.3.8...v2.3.9
