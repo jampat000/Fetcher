@@ -1915,24 +1915,27 @@ textarea.input:focus {
 .automation-spec {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 .automation-subsystem-block {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 4px 0;
+  padding: 4px 0 6px;
+}
+.automation-subsystem-block + .automation-subsystem-block {
+  margin-top: 4px;
 }
 .automation-subsystem-title {
   font-size: 14px;
-  font-weight: 800;
-  color: var(--text);
+  font-weight: 850;
+  color: rgba(248, 250, 252, 0.98);
   letter-spacing: 0.01em;
   margin-bottom: 2px;
 }
 .automation-subsystem-row {
   display: grid;
-  grid-template-columns: 74px 1fr;
+  grid-template-columns: 84px 1fr;
   gap: 12px;
   align-items: baseline;
 }
@@ -1962,7 +1965,7 @@ textarea.input:focus {
 .automation-spec-divider {
   height: 1px;
   background: rgba(255, 255, 255, 0.08);
-  margin: 4px 0 0;
+  margin: 2px 0 0;
 }
 .automation-system-event {
   display: flex;
@@ -1979,6 +1982,9 @@ textarea.input:focus {
 }
 #dash-last-context {
   color: rgba(203, 213, 225, 0.75);
+}
+.automation-value-pending {
+  color: rgba(148, 163, 184, 0.62);
 }
 .automation-run-log {
   margin-top: 8px;
