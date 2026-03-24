@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-03-24
+
+### Changed
+
+- **Schedule-window semantics clarification:** Kept interval cadence active per subsystem and clarified that schedule windows are a restriction layer only (when disabled, runs follow interval normally; when enabled, runs execute only inside the allowed window).
+- **Scheduler status clarity:** Dashboard/API now expose and show per-subsystem last-run + next-run timing (Sonarr, Radarr, Trimmer), with generic latest event shown as secondary context.
+
 ## [2.3.0] - 2026-03-24
 
 ### Changed
@@ -708,7 +715,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.1...HEAD
+[2.3.1]: https://github.com/jampat000/Fetcher/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/jampat000/Fetcher/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/jampat000/Fetcher/compare/v2.1.1...v2.2.0
 [2.1.1]: https://github.com/jampat000/Fetcher/compare/v2.1.0...v2.1.1

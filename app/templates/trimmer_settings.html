@@ -120,12 +120,12 @@
           {{ schedule_time_select("emby_schedule_start", "Start time", emby_schedule_start_hhmm, schedule_time_choices, emby_start_orphan) }}
           {{ schedule_time_select("emby_schedule_end", "End time", emby_schedule_end_hhmm, schedule_time_choices, emby_end_orphan) }}
         </div>
-        <div class="small">30-minute steps; times outside the list stay available as <strong>(saved)</strong>. If start is later than end, the window crosses midnight.</div>
+        <div class="small">Schedule window restricts when runs are allowed. With the window off, runs follow the interval normally. 30-minute steps; times outside the list stay available as <strong>(saved)</strong>. If start is later than end, the window crosses midnight.</div>
         <div class="row row-schedule-pair">
           <div class="field">
             <label>Run interval (minutes)</label>
             <input class="number" type="number" name="emby_interval_minutes" value="{{ settings.emby_interval_minutes | default(60, true) }}" min="5" max="10080" placeholder="60" />
-            <div class="small">Minimum time between Trimmer runs when this window and your rules allow.</div>
+            <div class="small">How often Trimmer becomes due. The schedule window only restricts allowed run times.</div>
           </div>
         </div>
       </div>

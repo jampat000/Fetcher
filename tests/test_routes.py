@@ -41,6 +41,9 @@ def test_api_dashboard_status_ok(monkeypatch) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert "last_run" in data
+    assert "last_sonarr_run_local" in data
+    assert "last_radarr_run_local" in data
+    assert "last_trimmer_run_local" in data
     assert "next_sonarr_tick_local" in data
     assert "next_radarr_tick_local" in data
     assert "next_trimmer_tick_local" in data
@@ -55,6 +58,10 @@ def test_dashboard_route_smoke(monkeypatch) -> None:
     with _build_client(monkeypatch) as client:
         resp = client.get("/")
     assert resp.status_code == 200
+    assert b"Last Sonarr run" in resp.content
+    assert b"Last Radarr run" in resp.content
+    assert b"Last Trimmer run" in resp.content
+    assert b"Latest automation event" in resp.content
 
 
 def test_cleaner_default_skips_emby_client_when_ready(monkeypatch) -> None:
@@ -120,6 +127,7 @@ def test_settings_route_smoke(monkeypatch) -> None:
     with _build_client(monkeypatch) as client:
         resp = client.get("/settings")
     assert resp.status_code == 200
+    assert b"Schedule window restricts when runs are allowed" in resp.content
 
 
 def test_setup_redirect_and_wizard_smoke(monkeypatch) -> None:

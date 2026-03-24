@@ -56,6 +56,9 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
     snapshots = await fetch_latest_app_snapshots(session)
     dash_status = await build_dashboard_status(session, tz, snapshots=snapshots)
     last_run_display = dash_status["last_run"]
+    last_sonarr_run_local = dash_status["last_sonarr_run_local"]
+    last_radarr_run_local = dash_status["last_radarr_run_local"]
+    last_trimmer_run_local = dash_status["last_trimmer_run_local"]
     next_sonarr_tick_local = dash_status["next_sonarr_tick_local"]
     next_radarr_tick_local = dash_status["next_radarr_tick_local"]
     next_trimmer_tick_local = dash_status["next_trimmer_tick_local"]
@@ -89,6 +92,9 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
             "settings": settings,
             "suggest_setup_wizard": suggest_setup_wizard,
             "last_run": last_run_display,
+            "last_sonarr_run_local": last_sonarr_run_local,
+            "last_radarr_run_local": last_radarr_run_local,
+            "last_trimmer_run_local": last_trimmer_run_local,
             "next_sonarr_tick_local": next_sonarr_tick_local,
             "next_radarr_tick_local": next_radarr_tick_local,
             "next_trimmer_tick_local": next_trimmer_tick_local,

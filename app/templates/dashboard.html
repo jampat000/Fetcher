@@ -70,7 +70,7 @@
     <div class="automation-spec">
       {% if last_run %}
       <div class="automation-spec-row">
-        <div class="automation-spec-label">Last run</div>
+        <div class="automation-spec-label">Latest automation event</div>
         <div class="automation-spec-value" id="dash-automation-last">
           <span id="dash-last-started">{{ last_run.started_local }}</span>
           {% if last_run.ok %}<span class="status-pill status-pill-ok">Succeeded</span>{% else %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
@@ -78,10 +78,28 @@
       </div>
       {% else %}
       <div class="automation-spec-row">
-        <div class="automation-spec-label">Last run</div>
+        <div class="automation-spec-label">Latest automation event</div>
         <div class="automation-spec-value muted" id="dash-automation-last">—</div>
       </div>
       {% endif %}
+      <div class="automation-spec-row">
+        <div class="automation-spec-label">Last Sonarr run</div>
+        <div class="automation-spec-value">
+          <span id="dash-last-sonarr-run">{% if last_sonarr_run_local %}{{ last_sonarr_run_local }}{% else %}<span class="muted">—</span>{% endif %}</span>
+        </div>
+      </div>
+      <div class="automation-spec-row">
+        <div class="automation-spec-label">Last Radarr run</div>
+        <div class="automation-spec-value">
+          <span id="dash-last-radarr-run">{% if last_radarr_run_local %}{{ last_radarr_run_local }}{% else %}<span class="muted">—</span>{% endif %}</span>
+        </div>
+      </div>
+      <div class="automation-spec-row">
+        <div class="automation-spec-label">Last Trimmer run</div>
+        <div class="automation-spec-value">
+          <span id="dash-last-trimmer-run">{% if last_trimmer_run_local %}{{ last_trimmer_run_local }}{% else %}<span class="muted">—</span>{% endif %}</span>
+        </div>
+      </div>
 
       <div class="automation-spec-row">
         <div class="automation-spec-label">Next Sonarr run</div>
