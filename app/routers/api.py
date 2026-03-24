@@ -96,23 +96,32 @@ async def trigger_manual_arr_search_now(scope: str, session: AsyncSession) -> No
             )
             records = page.get("records") if isinstance(page, dict) else []
             records = records if isinstance(records, list) else []
-            total = page.get("totalRecords") if isinstance(page, dict) else 0
-            try:
-                total_count = int(total or 0)
-            except (TypeError, ValueError):
-                total_count = len(records)
-            if scope == "sonarr_missing":
-                await trigger_sonarr_missing_search(client)
-            else:
-                await trigger_sonarr_cutoff_search(client)
+            pairs: list[tuple[int, dict]] = []
+            for r in records:
+                raw = r.get("episodeId", r.get("id"))
+                try:
+                    n = int(raw)
+                except (TypeError, ValueError):
+                    continue
+                if n > 0:
+                    pairs.append((n, r))
+            sonarr_limit = max(1, int((settings.sonarr_max_items_per_run or 0) or 50))
+            selected = pairs[:sonarr_limit]
+            ids = [n for n, _ in selected]
+            selected_records = [r for _, r in selected]
+            if ids:
+                if scope == "sonarr_missing":
+                    await trigger_sonarr_missing_search(client, episode_ids=ids)
+                else:
+                    await trigger_sonarr_cutoff_search(client, episode_ids=ids)
         finally:
             await client.aclose()
         session.add(
             ActivityLog(
                 app="sonarr",
                 kind=kind,
-                count=max(0, total_count),
-                detail=_manual_detail_text(scope, records)
+                count=len(ids),
+                detail=_manual_detail_text(scope, selected_records)
                 or f"Manual {kind} search: command triggered immediately.",
             )
         )
@@ -132,23 +141,32 @@ async def trigger_manual_arr_search_now(scope: str, session: AsyncSession) -> No
         )
         records = page.get("records") if isinstance(page, dict) else []
         records = records if isinstance(records, list) else []
-        total = page.get("totalRecords") if isinstance(page, dict) else 0
-        try:
-            total_count = int(total or 0)
-        except (TypeError, ValueError):
-            total_count = len(records)
-        if scope == "radarr_missing":
-            await trigger_radarr_missing_search(client)
-        else:
-            await trigger_radarr_cutoff_search(client)
+        pairs: list[tuple[int, dict]] = []
+        for r in records:
+            raw = r.get("movieId", r.get("id"))
+            try:
+                n = int(raw)
+            except (TypeError, ValueError):
+                continue
+            if n > 0:
+                pairs.append((n, r))
+        radarr_limit = max(1, int((settings.radarr_max_items_per_run or 0) or 50))
+        selected = pairs[:radarr_limit]
+        ids = [n for n, _ in selected]
+        selected_records = [r for _, r in selected]
+        if ids:
+            if scope == "radarr_missing":
+                await trigger_radarr_missing_search(client, movie_ids=ids)
+            else:
+                await trigger_radarr_cutoff_search(client, movie_ids=ids)
     finally:
         await client.aclose()
     session.add(
         ActivityLog(
             app="radarr",
             kind=kind,
-            count=max(0, total_count),
-            detail=_manual_detail_text(scope, records)
+            count=len(ids),
+            detail=_manual_detail_text(scope, selected_records)
             or f"Manual {kind} search: command triggered immediately.",
         )
     )
