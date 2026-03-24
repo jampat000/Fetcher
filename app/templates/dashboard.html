@@ -76,12 +76,12 @@
             {% if last_sonarr_run.time_local %}
               {{ last_sonarr_run.time_local }}
               {% if last_sonarr_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif last_sonarr_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
-            {% else %}<span class="muted">—</span>{% endif %}
+            {% else %}<span class="muted">Not yet run</span>{% endif %}
           </div>
         </div>
         <div class="automation-subsystem-row">
           <div class="automation-subsystem-label">Next run</div>
-          <div class="automation-subsystem-value" id="dash-next-sonarr-tick">{% if next_sonarr_tick_local %}{{ next_sonarr_tick_local }}{% else %}<span class="muted">—</span>{% endif %}</div>
+          <div class="automation-subsystem-value" id="dash-next-sonarr-tick">{% if next_sonarr_tick_local %}{{ next_sonarr_tick_local }}{% else %}<span class="muted">Pending</span>{% endif %}</div>
         </div>
       </div>
 
@@ -93,12 +93,12 @@
             {% if last_radarr_run.time_local %}
               {{ last_radarr_run.time_local }}
               {% if last_radarr_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif last_radarr_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
-            {% else %}<span class="muted">—</span>{% endif %}
+            {% else %}<span class="muted">Not yet run</span>{% endif %}
           </div>
         </div>
         <div class="automation-subsystem-row">
           <div class="automation-subsystem-label">Next run</div>
-          <div class="automation-subsystem-value" id="dash-next-radarr-tick">{% if next_radarr_tick_local %}{{ next_radarr_tick_local }}{% else %}<span class="muted">—</span>{% endif %}</div>
+          <div class="automation-subsystem-value" id="dash-next-radarr-tick">{% if next_radarr_tick_local %}{{ next_radarr_tick_local }}{% else %}<span class="muted">Pending</span>{% endif %}</div>
         </div>
       </div>
 
@@ -110,12 +110,12 @@
             {% if last_trimmer_run.time_local %}
               {{ last_trimmer_run.time_local }}
               {% if last_trimmer_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif last_trimmer_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
-            {% else %}<span class="muted">—</span>{% endif %}
+            {% else %}<span class="muted">Not yet run</span>{% endif %}
           </div>
         </div>
         <div class="automation-subsystem-row">
           <div class="automation-subsystem-label">Next run</div>
-          <div class="automation-subsystem-value" id="dash-next-trimmer-tick">{% if next_trimmer_tick_local %}{{ next_trimmer_tick_local }}{% else %}<span class="muted">—</span>{% endif %}</div>
+          <div class="automation-subsystem-value" id="dash-next-trimmer-tick">{% if next_trimmer_tick_local %}{{ next_trimmer_tick_local }}{% else %}<span class="muted">Pending</span>{% endif %}</div>
         </div>
       </div>
 
@@ -128,7 +128,7 @@
             <span id="dash-last-started">{{ latest_system_event.time_local }}</span>
             {% if latest_system_event.ok %}<span class="status-pill status-pill-ok">Succeeded</span>{% else %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
           {% else %}
-            <span class="muted">—</span>
+            <span class="muted">No activity yet</span>
           {% endif %}
         </div>
       </div>
