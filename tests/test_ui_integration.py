@@ -6,6 +6,7 @@ import re
 from urllib.parse import urlencode
 
 import pytest
+import httpx
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -116,6 +117,30 @@ def test_post_api_arr_search_now(monkeypatch: pytest.MonkeyPatch, scope: str) ->
     assert resp.status_code == 200
     assert resp.json() == {"ok": True, "queued": False, "message": "Manual search triggered."}
     assert seen["scope"] == scope
+
+
+def test_post_api_arr_search_now_falls_back_to_queue_on_http_status_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, str | None] = {"queued_scope": None}
+
+    async def _boom(_scope: str, _session):
+        req = httpx.Request("POST", "http://localhost:8310/api/v3/command")
+        resp = httpx.Response(500, request=req, text="internal")
+        raise httpx.HTTPStatusError("boom", request=req, response=resp)
+
+    def _fake_enqueue(scope: str):
+        seen["queued_scope"] = scope
+
+    monkeypatch.setattr("app.routers.api.trigger_manual_arr_search_now", _boom)
+    monkeypatch.setattr("app.routers.api.enqueue_manual_arr_search", _fake_enqueue)
+    with _client(monkeypatch) as client:
+        resp = client.post("/api/arr/search-now", json={"scope": "radarr_upgrade"})
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "ok": True,
+        "queued": True,
+        "message": "Manual search queued (immediate Arr command failed).",
+    }
+    assert seen["queued_scope"] == "radarr_upgrade"
 
 
 def test_post_api_arr_search_now_invalid_scope_422(monkeypatch: pytest.MonkeyPatch) -> None:
