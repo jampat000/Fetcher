@@ -11,7 +11,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import fetch_latest_app_snapshots
+from app.db import _get_or_create_settings, fetch_latest_app_snapshots
 from app.display_helpers import _fmt_local, _truncate_display
 from app.models import ActivityLog, AppSettings, AppSnapshot, JobRunLog
 from app.schedule import DAY_NAMES, normalize_schedule_days_csv
@@ -137,12 +137,19 @@ async def build_dashboard_status(
     next_sonarr_local = _fmt_local(next_sonarr, tz) if next_sonarr else ""
     next_radarr_local = _fmt_local(next_radarr, tz) if next_radarr else ""
     next_trimmer_local = _fmt_local(next_trimmer, tz) if next_trimmer else ""
+    settings = await _get_or_create_settings(session)
+    last_sonarr_local = _fmt_local(settings.sonarr_last_run_at, tz) if settings.sonarr_last_run_at else ""
+    last_radarr_local = _fmt_local(settings.radarr_last_run_at, tz) if settings.radarr_last_run_at else ""
+    last_trimmer_local = _fmt_local(settings.emby_last_run_at, tz) if settings.emby_last_run_at else ""
     snaps = snapshots if snapshots is not None else await fetch_latest_app_snapshots(session)
     sonarr_snap = snaps.get("sonarr")
     radarr_snap = snaps.get("radarr")
     emby_snap = snaps.get("emby")
     return {
         "last_run": last_run_display,
+        "last_sonarr_run_local": last_sonarr_local,
+        "last_radarr_run_local": last_radarr_local,
+        "last_trimmer_run_local": last_trimmer_local,
         "next_sonarr_tick_local": next_sonarr_local,
         "next_radarr_tick_local": next_radarr_local,
         "next_trimmer_tick_local": next_trimmer_local,

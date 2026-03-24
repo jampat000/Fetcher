@@ -243,6 +243,167 @@ def test_scheduled_scoped_run_sonarr_only(monkeypatch: pytest.MonkeyPatch) -> No
     assert seen["emby"] == 0
 
 
+def test_scheduled_sonarr_runs_when_schedule_window_disabled() -> None:
+    asyncio.run(_run_scheduled_window_disabled_case("sonarr"))
+
+
+def test_scheduled_radarr_runs_when_schedule_window_disabled() -> None:
+    asyncio.run(_run_scheduled_window_disabled_case("radarr"))
+
+
+def test_scheduled_trimmer_runs_when_schedule_window_disabled() -> None:
+    asyncio.run(_run_scheduled_window_disabled_case("trimmer"))
+
+
+async def _run_scheduled_window_disabled_case(scope: str) -> None:
+    fixed_now = datetime(2026, 3, 24, 10, 0, 0)
+    await _clear_run_tables()
+    async with SessionLocal() as s:
+        row = await _get_or_create_settings(s)
+        row.sonarr_enabled = scope == "sonarr"
+        row.sonarr_url = "http://localhost:8989"
+        row.sonarr_search_missing = False
+        row.sonarr_search_upgrades = False
+        row.sonarr_schedule_enabled = False
+        row.radarr_enabled = scope == "radarr"
+        row.radarr_url = "http://localhost:7878"
+        row.radarr_search_missing = False
+        row.radarr_search_upgrades = False
+        row.radarr_schedule_enabled = False
+        row.emby_enabled = scope == "trimmer"
+        row.emby_url = "http://localhost:8096"
+        row.emby_schedule_enabled = False
+        row.emby_dry_run = True
+        row.emby_rule_movie_watched_rating_below = 0
+        row.emby_rule_movie_unwatched_days = 0
+        row.emby_rule_tv_delete_watched = False
+        row.emby_rule_tv_unwatched_days = 0
+        row.emby_last_run_at = None
+        row.sonarr_last_run_at = None
+        row.radarr_last_run_at = None
+        await s.commit()
+
+    seen = {"sonarr": 0, "radarr": 0, "emby": 0}
+
+    class _FakeArrClient:
+        def __init__(self, cfg):
+            self._base = str(getattr(cfg, "base_url", ""))
+
+        async def health(self):
+            if ":8989" in self._base:
+                seen["sonarr"] += 1
+            if ":7878" in self._base:
+                seen["radarr"] += 1
+
+        async def series(self):
+            return []
+
+        async def aclose(self):
+            return None
+
+        async def wanted_missing(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def wanted_cutoff_unmet(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+    class _FakeEmbyClient:
+        def __init__(self, _cfg):
+            pass
+
+        async def health(self):
+            seen["emby"] += 1
+
+        async def users(self):
+            return [{"Id": "u1", "Name": "U"}]
+
+        async def items_for_user(self, **kwargs):
+            return []
+
+        async def aclose(self):
+            return None
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("app.service_logic.utc_now_naive", lambda: fixed_now)
+    monkeypatch.setattr("app.service_logic.resolve_sonarr_api_key", lambda _s: "sk")
+    monkeypatch.setattr("app.service_logic.resolve_radarr_api_key", lambda _s: "rk")
+    monkeypatch.setattr("app.service_logic.resolve_emby_api_key", lambda _s: "ek")
+    monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
+    monkeypatch.setattr("app.service_logic.EmbyClient", _FakeEmbyClient)
+    try:
+        result = await _run_once_scheduled(scope)
+    finally:
+        monkeypatch.undo()
+
+    assert result.ok is True
+    if scope == "sonarr":
+        assert seen["sonarr"] == 1 and seen["radarr"] == 0 and seen["emby"] == 0
+    elif scope == "radarr":
+        assert seen["radarr"] == 1 and seen["sonarr"] == 0 and seen["emby"] == 0
+    else:
+        assert seen["emby"] == 1 and seen["sonarr"] == 0 and seen["radarr"] == 0
+
+
+def test_sonarr_due_outside_window_skips_then_runs_when_window_opens(monkeypatch: pytest.MonkeyPatch) -> None:
+    fixed_now = datetime(2026, 3, 24, 11, 0, 0)
+    asyncio.run(_clear_run_tables())
+    asyncio.run(
+        _set_settings(
+            sonarr_enabled=True,
+            sonarr_url="http://localhost:8989",
+            sonarr_search_missing=True,
+            sonarr_search_upgrades=False,
+            sonarr_schedule_enabled=True,
+            sonarr_last_run_at=None,
+            radarr_enabled=False,
+            emby_enabled=False,
+        )
+    )
+    seen = {"health": 0}
+
+    class _FakeArrClient:
+        def __init__(self, _cfg):
+            pass
+
+        async def health(self):
+            seen["health"] += 1
+
+        async def series(self):
+            return []
+
+        async def wanted_missing(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def wanted_cutoff_unmet(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def aclose(self):
+            return None
+
+    gate = {"allow": False}
+
+    def _in_window(**_kwargs):
+        return gate["allow"]
+
+    monkeypatch.setattr("app.service_logic.utc_now_naive", lambda: fixed_now)
+    monkeypatch.setattr("app.service_logic.resolve_sonarr_api_key", lambda _s: "sk")
+    monkeypatch.setattr("app.service_logic.resolve_radarr_api_key", lambda _s: "")
+    monkeypatch.setattr("app.service_logic.resolve_emby_api_key", lambda _s: "")
+    monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
+    monkeypatch.setattr("app.service_logic.in_window", _in_window)
+
+    res1 = asyncio.run(_run_once_scheduled("sonarr"))
+    assert res1.ok is True
+    assert "Sonarr: skipped (outside schedule window)" in res1.message
+    assert seen["health"] == 0
+
+    gate["allow"] = True
+    res2 = asyncio.run(_run_once_scheduled("sonarr"))
+    assert res2.ok is True
+    assert "Sonarr: no missing episodes found" in res2.message
+    assert seen["health"] == 1
+
+
 def test_run_once_manual_scope_gating_sonarr_missing_skip_message(monkeypatch: pytest.MonkeyPatch) -> None:
     asyncio.run(_clear_run_tables())
     asyncio.run(

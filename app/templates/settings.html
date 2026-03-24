@@ -119,12 +119,12 @@
             {{ schedule_time_select("sonarr_schedule_start", "Start time", sonarr_schedule_start_hhmm, schedule_time_choices, sonarr_start_orphan) }}
             {{ schedule_time_select("sonarr_schedule_end", "End time", sonarr_schedule_end_hhmm, schedule_time_choices, sonarr_end_orphan) }}
           </div>
-          <div class="small">30-minute steps; times outside the list stay available as <strong>(saved)</strong>. If start is later than end, the window crosses midnight.</div>
+          <div class="small">Schedule window restricts when runs are allowed. With the window off, runs follow the interval normally. 30-minute steps; times outside the list stay available as <strong>(saved)</strong>. If start is later than end, the window crosses midnight.</div>
           <div class="row">
             <div class="field">
               <label>Run interval (minutes)</label>
               <input class="number" type="number" name="sonarr_interval_minutes" value="{{ settings.sonarr_interval_minutes }}" min="1" max="10080" placeholder="60" />
-              <div class="small">Minimum time between Sonarr automation runs when this schedule window allows. Used for <strong>TV</strong> (missing searches, upgrades).</div>
+              <div class="small">How often Sonarr automation becomes due. The schedule window only restricts allowed run times. Used for <strong>TV</strong> (missing searches, upgrades).</div>
             </div>
           </div>
         </div>
@@ -177,12 +177,12 @@
             {{ schedule_time_select("radarr_schedule_start", "Start time", radarr_schedule_start_hhmm, schedule_time_choices, radarr_start_orphan) }}
             {{ schedule_time_select("radarr_schedule_end", "End time", radarr_schedule_end_hhmm, schedule_time_choices, radarr_end_orphan) }}
           </div>
-          <div class="small">30-minute steps; times outside the list stay available as <strong>(saved)</strong>. If start is later than end, the window crosses midnight.</div>
+          <div class="small">Schedule window restricts when runs are allowed. With the window off, runs follow the interval normally. 30-minute steps; times outside the list stay available as <strong>(saved)</strong>. If start is later than end, the window crosses midnight.</div>
           <div class="row">
             <div class="field">
               <label>Run interval (minutes)</label>
               <input class="number" type="number" name="radarr_interval_minutes" value="{{ settings.radarr_interval_minutes }}" min="1" max="10080" placeholder="60" />
-              <div class="small">Minimum time between Radarr automation runs when this schedule window allows. Used for <strong>movies</strong> (missing searches, upgrades).</div>
+              <div class="small">How often Radarr automation becomes due. The schedule window only restricts allowed run times. Used for <strong>movies</strong> (missing searches, upgrades).</div>
             </div>
           </div>
         </div>

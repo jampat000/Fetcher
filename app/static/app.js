@@ -412,6 +412,25 @@ function applyDashboardStatusPayload(data) {
     lastHost.className = "automation-spec-value muted";
     lastHost.textContent = "—";
   }
+
+  const lastSonarr = document.getElementById("dash-last-sonarr-run");
+  if (lastSonarr) {
+    const t = data.last_sonarr_run_local;
+    if (t) lastSonarr.textContent = t;
+    else lastSonarr.innerHTML = '<span class="muted">—</span>';
+  }
+  const lastRadarr = document.getElementById("dash-last-radarr-run");
+  if (lastRadarr) {
+    const t = data.last_radarr_run_local;
+    if (t) lastRadarr.textContent = t;
+    else lastRadarr.innerHTML = '<span class="muted">—</span>';
+  }
+  const lastTrimmer = document.getElementById("dash-last-trimmer-run");
+  if (lastTrimmer) {
+    const t = data.last_trimmer_run_local;
+    if (t) lastTrimmer.textContent = t;
+    else lastTrimmer.innerHTML = '<span class="muted">—</span>';
+  }
 }
 
 function startDashboardStatusPolling() {
