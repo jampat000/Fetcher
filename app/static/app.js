@@ -401,15 +401,15 @@ function applyDashboardStatusPayload(data) {
   setMetricTile("emby-matched", data.emby_matched ?? 0);
 
   const lastHost = document.getElementById("dash-automation-last");
-  if (lastHost && data.last_run) {
-    lastHost.className = "automation-spec-value";
-    const lr = data.last_run;
-    const ok = lr.ok
+  if (lastHost && data.latest_system_event) {
+    lastHost.className = "automation-system-event-value";
+    const ev = data.latest_system_event;
+    const ok = ev.ok
       ? '<span class="status-pill status-pill-ok">Succeeded</span>'
       : '<span class="status-pill status-pill-fail">Failed</span>';
-    lastHost.innerHTML = `<span id="dash-last-started">${escapeHtml(lr.started_local)}</span> ${ok}`;
-  } else if (lastHost && !data.last_run) {
-    lastHost.className = "automation-spec-value muted";
+    lastHost.innerHTML = `<span id="dash-last-context">${escapeHtml(ev.context || "System • Event")}</span> <span id="dash-last-started">${escapeHtml(ev.time_local || "")}</span> ${ok}`;
+  } else if (lastHost && !data.latest_system_event) {
+    lastHost.className = "automation-system-event-value muted";
     lastHost.textContent = "—";
   }
 

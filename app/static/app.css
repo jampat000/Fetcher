@@ -1915,15 +1915,30 @@ textarea.input:focus {
 .automation-spec {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
-.automation-spec-row {
+.automation-subsystem-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--r-sm);
+  background: rgba(0, 0, 0, 0.2);
+}
+.automation-subsystem-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+.automation-subsystem-row {
   display: grid;
-  grid-template-columns: 140px 1fr;
+  grid-template-columns: 78px 1fr;
   gap: 12px;
   align-items: center;
 }
-.automation-spec-value {
+.automation-subsystem-value {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1931,16 +1946,38 @@ textarea.input:focus {
   min-width: 0;
 }
 @media (max-width: 640px) {
-  .automation-spec-row {
+  .automation-subsystem-row {
     grid-template-columns: 1fr;
   }
 }
+.automation-subsystem-label,
 .automation-spec-label {
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.2);
+}
+.automation-spec-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  margin-top: 2px;
+}
+.automation-system-event {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.automation-system-event-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--text2);
+  font-size: 12px;
+}
+#dash-last-context {
+  color: var(--text2);
 }
 .automation-run-log {
   margin-top: 8px;

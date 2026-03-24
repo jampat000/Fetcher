@@ -55,7 +55,7 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
     )
     snapshots = await fetch_latest_app_snapshots(session)
     dash_status = await build_dashboard_status(session, tz, snapshots=snapshots)
-    last_run_display = dash_status["last_run"]
+    latest_system_event = dash_status["latest_system_event"]
     last_sonarr_run = dash_status["last_sonarr_run"]
     last_radarr_run = dash_status["last_radarr_run"]
     last_trimmer_run = dash_status["last_trimmer_run"]
@@ -91,7 +91,7 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
             "subtitle": "Status overview and counts",
             "settings": settings,
             "suggest_setup_wizard": suggest_setup_wizard,
-            "last_run": last_run_display,
+            "latest_system_event": latest_system_event,
             "last_sonarr_run": last_sonarr_run,
             "last_radarr_run": last_radarr_run,
             "last_trimmer_run": last_trimmer_run,
