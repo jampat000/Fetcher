@@ -538,6 +538,9 @@ function startLiveTilePolling() {
         "/",
         () => {
           initActivityDetailExpand();
+          document.querySelectorAll("#dashboard-activity-live-root .activity-row").forEach((el) => {
+            el.classList.add("anim-in");
+          });
         }
       );
     }
@@ -545,10 +548,17 @@ function startLiveTilePolling() {
       replaceLiveRegionFromUrl("#activity-live-root", "#activity-live-root", "/activity", () => {
         initActivityFilterPills();
         initActivityDetailExpand();
+        document.querySelectorAll("#activity-live-root .activity-row").forEach((el) => {
+          el.classList.add("anim-in");
+        });
       });
     }
     if (isLogsPage) {
-      replaceLiveRegionFromUrl("#logs-live-root", "#logs-live-root", "/logs");
+      replaceLiveRegionFromUrl("#logs-live-root", "#logs-live-root", "/logs", () => {
+        document.querySelectorAll("#logs-live-root .log-entry").forEach((el) => {
+          el.classList.add("anim-in");
+        });
+      });
     }
   };
 
