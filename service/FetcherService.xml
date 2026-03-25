@@ -9,7 +9,7 @@
   <arguments>--host 0.0.0.0 --port 8765</arguments>
   <!-- Required: must be set as a machine/user env var before service start (no fallback secret). -->
   <env name="FETCHER_JWT_SECRET" value="%FETCHER_JWT_SECRET%"/>
-  <!-- Optional: override data folder (default is %ProgramData%\Fetcher; legacy profile DB is copied once on upgrade). Set machine FETCHER_DATA_DIR and uncomment:
+  <!-- Optional: override data folder (default is %ProgramData%\Fetcher; legacy profile DB is copied once on upgrade then renamed with .fetcher-programdata-migration-archive). Set machine FETCHER_DATA_DIR and uncomment:
   <env name="FETCHER_DATA_DIR" value="%FETCHER_DATA_DIR%"/>
   -->
 

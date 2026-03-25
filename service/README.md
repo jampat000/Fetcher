@@ -38,7 +38,7 @@ No fallback JWT secret is used; missing secret causes intentional fail-fast star
 
 ## SQLite data directory (settings, activity, etc.)
 
-By default, **packaged** Fetcher on Windows uses **`%ProgramData%\Fetcher\fetcher.db`**. On first start, if that file is **missing** but a legacy file exists under the service profile’s **`AppData\Local\Fetcher\fetcher.db`** (e.g. Local System under **`…\systemprofile\…`**), Fetcher **copies** it there **once** and then uses ProgramData only. An existing canonical **`fetcher.db`** is **never** overwritten.
+By default, **packaged** Fetcher on Windows uses **`%ProgramData%\Fetcher\fetcher.db`**. On first start, if that file is **missing** but a legacy file exists under the service profile’s **`AppData\Local\Fetcher\fetcher.db`** (e.g. Local System under **`…\systemprofile\…`**), Fetcher **copies** it there **once**, writes **`fetcher.db.migrated_from_legacy`** (JSON audit record), then **renames** the legacy **`fetcher.db`** / **`-wal`** / **`-shm`** files with suffix **`.fetcher-programdata-migration-archive`** only when the marker and file metadata all match (recoverable backup; not deleted). If ProgramData **`fetcher.db` already existed**, migration and rename are **skipped**—legacy files stay as-is. If **`FETCHER_DATA_DIR`** is set, migration and rename are **disabled**; the process uses your folder only.
 
 To use a different folder explicitly, set a **machine** environment variable and restart the service:
 

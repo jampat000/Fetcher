@@ -8,6 +8,16 @@
 
 **License:** [MIT](LICENSE) · **Security:** [SECURITY.md](SECURITY.md) · **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md)
 
+## ⚡ Vibe coded
+
+This is vibe coded.
+
+I needed something like this, couldn’t find anything that did exactly what I wanted, and I can’t code — so I built it with a lot of help.
+
+Not asking anyone to use it.
+
+If you want to try it, go for it.
+
 ## Screenshots
 
 | Dashboard | Settings |
