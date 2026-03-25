@@ -143,7 +143,11 @@ def test_post_api_arr_search_now_without_csrf_succeeds(monkeypatch: pytest.Monke
     with TestClient(app) as client:
         r = client.post("/api/arr/search-now", json={"scope": "sonarr_missing"})
     assert r.status_code == 200
-    assert r.json() == {"ok": True, "queued": False, "message": "Manual search triggered."}
+    assert r.json() == {
+        "ok": True,
+        "queued": False,
+        "message": "Manual missing search sent to Sonarr successfully.",
+    }
 
 
 def test_expired_csrf_token_returns_403(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -39,11 +39,11 @@
     {% endif %}
 
     {% if setup_error == "short_password" %}
-    <div class="banner banner-warn" role="alert">Password must be at least 8 characters.</div>
+    <div class="banner banner-warn" role="alert">Password must be at least 8 characters — choose something you can remember; you can change it later in Fetcher settings.</div>
     {% elif setup_error == "account_required" %}
-    <div class="banner banner-warn" role="alert">Create an account password to continue (cannot skip this step).</div>
+    <div class="banner banner-warn" role="alert">This step is required: set a password so only you can open Fetcher in the browser.</div>
     {% elif setup_save_fail %}
-    <div class="banner banner-warn" role="alert">Could not save — try again.</div>
+    <div class="banner banner-warn" role="alert">Settings could not be saved (database may be busy). Wait a moment and click Continue again.</div>
     {% endif %}
 
     {% if step < 5 %}
@@ -54,20 +54,20 @@
       {% endif %}
       {% if step == 0 %}
       <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Sign in for Fetcher</h2>
-      <p class="hint">Set the <strong>username</strong> and <strong>password</strong> for this install (minimum 8 characters for the password). You’ll use these on every visit; you can change them later under <strong>Fetcher settings</strong> → Security.</p>
-      <label for="setup_auth_username">Username</label>
+      <p class="hint"><strong>Why:</strong> Fetcher’s web UI is only as safe as this login. <strong>What to enter:</strong> any username (often <code class="code-inline">admin</code>) and a password with at least 8 characters. You’ll use them on every visit; change them anytime under <strong>Fetcher settings</strong> → Security.</p>
+      <label for="setup_auth_username">Username — who signs in to this Fetcher install</label>
       <input class="input" id="setup_auth_username" name="setup_auth_username" type="text" value="{{ settings.auth_username|default('admin', true) }}" autocomplete="username" />
-      <label for="setup_auth_password">Password</label>
+      <label for="setup_auth_password">Password — protects the dashboard and API from strangers on your network</label>
       <input class="password" id="setup_auth_password" name="setup_auth_password" type="password" autocomplete="new-password" minlength="8" required />
-      <p class="small">Minimum 8 characters.</p>
+      <p class="small">Use at least 8 characters. Avoid reusing passwords from Sonarr/Radarr — this is separate.</p>
       {% elif step == 1 %}
       <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Sonarr</h2>
-      <p class="hint">Base URL and API key from Sonarr → Settings → General. You can test the connection before saving.</p>
-      <p class="small muted small--flush-top">Example URL: <code class="code-inline">http://192.168.1.10:8989</code> · <code class="code-inline">http://localhost:8989</code> · reverse proxy: <code class="code-inline">https://sonarr.example.com</code></p>
-      {% call toggle_checkbox("sonarr_enabled", settings.sonarr_enabled) %}<strong>Enable</strong> Sonarr automation{% endcall %}
-      <label for="sonarr_url">Sonarr URL</label>
+      <p class="hint"><strong>Why:</strong> Fetcher asks Sonarr to search for missing or upgradable episodes on a schedule. <strong>What you need:</strong> the same base URL you open in a browser plus the API key from Sonarr → Settings → General. Test before continuing if you’re unsure.</p>
+      <p class="small muted small--flush-top">Examples: LAN <code class="code-inline">http://192.168.1.10:8989</code>, this PC <code class="code-inline">http://localhost:8989</code>, reverse proxy <code class="code-inline">https://sonarr.example.com</code></p>
+      {% call toggle_checkbox("sonarr_enabled", settings.sonarr_enabled) %}<strong>Enable</strong> Sonarr automation (interval searches for missing/upgrades){% endcall %}
+      <label for="sonarr_url">Sonarr URL — base address only, no path after the port</label>
       <input class="input" id="sonarr_url" name="sonarr_url" type="text" value="{{ settings.sonarr_url }}" placeholder="http://localhost:8989" inputmode="url" autocomplete="off" autocorrect="off" spellcheck="false" />
-      <label for="sonarr_api_key">Sonarr API key</label>
+      <label for="sonarr_api_key">Sonarr API key — proves Fetcher is allowed to use the Sonarr API</label>
       <div class="control">
         <input class="password" id="sonarr_api_key" name="sonarr_api_key" type="password" value="{{ settings.sonarr_api_key }}" placeholder="X-Api-Key" autocomplete="off" />
         <button class="icon-btn" data-reveal="sonarr_api_key" type="button">Show</button>
@@ -78,12 +78,12 @@
 
       {% elif step == 2 %}
       <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Radarr</h2>
-      <p class="hint">Base URL and API key from Radarr → Settings → General.</p>
-      <p class="small muted small--flush-top">Example URL: <code class="code-inline">http://192.168.1.10:7878</code> · <code class="code-inline">http://localhost:7878</code> · reverse proxy: <code class="code-inline">https://radarr.example.com</code></p>
-      {% call toggle_checkbox("radarr_enabled", settings.radarr_enabled) %}<strong>Enable</strong> Radarr automation{% endcall %}
-      <label for="radarr_url">Radarr URL</label>
+      <p class="hint"><strong>Why:</strong> Same idea as Sonarr, but for movies — Fetcher can ask Radarr to search missing or cutoff-unmet titles. <strong>What you need:</strong> Radarr base URL + API key from Radarr → Settings → General.</p>
+      <p class="small muted small--flush-top">Examples: LAN <code class="code-inline">http://192.168.1.10:7878</code>, this PC <code class="code-inline">http://localhost:7878</code>, reverse proxy <code class="code-inline">https://radarr.example.com</code></p>
+      {% call toggle_checkbox("radarr_enabled", settings.radarr_enabled) %}<strong>Enable</strong> Radarr automation (interval searches for missing/upgrades){% endcall %}
+      <label for="radarr_url">Radarr URL — base address only, no path after the port</label>
       <input class="input" id="radarr_url" name="radarr_url" type="text" value="{{ settings.radarr_url }}" placeholder="http://localhost:7878" inputmode="url" autocomplete="off" autocorrect="off" spellcheck="false" />
-      <label for="radarr_api_key">Radarr API key</label>
+      <label for="radarr_api_key">Radarr API key — proves Fetcher is allowed to use the Radarr API</label>
       <div class="control">
         <input class="password" id="radarr_api_key" name="radarr_api_key" type="password" value="{{ settings.radarr_api_key }}" placeholder="X-Api-Key" autocomplete="off" />
         <button class="icon-btn" data-reveal="radarr_api_key" type="button">Show</button>
@@ -94,17 +94,17 @@
 
       {% elif step == 3 %}
       <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Emby (Trimmer)</h2>
-      <p class="hint">Optional. Server URL, API key (Emby → API Keys), and your user ID if required by your server policy.</p>
-      <p class="small muted small--flush-top">Example URL: <code class="code-inline">http://192.168.1.10:8096</code> · <code class="code-inline">http://localhost:8096</code> · reverse proxy: <code class="code-inline">https://emby.example.com</code></p>
-      {% call toggle_checkbox("emby_enabled", settings.emby_enabled) %}<strong>Enable</strong> Emby Trimmer{% endcall %}
-      <label for="emby_url">Emby URL</label>
+      <p class="hint"><strong>Why:</strong> Trimmer talks to Emby to tidy libraries using rules you’ll set later — this step only proves Fetcher can reach your server. <strong>You can skip</strong> Emby entirely and still use Sonarr/Radarr automation.</p>
+      <p class="small muted small--flush-top">Examples: LAN <code class="code-inline">http://192.168.1.10:8096</code>, this PC <code class="code-inline">http://localhost:8096</code>, reverse proxy <code class="code-inline">https://emby.example.com</code></p>
+      {% call toggle_checkbox("emby_enabled", settings.emby_enabled) %}<strong>Enable</strong> Emby Trimmer (optional library cleanup){% endcall %}
+      <label for="emby_url">Emby server URL — same host you use in the browser</label>
       <input class="input" id="emby_url" name="emby_url" type="text" value="{{ settings.emby_url }}" placeholder="http://localhost:8096" inputmode="url" autocomplete="off" autocorrect="off" spellcheck="false" />
-      <label for="emby_api_key">Emby API key</label>
+      <label for="emby_api_key">Emby API key — from Dashboard → Advanced → API Keys (not your login password)</label>
       <div class="control">
         <input class="password" id="emby_api_key" name="emby_api_key" type="password" value="{{ settings.emby_api_key }}" placeholder="API key" autocomplete="off" />
         <button class="icon-btn" data-reveal="emby_api_key" type="button">Show</button>
       </div>
-      <label for="emby_user_id">Emby user ID (optional)</label>
+      <label for="emby_user_id">Emby user ID (optional) — only if your server requires requests scoped to one user’s libraries</label>
       <input class="input" id="emby_user_id" name="emby_user_id" type="text" value="{{ settings.emby_user_id }}" placeholder="e.g. user guid" autocomplete="off" />
       <div class="setup-wizard-buttons">
         <button class="btn secondary" type="button" id="btn-test-emby">Test connection</button>
@@ -112,17 +112,17 @@
 
       {% elif step == 4 %}
       <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Schedule &amp; timezone</h2>
-      <p class="hint">Set <strong>run intervals</strong> the same way as in the full app: <strong>Sonarr</strong> and <strong>Radarr</strong> each have their own minutes-between-runs (TV vs movies). <strong>Emby Trimmer</strong> has its own cadence. You can change these anytime under <strong>Fetcher settings</strong> (Sonarr/Radarr cards) and <strong>Trimmer settings</strong>. Times below use your timezone.</p>
-      <label for="sonarr_interval_minutes">Sonarr run interval (minutes)</label>
+      <p class="hint"><strong>Why:</strong> Fetcher won’t hammer Sonarr, Radarr, or Emby on every refresh — these intervals set the quiet time between automatic passes (schedule windows in settings still apply). <strong>Tip:</strong> TV and movies can use different values. You can edit all of this later in <strong>Fetcher settings</strong> and <strong>Trimmer settings</strong>.</p>
+      <label for="sonarr_interval_minutes">Minutes between Sonarr automation runs (after each run finishes)</label>
       <input class="number" id="sonarr_interval_minutes" name="sonarr_interval_minutes" type="number" value="{{ settings.sonarr_interval_minutes | default(60, true) }}" min="5" max="10080" />
-      <div class="small">Minimum time between Sonarr automation runs when its schedule window allows.</div>
-      <label for="radarr_interval_minutes">Radarr run interval (minutes)</label>
+      <div class="small">Lower = more frequent missing/upgrade searches; higher = less load on Sonarr and indexers.</div>
+      <label for="radarr_interval_minutes">Minutes between Radarr automation runs (after each run finishes)</label>
       <input class="number" id="radarr_interval_minutes" name="radarr_interval_minutes" type="number" value="{{ settings.radarr_interval_minutes | default(60, true) }}" min="5" max="10080" />
-      <div class="small">Minimum time between Radarr automation runs when its schedule window allows.</div>
-      <label for="emby_interval_minutes">Emby Trimmer run interval (minutes)</label>
+      <div class="small">Independent from Sonarr — tune movie searches separately from TV.</div>
+      <label for="emby_interval_minutes">Minutes between Emby Trimmer passes</label>
       <input class="number" id="emby_interval_minutes" name="emby_interval_minutes" type="number" value="{{ settings.emby_interval_minutes | default(60, true) }}" min="5" max="10080" />
-      <div class="small">Minimum time between Trimmer runs when Trimmer’s schedule and rules allow (same field as <strong>Trimmer settings</strong>).</div>
-      <label for="timezone">Timezone</label>
+      <div class="small">Only matters when Trimmer is enabled; same value as <strong>Trimmer settings</strong>.</div>
+      <label for="timezone">Timezone for dashboard clocks and schedule labels</label>
       <select class="input" id="timezone" name="timezone">
         {% for val, label in timezone_choices %}
         <option value="{{ val }}" {% if settings.timezone == val %}selected{% endif %}>{{ label }}</option>
@@ -184,7 +184,11 @@
         url: document.getElementById("sonarr_url")?.value || "",
         api_key: document.getElementById("sonarr_api_key")?.value || "",
       });
-      show(data.message || (data.ok ? "OK" : "Failed"), !!data.ok);
+      show(
+        data.message ||
+          (data.ok ? "Connection succeeded — you can save and continue." : "Connection test failed — read the message above and fix URL or API key."),
+        !!data.ok
+      );
     });
   } else if (step === 2) {
     document.getElementById("btn-test-radarr")?.addEventListener("click", async function () {
@@ -193,7 +197,11 @@
         url: document.getElementById("radarr_url")?.value || "",
         api_key: document.getElementById("radarr_api_key")?.value || "",
       });
-      show(data.message || (data.ok ? "OK" : "Failed"), !!data.ok);
+      show(
+        data.message ||
+          (data.ok ? "Connection succeeded — you can save and continue." : "Connection test failed — read the message above and fix URL or API key."),
+        !!data.ok
+      );
     });
   } else if (step === 3) {
     document.getElementById("btn-test-emby")?.addEventListener("click", async function () {
@@ -203,7 +211,11 @@
         api_key: document.getElementById("emby_api_key")?.value || "",
         user_id: document.getElementById("emby_user_id")?.value || "",
       });
-      show(data.message || (data.ok ? "OK" : "Failed"), !!data.ok);
+      show(
+        data.message ||
+          (data.ok ? "Connection succeeded — you can save and continue." : "Connection test failed — read the message above and fix URL or API key."),
+        !!data.ok
+      );
     });
   }
 })();

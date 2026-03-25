@@ -50,6 +50,10 @@ def test_api_dashboard_status_ok(monkeypatch) -> None:
     assert "next_sonarr_tick_local" in data
     assert "next_radarr_tick_local" in data
     assert "next_trimmer_tick_local" in data
+    assert "fetcher_phase" in data
+    assert "fetcher_phase_label" in data
+    assert "sonarr_automation_sub" in data
+    assert "last_sonarr_run" in data and "relative" in data["last_sonarr_run"]
     assert data["sonarr_missing"] >= 0
     assert data["radarr_missing"] >= 0
     assert data["sonarr_upgrades"] >= 0
@@ -106,13 +110,27 @@ def test_dashboard_route_renders_per_app_success_failure_badges(monkeypatch) -> 
     async def _fake_status(_session, _tz, *, snapshots=None, include_live: bool | None = None):  # noqa: ARG001
         return {
             "last_run": {"started_local": "24-03-2026 11:00 AM", "ok": True},
-            "latest_system_event": {"context": "Radarr | Upgrade search", "time_local": "24-03-2026 11:00 AM", "ok": True},
-            "last_sonarr_run": {"time_local": "24-03-2026 10:00 AM", "ok": True},
-            "last_radarr_run": {"time_local": "24-03-2026 10:30 AM", "ok": False},
-            "last_trimmer_run": {"time_local": "24-03-2026 10:45 AM", "ok": True},
+            "latest_system_event": {
+                "context": "Radarr | Upgrade search",
+                "time_local": "24-03-2026 11:00 AM",
+                "ok": True,
+                "relative": "1 minute ago",
+            },
+            "last_sonarr_run": {"time_local": "24-03-2026 10:00 AM", "ok": True, "relative": "1 hour ago"},
+            "last_radarr_run": {"time_local": "24-03-2026 10:30 AM", "ok": False, "relative": "30 minutes ago"},
+            "last_trimmer_run": {"time_local": "24-03-2026 10:45 AM", "ok": True, "relative": "15 minutes ago"},
             "next_sonarr_tick_local": "24-03-2026 11:30 AM",
             "next_radarr_tick_local": "24-03-2026 11:45 AM",
             "next_trimmer_tick_local": "24-03-2026 12:00 PM",
+            "next_sonarr_relative": "in 30 minutes",
+            "next_radarr_relative": "in 45 minutes",
+            "next_trimmer_relative": "in 1 hour",
+            "fetcher_phase": "active",
+            "fetcher_phase_label": "Active",
+            "fetcher_phase_detail": "Test detail.",
+            "sonarr_automation_sub": "",
+            "radarr_automation_sub": "",
+            "trimmer_automation_sub": "",
             "sonarr_missing": 0,
             "sonarr_upgrades": 0,
             "radarr_missing": 0,
@@ -136,12 +154,21 @@ def test_dashboard_route_empty_states_are_intentional(monkeypatch) -> None:
         return {
             "last_run": None,
             "latest_system_event": None,
-            "last_sonarr_run": {"time_local": "", "ok": None},
-            "last_radarr_run": {"time_local": "", "ok": None},
-            "last_trimmer_run": {"time_local": "", "ok": None},
+            "last_sonarr_run": {"time_local": "", "ok": None, "relative": ""},
+            "last_radarr_run": {"time_local": "", "ok": None, "relative": ""},
+            "last_trimmer_run": {"time_local": "", "ok": None, "relative": ""},
             "next_sonarr_tick_local": "",
             "next_radarr_tick_local": "",
             "next_trimmer_tick_local": "",
+            "next_sonarr_relative": "",
+            "next_radarr_relative": "",
+            "next_trimmer_relative": "",
+            "fetcher_phase": "idle",
+            "fetcher_phase_label": "Idle",
+            "fetcher_phase_detail": "No jobs.",
+            "sonarr_automation_sub": "",
+            "radarr_automation_sub": "",
+            "trimmer_automation_sub": "",
             "sonarr_missing": 0,
             "sonarr_upgrades": 0,
             "radarr_missing": 0,

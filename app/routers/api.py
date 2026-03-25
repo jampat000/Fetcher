@@ -35,6 +35,17 @@ from app.setup_helpers import test_emby_connection, test_radarr_connection, test
 from app.version_info import get_app_version
 from app.web_common import build_dashboard_status
 
+
+def _manual_search_scope_phrase(scope: str) -> tuple[str, str]:
+    """Return (app display name, search flavor) for API responses."""
+    mapping = {
+        "sonarr_missing": ("Sonarr", "missing"),
+        "sonarr_upgrade": ("Sonarr", "upgrade"),
+        "radarr_missing": ("Radarr", "missing"),
+        "radarr_upgrade": ("Radarr", "upgrade"),
+    }
+    return mapping.get(scope, ("Arr", "search"))
+
 from app.routers.deps import AUTH_DEPS
 
 router = APIRouter()
@@ -238,7 +249,14 @@ async def api_arr_search_now(body: ArrSearchNowIn, session: AsyncSession = Depen
     """Trigger Arr search command immediately for manual action."""
     try:
         await trigger_manual_arr_search_now(body.scope, session)
-        return JSONResponse({"ok": True, "queued": False, "message": "Manual search triggered."})
+        scope_app, flavor = _manual_search_scope_phrase(body.scope)
+        return JSONResponse(
+            {
+                "ok": True,
+                "queued": False,
+                "message": f"Manual {flavor} search sent to {scope_app} successfully.",
+            }
+        )
     except httpx.HTTPStatusError as e:
         # Arr can occasionally return 5xx for immediate command submission. Fall back to queued
         # orchestration so user action still succeeds without another click.
@@ -254,11 +272,15 @@ async def api_arr_search_now(body: ArrSearchNowIn, session: AsyncSession = Depen
             )
         )
         await session.commit()
+        scope_app, flavor = _manual_search_scope_phrase(body.scope)
         return JSONResponse(
             {
                 "ok": True,
                 "queued": True,
-                "message": "Manual search queued (immediate Arr command failed).",
+                "message": (
+                    f"{scope_app} rejected the immediate manual {flavor} search; Fetcher queued a full automation "
+                    "pass instead. Check Activity in a moment."
+                ),
             }
         )
     except Exception as e:  # noqa: BLE001 - API boundary
@@ -273,7 +295,17 @@ async def api_arr_search_now(body: ArrSearchNowIn, session: AsyncSession = Depen
             )
         )
         await session.commit()
-        return JSONResponse({"ok": False, "queued": False, "message": f"Manual search failed: {e}"})
+        scope_app, flavor = _manual_search_scope_phrase(body.scope)
+        return JSONResponse(
+            {
+                "ok": False,
+                "queued": False,
+                "message": (
+                    f"Could not run manual {flavor} search for {scope_app} ({type(e).__name__}). "
+                    f"Confirm URL and API key in Fetcher settings, then try again. Details: {e}"
+                ),
+            }
+        )
 
 
 @router.get("/api/dashboard/status", dependencies=AUTH_DEPS)

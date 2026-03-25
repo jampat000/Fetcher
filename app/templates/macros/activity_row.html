@@ -1,4 +1,4 @@
-{# Shared dashboard + activity list row. ``e``: id, time_local, app, kind, count, detail_lines (list[str]). #}
+{# Shared dashboard + activity list row. ``e``: primary_label, time_local, app, kind, count, detail_lines (list[str]). #}
 {% macro activity_row(e, preview_lines) %}
         <div class="activity-row{% if e.detail_lines | length > preview_lines %} activity-row--expandable{% endif %}" data-activity-app="{{ e.app }}" data-activity-kind="{{ e.kind }}">
           {% if e.app == "sonarr" %}
@@ -9,17 +9,7 @@
             <div class="activity-icon icon-emby" aria-hidden="true">E</div>
           {% endif %}
           <div class="activity-body">
-            <div class="activity-title-line">
-            {% if e.kind == "missing" %}
-              Missing search for {{ e.count }} {{ "episode" if e.app == "sonarr" else "movie" }}{{ "s" if e.count != 1 else "" }}
-            {% elif e.kind == "trimmed" %}
-              {{ e.count }} item{{ "s" if e.count != 1 else "" }} matched Emby Trimmer rules
-            {% elif e.kind == "cleanup" %}
-              Radarr: removed failed import from queue ({{ e.count }} item{{ "s" if e.count != 1 else "" }})
-            {% else %}
-              Upgrade search for {{ e.count }} {{ "episode" if e.app == "sonarr" else "movie" }}{{ "s" if e.count != 1 else "" }}
-            {% endif %}
-            </div>
+            <div class="activity-title-line">{{ e.primary_label }}</div>
             {% if e.detail_lines %}
               <div class="activity-detail-sub{% if e.detail_lines | length > preview_lines %} activity-detail-sub--expandable{% endif %}">
                 <div class="activity-detail-stack">

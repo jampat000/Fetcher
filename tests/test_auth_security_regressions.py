@@ -105,8 +105,14 @@ def test_invalid_login_does_not_reveal_username_existence(monkeypatch: pytest.Mo
 
     assert wrong_user.status_code == 401
     assert wrong_pass.status_code == 401
-    assert wrong_user.json() == {"message": "Invalid username or password"}
-    assert wrong_pass.json() == {"message": "Invalid username or password"}
+    expected = {
+        "message": (
+            "That username or password does not match. Check spelling and caps lock, "
+            "and use the same username you set during setup (default is admin)."
+        )
+    }
+    assert wrong_user.json() == expected
+    assert wrong_pass.json() == expected
 
 
 def test_password_hash_upgrade_only_after_successful_verification(monkeypatch: pytest.MonkeyPatch) -> None:

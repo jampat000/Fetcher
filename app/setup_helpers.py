@@ -23,9 +23,16 @@ async def test_sonarr_connection(url: str, api_key: str) -> tuple[bool, str]:
     u = normalize_setup_url(url)
     k = (api_key or "").strip()
     if not u:
-        return False, "Enter a Sonarr base URL (for example http://localhost:8989)."
+        return (
+            False,
+            "Sonarr URL is required — paste the same base address you use in the browser "
+            "(for example http://localhost:8989 or your reverse-proxy URL).",
+        )
     if not k:
-        return False, "Enter your Sonarr API key."
+        return (
+            False,
+            "Sonarr API key is required — copy it from Sonarr → Settings → General so Fetcher can talk to the API.",
+        )
     result = await ConnectionTestService().check_arr_health(url=u, api_key=k)
     if result.ok:
         return True, "Sonarr responded OK."
@@ -34,10 +41,13 @@ async def test_sonarr_connection(url: str, api_key: str) -> tuple[bool, str]:
             False,
             ConnectionTestService.message_with_http_status_hint(
                 result,
-                auth_hint="check the API key in Sonarr (Settings → General).",
+                auth_hint="Verify the API key in Sonarr → Settings → General matches what you pasted here.",
             ),
         )
-    return False, ConnectionTestService.message_with_exception_prefix(result)
+    return False, (
+        ConnectionTestService.message_with_exception_prefix(result)
+        + " — Check the URL, HTTPS vs HTTP, firewall, and that this machine can reach Sonarr."
+    )
 
 
 async def test_radarr_connection(url: str, api_key: str) -> tuple[bool, str]:
@@ -45,9 +55,16 @@ async def test_radarr_connection(url: str, api_key: str) -> tuple[bool, str]:
     u = normalize_setup_url(url)
     k = (api_key or "").strip()
     if not u:
-        return False, "Enter a Radarr base URL (for example http://localhost:7878)."
+        return (
+            False,
+            "Radarr URL is required — paste the same base address you use in the browser "
+            "(for example http://localhost:7878 or your reverse-proxy URL).",
+        )
     if not k:
-        return False, "Enter your Radarr API key."
+        return (
+            False,
+            "Radarr API key is required — copy it from Radarr → Settings → General so Fetcher can talk to the API.",
+        )
     result = await ConnectionTestService().check_arr_health(url=u, api_key=k)
     if result.ok:
         return True, "Radarr responded OK."
@@ -56,10 +73,13 @@ async def test_radarr_connection(url: str, api_key: str) -> tuple[bool, str]:
             False,
             ConnectionTestService.message_with_http_status_hint(
                 result,
-                auth_hint="check the API key in Radarr (Settings → General).",
+                auth_hint="Verify the API key in Radarr → Settings → General matches what you pasted here.",
             ),
         )
-    return False, ConnectionTestService.message_with_exception_prefix(result)
+    return False, (
+        ConnectionTestService.message_with_exception_prefix(result)
+        + " — Check the URL, HTTPS vs HTTP, firewall, and that this machine can reach Radarr."
+    )
 
 
 async def test_emby_connection(url: str, api_key: str, user_id: str) -> tuple[bool, str]:
@@ -67,11 +87,21 @@ async def test_emby_connection(url: str, api_key: str, user_id: str) -> tuple[bo
     k = (api_key or "").strip()
     uid = (user_id or "").strip()
     if not u:
-        return False, "Enter an Emby server URL (for example http://localhost:8096)."
+        return (
+            False,
+            "Emby server URL is required — use the same base URL as in your browser "
+            "(for example http://localhost:8096 or your reverse-proxy URL).",
+        )
     if not k:
-        return False, "Enter your Emby API key."
+        return (
+            False,
+            "Emby API key is required — create or copy a key from Emby → Dashboard → Advanced → API Keys.",
+        )
     if looks_like_url(k):
-        return False, "That value looks like a URL. Paste the API key from Emby → Dashboard → Advanced → API Keys."
+        return (
+            False,
+            "That value looks like a URL, not an API key. In Emby go to Dashboard → Advanced → API Keys and paste the key string.",
+        )
     try:
         c = EmbyClient(EmbyConfig(u, k))
         try:
@@ -79,14 +109,22 @@ async def test_emby_connection(url: str, api_key: str, user_id: str) -> tuple[bo
             if uid:
                 users = await c.users()
                 if not any(str(x.get("Id", "")) == uid for x in users):
-                    return False, "Emby user ID not found. Leave it blank unless you use per-user libraries."
+                    return (
+                        False,
+                        "That Emby user ID was not found on this server. Leave the field blank unless your policy requires a specific user.",
+                    )
         finally:
             await c.aclose()
         return True, "Emby responded OK."
     except httpx.HTTPStatusError as e:
-        msg = f"HTTP {e.response.status_code}: {e}"
+        msg = f"Emby returned HTTP {e.response.status_code} — connection reached the server but the request was rejected."
         if e.response.status_code in (401, 403):
-            msg += " | Check the API key and URL."
+            msg += " Verify the API key and that the URL matches how you sign in to Emby."
+        else:
+            msg += " Confirm the URL and API key in Emby → Dashboard → Advanced → API Keys."
         return False, msg
     except (httpx.HTTPError, ValueError) as e:
-        return False, f"{type(e).__name__}: {e}"
+        return (
+            False,
+            f"{type(e).__name__}: {e} — Check the URL, HTTPS vs HTTP, and that this machine can reach Emby.",
+        )

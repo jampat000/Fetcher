@@ -188,7 +188,9 @@ def test_setup_helper_httpstatuserror_differs_from_settings_style(monkeypatch: p
     monkeypatch.setattr("app.setup_helpers.ConnectionTestService.check_arr_health", _check_arr_health)
     ok, msg = asyncio.run(run_sonarr_connection_test("http://sonarr.local:8989", "abc"))
     assert ok is False
-    assert msg == "HTTP 401 — check the API key in Sonarr (Settings → General)."
+    assert msg == (
+        "HTTP 401 — Verify the API key in Sonarr → Settings → General matches what you pasted here."
+    )
 
 
 def test_setup_helper_http_error_reports_exception_class(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -207,7 +209,9 @@ def test_setup_helper_http_error_reports_exception_class(monkeypatch: pytest.Mon
     monkeypatch.setattr("app.setup_helpers.ConnectionTestService.check_arr_health", _check_arr_health)
     ok, msg = asyncio.run(run_radarr_connection_test("http://radarr.local:7878", "abc"))
     assert ok is False
-    assert msg == "ConnectError: boom"
+    assert msg == (
+        "ConnectError: boom — Check the URL, HTTPS vs HTTP, firewall, and that this machine can reach Radarr."
+    )
 
 
 def test_api_setup_test_sonarr_uses_resolver_and_returns_helper_shape(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -242,7 +246,10 @@ def test_api_setup_test_radarr_propagates_helper_httpstatus_message(monkeypatch:
     monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
 
     async def _helper(_url: str, _key: str) -> tuple[bool, str]:
-        return False, "HTTP 401 — check the API key in Radarr (Settings → General)."
+        return (
+            False,
+            "HTTP 401 — Verify the API key in Radarr → Settings → General matches what you pasted here.",
+        )
 
     monkeypatch.setattr("app.routers.api.resolve_setup_api_key", lambda api_key, scope: api_key)
     monkeypatch.setattr("app.routers.api.test_radarr_connection", _helper)
@@ -254,5 +261,7 @@ def test_api_setup_test_radarr_propagates_helper_httpstatus_message(monkeypatch:
     assert resp.status_code == 200
     assert resp.json() == {
         "ok": False,
-        "message": "HTTP 401 — check the API key in Radarr (Settings → General).",
+        "message": (
+            "HTTP 401 — Verify the API key in Radarr → Settings → General matches what you pasted here."
+        ),
     }

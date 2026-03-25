@@ -30,8 +30,10 @@ from app.web_common import (
     ACTIVITY_DETAIL_PREVIEW_LINES,
     activity_display_row,
     build_dashboard_status,
+    dedupe_job_run_logs_for_display,
     is_setup_complete,
     movie_credit_types_summary,
+    user_visible_job_run_message,
 )
 
 from app.routers.deps import AUTH_DEPS
@@ -65,6 +67,15 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
     next_sonarr_tick_local = dash_status["next_sonarr_tick_local"]
     next_radarr_tick_local = dash_status["next_radarr_tick_local"]
     next_trimmer_tick_local = dash_status["next_trimmer_tick_local"]
+    next_sonarr_relative = dash_status["next_sonarr_relative"]
+    next_radarr_relative = dash_status["next_radarr_relative"]
+    next_trimmer_relative = dash_status["next_trimmer_relative"]
+    fetcher_phase = dash_status["fetcher_phase"]
+    fetcher_phase_label = dash_status["fetcher_phase_label"]
+    fetcher_phase_detail = dash_status["fetcher_phase_detail"]
+    sonarr_automation_sub = dash_status["sonarr_automation_sub"]
+    radarr_automation_sub = dash_status["radarr_automation_sub"]
+    trimmer_automation_sub = dash_status["trimmer_automation_sub"]
     sonarr_snap = snapshots.get("sonarr")
     radarr_snap = snapshots.get("radarr")
     emby_snap = snapshots.get("emby")
@@ -101,6 +112,15 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
             "next_sonarr_tick_local": next_sonarr_tick_local,
             "next_radarr_tick_local": next_radarr_tick_local,
             "next_trimmer_tick_local": next_trimmer_tick_local,
+            "next_sonarr_relative": next_sonarr_relative,
+            "next_radarr_relative": next_radarr_relative,
+            "next_trimmer_relative": next_trimmer_relative,
+            "fetcher_phase": fetcher_phase,
+            "fetcher_phase_label": fetcher_phase_label,
+            "fetcher_phase_detail": fetcher_phase_detail,
+            "sonarr_automation_sub": sonarr_automation_sub,
+            "radarr_automation_sub": radarr_automation_sub,
+            "trimmer_automation_sub": trimmer_automation_sub,
             "emby_schedule_start_display": emby_schedule_start_display,
             "emby_schedule_end_display": emby_schedule_end_display,
             "sonarr_schedule_start_display": sonarr_schedule_start_display,
@@ -150,9 +170,16 @@ async def logs_page(request: Request, session: AsyncSession = Depends(get_sessio
     settings = await _get_or_create_settings(session)
     show_setup_wizard = not is_setup_complete(settings)
     logs = (await session.execute(select(JobRunLog).order_by(desc(JobRunLog.id)).limit(200))).scalars().all()
+    logs = dedupe_job_run_logs_for_display(logs)
     tz = settings.timezone or "UTC"
     logs_display = [
-        {"started_local": _fmt_local(r.started_at, tz), "ok": r.ok, "message": r.message}
+        {
+            "started_local": _fmt_local(r.started_at, tz),
+            "ok": r.ok,
+            "message": user_visible_job_run_message(
+                message=r.message, ok=bool(r.ok), finished_at=r.finished_at
+            ),
+        }
         for r in logs
     ]
     return templates.TemplateResponse(
@@ -179,13 +206,22 @@ async def logs_file(name: str, _request: Request) -> PlainTextResponse:
     logs_root = resolved_logs_dir()
     candidate = (logs_root / Path(name).name).resolve()
     if not is_safe_path(candidate, logs_root.resolve()):
-        raise HTTPException(status_code=403, detail="Path escapes the logs directory")
+        raise HTTPException(
+            status_code=403,
+            detail="That file path is not allowed — open logs only via links from the Logs page.",
+        )
     if not candidate.is_file():
-        return PlainTextResponse("Log file not found", status_code=404)
+        return PlainTextResponse(
+            "Log file not found — it may have been rotated or pruned. Return to Logs and pick another file.",
+            status_code=404,
+        )
     try:
         text = candidate.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return PlainTextResponse("Could not read log file", status_code=500)
+        return PlainTextResponse(
+            "Could not read the log file from disk — check permissions or try again.",
+            status_code=500,
+        )
     return PlainTextResponse(text)
 
 
