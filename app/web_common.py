@@ -188,6 +188,37 @@ async def fetch_live_dashboard_queue_totals(settings: AppSettings) -> dict[str, 
     return out
 
 
+def is_setup_complete(settings: AppSettings) -> bool:
+    """
+    True when onboarding is complete enough that the Setup Wizard can be hidden.
+
+    Source of truth is saved configuration state (not a one-time flag):
+    - Auth must be configured (password set).
+    - At least one integration must be configured (URL + API key), OR
+      if any integration is enabled it must have its required fields present.
+    """
+    if not (settings.auth_password_hash or "").strip():
+        return False
+
+    def has_url_and_key(url: str | None, key: str | None) -> bool:
+        return bool((url or "").strip() and (key or "").strip())
+
+    son_cfg = has_url_and_key(settings.sonarr_url, settings.sonarr_api_key)
+    rad_cfg = has_url_and_key(settings.radarr_url, settings.radarr_api_key)
+    em_cfg = has_url_and_key(settings.emby_url, settings.emby_api_key)
+
+    # If the user explicitly enabled an integration, its required fields must be present.
+    if bool(settings.sonarr_enabled) and not son_cfg:
+        return False
+    if bool(settings.radarr_enabled) and not rad_cfg:
+        return False
+    if bool(settings.emby_enabled) and not em_cfg:
+        return False
+
+    # Otherwise, consider setup complete when *any* integration is configured.
+    return bool(son_cfg or rad_cfg or em_cfg)
+
+
 async def build_dashboard_status(
     session: AsyncSession,
     tz: str,

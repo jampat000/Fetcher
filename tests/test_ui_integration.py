@@ -82,6 +82,123 @@ def test_dashboard_renders_main_sections(monkeypatch: pytest.MonkeyPatch) -> Non
     assert b'data-target="' in r.content
 
 
+def _seed_setup_config(
+    *,
+    sonarr_url: str,
+    sonarr_api_key: str,
+    radarr_url: str,
+    radarr_api_key: str,
+    emby_url: str,
+    emby_api_key: str,
+) -> None:
+    async def _seed() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.sonarr_url = sonarr_url
+            row.sonarr_api_key = sonarr_api_key
+            row.radarr_url = radarr_url
+            row.radarr_api_key = radarr_api_key
+            row.emby_url = emby_url
+            row.emby_api_key = emby_api_key
+            await session.commit()
+
+    asyncio.run(_seed())
+
+
+def test_setup_wizard_visible_when_setup_incomplete(monkeypatch: pytest.MonkeyPatch) -> None:
+    _seed_setup_config(
+        sonarr_url="",
+        sonarr_api_key="",
+        radarr_url="",
+        radarr_api_key="",
+        emby_url="",
+        emby_api_key="",
+    )
+    with _client(monkeypatch) as client:
+        r = client.get("/")
+    assert r.status_code == 200
+    assert b"Run setup wizard" in r.content
+    assert b"Setup</span>" in r.content
+
+
+def test_setup_wizard_hidden_when_setup_complete(monkeypatch: pytest.MonkeyPatch) -> None:
+    _seed_setup_config(
+        sonarr_url="http://localhost:8989",
+        sonarr_api_key="sonarr-key",
+        radarr_url="http://localhost:7878",
+        radarr_api_key="radarr-key",
+        emby_url="http://localhost:8096",
+        emby_api_key="emby-key",
+    )
+    with _client(monkeypatch) as client:
+        r = client.get("/")
+    assert r.status_code == 200
+    assert b"Run setup wizard" not in r.content
+    assert b"Setup</span>" not in r.content
+    # Settings must remain accessible.
+    with _client(monkeypatch) as client2:
+        s = client2.get("/settings")
+    assert s.status_code == 200
+    assert b"sonarr_url" in s.content
+
+
+def test_setup_wizard_reappears_if_setup_becomes_incomplete_again(monkeypatch: pytest.MonkeyPatch) -> None:
+    _seed_setup_config(
+        sonarr_url="http://localhost:8989",
+        sonarr_api_key="sonarr-key",
+        radarr_url="http://localhost:7878",
+        radarr_api_key="radarr-key",
+        emby_url="http://localhost:8096",
+        emby_api_key="emby-key",
+    )
+    with _client(monkeypatch) as client:
+        r_complete = client.get("/")
+    assert b"Run setup wizard" not in r_complete.content
+
+    _seed_setup_config(
+        sonarr_url="",
+        sonarr_api_key="",
+        radarr_url="",
+        radarr_api_key="",
+        emby_url="",
+        emby_api_key="",
+    )
+    with _client(monkeypatch) as client2:
+        r_incomplete = client2.get("/")
+    assert b"Run setup wizard" in r_incomplete.content
+    assert b"Setup</span>" in r_incomplete.content
+
+
+def test_setup_wizard_page_left_nav_visibility_tracks_setup_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_setup_config(
+        sonarr_url="",
+        sonarr_api_key="",
+        radarr_url="",
+        radarr_api_key="",
+        emby_url="",
+        emby_api_key="",
+    )
+    with _client(monkeypatch) as client:
+        r = client.get("/setup/1")
+    assert r.status_code == 200
+    assert b"Setup</span>" in r.content
+
+    _seed_setup_config(
+        sonarr_url="http://localhost:8989",
+        sonarr_api_key="sonarr-key",
+        radarr_url="http://localhost:7878",
+        radarr_api_key="radarr-key",
+        emby_url="http://localhost:8096",
+        emby_api_key="emby-key",
+    )
+    with _client(monkeypatch) as client2:
+        r2 = client2.get("/setup/1")
+    assert r2.status_code == 200
+    assert b"Setup</span>" not in r2.content
+
+
 def test_settings_page_has_forms(monkeypatch: pytest.MonkeyPatch) -> None:
     with _client(monkeypatch) as client:
         r = client.get("/settings")

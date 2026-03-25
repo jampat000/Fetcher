@@ -9,7 +9,9 @@
 {%- endmacro %}
 {% macro arr_connection_hints() %}
       <div class="hint">Use <span class="kbd">http://</span> for direct Sonarr/Radarr/Emby connections unless you have HTTPS configured.</div>
+      {% if show_setup_wizard %}
       <p class="hint">New here? <a href="/setup"><strong>Run the setup wizard</strong></a> to connect Sonarr, Radarr, and Emby step by step (with connection tests).</p>
+      {% endif %}
 {% endmacro %}
 {% block content %}
 <div class="wrap">

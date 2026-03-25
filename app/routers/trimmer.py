@@ -29,6 +29,7 @@ from app.time_util import utc_now_naive
 from app.trimmer_service import TrimmerApplyService, TrimmerReviewService
 from app.ui_templates import templates
 from app.web_common import (
+    is_setup_complete,
     movie_credit_types_summary,
     schedule_days_csv_from_named_day_checks,
     schedule_weekdays_selected_dict,
@@ -63,6 +64,7 @@ def _trimmer_cleaner_ui_section(trimmer_section: str | None) -> str:
 @router.get("/trimmer/settings", response_class=HTMLResponse)
 async def trimmer_settings_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await _get_or_create_settings(session)
+    show_setup_wizard = not is_setup_complete(settings)
     settings.emby_api_key = resolve_emby_api_key(settings)
     emby_snap = (await fetch_latest_app_snapshots(session)).get("emby")
     tz = settings.timezone or "UTC"
@@ -104,6 +106,7 @@ async def trimmer_settings_page(request: Request, session: AsyncSession = Depend
                 settings.emby_rule_tv_people_credit_types_csv
             ),
             "csrf_token": await get_csrf_token_for_template(request, session),
+            "show_setup_wizard": show_setup_wizard,
         },
     )
 
@@ -112,6 +115,7 @@ async def trimmer_settings_page(request: Request, session: AsyncSession = Depend
 async def trimmer_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     # Keep this route thin: parse request input, delegate orchestration to services, then render.
     settings = await _get_or_create_settings(session)
+    show_setup_wizard = not is_setup_complete(settings)
     tz = settings.timezone or "UTC"
     _truthy = ("1", "true", "yes")
     qp = request.query_params
@@ -153,6 +157,7 @@ async def trimmer_page(request: Request, session: AsyncSession = Depends(get_ses
             "now_local": _now_local(tz),
             "timezone": tz,
             "csrf_token": await get_csrf_token_for_template(request, session),
+            "show_setup_wizard": show_setup_wizard,
         },
     )
 

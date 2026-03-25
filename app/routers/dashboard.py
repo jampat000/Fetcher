@@ -30,6 +30,7 @@ from app.web_common import (
     ACTIVITY_DETAIL_PREVIEW_LINES,
     activity_display_row,
     build_dashboard_status,
+    is_setup_complete,
     movie_credit_types_summary,
 )
 
@@ -48,11 +49,7 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
     )
     tz = settings.timezone or "UTC"
     activity_display = [activity_display_row(e, tz) for e in activity]
-    suggest_setup_wizard = not (
-        (settings.sonarr_url or "").strip()
-        or (settings.radarr_url or "").strip()
-        or (settings.emby_url or "").strip()
-    )
+    show_setup_wizard = not is_setup_complete(settings)
     snapshots = await fetch_latest_app_snapshots(session)
     # Render dashboard quickly (no blocking live Arr totals). Live hero polling happens
     # client-side via ``/api/dashboard/status`` after the page is visible.
@@ -96,7 +93,7 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
             "title": f"{APP_NAME} — Dashboard",
             "subtitle": "Status overview and counts",
             "settings": settings,
-            "suggest_setup_wizard": suggest_setup_wizard,
+            "show_setup_wizard": show_setup_wizard,
             "latest_system_event": latest_system_event,
             "last_sonarr_run": last_sonarr_run,
             "last_radarr_run": last_radarr_run,
@@ -151,6 +148,7 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
 @router.get("/logs", response_class=HTMLResponse)
 async def logs_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await _get_or_create_settings(session)
+    show_setup_wizard = not is_setup_complete(settings)
     logs = (await session.execute(select(JobRunLog).order_by(desc(JobRunLog.id)).limit(200))).scalars().all()
     tz = settings.timezone or "UTC"
     logs_display = [
@@ -170,6 +168,7 @@ async def logs_page(request: Request, session: AsyncSession = Depends(get_sessio
             "now_local": _now_local(tz),
             "timezone": tz,
             "csrf_token": await get_csrf_token_for_template(request, session),
+            "show_setup_wizard": show_setup_wizard,
         },
     )
 
@@ -193,6 +192,7 @@ async def logs_file(name: str, _request: Request) -> PlainTextResponse:
 @router.get("/activity", response_class=HTMLResponse)
 async def activity_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await _get_or_create_settings(session)
+    show_setup_wizard = not is_setup_complete(settings)
     activity = (
         (await session.execute(select(ActivityLog).order_by(desc(ActivityLog.id)).limit(200)))
         .scalars().all()
@@ -213,5 +213,6 @@ async def activity_page(request: Request, session: AsyncSession = Depends(get_se
             "now_local": _now_local(tz),
             "timezone": tz,
             "csrf_token": await get_csrf_token_for_template(request, session),
+            "show_setup_wizard": show_setup_wizard,
         },
     )

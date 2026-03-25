@@ -25,6 +25,7 @@ from app.web_common import (
     WIZARD_LAST_STEP_INDEX,
     settings_looks_like_existing_fetcher_install,
     setup_wizard_step_title,
+    is_setup_complete,
     try_commit_and_reschedule,
 )
 
@@ -65,6 +66,7 @@ async def setup_wizard_page(
         return RedirectResponse("/setup/1", status_code=302)
 
     tz = settings.timezone or "UTC"
+    show_setup_wizard = not is_setup_complete(settings)
     setup_error = (request.query_params.get("error") or "").strip()
     setup_save_fail = (request.query_params.get("save") or "").strip().lower() == "fail"
     if step == 0:
@@ -94,6 +96,7 @@ async def setup_wizard_page(
             "setup_save_fail": setup_save_fail,
             "setup_account_intro": setup_account_intro,
             "csrf_token": await get_csrf_token_for_template(request, session),
+            "show_setup_wizard": show_setup_wizard,
         },
     )
 

@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.4.7] - 2026-03-25
+
+### Fixed
+- **Sonarr/Radarr monitored-missing progression:** Scheduled and dashboard missing-search actions advance through the full monitored-missing universe (not a small subset), with cooldown/retry exclusion preventing immediate repeats.
+- **Dashboard responsiveness/navigation:** Dashboard HTML render no longer blocks before the dashboard view appears; live totals continue via normal polling.
+- **0-search activity explanations:** Missing-search runs that dispatch **0** searches now record a single clear summary reason in Activity.
+- **Global-only Backup/Restore/Upgrade cleanup:** Backup, Restore, and Upgrade UI/handling remain clearly global-only.
+- **Layout/alignment polish:** Targeted TV/Movies and setup-page spacing/alignment cleanup for consistent UI rhythm.
+- **Scoped save feedback:** Save success/error messages reflect the actual scope/section that was changed.
+- **Smart Setup Wizard visibility:** Setup Wizard is shown only while setup is incomplete (dashboard + left nav), and reappears automatically if configuration becomes incomplete again; visibility is derived from saved configuration state and is consistent across `/setup/{step}` pages.
+
+### Changed
+- **Retry policy model:** Replaced shared cooldown semantics with explicit per-app **Retry Delay (minutes)** settings for Sonarr and Radarr (minimum is enforced; no implicit 0 fallback).
+- **Sonarr/Radarr parity improvements:** Normalized shared settings wording/helper text; added Sonarr support for **Remove failed imports from queue**.
+- **Trimmer wording:** Renamed user-facing **Trimmer Review** to **Trimmer Overview**.
+- **Final wording/consistency cleanup:** Tightened label/helper text wording to ensure shared Sonarr/Radarr controls remain interchangeable where intended.
+
 ## [2.4.6] - 2026-03-25
 
 ### Fixed

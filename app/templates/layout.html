@@ -59,10 +59,12 @@
             <i data-lucide="sparkles" class="sidebar-icon"></i>
             <span>Trimmer</span>
           </a>
+          {% if show_setup_wizard %}
           <a href="/setup" class="sidebar-link {% if request.url.path.startswith('/setup') %}active{% endif %}">
             <i data-lucide="wand-2" class="sidebar-icon"></i>
             <span>Setup</span>
           </a>
+          {% endif %}
           <a href="/logout" class="sidebar-link">
             <i data-lucide="log-out" class="sidebar-icon"></i>
             <span>Sign out</span>

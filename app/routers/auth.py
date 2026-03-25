@@ -22,6 +22,7 @@ from app.branding import APP_NAME, APP_TAGLINE
 from app.db import get_session
 from app.rate_limit import limiter
 from app.ui_templates import templates
+from app.web_common import is_setup_complete
 
 router = APIRouter()
 
@@ -45,6 +46,7 @@ async def login_get(
     settings = await auth_service.get_settings(session)
     if not (settings.auth_password_hash or "").strip():
         return RedirectResponse("/setup/0", status_code=302)
+    show_setup_wizard = not is_setup_complete(settings)
     login_next = sanitize_next_param(next_q)
     return templates.TemplateResponse(
         request,
@@ -56,6 +58,7 @@ async def login_get(
             "subtitle": "Sign in to continue",
             "error": (error or "").strip(),
             "login_next": login_next,
+            "show_setup_wizard": show_setup_wizard,
         },
     )
 
@@ -71,6 +74,7 @@ async def login_post(
     auth_service: AuthService = Depends(get_auth_service),
 ) -> HTMLResponse | RedirectResponse | JSONResponse:
     settings = await auth_service.get_settings(session)
+    show_setup_wizard = not is_setup_complete(settings)
     next_dest = sanitize_next_param(next_q)
     if not (settings.auth_password_hash or "").strip():
         if request_prefers_json(request):
@@ -108,6 +112,7 @@ async def login_post(
             "subtitle": "Sign in to continue",
             "error": result.message,
             "login_next": next_dest,
+            "show_setup_wizard": show_setup_wizard,
         },
     )
 
