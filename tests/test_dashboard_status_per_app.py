@@ -43,6 +43,10 @@ def test_build_dashboard_status_has_per_app_last_run_status(monkeypatch) -> None
                 "trimmer": datetime(2026, 3, 24, 12, 0, 0),
             }
 
+        @staticmethod
+        def is_run_in_progress():
+            return False
+
     async def _no_live(_settings):
         return {}
 
@@ -62,6 +66,10 @@ def test_build_dashboard_status_has_per_app_last_run_status(monkeypatch) -> None
             assert data["next_sonarr_tick_local"] != ""
             assert data["next_radarr_tick_local"] != ""
             assert data["next_trimmer_tick_local"] != ""
+            assert data["last_sonarr_run"]["relative"] != ""
+            assert data["next_sonarr_relative"] != ""
+            assert data["fetcher_phase"] in ("processing", "idle", "active")
+            assert data["sonarr_automation_sub"] != ""
 
     asyncio.run(_go())
 
@@ -120,6 +128,10 @@ def test_build_dashboard_status_live_queue_totals_override_snapshot(monkeypatch)
         @staticmethod
         def next_runs_by_job():
             return {}
+
+        @staticmethod
+        def is_run_in_progress():
+            return False
 
     monkeypatch.setattr("app.web_common.scheduler", _FakeScheduler())
 

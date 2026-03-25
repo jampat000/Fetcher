@@ -12,8 +12,11 @@ from fastapi import Request
 LOGIN_WINDOW_SEC = 600
 LOGIN_MAX_FAILS = 5
 
-INVALID_LOGIN_MESSAGE = "Invalid username or password"
-TOO_MANY_ATTEMPTS_MESSAGE = "Too many attempts, try again later."
+INVALID_LOGIN_MESSAGE = (
+    "That username or password does not match. Check spelling and caps lock, "
+    "and use the same username you set during setup (default is admin)."
+)
+TOO_MANY_ATTEMPTS_MESSAGE = "Too many sign-in attempts from this network — wait a few minutes, then try again."
 
 _login_attempts: dict[str, list[float]] = {}
 

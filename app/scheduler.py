@@ -147,6 +147,10 @@ class ServiceScheduler:
             "trimmer": self._job_next_run_at("trimmer"),
         }
 
+    def is_run_in_progress(self) -> bool:
+        """True while a scheduled Sonarr/Radarr/Trimmer pass holds the run lock (read-only UI hint)."""
+        return self._run_lock.locked()
+
     def next_fetcher_run_at(self) -> datetime | None:
         """Compatibility: earliest next scheduled job run across independent jobs."""
         runs = [d for d in self.next_runs_by_job().values() if d is not None]

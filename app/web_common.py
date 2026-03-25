@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from datetime import timedelta
-from typing import Any
+from datetime import datetime, timedelta
+from typing import Any, Sequence
 from urllib.parse import quote
 
 from app.arr_client import ArrClient, ArrConfig
@@ -18,10 +18,16 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import _get_or_create_settings, fetch_latest_app_snapshots
-from app.display_helpers import _fmt_local, _truncate_display
+from app.display_helpers import (
+    _fmt_local,
+    _relative_phrase_past,
+    _relative_phrase_until,
+    _truncate_display,
+)
 from app.models import ActivityLog, AppSettings, AppSnapshot, JobRunLog
 from app.schedule import DAY_NAMES, normalize_schedule_days_csv
-from app.scheduler import scheduler
+from app.scheduler import compute_job_intervals_minutes, scheduler
+from app.time_util import utc_now_naive
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +39,12 @@ _DASHBOARD_RADARR_MOVIES_WALL_S = 20.0
 # Activity list shows 5 title lines + “+N more”; full list is stored in ``ActivityLog.detail``.
 ACTIVITY_DETAIL_PREVIEW_LINES = 5
 _ACTIVITY_LOG_LEGACY_MORE = re.compile(r"^\+\d+ more$")
+
+_JOB_RETRY_HINT_MARKERS = (
+    "within retry delay",
+    "all items within retry delay",
+    "suppressed (retry delay)",
+)
 
 
 def activity_log_title_lines(detail: str) -> list[str]:
@@ -46,8 +58,119 @@ def activity_log_title_lines(detail: str) -> list[str]:
     return lines
 
 
+def user_visible_job_run_message(
+    *,
+    message: str | None,
+    ok: bool,
+    finished_at: Any,
+) -> str:
+    """Never return blank strings for JobRunLog presentation."""
+    t = _truncate_display((message or "").strip())
+    if t:
+        return t
+    if finished_at is None:
+        return "Run summary not available yet."
+    return (
+        "Run completed with no summary text."
+        if ok
+        else "Operation failed with no additional details."
+    )
+
+
+_RUN_SUMMARY_PENDING_DISPLAY = "Run summary not available yet."
+# Orphan early-commit row vs final row may differ by more than one wall second in practice.
+_JOB_RUN_LOG_PLACEHOLDER_NEARBY_SECONDS = 5.0
+
+
+def job_run_log_started_at_bucket_key(started_at: datetime | None) -> tuple[datetime | None, ...]:
+    """Group rows that share the same wall-clock start second (tests / diagnostics)."""
+    if started_at is None:
+        return (None,)
+    return (started_at.replace(microsecond=0),)
+
+
+def _job_run_log_started_at_delta_seconds(a: datetime | None, b: datetime | None) -> float | None:
+    if a is None or b is None:
+        return None
+    return abs((a - b).total_seconds())
+
+
+def job_run_log_row_is_terminal_for_dedupe(r: JobRunLog) -> bool:
+    """True when the row is finalized or already carries a non-empty message (real summary)."""
+    if r.finished_at is not None:
+        return True
+    if (r.message or "").strip():
+        return True
+    return False
+
+
+def job_run_log_row_is_suppressible_placeholder(r: JobRunLog) -> bool:
+    """Early-commit orphan: no finish time and no message → pending placeholder display only."""
+    if job_run_log_row_is_terminal_for_dedupe(r):
+        return False
+    disp = user_visible_job_run_message(
+        message=r.message, ok=bool(r.ok), finished_at=r.finished_at
+    )
+    return disp == _RUN_SUMMARY_PENDING_DISPLAY
+
+
+def dedupe_job_run_logs_for_display(rows: Sequence[JobRunLog]) -> list[JobRunLog]:
+    """Drop stale ``Run summary not available yet.`` rows when a terminal row exists nearby in time.
+
+    Uses a short ``started_at`` proximity window so orphan early commits still match a final row
+    when real-world timestamps differ by a few seconds. Read/render-time only.
+    """
+    seq = list(rows)
+
+    def placeholder_has_nearby_terminal(p: JobRunLog) -> bool:
+        if not job_run_log_row_is_suppressible_placeholder(p):
+            return False
+        for t in seq:
+            if t is p:
+                continue
+            if not job_run_log_row_is_terminal_for_dedupe(t):
+                continue
+            delta = _job_run_log_started_at_delta_seconds(p.started_at, t.started_at)
+            if delta is not None and delta <= _JOB_RUN_LOG_PLACEHOLDER_NEARBY_SECONDS:
+                return True
+        return False
+
+    return [r for r in seq if not placeholder_has_nearby_terminal(r)]
+
+
+def _activity_primary_label(e: ActivityLog) -> str:
+    app = (getattr(e, "app", "") or "").strip().lower()
+    kind = (getattr(e, "kind", "") or "").strip().lower()
+    status = (getattr(e, "status", "") or "ok").strip().lower()
+    count = int(getattr(e, "count", 0) or 0)
+    if kind == "error" or status == "failed":
+        return "Run error" if kind == "error" else "Run failed"
+    if kind == "cleanup":
+        return f"Radarr queue cleanup ({count} item{'s' if count != 1 else ''})"
+    if kind == "trimmed":
+        return f"{count} item{'s' if count != 1 else ''} matched Emby Trimmer rules"
+    if kind == "missing":
+        unit = "episode" if app == "sonarr" else "movie"
+        return f"Missing search for {count} {unit}{'s' if count != 1 else ''}"
+    if kind == "upgrade":
+        unit = "episode" if app == "sonarr" else "movie"
+        return f"Upgrade search for {count} {unit}{'s' if count != 1 else ''}"
+    return f"Activity ({kind or 'event'})"
+
+
+def _activity_detail_fallback_line(e: ActivityLog) -> str:
+    if (getattr(e, "status", "") or "").strip().lower() == "failed":
+        return "Operation failed with no additional details."
+    if int(getattr(e, "count", 0) or 0) > 0:
+        return "No per-title detail was stored for this entry."
+    return "No items were dispatched for this activity entry."
+
+
 def activity_display_row(e: ActivityLog, tz: str) -> dict[str, Any]:
     raw_detail = (getattr(e, "detail", "") or "").strip()
+    detail_lines = activity_log_title_lines(raw_detail)
+    if not detail_lines:
+        detail_lines = [_activity_detail_fallback_line(e)]
     return {
         "id": e.id,
         "time_local": _fmt_local(e.created_at, tz),
@@ -55,8 +178,53 @@ def activity_display_row(e: ActivityLog, tz: str) -> dict[str, Any]:
         "kind": e.kind,
         "status": (getattr(e, "status", "") or "ok").strip().lower(),
         "count": e.count,
-        "detail_lines": activity_log_title_lines(raw_detail),
+        "primary_label": _activity_primary_label(e),
+        "detail_lines": detail_lines,
     }
+
+
+def _job_message_segments(message: str | None) -> list[str]:
+    return [p.strip() for p in (message or "").split("|") if p.strip()]
+
+
+def _job_segments_for_prefix(segments: list[str], prefix: str) -> list[str]:
+    """Match ``Sonarr:`` / ``Emby:`` style segments case-insensitively."""
+    root = (prefix or "").strip().lower().rstrip(":")
+    pl = f"{root}:"
+    return [s for s in segments if (s or "").strip().lower().startswith(pl)]
+
+
+def _segment_suggests_retry_limitation(seg: str) -> bool:
+    low = seg.lower()
+    return any(m in low for m in _JOB_RETRY_HINT_MARKERS)
+
+
+def _segment_suggests_items_dispatched(seg: str) -> bool:
+    return bool(re.search(r"\bsearch for \d+\b", seg.lower()))
+
+
+def automation_card_subtext(*, app_key: str, enabled: bool, last_job_message: str | None) -> str:
+    """Per-dashboard-card hint from the last JobRunLog only (no cross-app inference)."""
+    if not enabled:
+        return ""
+    lines = _job_segments_for_prefix(_job_message_segments(last_job_message), app_key)
+    if not lines:
+        return (
+            "No line for this app in the last service run - it may have been skipped by schedule, "
+            "manual scope, or configuration."
+        )
+    dispatched = any(_segment_suggests_items_dispatched(s) for s in lines)
+    retry_hit = any(_segment_suggests_retry_limitation(s) for s in lines)
+    if retry_hit and dispatched:
+        return "Some items were skipped due to retry delay; other work still ran."
+    if retry_hit:
+        return (
+            "All candidate items were still inside the retry-delay window - "
+            "no searches were sent for this app on that run."
+        )
+    if any("skipped" in s.lower() for s in lines):
+        return "Last run skipped this app - see the service log for the exact reason."
+    return "Last service run reported normally for this app."
 
 
 def trimmer_settings_fragment(trimmer_section: str | None) -> str:
@@ -219,6 +387,34 @@ def is_setup_complete(settings: AppSettings) -> bool:
     return bool(son_cfg or rad_cfg or em_cfg)
 
 
+def _fetcher_phase_for_dashboard(
+    *,
+    run_busy: bool,
+    job_intervals: dict[str, int],
+) -> tuple[str, str, str]:
+    """Return ``(phase_id, short_label, explanatory_sentence)`` for the global Automation strip.
+
+    Global state stays high-level only — per-app retry delay is shown on each app card, not here.
+    """
+    if run_busy:
+        return (
+            "processing",
+            "Processing",
+            "Fetcher is running Sonarr, Radarr, or Trimmer work. Counts and last-run times refresh when it finishes.",
+        )
+    if not job_intervals:
+        return (
+            "idle",
+            "Idle",
+            "No automation jobs are scheduled. Enable Sonarr, Radarr, or Trimmer (URL + API key) in settings to start interval runs.",
+        )
+    return (
+        "active",
+        "Active",
+        "Automation is scheduled for one or more apps. Each card below shows that app's latest status and timing.",
+    )
+
+
 async def build_dashboard_status(
     session: AsyncSession,
     tz: str,
@@ -227,26 +423,30 @@ async def build_dashboard_status(
     include_live: bool = True,
 ) -> dict[str, Any]:
     """Shared JSON payload for dashboard live polling and server-rendered page."""
+    now = utc_now_naive()
     snaps = snapshots if snapshots is not None else await fetch_latest_app_snapshots(session)
     last_run = (
         (await session.execute(select(JobRunLog).order_by(desc(JobRunLog.id)).limit(1))).scalars().first()
     )
     last_run_display: dict[str, Any] | None = None
     if last_run:
+        rel_svc = _relative_phrase_past(last_run.started_at, now) if last_run.started_at else ""
         last_run_display = {
             "started_local": _fmt_local(last_run.started_at, tz),
             "finished_local": _fmt_local(last_run.finished_at, tz) if last_run.finished_at else "",
             "has_finished": last_run.finished_at is not None,
             "ok": bool(last_run.ok),
-            "message": _truncate_display(last_run.message or ""),
+            "message": user_visible_job_run_message(
+                message=last_run.message,
+                ok=bool(last_run.ok),
+                finished_at=last_run.finished_at,
+            ),
+            "relative": rel_svc,
         }
     next_runs = scheduler.next_runs_by_job()
-    next_sonarr = next_runs.get("sonarr")
-    next_radarr = next_runs.get("radarr")
-    next_trimmer = next_runs.get("trimmer")
-    next_sonarr_local = _fmt_local(next_sonarr, tz) if next_sonarr else ""
-    next_radarr_local = _fmt_local(next_radarr, tz) if next_radarr else ""
-    next_trimmer_local = _fmt_local(next_trimmer, tz) if next_trimmer else ""
+    next_sonarr_dt = next_runs.get("sonarr")
+    next_radarr_dt = next_runs.get("radarr")
+    next_trimmer_dt = next_runs.get("trimmer")
     settings = await _get_or_create_settings(session)
     snaps = snapshots if snapshots is not None else await fetch_latest_app_snapshots(session)
 
@@ -257,8 +457,12 @@ async def build_dashboard_status(
     def _last_from(settings_dt: Any, snap: AppSnapshot | None) -> dict[str, Any]:
         dt = snap.created_at if snap and getattr(snap, "created_at", None) else settings_dt
         if not dt:
-            return {"time_local": "", "ok": None}
-        return {"time_local": _fmt_local(dt, tz), "ok": (bool(snap.ok) if snap is not None else None)}
+            return {"time_local": "", "ok": None, "relative": ""}
+        return {
+            "time_local": _fmt_local(dt, tz),
+            "ok": (bool(snap.ok) if snap is not None else None),
+            "relative": _relative_phrase_past(dt, now),
+        }
 
     # Snapshots capture per-app run outcomes (ok/failed) and are the primary source for per-app status.
     sonarr_snap = snaps.get("sonarr")
@@ -291,24 +495,52 @@ async def build_dashboard_status(
             "context": f"{app_name} • {event_name}",
             "time_local": _fmt_local(latest_activity.created_at, tz),
             "ok": (latest_activity.status or "ok").strip().lower() != "failed",
+            "relative": _relative_phrase_past(latest_activity.created_at, now),
         }
     last_sonarr = _last_from(settings.sonarr_last_run_at, _latest_snapshot_for("sonarr"))
     last_radarr = _last_from(settings.radarr_last_run_at, _latest_snapshot_for("radarr"))
     last_trimmer = _last_from(settings.emby_last_run_at, _latest_snapshot_for("emby"))
 
     # If scheduler next-run is unavailable in this process, keep useful per-app timing by estimating from last+interval.
-    if not next_sonarr and settings.sonarr_enabled and last_sonarr["time_local"]:
+    if not next_sonarr_dt and settings.sonarr_enabled and last_sonarr["time_local"]:
         dt = settings.sonarr_last_run_at
         if dt:
-            next_sonarr_local = _fmt_local(dt + timedelta(minutes=effective_arr_interval_minutes(settings.sonarr_interval_minutes)), tz)
-    if not next_radarr and settings.radarr_enabled and last_radarr["time_local"]:
+            next_sonarr_dt = dt + timedelta(
+                minutes=effective_arr_interval_minutes(settings.sonarr_interval_minutes)
+            )
+    if not next_radarr_dt and settings.radarr_enabled and last_radarr["time_local"]:
         dt = settings.radarr_last_run_at
         if dt:
-            next_radarr_local = _fmt_local(dt + timedelta(minutes=effective_arr_interval_minutes(settings.radarr_interval_minutes)), tz)
-    if not next_trimmer and settings.emby_enabled and last_trimmer["time_local"]:
+            next_radarr_dt = dt + timedelta(
+                minutes=effective_arr_interval_minutes(settings.radarr_interval_minutes)
+            )
+    if not next_trimmer_dt and settings.emby_enabled and last_trimmer["time_local"]:
         dt = settings.emby_last_run_at
         if dt:
-            next_trimmer_local = _fmt_local(dt + timedelta(minutes=max(5, int(settings.emby_interval_minutes or 60))), tz)
+            next_trimmer_dt = dt + timedelta(minutes=max(5, int(settings.emby_interval_minutes or 60)))
+
+    next_sonarr_local = _fmt_local(next_sonarr_dt, tz) if next_sonarr_dt else ""
+    next_radarr_local = _fmt_local(next_radarr_dt, tz) if next_radarr_dt else ""
+    next_trimmer_local = _fmt_local(next_trimmer_dt, tz) if next_trimmer_dt else ""
+    next_sonarr_relative = _relative_phrase_until(next_sonarr_dt, now) if next_sonarr_dt else ""
+    next_radarr_relative = _relative_phrase_until(next_radarr_dt, now) if next_radarr_dt else ""
+    next_trimmer_relative = _relative_phrase_until(next_trimmer_dt, now) if next_trimmer_dt else ""
+
+    job_intervals = compute_job_intervals_minutes(settings)
+    job_msg = (last_run.message or "") if last_run else ""
+    phase_id, phase_label, phase_detail = _fetcher_phase_for_dashboard(
+        run_busy=scheduler.is_run_in_progress(),
+        job_intervals=job_intervals,
+    )
+    sonarr_automation_sub = automation_card_subtext(
+        app_key="sonarr", enabled=bool(settings.sonarr_enabled), last_job_message=job_msg
+    )
+    radarr_automation_sub = automation_card_subtext(
+        app_key="radarr", enabled=bool(settings.radarr_enabled), last_job_message=job_msg
+    )
+    trimmer_automation_sub = automation_card_subtext(
+        app_key="emby", enabled=bool(settings.emby_enabled), last_job_message=job_msg
+    )
     sonarr_snap = snaps.get("sonarr")
     radarr_snap = snaps.get("radarr")
     emby_snap = snaps.get("emby")
@@ -335,6 +567,15 @@ async def build_dashboard_status(
         "next_sonarr_tick_local": next_sonarr_local,
         "next_radarr_tick_local": next_radarr_local,
         "next_trimmer_tick_local": next_trimmer_local,
+        "next_sonarr_relative": next_sonarr_relative,
+        "next_radarr_relative": next_radarr_relative,
+        "next_trimmer_relative": next_trimmer_relative,
+        "fetcher_phase": phase_id,
+        "fetcher_phase_label": phase_label,
+        "fetcher_phase_detail": phase_detail,
+        "sonarr_automation_sub": sonarr_automation_sub,
+        "radarr_automation_sub": radarr_automation_sub,
+        "trimmer_automation_sub": trimmer_automation_sub,
         "sonarr_missing": sonarr_missing,
         "sonarr_upgrades": sonarr_upgrades,
         "radarr_missing": radarr_missing,

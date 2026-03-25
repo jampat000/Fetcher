@@ -1055,6 +1055,15 @@ def _sanitize_log_text(text: str | None) -> str:
     return redact_sensitive_text(text)
 
 
+def _activity_detail_persist_fallback(o: ActivityLog) -> str:
+    """Guarantee non-empty ActivityLog.detail for new rows (UI/lists assume readable text)."""
+    if (getattr(o, "status", "") or "").strip().lower() == "failed":
+        return "Operation failed with no additional details."
+    if int(getattr(o, "count", 0) or 0) > 0:
+        return "No per-title detail was stored for this entry."
+    return "No items were dispatched for this activity entry."
+
+
 def _sanitize_pending_log_rows(session: AsyncSession) -> None:
     """Sanitize log rows before commit so DB never stores raw secrets."""
     for obj in session.new:
@@ -1062,6 +1071,8 @@ def _sanitize_pending_log_rows(session: AsyncSession) -> None:
             obj.message = _sanitize_log_text(obj.message)
         elif isinstance(obj, ActivityLog):
             obj.detail = _sanitize_log_text(obj.detail)
+            if not (obj.detail or "").strip():
+                obj.detail = _activity_detail_persist_fallback(obj)
 
 
 async def apply_emby_trimmer_live_deletes(

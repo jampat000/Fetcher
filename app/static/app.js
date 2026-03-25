@@ -404,26 +404,64 @@ function applyDashboardHeroMetrics(data) {
   setMetricTile("emby-matched", data.emby_matched ?? 0);
 }
 
+const _FETCHER_PHASE_PILL = {
+  processing: "status-pill-active",
+  idle: "status-pill-idle",
+  active: "status-pill-ok",
+};
+
+function applyDashboardFetcherPhase(data) {
+  if (!data) return;
+  const pill = document.getElementById("dash-fetcher-phase-pill");
+  const detail = document.getElementById("dash-fetcher-phase-detail");
+  if (!pill || !detail) return;
+  const id = data.fetcher_phase || "active";
+  pill.textContent = data.fetcher_phase_label || "Active";
+  detail.textContent = data.fetcher_phase_detail || "";
+  const cls = _FETCHER_PHASE_PILL[id] || "status-pill-ok";
+  pill.className = `status-pill ${cls}`;
+}
+
+function applyDashboardAutomationHints(data) {
+  if (!data) return;
+  function setHint(elId, text) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    const t = text == null ? "" : String(text).trim();
+    el.textContent = t;
+    el.hidden = !t;
+  }
+  setHint("dash-sonarr-hint", data.sonarr_automation_sub);
+  setHint("dash-radarr-hint", data.radarr_automation_sub);
+  setHint("dash-trimmer-hint", data.trimmer_automation_sub);
+}
+
 function applyDashboardAutomationStatus(data) {
   if (!data) return;
-  const nextSonarr = document.getElementById("dash-next-sonarr-tick");
-  if (nextSonarr) {
-    const t = data.next_sonarr_tick_local;
-    if (t) nextSonarr.textContent = t;
-    else nextSonarr.innerHTML = '<span class="muted automation-value-pending">Scheduled</span>';
+  applyDashboardFetcherPhase(data);
+  applyDashboardAutomationHints(data);
+
+  function setNextTick(tickId, relId, localVal, relVal) {
+    const tick = document.getElementById(tickId);
+    const rel = relId ? document.getElementById(relId) : null;
+    if (tick) {
+      if (localVal) tick.textContent = localVal;
+      else tick.innerHTML = '<span class="muted automation-value-pending">Scheduled</span>';
+    }
+    if (rel) {
+      if (relVal) {
+        rel.textContent = `(${relVal})`;
+        rel.hidden = false;
+      } else {
+        rel.textContent = "";
+        rel.hidden = true;
+      }
+    }
   }
-  const nextRadarr = document.getElementById("dash-next-radarr-tick");
-  if (nextRadarr) {
-    const t = data.next_radarr_tick_local;
-    if (t) nextRadarr.textContent = t;
-    else nextRadarr.innerHTML = '<span class="muted automation-value-pending">Scheduled</span>';
-  }
-  const nextTrimmer = document.getElementById("dash-next-trimmer-tick");
-  if (nextTrimmer) {
-    const t = data.next_trimmer_tick_local;
-    if (t) nextTrimmer.textContent = t;
-    else nextTrimmer.innerHTML = '<span class="muted automation-value-pending">Scheduled</span>';
-  }
+
+  setNextTick("dash-next-sonarr-tick", "dash-next-sonarr-rel", data.next_sonarr_tick_local, data.next_sonarr_relative);
+  setNextTick("dash-next-radarr-tick", "dash-next-radarr-rel", data.next_radarr_tick_local, data.next_radarr_relative);
+  setNextTick("dash-next-trimmer-tick", "dash-next-trimmer-rel", data.next_trimmer_tick_local, data.next_trimmer_relative);
 
   const lastContext = document.getElementById("dash-last-context");
   const lastHost = document.getElementById("dash-automation-last");
@@ -434,7 +472,9 @@ function applyDashboardAutomationStatus(data) {
       ? '<span class="status-pill status-pill-ok">Succeeded</span>'
       : '<span class="status-pill status-pill-fail">Failed</span>';
     if (lastContext) lastContext.innerHTML = escapeHtml(ev.context || "System • Event");
-    lastHost.innerHTML = `<span id="dash-last-started">${escapeHtml(ev.time_local || "")}</span> ${ok}`;
+    const rel = escapeHtml(ev.relative || "");
+    const clock = escapeHtml(ev.time_local || "");
+    lastHost.innerHTML = `<span class="muted" id="dash-last-started-rel">${rel}</span> <span class="small muted">· <span id="dash-last-started">${clock}</span></span> ${ok}`;
   } else if (lastHost && !data.latest_system_event) {
     if (lastContext) lastContext.innerHTML = '<span class="muted">No activity yet</span>';
     lastHost.className = "automation-card-subline muted";
@@ -445,39 +485,42 @@ function applyDashboardAutomationStatus(data) {
   if (lastSonarr) {
     const r = data.last_sonarr_run || {};
     if (r.time_local) {
+      const rel = escapeHtml(r.relative || r.time_local || "");
       const ok =
         r.ok === true
           ? ' <span class="status-pill status-pill-ok">Succeeded</span>'
           : r.ok === false
             ? ' <span class="status-pill status-pill-fail">Failed</span>'
             : "";
-      lastSonarr.innerHTML = `${escapeHtml(r.time_local)}${ok}`;
+      lastSonarr.innerHTML = `<span class="muted">Last run:</span> <strong id="dash-last-sonarr-rel">${rel}</strong> <span class="small muted">· ${escapeHtml(r.time_local)}</span>${ok}`;
     } else lastSonarr.innerHTML = '<span class="muted">Not yet run</span>';
   }
   const lastRadarr = document.getElementById("dash-last-radarr-run");
   if (lastRadarr) {
     const r = data.last_radarr_run || {};
     if (r.time_local) {
+      const rel = escapeHtml(r.relative || r.time_local || "");
       const ok =
         r.ok === true
           ? ' <span class="status-pill status-pill-ok">Succeeded</span>'
           : r.ok === false
             ? ' <span class="status-pill status-pill-fail">Failed</span>'
             : "";
-      lastRadarr.innerHTML = `${escapeHtml(r.time_local)}${ok}`;
+      lastRadarr.innerHTML = `<span class="muted">Last run:</span> <strong id="dash-last-radarr-rel">${rel}</strong> <span class="small muted">· ${escapeHtml(r.time_local)}</span>${ok}`;
     } else lastRadarr.innerHTML = '<span class="muted">Not yet run</span>';
   }
   const lastTrimmer = document.getElementById("dash-last-trimmer-run");
   if (lastTrimmer) {
     const r = data.last_trimmer_run || {};
     if (r.time_local) {
+      const rel = escapeHtml(r.relative || r.time_local || "");
       const ok =
         r.ok === true
           ? ' <span class="status-pill status-pill-ok">Succeeded</span>'
           : r.ok === false
             ? ' <span class="status-pill status-pill-fail">Failed</span>'
             : "";
-      lastTrimmer.innerHTML = `${escapeHtml(r.time_local)}${ok}`;
+      lastTrimmer.innerHTML = `<span class="muted">Last run:</span> <strong id="dash-last-trimmer-rel">${rel}</strong> <span class="small muted">· ${escapeHtml(r.time_local)}</span>${ok}`;
     } else lastTrimmer.innerHTML = '<span class="muted">Not yet run</span>';
   }
 }

@@ -301,7 +301,13 @@ def test_post_api_arr_search_now(monkeypatch: pytest.MonkeyPatch, scope: str) ->
     with _client(monkeypatch) as client:
         resp = client.post("/api/arr/search-now", json={"scope": scope})
     assert resp.status_code == 200
-    assert resp.json() == {"ok": True, "queued": False, "message": "Manual search triggered."}
+    app_name = "Sonarr" if scope.startswith("sonarr_") else "Radarr"
+    flavor = "missing" if scope.endswith("_missing") else "upgrade"
+    assert resp.json() == {
+        "ok": True,
+        "queued": False,
+        "message": f"Manual {flavor} search sent to {app_name} successfully.",
+    }
     assert seen["scope"] == scope
 
 
@@ -324,7 +330,10 @@ def test_post_api_arr_search_now_falls_back_to_queue_on_http_status_error(monkey
     assert resp.json() == {
         "ok": True,
         "queued": True,
-        "message": "Manual search queued (immediate Arr command failed).",
+        "message": (
+            "Radarr rejected the immediate manual upgrade search; Fetcher queued a full automation "
+            "pass instead. Check Activity in a moment."
+        ),
     }
     assert seen["queued_scope"] == "radarr_upgrade"
 

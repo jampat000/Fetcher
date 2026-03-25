@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.4.8] - 2026-03-26
+
+### Fixed
+- **Logs page noise:** Suppress duplicate historical **“Run summary not available yet.”** rows when a completed run summary exists within a short **started_at** window (display-layer dedupe only).
+- **Activity/log empty rows:** Ensure user-visible Activity lines always include a primary label and non-empty detail fallback; persist non-empty **ActivityLog.detail** when redaction would otherwise leave it blank.
+
+### Changed
+- **Dashboard automation clarity:** Global strip uses **Active / Idle / Processing** only (no misleading system-wide “cooling down”); per-app cards show **retry-delay** context from the last service-run summary only for Sonarr, Radarr, and Trimmer.
+- **Dashboard timing copy:** Last/next run lines include relative phrases (e.g. minutes ago / in N minutes) where available.
+- **Manual search API messages:** Success, queued, and failure responses name **Sonarr or Radarr** and **missing vs upgrade** explicitly.
+- **Setup wizard & connection copy:** Clearer field purposes, validation messages, and connection-test hints (URL, API key, network).
+- **Sign-in messaging:** More actionable invalid-login and rate-limit text; clearer session-configuration error text.
+- **Log file browser errors:** More specific messages for disallowed paths, missing files, and read failures.
+
 ## [2.4.7] - 2026-03-25
 
 ### Fixed
@@ -927,7 +941,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.3.15...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.4.8...HEAD
+[2.4.8]: https://github.com/jampat000/Fetcher/compare/v2.4.7...v2.4.8
+[2.4.7]: https://github.com/jampat000/Fetcher/compare/v2.4.6...v2.4.7
+[2.4.6]: https://github.com/jampat000/Fetcher/compare/v2.4.5...v2.4.6
+[2.4.5]: https://github.com/jampat000/Fetcher/compare/v2.4.4...v2.4.5
+[2.4.4]: https://github.com/jampat000/Fetcher/compare/v2.4.3...v2.4.4
+[2.4.3]: https://github.com/jampat000/Fetcher/compare/v2.4.2...v2.4.3
+[2.4.2]: https://github.com/jampat000/Fetcher/compare/v2.4.1...v2.4.2
+[2.4.1]: https://github.com/jampat000/Fetcher/compare/v2.4.0...v2.4.1
+[2.4.0]: https://github.com/jampat000/Fetcher/compare/v2.3.17...v2.4.0
+[2.3.17]: https://github.com/jampat000/Fetcher/compare/v2.3.16...v2.3.17
+[2.3.16]: https://github.com/jampat000/Fetcher/compare/v2.3.15...v2.3.16
 [2.3.15]: https://github.com/jampat000/Fetcher/compare/v2.3.14...v2.3.15
 [2.3.14]: https://github.com/jampat000/Fetcher/compare/v2.3.13...v2.3.14
 [2.3.13]: https://github.com/jampat000/Fetcher/compare/v2.3.12...v2.3.13

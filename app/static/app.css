@@ -849,6 +849,51 @@ h2.gc-title,
   border-color: rgba(239, 68, 68, 0.28);
 }
 
+/* Dashboard automation strip */
+.dashboard-fetcher-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px 14px;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.35);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+.dashboard-fetcher-state-detail {
+  margin: 0;
+  flex: 1 1 220px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #cbd5e1;
+}
+.status-pill-active {
+  background: rgba(59, 130, 246, 0.12);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+}
+.status-pill-active::before {
+  background: #3b82f6;
+  animation: blink 1.2s ease-in-out infinite;
+}
+.status-pill-cool {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fcd34d;
+  border: 1px solid rgba(245, 158, 11, 0.28);
+}
+.status-pill-cool::before {
+  background: #f59e0b;
+}
+.status-pill-idle {
+  background: rgba(148, 163, 184, 0.12);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+.status-pill-idle::before {
+  background: #64748b;
+}
+
 .badge-off {
   background: rgba(148, 163, 184, 0.12);
   color: #94a3b8;

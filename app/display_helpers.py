@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from app.form_helpers import _resolve_timezone_name
@@ -87,3 +87,47 @@ def _fmt_local(dt: datetime, tz_name: str) -> str:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=ZoneInfo("UTC"))
     return dt.astimezone(tz).strftime("%d-%m-%Y %I:%M %p")
+
+
+def _as_utc_naive(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _relative_phrase_past(dt_event: datetime, now: datetime) -> str:
+    """Human-friendly elapsed time since dt_event (both datetimes naive UTC or aware)."""
+    t0 = _as_utc_naive(dt_event)
+    t1 = _as_utc_naive(now)
+    secs = int((t1 - t0).total_seconds())
+    if secs < 45:
+        return "just now"
+    mins = secs // 60
+    if mins < 60:
+        return f"{mins} minute{'s' if mins != 1 else ''} ago"
+    hours = mins // 60
+    if hours < 24:
+        return f"{hours} hour{'s' if hours != 1 else ''} ago"
+    days = secs // 86400
+    if days < 14:
+        return f"{days} day{'s' if days != 1 else ''} ago"
+    return f"{t0.strftime('%d-%m-%Y %I:%M %p')} UTC"
+
+
+def _relative_phrase_until(dt_future: datetime, now: datetime) -> str:
+    """Human-friendly time until dt_future (naive UTC recommended)."""
+    t0 = _as_utc_naive(now)
+    t1 = _as_utc_naive(dt_future)
+    secs = int((t1 - t0).total_seconds())
+    if secs <= 0:
+        return "due now"
+    if secs < 45:
+        return "in under a minute"
+    mins = secs // 60
+    if mins < 60:
+        return f"in {mins} minute{'s' if mins != 1 else ''}"
+    hours = mins // 60
+    if hours < 24:
+        return f"in {hours} hour{'s' if hours != 1 else ''}"
+    days = secs // 86400
+    return f"in {days} day{'s' if days != 1 else ''}"

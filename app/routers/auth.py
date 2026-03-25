@@ -94,8 +94,15 @@ async def login_post(
         secret = result.cookie_secret
         if not secret:
             if request_prefers_json(request):
-                return JSONResponse(status_code=500, content={"message": "Server misconfiguration"})
-            return HTMLResponse("Server misconfiguration", status_code=500)
+                return JSONResponse(
+                    status_code=500,
+                    content={
+                        "message": "Session could not be created (server configuration). Restart Fetcher or try again.",
+                    },
+                )
+            return HTMLResponse(
+                "Session could not be created. Restart Fetcher or contact support.", status_code=500
+            )
         resp = RedirectResponse(next_dest, status_code=303)
         attach_session_cookie(resp, secret=secret, username=result.cookie_username)
         return resp
