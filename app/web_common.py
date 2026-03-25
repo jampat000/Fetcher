@@ -12,6 +12,7 @@ from urllib.parse import quote
 from app.arr_client import ArrClient, ArrConfig
 from app.arr_intervals import effective_arr_interval_minutes
 from app.resolvers.api_keys import resolve_radarr_api_key, resolve_sonarr_api_key
+from app.service_logic import _radarr_missing_total_including_unreleased, _sonarr_missing_total_including_unreleased
 from sqlalchemy import desc, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +24,11 @@ from app.schedule import DAY_NAMES, normalize_schedule_days_csv
 from app.scheduler import scheduler
 
 logger = logging.getLogger(__name__)
+
+# Live dashboard hero: HTTP timeout per Arr request; wall-clock caps so SSR/poll do not hang on huge libraries.
+_DASHBOARD_LIVE_ARR_HTTP_TIMEOUT_S = 12.0
+_DASHBOARD_SONARR_MISSING_WALL_S = 25.0
+_DASHBOARD_RADARR_MOVIES_WALL_S = 20.0
 
 # Activity list shows 5 title lines + “+N more”; full list is stored in ``ActivityLog.detail``.
 ACTIVITY_DETAIL_PREVIEW_LINES = 5
@@ -107,41 +113,78 @@ async def try_commit_and_reschedule(
 
 
 async def fetch_live_dashboard_queue_totals(settings: AppSettings) -> dict[str, int]:
-    """Best-effort *arr wanted queue sizes for dashboard hero tiles (no scheduler / snapshot lag).
+    """Best-effort Arr totals for dashboard hero tiles (independent of scheduler runs).
 
-    Uses a short HTTP timeout so a dead Sonarr/Radarr does not block dashboard status.
-    Keys present only for apps where both missing + cutoff ``totalRecords`` were read successfully.
+    **Missing** counts use the same semantics as ``service_logic`` (**monitored** items without files,
+    **including** unreleased / never-grabbed), not *only* ``/wanted/missing`` ``totalRecords`` (which
+    excludes some unreleased rows).
+
+    **Cutoff-unmet** (upgrade) tiles still use ``/wanted/cutoff`` ``totalRecords`` — that queue is
+    defined by Arr for quality upgrades, not the “missing file” catalog walk.
+
+    Per-app keys are omitted on failure/timeout so ``build_dashboard_status`` keeps snapshot fallback.
     """
-    out: dict[str, int] = {}
 
-    son_url = (settings.sonarr_url or "").strip()
-    son_key = resolve_sonarr_api_key(settings)
-    if settings.sonarr_enabled and son_url and son_key:
+    async def _sonarr_branch() -> dict[str, int]:
+        son_url = (settings.sonarr_url or "").strip()
+        son_key = resolve_sonarr_api_key(settings)
+        if not (settings.sonarr_enabled and son_url and son_key):
+            return {}
+        local: dict[str, int] = {}
+        client = ArrClient(
+            ArrConfig(son_url, son_key), timeout_s=_DASHBOARD_LIVE_ARR_HTTP_TIMEOUT_S
+        )
         try:
-            client = ArrClient(ArrConfig(son_url, son_key), timeout_s=4.0)
-            missing_raw, cutoff_raw = await asyncio.gather(
-                client.wanted_missing(page=1, page_size=1),
-                client.wanted_cutoff_unmet(page=1, page_size=1),
+            son_missing = await asyncio.wait_for(
+                _sonarr_missing_total_including_unreleased(client),
+                timeout=_DASHBOARD_SONARR_MISSING_WALL_S,
             )
-            out["sonarr_missing"] = int(missing_raw.get("totalRecords") or 0)
-            out["sonarr_upgrades"] = int(cutoff_raw.get("totalRecords") or 0)
+            local["sonarr_missing"] = int(son_missing)
+        except TimeoutError:
+            logger.debug(
+                "Dashboard live Sonarr missing count (including unreleased) timed out",
+                exc_info=True,
+            )
         except Exception:
-            logger.debug("Dashboard live Sonarr queue totals unavailable", exc_info=True)
-
-    rad_url = (settings.radarr_url or "").strip()
-    rad_key = resolve_radarr_api_key(settings)
-    if settings.radarr_enabled and rad_url and rad_key:
+            logger.debug(
+                "Dashboard live Sonarr missing count (including unreleased) failed",
+                exc_info=True,
+            )
         try:
-            client = ArrClient(ArrConfig(rad_url, rad_key), timeout_s=4.0)
-            missing_raw, cutoff_raw = await asyncio.gather(
-                client.wanted_missing(page=1, page_size=1),
-                client.wanted_cutoff_unmet(page=1, page_size=1),
-            )
-            out["radarr_missing"] = int(missing_raw.get("totalRecords") or 0)
-            out["radarr_upgrades"] = int(cutoff_raw.get("totalRecords") or 0)
+            cutoff_raw = await client.wanted_cutoff_unmet(page=1, page_size=1)
+            local["sonarr_upgrades"] = int(cutoff_raw.get("totalRecords") or 0)
         except Exception:
-            logger.debug("Dashboard live Radarr queue totals unavailable", exc_info=True)
+            logger.debug("Dashboard live Sonarr cutoff queue total failed", exc_info=True)
+        return local
 
+    async def _radarr_branch() -> dict[str, int]:
+        rad_url = (settings.radarr_url or "").strip()
+        rad_key = resolve_radarr_api_key(settings)
+        if not (settings.radarr_enabled and rad_url and rad_key):
+            return {}
+        local: dict[str, int] = {}
+        client = ArrClient(
+            ArrConfig(rad_url, rad_key), timeout_s=_DASHBOARD_LIVE_ARR_HTTP_TIMEOUT_S
+        )
+        try:
+            movies = await asyncio.wait_for(
+                client.movies(),
+                timeout=_DASHBOARD_RADARR_MOVIES_WALL_S,
+            )
+            local["radarr_missing"] = _radarr_missing_total_including_unreleased(movies)
+        except TimeoutError:
+            logger.debug("Dashboard live Radarr movies fetch timed out", exc_info=True)
+        except Exception:
+            logger.debug("Dashboard live Radarr missing count failed", exc_info=True)
+        try:
+            cutoff_raw = await client.wanted_cutoff_unmet(page=1, page_size=1)
+            local["radarr_upgrades"] = int(cutoff_raw.get("totalRecords") or 0)
+        except Exception:
+            logger.debug("Dashboard live Radarr cutoff queue total failed", exc_info=True)
+        return local
+
+    son_o, rad_o = await asyncio.gather(_sonarr_branch(), _radarr_branch())
+    out: dict[str, int] = {**son_o, **rad_o}
     return out
 
 

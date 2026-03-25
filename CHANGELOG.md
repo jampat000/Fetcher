@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.4.2] - 2026-03-25
+
+### Fixed
+
+- **Dashboard hero “missing” counts:** Live Sonarr/Radarr **missing** tiles again use the same semantics as automation (**monitored** episodes/movies **without files**, **including unreleased / not yet available**), via **`_sonarr_missing_total_including_unreleased`** and **`_radarr_missing_total_including_unreleased`** from **`service_logic`** — not **`/wanted/missing` `totalRecords` alone** (narrower queue). **Cutoff-unmet** tiles still use **`/wanted/cutoff` `totalRecords`**. Live refresh stays **independent of scheduler run intervals**; wall-clock timeouts preserve **snapshot fallback** if Arr is slow or unreachable.
+
 ## [2.4.1] - 2026-03-25
 
 ### Fixed
