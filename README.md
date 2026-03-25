@@ -53,6 +53,15 @@ Restart-Service Fetcher
 
 If this variable is missing, Fetcher intentionally fails fast on startup (no fallback signing secret).
 
+### Logs (Windows service)
+
+Application logs (exceptions, startup, Trimmer/settings saves, migration messages) are written to a **rotating file** next to your database:
+
+- **Default:** `%ProgramData%\Fetcher\logs\fetcher.log` (and `fetcher.log.1`, … on rotation)
+- **Override:** set machine env **`FETCHER_LOG_DIR`** to a folder path if you want logs elsewhere.
+
+The web UI **Logs** page lists files from that same directory. WinSW may also write short **`*.out.log` / `*.err.log`** files under the install folder (Program Files); those are **wrapper-only** and can be removed on uninstall — they are not the main application log.
+
 **Security:** Password-protected UI (bcrypt + session cookie). Optional **IP allowlist** for trusted networks. See **[`SECURITY.md`](SECURITY.md)** for reporting issues, API keys, downloads, and lockout recovery.  
 
 **Updates:** **Settings → Software updates** can install a newer **`FetcherSetup.exe`**, or install manually from [Releases](https://github.com/jampat000/Fetcher/releases).  

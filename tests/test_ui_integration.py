@@ -400,6 +400,59 @@ def test_post_trimmer_cleaner_async_header_returns_json(monkeypatch: pytest.Monk
     asyncio.run(verify_interval())
 
 
+def test_post_trimmer_cleaner_save_scope_from_query_when_missing_from_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Query ``trimmer_save_scope`` must work when the submitter omits ``save_scope`` (async / edge browsers)."""
+    pairs: list[tuple[str, str]] = [
+        ("emby_dry_run", "true"),
+        ("emby_schedule_enabled", "false"),
+        *_schedule_flag_pairs("emby_schedule"),
+        ("emby_schedule_start", "10:00"),
+        ("emby_schedule_end", "18:00"),
+        ("emby_max_items_scan", "2000"),
+        ("emby_max_deletes_per_run", "25"),
+        ("emby_interval_minutes", "93"),
+    ]
+    encoded = urlencode(pairs)
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/trimmer/settings/cleaner?trimmer_section=schedule&trimmer_save_scope=schedule",
+            content=encoded,
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "X-Fetcher-Trimmer-Settings-Async": "1",
+            },
+        )
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "section": "schedule"}
+
+    async def verify_interval() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            assert row.emby_interval_minutes == 93
+
+    asyncio.run(verify_interval())
+
+
+def test_trimmer_cleaner_validation_async_returns_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """422 on Trimmer cleaner with async header must be JSON (not HTML) so the UI shows a real error."""
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/trimmer/settings/cleaner?trimmer_section=people",
+            data={
+                "save_scope": "tv",
+                "emby_interval_minutes": "not-an-int",
+            },
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "X-Fetcher-Trimmer-Settings-Async": "1",
+            },
+        )
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": False, "section": "people", "reason": "invalid"}
+
+
 def test_post_trimmer_cleaner_rejects_missing_save_scope(monkeypatch: pytest.MonkeyPatch) -> None:
     pairs: list[tuple[str, str]] = [
         ("emby_dry_run", "true"),

@@ -1005,13 +1005,21 @@ function initTrimmerSettingsAsyncCleaner() {
         return;
       }
       e.preventDefault();
-      const sub = e.submitter;
-      const action =
+      let sub = e.submitter;
+      if (!(sub instanceof HTMLButtonElement) && !(sub instanceof HTMLInputElement)) {
+        const ae = document.activeElement;
+        if (ae instanceof HTMLButtonElement && ae.form === form) {
+          sub = ae;
+        }
+      }
+      let action =
         sub instanceof HTMLButtonElement && sub.getAttribute("formaction")
           ? sub.getAttribute("formaction")
           : form.getAttribute("action") || "/trimmer/settings/cleaner";
       const anchor =
-        (sub && sub.closest && sub.closest(".trimmer-settings-anchor")) ||
+        (sub &&
+          sub.closest &&
+          sub.closest(".trimmer-settings-anchor")) ||
         form.querySelector(".trimmer-settings-anchor");
       const feedback = anchor ? anchor.querySelector(".settings-async-feedback") : null;
       const saveButtons = Array.from(form.querySelectorAll('button[type="submit"]')).filter(
@@ -1035,10 +1043,21 @@ function initTrimmerSettingsAsyncCleaner() {
       setSaveButtonsPending(saveButtons, true);
       setFetcherSettingsInPlaceFeedback(feedback, "pending", FETCHER_SETTINGS_SAVE_PENDING_LABEL);
 
-      const fd =
-        sub instanceof HTMLButtonElement || sub instanceof HTMLInputElement
-          ? new FormData(form, sub)
-          : new FormData(form);
+      let fd;
+      if (sub instanceof HTMLButtonElement || sub instanceof HTMLInputElement) {
+        fd = new FormData(form, sub);
+      } else {
+        fd = new FormData(form);
+      }
+      if (
+        sub instanceof HTMLButtonElement &&
+        sub.getAttribute("name") === "save_scope" &&
+        sub.getAttribute("value")
+      ) {
+        fd.set("save_scope", sub.getAttribute("value") || "");
+        const fa = sub.getAttribute("formaction");
+        if (fa) action = fa;
+      }
       fetch(action, {
         method: "POST",
         body: fd,

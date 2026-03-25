@@ -1,5 +1,14 @@
 ; Inno Setup script (build a friendly installer)
 ; Requires Inno Setup installed: https://jrsoftware.org/isinfo.php
+;
+; Install / upgrade / uninstall policy (support):
+; - Binaries and WinSW live under {app} (Program Files\Fetcher\Fetcher by default).
+; - Live data: SQLite DB, rotating app logs, and migration marker live under
+;   %ProgramData%\Fetcher\ (override with machine env FETCHER_DATA_DIR).
+; - Upgrade: replaces files under {app}; does NOT remove ProgramData (your DB and logs stay).
+; - Uninstall: removes {app} files installed by this script; ProgramData is intentionally NOT
+;   deleted here so settings and fetcher.db survive (see README — Logs + install notes).
+; - Wrapper WinSW stdout/stderr rolls under {app} — [UninstallDelete] below removes those only.
 
 #define MyAppName "Fetcher"
 #define MyAppPublisher "Fetcher"
@@ -22,6 +31,11 @@ Compression=lzma
 SolidCompression=yes
 PrivilegesRequired=admin
 WizardStyle=modern
+
+[UninstallDelete]
+; Service wrapper console logs only (not application fetcher.log — that stays under ProgramData\Fetcher\logs).
+Type: files; Name: "{app}\*.out.log"
+Type: files; Name: "{app}\*.err.log"
 
 [Files]
 ; Built output (PyInstaller one-folder build)

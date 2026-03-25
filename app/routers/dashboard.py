@@ -23,7 +23,7 @@ from app.emby_rules import (
     parse_movie_people_phrases,
 )
 from app.models import ActivityLog, JobRunLog
-from app.paths import LOGS_DIR, is_safe_path
+from app.paths import is_safe_path, resolved_logs_dir
 from app.time_util import utc_now_naive
 from app.ui_templates import templates
 from app.web_common import (
@@ -175,8 +175,9 @@ async def logs_page(request: Request, session: AsyncSession = Depends(get_sessio
 @router.get("/logs/file", response_class=PlainTextResponse)
 async def logs_file(name: str, _request: Request) -> PlainTextResponse:
     """Read a log file only when it resolves under the designated logs directory."""
-    candidate = (LOGS_DIR / Path(name).name).resolve()
-    if not is_safe_path(candidate, LOGS_DIR.resolve()):
+    logs_root = resolved_logs_dir()
+    candidate = (logs_root / Path(name).name).resolve()
+    if not is_safe_path(candidate, logs_root.resolve()):
         raise HTTPException(status_code=403, detail="Path escapes the logs directory")
     if not candidate.is_file():
         return PlainTextResponse("Log file not found", status_code=404)

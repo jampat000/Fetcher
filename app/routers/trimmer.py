@@ -282,6 +282,7 @@ async def save_trimmer_settings(
     emby_rule_tv_people_credit_types: list[str] = Form([]),
     emby_rule_tv_unwatched_days: int = Form(0),
     save_scope: str = Form(""),
+    trimmer_save_scope: Annotated[str | None, Query()] = None,
     trimmer_section: Annotated[str | None, Query()] = None,
     session: AsyncSession = Depends(get_session),
 ) -> RedirectResponse | JSONResponse:
@@ -301,8 +302,14 @@ async def save_trimmer_settings(
             status_code=303,
         )
 
-    scope = (save_scope or "").strip().lower()
+    scope = (save_scope or trimmer_save_scope or "").strip().lower()
     if scope not in _TRIMMER_CLEANER_SAVE_SCOPES:
+        logger.warning(
+            "Trimmer cleaner save rejected: invalid_scope=%r (save_scope=%r trimmer_save_scope=%r)",
+            scope,
+            (save_scope or "").strip(),
+            (trimmer_save_scope or "").strip(),
+        )
         return respond(saved=False, reason="invalid_scope")
 
     try:

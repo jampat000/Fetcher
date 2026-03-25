@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.4.3] - 2026-03-25
+
+### Fixed
+
+- **Trimmer cleaner async save:** **`save_scope`** can be taken from query **`trimmer_save_scope`** (mirrored on each save button **`formaction`**) when the submitter field is missing from the multipart body (e.g. some Enter-to-submit / edge **`FormData`** cases), removing spurious **`invalid_scope`** and the misleading “reload the page” message. **`RequestValidationError`** on this route now returns **JSON** when **`X-Fetcher-Trimmer-Settings-Async`** is set so the UI does not mis-handle a **303 + HTML** as success.
+- **Trimmer cleaner diagnostics:** **`invalid_scope`** now logs body vs query **`save_scope`** values at **WARNING** for support.
+
+### Changed
+
+- **Installed-build logging:** Rotating **`fetcher.log`** under **`<database directory>/logs`** (default **`%ProgramData%\Fetcher\logs`** next to **`fetcher.db`**). Override with **`FETCHER_LOG_DIR`**. Startup logs the resolved log file path; **Logs** (`/logs/file`) reads the same directory. **README** documents the layout and WinSW **`*.out.log` / `*.err.log`** vs application logs.
+- **Windows installer:** **`Fetcher.iss`** documents upgrade vs uninstall data policy (**Program Files** binaries vs **ProgramData** DB/logs). **`[UninstallDelete]`** removes only **WinSW wrapper** **`*.out.log` / `*.err.log`** under **`{app}`** — **not** canonical user data.
+
 ## [2.4.2] - 2026-03-25
 
 ### Fixed

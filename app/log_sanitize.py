@@ -105,13 +105,15 @@ class RedactingFormatter(logging.Formatter):
 
 
 _CONFIGURED_HANDLER_IDS: set[int] = set()
+_FETCHER_ROTATING_FILE_HANDLER: logging.Handler | None = None
 
 
 def configure_fetcher_logging() -> None:
-    """Set root log level to WARNING and attach redaction to all root handlers."""
+    """Set root log level to WARNING, attach redaction to handlers, and add ``fetcher.log`` file output."""
     root = logging.getLogger()
     level_name = (os.environ.get("FETCHER_LOG_LEVEL") or "WARNING").strip().upper()
-    root.setLevel(getattr(logging, level_name, logging.WARNING))
+    level = getattr(logging, level_name, logging.WARNING)
+    root.setLevel(level)
 
     filt = SensitiveLogFilter()
     for h in root.handlers:
@@ -122,3 +124,30 @@ def configure_fetcher_logging() -> None:
         h.addFilter(filt)
         if h.formatter is not None and not isinstance(h.formatter, RedactingFormatter):
             h.setFormatter(RedactingFormatter(h.formatter))
+
+    global _FETCHER_ROTATING_FILE_HANDLER
+    if _FETCHER_ROTATING_FILE_HANDLER is None:
+        try:
+            from logging.handlers import RotatingFileHandler
+
+            from app.paths import resolved_logs_dir
+
+            log_path = resolved_logs_dir() / "fetcher.log"
+            fh = RotatingFileHandler(
+                str(log_path),
+                maxBytes=10 * 1024 * 1024,
+                backupCount=5,
+                encoding="utf-8",
+            )
+            fh.setLevel(level)
+            base_fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s", "%Y-%m-%d %H:%M:%S")
+            fh.setFormatter(RedactingFormatter(base_fmt))
+            fh.addFilter(SensitiveLogFilter())
+            root.addHandler(fh)
+            _FETCHER_ROTATING_FILE_HANDLER = fh
+        except OSError:
+            logging.getLogger(__name__).warning(
+                "Could not create rotating log file under %s",
+                (os.environ.get("FETCHER_LOG_DIR") or "<data dir>/logs"),
+                exc_info=True,
+            )

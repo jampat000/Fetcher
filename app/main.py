@@ -21,7 +21,7 @@ from app.httpx_shared import aclose_shared_httpx_client, init_shared_httpx_clien
 from app.log_sanitize import configure_fetcher_logging
 from app.migrations import migrate
 from app.models import Base
-from app.paths import STATIC_DIR
+from app.paths import STATIC_DIR, resolved_logs_dir
 from app.rate_limit import limiter
 from app.scheduler import scheduler
 from app.security_utils import get_jwt_secret_from_env
@@ -49,6 +49,10 @@ async def _lifespan(_app: FastAPI):
         )
     _app.state.jwt_secret = jwt_secret
     logger.info("SQLite database path: %s", db_path())
+    logger.info(
+        "Application log file: %s (override with FETCHER_LOG_DIR)",
+        resolved_logs_dir() / "fetcher.log",
+    )
     # When the Windows service holds fetcher.db, startup can block until SQLite times out — retry a few times.
     delays_sec = (0, 2, 5, 10, 15)
     last_err: BaseException | None = None
@@ -136,6 +140,9 @@ async def _form_validation_redirect(request: Request, exc: RequestValidationErro
         sec = (request.query_params.get("trimmer_section") or "").strip().lower()
         if sec not in ("connection", "schedule", "rules", "people"):
             sec = None
+        ui_sec = sec or "schedule"
+        if (request.headers.get("x-fetcher-trimmer-settings-async") or "").strip() == "1":
+            return JSONResponse({"ok": False, "reason": "invalid", "section": ui_sec})
         return RedirectResponse(
             trimmer_settings_redirect_url(saved=False, reason="invalid", section=sec),
             status_code=303,
