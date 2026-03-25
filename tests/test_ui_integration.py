@@ -185,6 +185,26 @@ def test_post_setup_wizard_continue_redirects(monkeypatch: pytest.MonkeyPatch) -
     assert resp.headers.get("location", "").endswith("/setup/2")
 
 
+def test_post_setup_wizard_continue_async_json_transport(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Async header returns same outcomes as redirect (JSON body + client navigates)."""
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/setup/1",
+            data={
+                "wizard_action": "continue",
+                "sonarr_enabled": "true",
+                "sonarr_url": "http://127.0.0.1:8989",
+                "sonarr_api_key": "k1",
+            },
+            headers={"X-Fetcher-Setup-Async": "1", "Accept": "application/json"},
+            follow_redirects=False,
+        )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body.get("ok") is True
+    assert str(body.get("redirect") or "").endswith("/setup/2")
+
+
 def test_post_setup_wizard_step4_redirects_to_step5(monkeypatch: pytest.MonkeyPatch) -> None:
     with _client(monkeypatch) as client:
         resp = client.post(

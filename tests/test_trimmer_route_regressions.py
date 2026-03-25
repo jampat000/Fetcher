@@ -196,6 +196,10 @@ def test_trimmer_scan_live_mode_calls_delete_and_persists_last_run(monkeypatch: 
     monkeypatch.setattr("app.trimmer_service.apply_emby_trimmer_live_deletes", _fake_apply)
     asyncio.run(
         _set_trimmer_state(
+            sonarr_url="",
+            sonarr_api_key="",
+            radarr_url="",
+            radarr_api_key="",
             emby_url="http://emby.local:8096",
             emby_api_key="plain-key",
             emby_user_id="",

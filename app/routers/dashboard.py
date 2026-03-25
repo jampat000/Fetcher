@@ -55,6 +55,10 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
     )
     snapshots = await fetch_latest_app_snapshots(session)
     dash_status = await build_dashboard_status(session, tz, snapshots=snapshots)
+    hero_sonarr_missing = dash_status["sonarr_missing"]
+    hero_sonarr_upgrades = dash_status["sonarr_upgrades"]
+    hero_radarr_missing = dash_status["radarr_missing"]
+    hero_radarr_upgrades = dash_status["radarr_upgrades"]
     latest_system_event = dash_status["latest_system_event"]
     last_sonarr_run = dash_status["last_sonarr_run"]
     last_radarr_run = dash_status["last_radarr_run"]
@@ -108,6 +112,10 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
             "sonarr_schedule_time_friendly": sonarr_schedule_time_friendly,
             "radarr_schedule_days_display": radarr_schedule_days_display,
             "radarr_schedule_time_friendly": radarr_schedule_time_friendly,
+            "hero_sonarr_missing": hero_sonarr_missing,
+            "hero_sonarr_upgrades": hero_sonarr_upgrades,
+            "hero_radarr_missing": hero_radarr_missing,
+            "hero_radarr_upgrades": hero_radarr_upgrades,
             "activity": activity_display,
             "activity_detail_preview": ACTIVITY_DETAIL_PREVIEW_LINES,
             "sonarr": sonarr_snap,

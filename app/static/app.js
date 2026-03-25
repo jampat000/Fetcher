@@ -696,6 +696,13 @@ const FETCHER_SETTINGS_TEST_RESULT_TEXT = {
   radarr_fail: "Radarr connection failed — check URL, API key, and that Radarr is reachable.",
 };
 
+const FETCHER_SETUP_INPLACE_JSON_HEADER = "X-Fetcher-Setup-Async";
+const FETCHER_SETUP_SAVE_SUCCESS_FLASH = "Saved.";
+const FETCHER_SETUP_ERROR_TEXT = {
+  short_password: "Password must be at least 8 characters.",
+  account_required: "Create an account password to continue (cannot skip this step).",
+};
+
 function clearSettingsSaveFeedbackTimer(form) {
   const t = form._fetcherSaveFeedbackTimer;
   if (t) {
@@ -709,6 +716,14 @@ function clearTrimmerSettingsSaveFeedbackTimer(form) {
   if (t) {
     window.clearTimeout(t);
     form._trimmerSaveFeedbackTimer = null;
+  }
+}
+
+function clearSetupWizardSaveFeedbackTimer(form) {
+  const t = form._fetcherSetupFeedbackTimer;
+  if (t) {
+    window.clearTimeout(t);
+    form._fetcherSetupFeedbackTimer = null;
   }
 }
 
@@ -1081,6 +1096,103 @@ function initTrimmerSettingsAsyncCleaner() {
   });
 }
 
+/** Setup wizard: same transport pattern as settings (JSON + feedback); then one navigation to the next step. */
+function initSetupWizardAsyncSave() {
+  document.querySelectorAll('form[data-fetcher-setup-async="1"]').forEach((form) => {
+    form.addEventListener("submit", (e) => {
+      if (form.dataset.fetcherSetupSaving === "1") {
+        e.preventDefault();
+        return;
+      }
+      e.preventDefault();
+      const sub = e.submitter;
+      const action = form.getAttribute("action") || "/setup/0";
+      const feedback = form.querySelector(".settings-async-feedback");
+      const saveButtons = Array.from(form.querySelectorAll('button[type="submit"]'));
+
+      function setBusy(on) {
+        form.dataset.fetcherSetupSaving = on ? "1" : "";
+        form.setAttribute("aria-busy", on ? "true" : "false");
+        saveButtons.forEach((btn) => {
+          btn.disabled = on;
+        });
+      }
+
+      clearSetupWizardSaveFeedbackTimer(form);
+      form._fetcherSetupSaveGen = (form._fetcherSetupSaveGen || 0) + 1;
+      const saveGen = form._fetcherSetupSaveGen;
+
+      stashSaveButtonLabels(saveButtons);
+      setBusy(true);
+      setSaveButtonsPending(saveButtons, true);
+      setFetcherSettingsInPlaceFeedback(feedback, "pending", FETCHER_SETTINGS_SAVE_PENDING_LABEL);
+
+      const fd =
+        sub instanceof HTMLButtonElement || sub instanceof HTMLInputElement
+          ? new FormData(form, sub)
+          : new FormData(form);
+
+      fetch(action, {
+        method: "POST",
+        body: fd,
+        credentials: "same-origin",
+        headers: { [FETCHER_SETUP_INPLACE_JSON_HEADER]: "1", Accept: "application/json" },
+      })
+        .then((res) => {
+          if (res.status === 403) {
+            return Promise.reject(
+              new Error("Your session may have expired — reload the page and try again."),
+            );
+          }
+          const ct = (res.headers.get("content-type") || "").toLowerCase();
+          if (ct.indexOf("application/json") >= 0) {
+            return res.json().then((data) => ({ res, data }));
+          }
+          return res.text().then((text) => ({ res, data: null, text }));
+        })
+        .then((out) => {
+          const { res, data, text } = out;
+          if (!res.ok && !data) {
+            throw new Error(text || "Save failed — try again.");
+          }
+          if (data && typeof data.ok === "boolean") {
+            if (data.ok && data.redirect) {
+              setFetcherSettingsInPlaceFeedback(feedback, "ok", FETCHER_SETUP_SAVE_SUCCESS_FLASH);
+              clearSetupWizardSaveFeedbackTimer(form);
+              form._fetcherSetupFeedbackTimer = window.setTimeout(() => {
+                form._fetcherSetupFeedbackTimer = null;
+                if (form._fetcherSetupSaveGen !== saveGen) return;
+                window.location.assign(String(data.redirect));
+              }, 280);
+              return;
+            }
+            if (data.error) {
+              const k = String(data.error);
+              const msg = FETCHER_SETUP_ERROR_TEXT[k] || FETCHER_SETTINGS_SAVE_REASON_TEXT.error;
+              setFetcherSettingsInPlaceFeedback(feedback, "err", msg);
+              return;
+            }
+            if (data.reason) {
+              const r = String(data.reason);
+              const msg = FETCHER_SETTINGS_SAVE_REASON_TEXT[r] || FETCHER_SETTINGS_SAVE_REASON_TEXT.error;
+              setFetcherSettingsInPlaceFeedback(feedback, "err", msg);
+              return;
+            }
+          }
+          throw new Error(FETCHER_SETTINGS_SAVE_REASON_TEXT.error);
+        })
+        .catch((err) => {
+          const m = err && err.message ? err.message : FETCHER_SETTINGS_SAVE_REASON_TEXT.error;
+          setFetcherSettingsInPlaceFeedback(feedback, "err", m);
+        })
+        .finally(() => {
+          restoreSaveButtonLabels(saveButtons);
+          setBusy(false);
+        });
+    });
+  });
+}
+
 /** In-place save for Fetcher /settings section forms (Global / Sonarr / Radarr); normal POST remains if JS disabled. */
 function initFetcherSettingsAsyncSave() {
   const forms = document.querySelectorAll('form[data-fetcher-async-settings="1"]');
@@ -1361,6 +1473,7 @@ function initSettingsTabs() {
 window.addEventListener("DOMContentLoaded", () => {
   injectMeshAndNoise();
   bindInternalLinksTargetTop();
+  initSetupWizardAsyncSave();
   initFetcherSettingsAsyncSave();
   initFetcherSettingsAsyncTest();
   initTrimmerSettingsAsyncConnection();

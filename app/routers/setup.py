@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-"""Setup wizard: each step POST persists via ``try_commit_and_reschedule`` then redirects to the next step.
+"""Setup wizard: each step POST persists via ``try_commit_and_reschedule`` then redirects (or JSON for async clients).
 
-This is intentional multi-page navigation (not in-place XHR); parity with hardened *settings* applies to
-CSRF, validation, and DB busy handling—not full-page SPA-style saves.
+Browser JS may POST with ``X-Fetcher-Setup-Async: 1`` to get ``{ok, redirect}`` or error JSON and show the same
+pending/success/failure strip as settings; navigation to the next step still uses one ``Location`` follow.
 """
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import attach_session_cookie, get_csrf_token_for_template, hash_password, require_csrf
@@ -29,6 +29,12 @@ from app.web_common import (
 )
 
 router = APIRouter()
+
+SETUP_INPLACE_JSON_HEADER = "x-fetcher-setup-async"
+
+
+def _setup_wants_inplace_json(request: Request) -> bool:
+    return (request.headers.get(SETUP_INPLACE_JSON_HEADER) or "").strip() == "1"
 
 
 @router.get("/setup", response_class=RedirectResponse)
@@ -92,8 +98,9 @@ async def setup_wizard_page(
     )
 
 
-@router.post("/setup/{step}", dependencies=[Depends(require_csrf)])
+@router.post("/setup/{step}", dependencies=[Depends(require_csrf)], response_model=None)
 async def setup_wizard_save(
+    request: Request,
     step: int,
     wizard_action: str = Form("continue"),
     setup_auth_username: str = Form("admin"),
@@ -113,25 +120,65 @@ async def setup_wizard_save(
     emby_interval_minutes: int = Form(60),
     timezone: str = Form("UTC"),
     session: AsyncSession = Depends(get_session),
-) -> RedirectResponse:
+) -> RedirectResponse | JSONResponse:
+    want_json = _setup_wants_inplace_json(request)
+
+    def respond_redirect(path: str, *, status: int = 303) -> RedirectResponse | JSONResponse:
+        if want_json:
+            return JSONResponse({"ok": True, "redirect": path})
+        return RedirectResponse(path, status_code=status)
+
+    def respond_cookie_then_redirect(
+        path: str, *, secret: str, username: str, status: int = 303
+    ) -> RedirectResponse | JSONResponse:
+        if want_json:
+            resp = JSONResponse({"ok": True, "redirect": path})
+            attach_session_cookie(resp, secret=secret, username=username)
+            return resp
+        resp = RedirectResponse(path, status_code=status)
+        attach_session_cookie(resp, secret=secret, username=username)
+        return resp
+
+    def respond_err(
+        *,
+        path: str,
+        error: str | None = None,
+        save_fail_reason: str | None = None,
+    ) -> RedirectResponse | JSONResponse:
+        if want_json:
+            body: dict[str, str | bool] = {"ok": False}
+            if error:
+                body["error"] = error
+            if save_fail_reason:
+                body["reason"] = save_fail_reason
+            return JSONResponse(body)
+        q: list[str] = []
+        if error:
+            q.append(f"error={error}")
+        if save_fail_reason:
+            q.append("save=fail")
+            q.append(f"reason={save_fail_reason}")
+        suffix = ("?" + "&".join(q)) if q else ""
+        return RedirectResponse(f"{path}{suffix}", status_code=303)
+
     row0 = await _get_or_create_settings(session)
     if not (row0.auth_password_hash or "").strip():
         if step != 0:
-            return RedirectResponse("/setup/0", status_code=303)
+            return respond_redirect("/setup/0")
     else:
         if step == 0:
-            return RedirectResponse("/setup/1", status_code=303)
+            return respond_redirect("/setup/1")
 
     if step < 0 or step > WIZARD_LAST_STEP_INDEX:
         if not (row0.auth_password_hash or "").strip():
-            return RedirectResponse("/setup/0", status_code=303)
-        return RedirectResponse("/setup/1", status_code=303)
+            return respond_redirect("/setup/0")
+        return respond_redirect("/setup/1")
     if step == WIZARD_LAST_STEP_INDEX:
-        return RedirectResponse("/?setup=complete", status_code=303)
+        return respond_redirect("/?setup=complete")
 
     skip = (wizard_action or "").strip().lower() == "skip"
     if skip and step == 0:
-        return RedirectResponse("/setup/0?error=account_required", status_code=303)
+        return respond_err(path="/setup/0", error="account_required")
 
     if not skip:
         row = await _get_or_create_settings(session)
@@ -139,19 +186,17 @@ async def setup_wizard_save(
             u = (setup_auth_username or "admin").strip() or "admin"
             pw = (setup_auth_password or "").strip()
             if len(pw) < 8:
-                return RedirectResponse("/setup/0?error=short_password", status_code=303)
+                return respond_err(path="/setup/0", error="short_password")
             row.auth_username = u
             row.auth_password_hash = hash_password(pw)
             row.auth_refresh_token_hash = ""
             row.auth_refresh_expires_at = None
             row.updated_at = utc_now_naive()
             if not await try_commit_and_reschedule(session):
-                return RedirectResponse("/setup/0?save=fail&reason=db_busy", status_code=303)
+                return respond_err(path="/setup/0", save_fail_reason="db_busy")
             secret = (row.auth_session_secret or "").strip()
             expected_user = (row.auth_username or "admin").strip() or "admin"
-            resp = RedirectResponse("/setup/1", status_code=303)
-            attach_session_cookie(resp, secret=secret, username=expected_user)
-            return resp
+            return respond_cookie_then_redirect("/setup/1", secret=secret, username=expected_user)
         if step == 1:
             row.sonarr_enabled = sonarr_enabled
             row.sonarr_url = _normalize_base_url(sonarr_url)
@@ -180,9 +225,9 @@ async def setup_wizard_save(
             row.timezone = _resolve_timezone_name(timezone)
         row.updated_at = utc_now_naive()
         if not await try_commit_and_reschedule(session):
-            return RedirectResponse(f"/setup/{step}?save=fail&reason=db_busy", status_code=303)
+            return respond_err(path=f"/setup/{step}", save_fail_reason="db_busy")
 
     nxt = step + 1
     if nxt > WIZARD_LAST_STEP_INDEX:
-        return RedirectResponse("/?setup=complete", status_code=303)
-    return RedirectResponse(f"/setup/{nxt}", status_code=303)
+        return respond_redirect("/?setup=complete")
+    return respond_redirect(f"/setup/{nxt}")

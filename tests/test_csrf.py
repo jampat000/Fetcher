@@ -81,6 +81,47 @@ def test_post_protected_form_with_valid_csrf_succeeds(monkeypatch: pytest.Monkey
         asyncio.run(_clear_allowlist())
 
 
+def test_post_setup_step1_async_without_csrf_returns_403(monkeypatch: pytest.MonkeyPatch) -> None:
+    _scheduler_noop(monkeypatch)
+    with TestClient(app) as client:
+        _set_fetcher_session_cookie(client)
+        r = client.post(
+            "/setup/1",
+            data={
+                "wizard_action": "continue",
+                "sonarr_enabled": "true",
+                "sonarr_url": "http://127.0.0.1:8989",
+                "sonarr_api_key": "k1",
+            },
+            headers={"X-Fetcher-Setup-Async": "1", "Accept": "application/json"},
+            follow_redirects=False,
+        )
+    assert r.status_code == 403
+    assert "Invalid or expired CSRF token" in (r.json().get("detail") or "")
+
+
+def test_post_setup_step1_async_with_valid_csrf_returns_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    _scheduler_noop(monkeypatch)
+    with TestClient(app) as client:
+        _set_fetcher_session_cookie(client)
+        r = client.post(
+            "/setup/1",
+            data={
+                "wizard_action": "continue",
+                "sonarr_enabled": "true",
+                "sonarr_url": "http://127.0.0.1:8989",
+                "sonarr_api_key": "k1",
+                "csrf_token": _csrf_value(),
+            },
+            headers={"X-Fetcher-Setup-Async": "1", "Accept": "application/json"},
+            follow_redirects=False,
+        )
+    assert r.status_code == 200
+    body = r.json()
+    assert body.get("ok") is True
+    assert str(body.get("redirect") or "").endswith("/setup/2")
+
+
 def test_post_login_without_csrf_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
     _scheduler_noop(monkeypatch)
     with TestClient(app) as client:

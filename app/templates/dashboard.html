@@ -11,10 +11,10 @@
   </div>
 
   <div id="dashboard-hero-stats" class="hero-stats">
-    {% set tv_miss = (sonarr.missing_total if sonarr else 0) %}
-    {% set mov_miss = (radarr.missing_total if radarr else 0) %}
-    {% set upg_tv = (sonarr.cutoff_unmet_total if sonarr else 0) %}
-    {% set upg_mov = (radarr.cutoff_unmet_total if radarr else 0) %}
+    {% set tv_miss = hero_sonarr_missing %}
+    {% set mov_miss = hero_radarr_missing %}
+    {% set upg_tv = hero_sonarr_upgrades %}
+    {% set upg_mov = hero_radarr_upgrades %}
     <div class="hero-stat hs-tv" data-hero-poll-ms="10000">
       <div class="hs-glow" aria-hidden="true"></div>
       <div class="hs-lbl">Sonarr missing</div>

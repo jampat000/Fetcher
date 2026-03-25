@@ -6,13 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-03-25
+
 ### Fixed
 
 - **Sonarr/Radarr search cooldown:** Wanted-queue pagination now prefers each app’s **internal** database id (**`id`** for Sonarr episodes and Radarr movies) before alternate keys (**`episodeId`** / **`movieId`**). Using a foreign key for cooldown while sending internal ids to Arr could leave **`ArrActionLog`** out of sync so the **same items were searched again** on the next tick.
+- **Dashboard hero first paint:** Server-rendered hero tiles now use the same **merged** Sonarr/Radarr missing and cutoff-unmet counts as **`build_dashboard_status`** (live *arr **`totalRecords`** when reachable, otherwise snapshot fallback), instead of reading snapshot fields only for initial **`data-target`** values.
 
 ### Changed
 
-- **Dashboard hero metrics:** Sonarr/Radarr **missing** and **cutoff-unmet** tile numbers are refreshed from **live** *arr **`/wanted/missing`** and **`/wanted/cutoff`** ``totalRecords`` (via **`build_dashboard_status`**) when the app is enabled and reachable—**not** only from the last scheduler run’s **`AppSnapshot`**. Short HTTP timeouts avoid blocking the dashboard if Arr is down; values fall back to snapshots on failure. Hero tiles poll about every **10s** (uniform interval).
+- **Dashboard hero refresh:** Hero tiles continue to poll about every **10s**; live totals remain independent of scheduler run intervals.
+- **Setup wizard save UX:** Optional **`X-Fetcher-Setup-Async`** on **`POST /setup/{step}`** returns JSON (**`ok`**, **`redirect`**, or errors) with the same **Saving…** / **Saved.** / warning **feedback** pattern as hardened settings; classic form POST + **303** remains for non-JS. **`POST /setup/0`** stays CSRF-exempt; account creation still sets the session cookie on success.
 - **Trimmer cleaner save scope:** **`POST /trimmer/settings/cleaner`** accepts only **`save_scope`** **`schedule`**, **`tv`**, and **`movies`**. Each scope persists **only** its columns (schedule vs TV rules vs movie rules — no combined/broad write). Legacy **`global`** and catch-all **`all`** are **rejected** (**`invalid_scope`**, no DB write).
 
 ## [2.4.0] - 2026-03-25

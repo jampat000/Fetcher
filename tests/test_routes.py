@@ -69,6 +69,27 @@ def test_dashboard_route_smoke(monkeypatch) -> None:
     assert b"Trimmer" in resp.content
 
 
+def test_dashboard_hero_data_targets_use_live_queue_merge(monkeypatch) -> None:
+    """Hero SSR must use merged totals from ``build_dashboard_status``, not raw snapshot fields."""
+
+    async def _live(_settings):
+        return {
+            "sonarr_missing": 17391,
+            "sonarr_upgrades": 17392,
+            "radarr_missing": 17393,
+            "radarr_upgrades": 17394,
+        }
+
+    monkeypatch.setattr("app.web_common.fetch_live_dashboard_queue_totals", _live)
+    with _build_client(monkeypatch) as client:
+        resp = client.get("/")
+    assert resp.status_code == 200
+    assert b'data-target="17391"' in resp.content
+    assert b'data-target="17392"' in resp.content
+    assert b'data-target="17393"' in resp.content
+    assert b'data-target="17394"' in resp.content
+
+
 def test_dashboard_route_renders_per_app_success_failure_badges(monkeypatch) -> None:
     async def _fake_status(_session, _tz, *, snapshots=None):  # noqa: ARG001
         return {

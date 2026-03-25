@@ -47,7 +47,8 @@
     {% endif %}
 
     {% if step < 5 %}
-    <form method="post" action="/setup/{{ step }}" class="setup-wizard-form"{% if step > 0 %} autocomplete="off"{% endif %}>
+    <form method="post" action="/setup/{{ step }}" class="setup-wizard-form" data-fetcher-setup-async="1"{% if step > 0 %} autocomplete="off"{% endif %}>
+      <div class="settings-async-feedback" hidden role="status" aria-live="polite"></div>
       {% if step > 0 %}
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       {% endif %}
