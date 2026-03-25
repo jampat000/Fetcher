@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.4.6] - 2026-03-25
+
+### Fixed
+
+- **Dashboard navigation latency:** Dashboard HTML render no longer blocks on live Arr totals; expensive live counts load after the view is visible via normal polling.
+- **0-search explanations:** Missing-search runs that dispatch **0** searches now record a single, clear summary reason in Activity (e.g., retry delay vs empty eligible pool).
+- **Sonarr/Radarr wording parity:** Normalized shared settings helper text so Sonarr and Radarr read identically (including Run interval helper text).
+
 ## [2.4.5] - 2026-03-25
 
 ### Fixed

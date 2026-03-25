@@ -85,6 +85,7 @@ def test_dashboard_renders_main_sections(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_settings_page_has_forms(monkeypatch: pytest.MonkeyPatch) -> None:
     with _client(monkeypatch) as client:
         r = client.get("/settings")
+    html = r.text
     assert r.status_code == 200
     assert b"sonarr_url" in r.content
     assert b"radarr_url" in r.content
@@ -92,6 +93,19 @@ def test_settings_page_has_forms(monkeypatch: pytest.MonkeyPatch) -> None:
     assert b"Trimmer settings" in r.content
     assert b"name=\"sonarr_remove_failed_imports\"" in r.content
     assert b"name=\"radarr_remove_failed_imports\"" in r.content
+    assert (
+        html.count("When enabled, each run removes download queue items that match an explicit") == 2
+    )
+    assert "each Sonarr run removes" not in html
+    assert "each Radarr run removes" not in html
+
+    expected_interval_helper = (
+        "How often runs are due; the schedule window only limits when runs may start. "
+        "Applies to missing and upgrade searches. Save settings saves only this tab."
+    )
+    assert html.count(expected_interval_helper) == 2
+    assert "How often Sonarr runs are due" not in html
+    assert "How often Radarr runs are due" not in html
 
 
 def test_settings_page_hidden_save_scope_per_section_form(monkeypatch: pytest.MonkeyPatch) -> None:

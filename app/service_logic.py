@@ -1301,29 +1301,38 @@ async def _execute_sonarr_block(
                     )
                 )
             elif missing_total > 0:
-                actions.append("Sonarr: missing search suppressed (retry delay)")
-                if arr_manual_scope == "sonarr_missing":
-                    session.add(
-                        ActivityLog(
-                            job_run_id=log.id,
-                            app="sonarr",
-                            kind="missing",
-                            count=0,
-                            detail="Manual missing search: suppressed by retry delay (no search triggered).",
-                        )
+                summary = f"Sonarr: 0 searches — all items within retry delay (candidates={missing_total})"
+                actions.append(summary)
+                # Scheduled runs also need a UI explanation (Activity page), not only JobRunLog text.
+                session.add(
+                    ActivityLog(
+                        job_run_id=log.id,
+                        app="sonarr",
+                        kind="missing",
+                        count=0,
+                        detail=(
+                            f"0 searches — all items within retry delay (candidates={missing_total}, "
+                            f"retry_delay_filtered={missing_total}, cutoff_already_met_filtered=0, "
+                            f"quality_profile_filtered=0, other_constraints_filtered=0)."
+                        ),
                     )
+                )
             else:
-                actions.append("Sonarr: no missing episodes found")
-                if arr_manual_scope == "sonarr_missing":
-                    session.add(
-                        ActivityLog(
-                            job_run_id=log.id,
-                            app="sonarr",
-                            kind="missing",
-                            count=0,
-                            detail="Manual missing search: no missing episodes found.",
-                        )
+                summary = "Sonarr: 0 searches — no eligible missing items"
+                actions.append(summary)
+                session.add(
+                    ActivityLog(
+                        job_run_id=log.id,
+                        app="sonarr",
+                        kind="missing",
+                        count=0,
+                        detail=(
+                            "0 searches — no eligible missing items "
+                            "(candidates=0, retry_delay_filtered=0, cutoff_already_met_filtered=0, "
+                            "quality_profile_filtered=0, other_constraints_filtered=0)."
+                        ),
                     )
+                )
         else:
             try:
                 missing_total_including_unreleased = await _sonarr_missing_total_including_unreleased(sonarr)
@@ -1510,29 +1519,37 @@ async def _execute_radarr_block(
                     )
                 )
             elif missing_total > 0:
-                actions.append("Radarr: missing search suppressed (retry delay)")
-                if arr_manual_scope == "radarr_missing":
-                    session.add(
-                        ActivityLog(
-                            job_run_id=log.id,
-                            app="radarr",
-                            kind="missing",
-                            count=0,
-                            detail="Manual missing search: suppressed by retry delay (no search triggered).",
-                        )
+                summary = f"Radarr: 0 searches — all items within retry delay (candidates={missing_total})"
+                actions.append(summary)
+                session.add(
+                    ActivityLog(
+                        job_run_id=log.id,
+                        app="radarr",
+                        kind="missing",
+                        count=0,
+                        detail=(
+                            f"0 searches — all items within retry delay (candidates={missing_total}, "
+                            f"retry_delay_filtered={missing_total}, cutoff_already_met_filtered=0, "
+                            f"quality_profile_filtered=0, other_constraints_filtered=0)."
+                        ),
                     )
+                )
             else:
-                actions.append("Radarr: no missing movies found")
-                if arr_manual_scope == "radarr_missing":
-                    session.add(
-                        ActivityLog(
-                            job_run_id=log.id,
-                            app="radarr",
-                            kind="missing",
-                            count=0,
-                            detail="Manual missing search: no missing movies found.",
-                        )
+                summary = "Radarr: 0 searches — no eligible missing items"
+                actions.append(summary)
+                session.add(
+                    ActivityLog(
+                        job_run_id=log.id,
+                        app="radarr",
+                        kind="missing",
+                        count=0,
+                        detail=(
+                            "0 searches — no eligible missing items "
+                            "(candidates=0, retry_delay_filtered=0, cutoff_already_met_filtered=0, "
+                            "quality_profile_filtered=0, other_constraints_filtered=0)."
+                        ),
                     )
+                )
         else:
             try:
                 missing_total_including_unreleased = _radarr_missing_total_including_unreleased(await radarr.movies())

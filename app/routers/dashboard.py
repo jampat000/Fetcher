@@ -54,7 +54,9 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
         or (settings.emby_url or "").strip()
     )
     snapshots = await fetch_latest_app_snapshots(session)
-    dash_status = await build_dashboard_status(session, tz, snapshots=snapshots)
+    # Render dashboard quickly (no blocking live Arr totals). Live hero polling happens
+    # client-side via ``/api/dashboard/status`` after the page is visible.
+    dash_status = await build_dashboard_status(session, tz, snapshots=snapshots, include_live=False)
     hero_sonarr_missing = dash_status["sonarr_missing"]
     hero_sonarr_upgrades = dash_status["sonarr_upgrades"]
     hero_radarr_missing = dash_status["radarr_missing"]

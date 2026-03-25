@@ -193,6 +193,7 @@ async def build_dashboard_status(
     tz: str,
     *,
     snapshots: dict[str, AppSnapshot | None] | None = None,
+    include_live: bool = True,
 ) -> dict[str, Any]:
     """Shared JSON payload for dashboard live polling and server-rendered page."""
     snaps = snapshots if snapshots is not None else await fetch_latest_app_snapshots(session)
@@ -284,15 +285,16 @@ async def build_dashboard_status(
     sonarr_upgrades = int(sonarr_snap.cutoff_unmet_total) if sonarr_snap else 0
     radarr_missing = int(radarr_snap.missing_total) if radarr_snap else 0
     radarr_upgrades = int(radarr_snap.cutoff_unmet_total) if radarr_snap else 0
-    live = await fetch_live_dashboard_queue_totals(settings)
-    if "sonarr_missing" in live:
-        sonarr_missing = live["sonarr_missing"]
-    if "sonarr_upgrades" in live:
-        sonarr_upgrades = live["sonarr_upgrades"]
-    if "radarr_missing" in live:
-        radarr_missing = live["radarr_missing"]
-    if "radarr_upgrades" in live:
-        radarr_upgrades = live["radarr_upgrades"]
+    if include_live:
+        live = await fetch_live_dashboard_queue_totals(settings)
+        if "sonarr_missing" in live:
+            sonarr_missing = live["sonarr_missing"]
+        if "sonarr_upgrades" in live:
+            sonarr_upgrades = live["sonarr_upgrades"]
+        if "radarr_missing" in live:
+            radarr_missing = live["radarr_missing"]
+        if "radarr_upgrades" in live:
+            radarr_upgrades = live["radarr_upgrades"]
     return {
         "last_run": last_run_display,
         "last_sonarr_run": last_sonarr,

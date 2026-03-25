@@ -69,29 +69,41 @@ def test_dashboard_route_smoke(monkeypatch) -> None:
     assert b"Trimmer" in resp.content
 
 
-def test_dashboard_hero_data_targets_use_live_queue_merge(monkeypatch) -> None:
-    """Hero SSR must use merged totals from ``build_dashboard_status``, not raw snapshot fields."""
+def test_dashboard_hero_does_not_fetch_live_totals_before_render(monkeypatch) -> None:
+    """Navigation to the Dashboard must not block on live Arr totals."""
 
+    async def _boom(_settings):
+        raise RuntimeError("live totals must not run during dashboard HTML render")
+
+    monkeypatch.setattr("app.web_common.fetch_live_dashboard_queue_totals", _boom)
+    with _build_client(monkeypatch) as client:
+        resp = client.get("/")
+    assert resp.status_code == 200
+    assert b"dashboard-overview" in resp.content
+
+
+def test_api_dashboard_status_uses_live_totals(monkeypatch) -> None:
     async def _live(_settings):
         return {
-            "sonarr_missing": 17391,
-            "sonarr_upgrades": 17392,
-            "radarr_missing": 17393,
-            "radarr_upgrades": 17394,
+            "sonarr_missing": 11,
+            "sonarr_upgrades": 12,
+            "radarr_missing": 13,
+            "radarr_upgrades": 14,
         }
 
     monkeypatch.setattr("app.web_common.fetch_live_dashboard_queue_totals", _live)
     with _build_client(monkeypatch) as client:
-        resp = client.get("/")
+        resp = client.get("/api/dashboard/status")
     assert resp.status_code == 200
-    assert b'data-target="17391"' in resp.content
-    assert b'data-target="17392"' in resp.content
-    assert b'data-target="17393"' in resp.content
-    assert b'data-target="17394"' in resp.content
+    data = resp.json()
+    assert data["sonarr_missing"] == 11
+    assert data["sonarr_upgrades"] == 12
+    assert data["radarr_missing"] == 13
+    assert data["radarr_upgrades"] == 14
 
 
 def test_dashboard_route_renders_per_app_success_failure_badges(monkeypatch) -> None:
-    async def _fake_status(_session, _tz, *, snapshots=None):  # noqa: ARG001
+    async def _fake_status(_session, _tz, *, snapshots=None, include_live: bool | None = None):  # noqa: ARG001
         return {
             "last_run": {"started_local": "24-03-2026 11:00 AM", "ok": True},
             "latest_system_event": {"context": "Radarr | Upgrade search", "time_local": "24-03-2026 11:00 AM", "ok": True},
@@ -120,7 +132,7 @@ def test_dashboard_route_renders_per_app_success_failure_badges(monkeypatch) -> 
 
 
 def test_dashboard_route_empty_states_are_intentional(monkeypatch) -> None:
-    async def _fake_status(_session, _tz, *, snapshots=None):  # noqa: ARG001
+    async def _fake_status(_session, _tz, *, snapshots=None, include_live: bool | None = None):  # noqa: ARG001
         return {
             "last_run": None,
             "latest_system_event": None,

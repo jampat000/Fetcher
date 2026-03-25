@@ -120,7 +120,7 @@
           {% call toggle_checkbox("sonarr_search_missing", settings.sonarr_search_missing) %}Missing searches{% endcall %}
           {% call toggle_checkbox("sonarr_search_upgrades", settings.sonarr_search_upgrades) %}Cutoff-unmet searches (upgrades){% endcall %}
           {% call toggle_checkbox("sonarr_remove_failed_imports", settings.sonarr_remove_failed_imports | default(false)) %}Remove failed imports from queue{% endcall %}
-          <div class="small settings-global-hint">When enabled, each Sonarr run removes download queue items that match an explicit <strong>import failed</strong> history event by exact <strong>download ID</strong> only (no title matching). Skips when there is no queue match or more than one match. Logs removals to <strong>Activity</strong>.</div>
+          <div class="small settings-global-hint">When enabled, each run removes download queue items that match an explicit <strong>import failed</strong> history event by exact <strong>download ID</strong> only (no title matching). Skips when there is no queue match or more than one match. Logs removals to <strong>Activity</strong>.</div>
           <label>Max items per run</label>
           <input class="number" type="number" name="sonarr_max_items_per_run" value="{{ settings.sonarr_max_items_per_run }}" min="1" max="1000" />
           <label>Retry Delay (minutes)</label>
@@ -142,7 +142,7 @@
             <div class="field">
               <label>Run interval (minutes)</label>
               <input class="number" type="number" name="sonarr_interval_minutes" value="{{ settings.sonarr_interval_minutes }}" min="1" max="10080" placeholder="60" />
-              <div class="small">How often Sonarr runs are due; the schedule window only limits when runs may start. Applies to <strong>TV</strong> (missing and upgrade searches). <strong>Save Sonarr settings</strong> saves only this tab.</div>
+              <div class="small">How often runs are due; the schedule window only limits when runs may start. Applies to missing and upgrade searches. Save settings saves only this tab.</div>
             </div>
           </div>
         </div>
@@ -192,7 +192,7 @@
           {% call toggle_checkbox("radarr_search_missing", settings.radarr_search_missing) %}Missing searches{% endcall %}
           {% call toggle_checkbox("radarr_search_upgrades", settings.radarr_search_upgrades) %}Cutoff-unmet searches (upgrades){% endcall %}
           {% call toggle_checkbox("radarr_remove_failed_imports", settings.radarr_remove_failed_imports | default(false)) %}Remove failed imports from queue{% endcall %}
-          <div class="small settings-global-hint">When enabled, each Radarr run removes download queue items that match an explicit <strong>import failed</strong> history event by exact <strong>download ID</strong> only (no title matching). Skips when there is no queue match or more than one match. Logs removals to <strong>Activity</strong>.</div>
+          <div class="small settings-global-hint">When enabled, each run removes download queue items that match an explicit <strong>import failed</strong> history event by exact <strong>download ID</strong> only (no title matching). Skips when there is no queue match or more than one match. Logs removals to <strong>Activity</strong>.</div>
           <label>Max items per run</label>
           <input class="number" type="number" name="radarr_max_items_per_run" value="{{ settings.radarr_max_items_per_run }}" min="1" max="1000" />
           <label>Retry Delay (minutes)</label>
@@ -214,7 +214,7 @@
             <div class="field">
               <label>Run interval (minutes)</label>
               <input class="number" type="number" name="radarr_interval_minutes" value="{{ settings.radarr_interval_minutes }}" min="1" max="10080" placeholder="60" />
-              <div class="small">How often Radarr runs are due; the schedule window only limits when runs may start. Applies to <strong>movies</strong> (missing and upgrade searches). <strong>Save Radarr settings</strong> saves only this tab and reschedules Radarr — Sonarr is unchanged.</div>
+              <div class="small">How often runs are due; the schedule window only limits when runs may start. Applies to missing and upgrade searches. Save settings saves only this tab.</div>
             </div>
           </div>
         </div>
