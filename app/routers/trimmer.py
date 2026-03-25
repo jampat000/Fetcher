@@ -6,7 +6,7 @@ from typing import Annotated
 
 import httpx
 from fastapi import APIRouter, Depends, Form, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,6 +41,23 @@ from app.routers.deps import AUTH_DEPS, AUTH_FORM_DEPS
 logger = logging.getLogger(__name__)
 
 router = APIRouter(dependencies=AUTH_DEPS)
+
+# In-place JSON for Trimmer settings (separate header from Fetcher /settings — different routes, no shared business logic).
+TRIMMER_SETTINGS_INPLACE_JSON_HEADER = "x-fetcher-trimmer-settings-async"
+# ``POST /trimmer/settings/cleaner`` — ``save_scope`` only: ``schedule`` (interval/window/limits), ``tv``, ``movies`` (each mutates only its columns).
+# Never Fetcher scopes; no catch-all / ``all`` — TV and movies are always separate requests.
+_TRIMMER_CLEANER_SAVE_SCOPES = frozenset({"schedule", "tv", "movies"})
+
+
+def _trimmer_want_inplace_json(request: Request) -> bool:
+    return (request.headers.get(TRIMMER_SETTINGS_INPLACE_JSON_HEADER) or "").strip() == "1"
+
+
+def _trimmer_cleaner_ui_section(trimmer_section: str | None) -> str:
+    s = (trimmer_section or "").strip().lower()
+    if s in ("connection", "schedule", "rules", "people"):
+        return s
+    return "schedule"
 
 
 @router.get("/trimmer/settings", response_class=HTMLResponse)
@@ -188,14 +205,28 @@ async def save_emby_settings(
         )
 
 
-@router.post("/trimmer/settings/connection", dependencies=AUTH_FORM_DEPS)
+@router.post("/trimmer/settings/connection", dependencies=AUTH_FORM_DEPS, response_model=None)
 async def save_emby_connection_settings(
+    request: Request,
     emby_enabled: bool = Form(False),
     emby_url: str = Form(""),
     emby_api_key: str = Form(""),
     emby_user_id: str = Form(""),
     session: AsyncSession = Depends(get_session),
-) -> RedirectResponse:
+) -> RedirectResponse | JSONResponse:
+    want_json = _trimmer_want_inplace_json(request)
+
+    def respond(*, saved: bool, reason: str | None = None) -> RedirectResponse | JSONResponse:
+        sec = "connection"
+        if want_json:
+            out: dict[str, str | bool] = {"ok": saved, "section": sec}
+            if not saved:
+                out["reason"] = reason or "error"
+            return JSONResponse(out)
+        if saved:
+            return RedirectResponse(trimmer_settings_redirect_url(saved=True, section=sec), status_code=303)
+        return RedirectResponse(trimmer_settings_redirect_url(saved=False, reason=reason, section=sec), status_code=303)
+
     try:
         row = await _get_or_create_settings(session)
         row.emby_enabled = emby_enabled
@@ -204,23 +235,14 @@ async def save_emby_connection_settings(
         row.emby_user_id = emby_user_id.strip()
         row.updated_at = utc_now_naive()
         if not await try_commit_and_reschedule(session, targets={"trimmer"}):
-            return RedirectResponse(
-                trimmer_settings_redirect_url(saved=False, reason="db_busy", section="connection"),
-                status_code=303,
-            )
-        return RedirectResponse(trimmer_settings_redirect_url(saved=True, section="connection"), status_code=303)
+            return respond(saved=False, reason="db_busy")
+        return respond(saved=True)
     except SQLAlchemyError:
         logger.exception("POST /trimmer/settings/connection SQLAlchemyError")
-        return RedirectResponse(
-            trimmer_settings_redirect_url(saved=False, reason="db_error", section="connection"),
-            status_code=303,
-        )
+        return respond(saved=False, reason="db_error")
     except ValueError:
         logger.exception("POST /trimmer/settings/connection ValueError")
-        return RedirectResponse(
-            trimmer_settings_redirect_url(saved=False, reason="invalid", section="connection"),
-            status_code=303,
-        )
+        return respond(saved=False, reason="invalid")
     except Exception:
         logger.exception("POST /trimmer/settings/connection failed")
         try:
@@ -229,14 +251,12 @@ async def save_emby_connection_settings(
             pass
         if (os.environ.get("FETCHER_LOG_LEVEL") or "").strip().upper() == "DEBUG":
             raise
-        return RedirectResponse(
-            trimmer_settings_redirect_url(saved=False, reason="error", section="connection"),
-            status_code=303,
-        )
+        return respond(saved=False, reason="error")
 
 
-@router.post("/trimmer/settings/cleaner", dependencies=AUTH_FORM_DEPS)
+@router.post("/trimmer/settings/cleaner", dependencies=AUTH_FORM_DEPS, response_model=None)
 async def save_trimmer_settings(
+    request: Request,
     emby_interval_minutes: int = Form(60),
     emby_dry_run: bool = Form(False),
     emby_schedule_enabled: bool = Form(False),
@@ -261,82 +281,90 @@ async def save_trimmer_settings(
     emby_rule_tv_people: str = Form(""),
     emby_rule_tv_people_credit_types: list[str] = Form([]),
     emby_rule_tv_unwatched_days: int = Form(0),
-    save_scope: str = Form("all"),
+    save_scope: str = Form(""),
     trimmer_section: Annotated[str | None, Query()] = None,
     session: AsyncSession = Depends(get_session),
-) -> RedirectResponse:
+) -> RedirectResponse | JSONResponse:
+    want_json = _trimmer_want_inplace_json(request)
+    ui_sec = _trimmer_cleaner_ui_section(trimmer_section)
+
+    def respond(*, saved: bool, reason: str | None = None) -> RedirectResponse | JSONResponse:
+        if want_json:
+            out: dict[str, str | bool] = {"ok": saved, "section": ui_sec}
+            if not saved:
+                out["reason"] = reason or "error"
+            return JSONResponse(out)
+        if saved:
+            return RedirectResponse(trimmer_settings_redirect_url(saved=True, section=trimmer_section), status_code=303)
+        return RedirectResponse(
+            trimmer_settings_redirect_url(saved=False, reason=reason, section=trimmer_section),
+            status_code=303,
+        )
+
+    scope = (save_scope or "").strip().lower()
+    if scope not in _TRIMMER_CLEANER_SAVE_SCOPES:
+        return respond(saved=False, reason="invalid_scope")
+
     try:
         row = await _get_or_create_settings(session)
-        scope = (save_scope or "all").strip().lower()
-        # One shared form: persist Emby Trimmer cadence on any save (independent of Fetcher / Arr scheduler base).
-        eim = max(5, min(7 * 24 * 60, int(emby_interval_minutes or 60)))
-        row.emby_interval_minutes = eim
-        # One shared HTML form: schedule / dry run / scan limits are always posted; persist on any save button.
-        row.emby_dry_run = emby_dry_run
-        row.emby_schedule_enabled = emby_schedule_enabled
-        row.emby_schedule_days = schedule_days_csv_from_named_day_checks(
-            emby_schedule_Mon,
-            emby_schedule_Tue,
-            emby_schedule_Wed,
-            emby_schedule_Thu,
-            emby_schedule_Fri,
-            emby_schedule_Sat,
-            emby_schedule_Sun,
-        )
-        row.emby_schedule_start = _normalize_hhmm(emby_schedule_start, "00:00")
-        row.emby_schedule_end = _normalize_hhmm(emby_schedule_end, "23:59")
-        _scan = int(emby_max_items_scan)
-        row.emby_max_items_scan = 0 if _scan <= 0 else max(1, min(100_000, _scan))
-        row.emby_max_deletes_per_run = max(1, min(500, int(emby_max_deletes_per_run or 25)))
-
-        if scope in ("all", "movies"):
+        if scope == "schedule":
+            eim = max(5, min(7 * 24 * 60, int(emby_interval_minutes or 60)))
+            row.emby_interval_minutes = eim
+            row.emby_dry_run = emby_dry_run
+            row.emby_schedule_enabled = emby_schedule_enabled
+            row.emby_schedule_days = schedule_days_csv_from_named_day_checks(
+                emby_schedule_Mon,
+                emby_schedule_Tue,
+                emby_schedule_Wed,
+                emby_schedule_Thu,
+                emby_schedule_Fri,
+                emby_schedule_Sat,
+                emby_schedule_Sun,
+            )
+            row.emby_schedule_start = _normalize_hhmm(emby_schedule_start, "00:00")
+            row.emby_schedule_end = _normalize_hhmm(emby_schedule_end, "23:59")
+            _scan = int(emby_max_items_scan)
+            row.emby_max_items_scan = 0 if _scan <= 0 else max(1, min(100_000, _scan))
+            row.emby_max_deletes_per_run = max(1, min(500, int(emby_max_deletes_per_run or 25)))
+        elif scope == "movies":
             row.emby_rule_movie_watched_rating_below = max(0, min(10, int(emby_rule_movie_watched_rating_below or 0)))
             row.emby_rule_movie_unwatched_days = max(0, min(36500, int(emby_rule_movie_unwatched_days or 0)))
             selected_genres = sorted({str(v).strip() for v in (emby_rule_movie_genres or []) if str(v).strip()})
             row.emby_rule_movie_genres_csv = ",".join(selected_genres)
             row.emby_rule_movie_people_csv = (emby_rule_movie_people or "").strip()[:8000]
-            row.emby_rule_movie_people_credit_types_csv = _people_credit_types_csv_from_form(emby_rule_movie_people_credit_types)
-
-        if scope in ("all", "tv"):
+            row.emby_rule_movie_people_credit_types_csv = _people_credit_types_csv_from_form(
+                emby_rule_movie_people_credit_types
+            )
+            row.emby_rule_watched_rating_below = max(row.emby_rule_movie_watched_rating_below, 0)
+            row.emby_rule_unwatched_days = max(
+                row.emby_rule_movie_unwatched_days,
+                row.emby_rule_tv_unwatched_days,
+            )
+        elif scope == "tv":
             row.emby_rule_tv_delete_watched = emby_rule_tv_delete_watched
             selected_tv_genres = sorted({str(v).strip() for v in (emby_rule_tv_genres or []) if str(v).strip()})
             row.emby_rule_tv_genres_csv = ",".join(selected_tv_genres)
             row.emby_rule_tv_people_csv = (emby_rule_tv_people or "").strip()[:8000]
-            row.emby_rule_tv_people_credit_types_csv = _people_credit_types_csv_from_form(emby_rule_tv_people_credit_types)
+            row.emby_rule_tv_people_credit_types_csv = _people_credit_types_csv_from_form(
+                emby_rule_tv_people_credit_types
+            )
             row.emby_rule_tv_watched_rating_below = 0
             row.emby_rule_tv_unwatched_days = max(0, min(36500, int(emby_rule_tv_unwatched_days or 0)))
-
-        # Keep aggregate Emby rule fields aligned with movie/TV columns (used as fallbacks in rule evaluation).
-        row.emby_rule_watched_rating_below = max(
-            row.emby_rule_movie_watched_rating_below,
-            0,
-        )
-        row.emby_rule_unwatched_days = max(
-            row.emby_rule_movie_unwatched_days,
-            row.emby_rule_tv_unwatched_days,
-        )
+            row.emby_rule_watched_rating_below = max(row.emby_rule_movie_watched_rating_below, 0)
+            row.emby_rule_unwatched_days = max(
+                row.emby_rule_movie_unwatched_days,
+                row.emby_rule_tv_unwatched_days,
+            )
         row.updated_at = utc_now_naive()
         if not await try_commit_and_reschedule(session, targets={"trimmer"}):
-            return RedirectResponse(
-                trimmer_settings_redirect_url(saved=False, reason="db_busy", section=trimmer_section),
-                status_code=303,
-            )
-        return RedirectResponse(
-            trimmer_settings_redirect_url(saved=True, section=trimmer_section),
-            status_code=303,
-        )
+            return respond(saved=False, reason="db_busy")
+        return respond(saved=True)
     except SQLAlchemyError:
         logger.exception("POST /trimmer/settings/cleaner SQLAlchemyError")
-        return RedirectResponse(
-            trimmer_settings_redirect_url(saved=False, reason="db_error", section=trimmer_section),
-            status_code=303,
-        )
+        return respond(saved=False, reason="db_error")
     except ValueError:
         logger.exception("POST /trimmer/settings/cleaner ValueError")
-        return RedirectResponse(
-            trimmer_settings_redirect_url(saved=False, reason="invalid", section=trimmer_section),
-            status_code=303,
-        )
+        return respond(saved=False, reason="invalid")
     except Exception:
         logger.exception("POST /trimmer/settings/cleaner failed")
         try:
@@ -345,25 +373,29 @@ async def save_trimmer_settings(
             pass
         if (os.environ.get("FETCHER_LOG_LEVEL") or "").strip().upper() == "DEBUG":
             raise
-        return RedirectResponse(
-            trimmer_settings_redirect_url(saved=False, reason="error", section=trimmer_section),
-            status_code=303,
-        )
+        return respond(saved=False, reason="error")
 
 
-@router.post("/test/emby", dependencies=AUTH_FORM_DEPS)
-async def test_emby(session: AsyncSession = Depends(get_session)) -> RedirectResponse:
+@router.post("/test/emby", dependencies=AUTH_FORM_DEPS, response_model=None)
+async def test_emby(request: Request, session: AsyncSession = Depends(get_session)) -> RedirectResponse | JSONResponse:
+    want_json = _trimmer_want_inplace_json(request)
+
+    def finish(ok: bool) -> RedirectResponse | JSONResponse:
+        if want_json:
+            return JSONResponse({"ok": ok, "section": "connection", "test": "emby_ok" if ok else "emby_fail"})
+        return RedirectResponse("/trimmer/settings?test=" + ("emby_ok" if ok else "emby_fail"), status_code=303)
+
     settings = await _get_or_create_settings(session)
     emby_url = _normalize_base_url(settings.emby_url)
     emby_token = resolve_emby_api_key(settings)
     if not emby_url:
         session.add(AppSnapshot(app="emby", ok=False, status_message="Connection test failed: Emby URL is required.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
-        return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
+        return finish(False)
     if not emby_token:
         session.add(AppSnapshot(app="emby", ok=False, status_message="Connection test failed: Emby API key is required.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
-        return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
+        return finish(False)
     if _looks_like_url(emby_token):
         session.add(
             AppSnapshot(
@@ -375,7 +407,7 @@ async def test_emby(session: AsyncSession = Depends(get_session)) -> RedirectRes
             )
         )
         await session.commit()
-        return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
+        return finish(False)
     try:
         c = EmbyClient(EmbyConfig(emby_url, emby_token))
         try:
@@ -389,28 +421,36 @@ async def test_emby(session: AsyncSession = Depends(get_session)) -> RedirectRes
             await c.aclose()
         session.add(AppSnapshot(app="emby", ok=True, status_message="Connection test succeeded.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
-        return RedirectResponse("/trimmer/settings?test=emby_ok", status_code=303)
+        return finish(True)
     except httpx.HTTPStatusError as e:
         detail = f"HTTP {e.response.status_code}: {e}"
         if e.response.status_code in (401, 403):
             detail += " | Check Emby API key permissions and base URL."
         session.add(AppSnapshot(app="emby", ok=False, status_message=f"Connection test failed: {detail}", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
-        return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
+        return finish(False)
     except (httpx.HTTPError, ValueError) as e:
         session.add(AppSnapshot(app="emby", ok=False, status_message=f"Connection test failed: {type(e).__name__}: {e}", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
-        return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
+        return finish(False)
 
 
-@router.post("/test/emby-form", dependencies=AUTH_FORM_DEPS)
+@router.post("/test/emby-form", dependencies=AUTH_FORM_DEPS, response_model=None)
 async def test_emby_from_form(
+    request: Request,
     emby_enabled: bool = Form(False),
     emby_url: str = Form(""),
     emby_api_key: str = Form(""),
     emby_user_id: str = Form(""),
     session: AsyncSession = Depends(get_session),
-) -> RedirectResponse:
+) -> RedirectResponse | JSONResponse:
+    want_json = _trimmer_want_inplace_json(request)
+
+    def finish(ok: bool) -> RedirectResponse | JSONResponse:
+        if want_json:
+            return JSONResponse({"ok": ok, "section": "connection", "test": "emby_ok" if ok else "emby_fail"})
+        return RedirectResponse("/trimmer/settings?test=" + ("emby_ok" if ok else "emby_fail"), status_code=303)
+
     # Test using current form values so users don't need to save first.
     emby_url_n = _normalize_base_url(emby_url)
     emby_api_key_n = (emby_api_key or "").strip()
@@ -418,13 +458,13 @@ async def test_emby_from_form(
     if not emby_url_n:
         session.add(AppSnapshot(app="emby", ok=False, status_message="Connection test failed: Emby URL is required.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
-        return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
+        return finish(False)
     row = await _get_or_create_settings(session)
     emby_token_n = resolve_emby_api_key(row, form=emby_api_key)
     if not emby_token_n:
         session.add(AppSnapshot(app="emby", ok=False, status_message="Connection test failed: Emby API key is required.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
-        return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
+        return finish(False)
     if _looks_like_url(emby_token_n):
         session.add(
             AppSnapshot(
@@ -436,7 +476,7 @@ async def test_emby_from_form(
             )
         )
         await session.commit()
-        return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
+        return finish(False)
     # Persist entered connection values so users don't lose them after testing.
     row.emby_enabled = emby_enabled
     row.emby_url = emby_url_n
@@ -457,15 +497,15 @@ async def test_emby_from_form(
             await c.aclose()
         session.add(AppSnapshot(app="emby", ok=True, status_message="Connection test succeeded.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
-        return RedirectResponse("/trimmer/settings?test=emby_ok", status_code=303)
+        return finish(True)
     except httpx.HTTPStatusError as e:
         detail = f"HTTP {e.response.status_code}: {e}"
         if e.response.status_code in (401, 403):
             detail += " | Check Emby API key permissions and base URL."
         session.add(AppSnapshot(app="emby", ok=False, status_message=f"Connection test failed: {detail}", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
-        return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
+        return finish(False)
     except (httpx.HTTPError, ValueError) as e:
         session.add(AppSnapshot(app="emby", ok=False, status_message=f"Connection test failed: {type(e).__name__}: {e}", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
-        return RedirectResponse("/trimmer/settings?test=emby_fail", status_code=303)
+        return finish(False)

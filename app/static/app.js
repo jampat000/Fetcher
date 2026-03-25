@@ -86,6 +86,8 @@ function bindScrollRestoreOnFormSubmit() {
   document.querySelectorAll('form[method="post"]').forEach((form) => {
     if (form.getAttribute("data-fetcher-async-settings") === "1") return;
     if (form.getAttribute("data-fetcher-async-test") === "1") return;
+    if (form.getAttribute("data-fetcher-trimmer-async-connection") === "1") return;
+    if (form.getAttribute("data-fetcher-trimmer-async-cleaner") === "1") return;
     form.addEventListener("submit", persistScrollForAfterRedirect, true);
     form
       .querySelectorAll('button[type="submit"], button:not([type]), input[type="submit"]')
@@ -702,6 +704,14 @@ function clearSettingsSaveFeedbackTimer(form) {
   }
 }
 
+function clearTrimmerSettingsSaveFeedbackTimer(form) {
+  const t = form._trimmerSaveFeedbackTimer;
+  if (t) {
+    window.clearTimeout(t);
+    form._trimmerSaveFeedbackTimer = null;
+  }
+}
+
 /** Section-local banner strip for Fetcher /settings in-place Save + Test only (not other pages). */
 function setFetcherSettingsInPlaceFeedback(feedbackEl, kind, text) {
   if (!feedbackEl) return;
@@ -765,6 +775,310 @@ function syncFetcherSettingsUrlAfterInPlacePost(tabKey) {
   } catch (_) {
     /* ignore */
   }
+}
+
+const TRIMMER_SETTINGS_INPLACE_JSON_HEADER = "X-Fetcher-Trimmer-Settings-Async";
+const TRIMMER_SETTINGS_SAVE_SUCCESS_BANNER = "Settings saved.";
+const TRIMMER_EMBY_TEST_RESULT_TEXT = {
+  emby_ok: "Emby connection succeeded.",
+  emby_fail: "Emby connection failed — check URL, API key, and that the server is reachable.",
+};
+
+/** Trimmer /trimmer/settings: strip flash query params; keep hash on the active section (independent from Fetcher `tab=`). */
+function syncTrimmerSettingsUrlAfterInPlacePost(sectionKey) {
+  try {
+    const u = new URL(window.location.href);
+    ["saved", "save", "reason", "test"].forEach((k) => u.searchParams.delete(k));
+    const sk = (sectionKey || "").trim().toLowerCase();
+    const frag =
+      sk === "connection"
+        ? "trimmer-connection"
+        : sk === "schedule"
+          ? "trimmer-schedule"
+          : sk === "rules"
+            ? "trimmer-rules"
+            : sk === "people"
+              ? "trimmer-people"
+              : "";
+    const h = frag ? "#" + frag : window.location.hash || "";
+    history.replaceState(null, "", u.pathname + (u.search ? u.search : "") + h);
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+/** In-place save + Emby test for Trimmer connection form (separate header from Fetcher settings). */
+function initTrimmerSettingsAsyncConnection() {
+  document.querySelectorAll('form[data-fetcher-trimmer-async-connection="1"]').forEach((form) => {
+    form.addEventListener("submit", (e) => {
+      if (form.dataset.fetcherTrimmerSaving === "1") {
+        e.preventDefault();
+        return;
+      }
+      e.preventDefault();
+      const sub = e.submitter;
+      let action = form.getAttribute("action") || "/trimmer/settings/connection";
+      let isTest = false;
+      if (sub instanceof HTMLButtonElement && sub.getAttribute("formaction")) {
+        const fa = sub.getAttribute("formaction") || "";
+        action = fa;
+        isTest = fa.indexOf("emby-form") >= 0;
+      }
+      const feedback = form.querySelector(".settings-async-feedback");
+      const saveButtons = Array.from(form.querySelectorAll('button[type="submit"]')).filter(
+        (b) => !b.getAttribute("form"),
+      );
+
+      function setBusy(on) {
+        form.dataset.fetcherTrimmerSaving = on ? "1" : "";
+        form.setAttribute("aria-busy", on ? "true" : "false");
+        saveButtons.forEach((btn) => {
+          btn.disabled = on;
+        });
+      }
+
+      clearTrimmerSettingsSaveFeedbackTimer(form);
+      form._fetcherTrimmerSaveGen = (form._fetcherTrimmerSaveGen || 0) + 1;
+      const saveGen = form._fetcherTrimmerSaveGen;
+
+      stashSaveButtonLabels(saveButtons);
+      setBusy(true);
+
+      if (isTest) {
+        saveButtons.forEach((btn) => {
+          if (btn.dataset.fetcherTrimmerTestLabel == null || btn.dataset.fetcherTrimmerTestLabel === "") {
+            btn.dataset.fetcherTrimmerTestLabel = (btn.textContent || "").trim();
+          }
+          btn.textContent = FETCHER_SETTINGS_TEST_PENDING_LABEL;
+          btn.setAttribute("aria-busy", "true");
+        });
+        setFetcherSettingsInPlaceFeedback(feedback, "pending", FETCHER_SETTINGS_TEST_PENDING_LABEL);
+        const fd =
+          sub instanceof HTMLButtonElement || sub instanceof HTMLInputElement
+            ? new FormData(form, sub)
+            : new FormData(form);
+        fetch(action, {
+          method: "POST",
+          body: fd,
+          credentials: "same-origin",
+          headers: { [TRIMMER_SETTINGS_INPLACE_JSON_HEADER]: "1", Accept: "application/json" },
+        })
+          .then((res) => {
+            if (res.status === 403) {
+              return Promise.reject(
+                new Error("Your session may have expired — reload the page and sign in again."),
+              );
+            }
+            const ct = (res.headers.get("content-type") || "").toLowerCase();
+            if (ct.indexOf("application/json") >= 0) {
+              return res.json().then((data) => ({ res, data }));
+            }
+            return res.text().then((text) => ({ res, data: null, text }));
+          })
+          .then((out) => {
+            const { res, data, text } = out;
+            if (!res.ok && !data) {
+              throw new Error(text || "Connection test failed — try again.");
+            }
+            if (data && typeof data.ok === "boolean" && data.test) {
+              const k = String(data.test);
+              const msg = TRIMMER_EMBY_TEST_RESULT_TEXT[k];
+              if (data.ok) {
+                setFetcherSettingsInPlaceFeedback(feedback, "ok", msg || "Connection succeeded.");
+                syncTrimmerSettingsUrlAfterInPlacePost(data.section || "connection");
+                clearTrimmerSettingsSaveFeedbackTimer(form);
+                form._trimmerSaveFeedbackTimer = window.setTimeout(() => {
+                  form._trimmerSaveFeedbackTimer = null;
+                  if (form._fetcherTrimmerSaveGen !== saveGen) return;
+                  if (feedback && msg && feedback.textContent === msg) {
+                    setFetcherSettingsInPlaceFeedback(feedback, "ok", "");
+                  }
+                }, 3200);
+              } else {
+                syncTrimmerSettingsUrlAfterInPlacePost(data.section || "connection");
+                setFetcherSettingsInPlaceFeedback(feedback, "err", msg || "Connection failed.");
+              }
+              return;
+            }
+            throw new Error("Connection test failed — try again.");
+          })
+          .catch((err) => {
+            const m = err && err.message ? err.message : "Connection test failed — try again.";
+            setFetcherSettingsInPlaceFeedback(feedback, "err", m);
+          })
+          .finally(() => {
+            saveButtons.forEach((btn) => {
+              btn.removeAttribute("aria-busy");
+              const o = btn.dataset.fetcherTrimmerTestLabel;
+              if (o != null && o !== "") btn.textContent = o;
+            });
+            restoreSaveButtonLabels(saveButtons);
+            setBusy(false);
+          });
+        return;
+      }
+
+      setSaveButtonsPending(saveButtons, true);
+      setFetcherSettingsInPlaceFeedback(feedback, "pending", FETCHER_SETTINGS_SAVE_PENDING_LABEL);
+      const fd =
+        sub instanceof HTMLButtonElement || sub instanceof HTMLInputElement
+          ? new FormData(form, sub)
+          : new FormData(form);
+      fetch(action, {
+        method: "POST",
+        body: fd,
+        credentials: "same-origin",
+        headers: { [TRIMMER_SETTINGS_INPLACE_JSON_HEADER]: "1", Accept: "application/json" },
+      })
+        .then((res) => {
+          if (res.status === 403) {
+            return Promise.reject(
+              new Error("Your session may have expired — reload the page and sign in again."),
+            );
+          }
+          const ct = (res.headers.get("content-type") || "").toLowerCase();
+          if (ct.indexOf("application/json") >= 0) {
+            return res.json().then((data) => ({ res, data }));
+          }
+          return res.text().then((text) => ({ res, data: null, text }));
+        })
+        .then((out) => {
+          const { res, data, text } = out;
+          if (!res.ok && !data) {
+            throw new Error(text || "Save failed — try again.");
+          }
+          if (data && typeof data.ok === "boolean") {
+            if (data.ok) {
+              setFetcherSettingsInPlaceFeedback(feedback, "ok", TRIMMER_SETTINGS_SAVE_SUCCESS_BANNER);
+              syncTrimmerSettingsUrlAfterInPlacePost(data.section || "connection");
+              clearTrimmerSettingsSaveFeedbackTimer(form);
+              form._trimmerSaveFeedbackTimer = window.setTimeout(() => {
+                form._trimmerSaveFeedbackTimer = null;
+                if (form._fetcherTrimmerSaveGen !== saveGen) return;
+                if (feedback && feedback.textContent === TRIMMER_SETTINGS_SAVE_SUCCESS_BANNER) {
+                  setFetcherSettingsInPlaceFeedback(feedback, "ok", "");
+                }
+              }, 2600);
+              return;
+            }
+            syncTrimmerSettingsUrlAfterInPlacePost(data.section || "connection");
+            const r = data.reason ? String(data.reason) : "error";
+            const msg = FETCHER_SETTINGS_SAVE_REASON_TEXT[r] || FETCHER_SETTINGS_SAVE_REASON_TEXT.error;
+            setFetcherSettingsInPlaceFeedback(feedback, "err", msg);
+            return;
+          }
+          throw new Error(FETCHER_SETTINGS_SAVE_REASON_TEXT.error);
+        })
+        .catch((err) => {
+          const m = err && err.message ? err.message : FETCHER_SETTINGS_SAVE_REASON_TEXT.error;
+          setFetcherSettingsInPlaceFeedback(feedback, "err", m);
+        })
+        .finally(() => {
+          restoreSaveButtonLabels(saveButtons);
+          setBusy(false);
+        });
+    });
+  });
+}
+
+/** In-place save for Trimmer cleaner form (schedule / rules / people scopes — separate routes from Fetcher). */
+function initTrimmerSettingsAsyncCleaner() {
+  document.querySelectorAll('form[data-fetcher-trimmer-async-cleaner="1"]').forEach((form) => {
+    form.addEventListener("submit", (e) => {
+      if (form.dataset.fetcherTrimmerSaving === "1") {
+        e.preventDefault();
+        return;
+      }
+      e.preventDefault();
+      const sub = e.submitter;
+      const action =
+        sub instanceof HTMLButtonElement && sub.getAttribute("formaction")
+          ? sub.getAttribute("formaction")
+          : form.getAttribute("action") || "/trimmer/settings/cleaner";
+      const anchor =
+        (sub && sub.closest && sub.closest(".trimmer-settings-anchor")) ||
+        form.querySelector(".trimmer-settings-anchor");
+      const feedback = anchor ? anchor.querySelector(".settings-async-feedback") : null;
+      const saveButtons = Array.from(form.querySelectorAll('button[type="submit"]')).filter(
+        (b) => !b.getAttribute("form"),
+      );
+
+      function setBusy(on) {
+        form.dataset.fetcherTrimmerSaving = on ? "1" : "";
+        form.setAttribute("aria-busy", on ? "true" : "false");
+        saveButtons.forEach((btn) => {
+          btn.disabled = on;
+        });
+      }
+
+      clearTrimmerSettingsSaveFeedbackTimer(form);
+      form._fetcherTrimmerSaveGen = (form._fetcherTrimmerSaveGen || 0) + 1;
+      const saveGen = form._fetcherTrimmerSaveGen;
+
+      stashSaveButtonLabels(saveButtons);
+      setBusy(true);
+      setSaveButtonsPending(saveButtons, true);
+      setFetcherSettingsInPlaceFeedback(feedback, "pending", FETCHER_SETTINGS_SAVE_PENDING_LABEL);
+
+      const fd =
+        sub instanceof HTMLButtonElement || sub instanceof HTMLInputElement
+          ? new FormData(form, sub)
+          : new FormData(form);
+      fetch(action, {
+        method: "POST",
+        body: fd,
+        credentials: "same-origin",
+        headers: { [TRIMMER_SETTINGS_INPLACE_JSON_HEADER]: "1", Accept: "application/json" },
+      })
+        .then((res) => {
+          if (res.status === 403) {
+            return Promise.reject(
+              new Error("Your session may have expired — reload the page and sign in again."),
+            );
+          }
+          const ct = (res.headers.get("content-type") || "").toLowerCase();
+          if (ct.indexOf("application/json") >= 0) {
+            return res.json().then((data) => ({ res, data }));
+          }
+          return res.text().then((text) => ({ res, data: null, text }));
+        })
+        .then((out) => {
+          const { res, data, text } = out;
+          if (!res.ok && !data) {
+            throw new Error(text || "Save failed — try again.");
+          }
+          if (data && typeof data.ok === "boolean") {
+            if (data.ok) {
+              setFetcherSettingsInPlaceFeedback(feedback, "ok", TRIMMER_SETTINGS_SAVE_SUCCESS_BANNER);
+              syncTrimmerSettingsUrlAfterInPlacePost(data.section || "");
+              clearTrimmerSettingsSaveFeedbackTimer(form);
+              form._trimmerSaveFeedbackTimer = window.setTimeout(() => {
+                form._trimmerSaveFeedbackTimer = null;
+                if (form._fetcherTrimmerSaveGen !== saveGen) return;
+                if (feedback && feedback.textContent === TRIMMER_SETTINGS_SAVE_SUCCESS_BANNER) {
+                  setFetcherSettingsInPlaceFeedback(feedback, "ok", "");
+                }
+              }, 2600);
+              return;
+            }
+            syncTrimmerSettingsUrlAfterInPlacePost(data.section || "");
+            const r = data.reason ? String(data.reason) : "error";
+            const msg = FETCHER_SETTINGS_SAVE_REASON_TEXT[r] || FETCHER_SETTINGS_SAVE_REASON_TEXT.error;
+            setFetcherSettingsInPlaceFeedback(feedback, "err", msg);
+            return;
+          }
+          throw new Error(FETCHER_SETTINGS_SAVE_REASON_TEXT.error);
+        })
+        .catch((err) => {
+          const m = err && err.message ? err.message : FETCHER_SETTINGS_SAVE_REASON_TEXT.error;
+          setFetcherSettingsInPlaceFeedback(feedback, "err", m);
+        })
+        .finally(() => {
+          restoreSaveButtonLabels(saveButtons);
+          setBusy(false);
+        });
+    });
+  });
 }
 
 /** In-place save for Fetcher /settings section forms (Global / Sonarr / Radarr); normal POST remains if JS disabled. */
@@ -1049,6 +1363,8 @@ window.addEventListener("DOMContentLoaded", () => {
   bindInternalLinksTargetTop();
   initFetcherSettingsAsyncSave();
   initFetcherSettingsAsyncTest();
+  initTrimmerSettingsAsyncConnection();
+  initTrimmerSettingsAsyncCleaner();
   bindScrollRestoreOnFormSubmit();
   restoreScrollAfterFormRedirect();
   bindRevealButtons();

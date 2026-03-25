@@ -25,6 +25,7 @@ from app.paths import STATIC_DIR
 from app.rate_limit import limiter
 from app.scheduler import scheduler
 from app.security_utils import get_jwt_secret_from_env
+from app.web_common import trimmer_settings_redirect_url
 from app import updates as app_updates
 from app.routers import api as api_router
 from app.routers import auth as auth_router
@@ -132,7 +133,13 @@ async def _form_validation_redirect(request: Request, exc: RequestValidationErro
             pass
         return RedirectResponse(f"/settings?save=fail&reason=invalid&tab={tab_q}", status_code=303)
     if request.method == "POST" and request.url.path == "/trimmer/settings/cleaner":
-        return RedirectResponse("/trimmer/settings?save=fail&reason=invalid", status_code=303)
+        sec = (request.query_params.get("trimmer_section") or "").strip().lower()
+        if sec not in ("connection", "schedule", "rules", "people"):
+            sec = None
+        return RedirectResponse(
+            trimmer_settings_redirect_url(saved=False, reason="invalid", section=sec),
+            status_code=303,
+        )
     if request.method == "POST" and request.url.path.startswith("/settings/auth"):
         return RedirectResponse("/settings?save=fail&reason=invalid&tab=security", status_code=303)
     return JSONResponse(status_code=422, content={"detail": exc.errors()})

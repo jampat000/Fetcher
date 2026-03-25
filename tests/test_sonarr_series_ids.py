@@ -1,6 +1,16 @@
 """Sonarr tags series, not episodes — helper must match episode batch to series ids."""
 
-from app.service_logic import _sonarr_series_ids_for_episode_batch, _take_int_ids
+from app.service_logic import (
+    _sonarr_series_ids_for_episode_batch,
+    _take_int_ids,
+    _take_records_and_ids,
+)
+
+
+def test_take_records_prefers_internal_episode_id_when_payload_has_both() -> None:
+    """Wanted rows may include both ``id`` (Sonarr DB) and ``episodeId``; EpisodeSearch + cooldown need ``id``."""
+    ids, _recs = _take_records_and_ids([{"id": 5, "episodeId": 999, "seriesId": 1}], "id", "episodeId", limit=10)
+    assert ids == [5]
 
 
 def test_series_ids_align_with_episode_batch_order() -> None:

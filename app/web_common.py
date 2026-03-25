@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from datetime import timedelta
 from typing import Any
 from urllib.parse import quote
 
+from app.arr_client import ArrClient, ArrConfig
 from app.arr_intervals import effective_arr_interval_minutes
+from app.resolvers.api_keys import resolve_radarr_api_key, resolve_sonarr_api_key
 from sqlalchemy import desc, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -103,6 +106,45 @@ async def try_commit_and_reschedule(
     return True
 
 
+async def fetch_live_dashboard_queue_totals(settings: AppSettings) -> dict[str, int]:
+    """Best-effort *arr wanted queue sizes for dashboard hero tiles (no scheduler / snapshot lag).
+
+    Uses a short HTTP timeout so a dead Sonarr/Radarr does not block dashboard status.
+    Keys present only for apps where both missing + cutoff ``totalRecords`` were read successfully.
+    """
+    out: dict[str, int] = {}
+
+    son_url = (settings.sonarr_url or "").strip()
+    son_key = resolve_sonarr_api_key(settings)
+    if settings.sonarr_enabled and son_url and son_key:
+        try:
+            client = ArrClient(ArrConfig(son_url, son_key), timeout_s=4.0)
+            missing_raw, cutoff_raw = await asyncio.gather(
+                client.wanted_missing(page=1, page_size=1),
+                client.wanted_cutoff_unmet(page=1, page_size=1),
+            )
+            out["sonarr_missing"] = int(missing_raw.get("totalRecords") or 0)
+            out["sonarr_upgrades"] = int(cutoff_raw.get("totalRecords") or 0)
+        except Exception:
+            logger.debug("Dashboard live Sonarr queue totals unavailable", exc_info=True)
+
+    rad_url = (settings.radarr_url or "").strip()
+    rad_key = resolve_radarr_api_key(settings)
+    if settings.radarr_enabled and rad_url and rad_key:
+        try:
+            client = ArrClient(ArrConfig(rad_url, rad_key), timeout_s=4.0)
+            missing_raw, cutoff_raw = await asyncio.gather(
+                client.wanted_missing(page=1, page_size=1),
+                client.wanted_cutoff_unmet(page=1, page_size=1),
+            )
+            out["radarr_missing"] = int(missing_raw.get("totalRecords") or 0)
+            out["radarr_upgrades"] = int(cutoff_raw.get("totalRecords") or 0)
+        except Exception:
+            logger.debug("Dashboard live Radarr queue totals unavailable", exc_info=True)
+
+    return out
+
+
 async def build_dashboard_status(
     session: AsyncSession,
     tz: str,
@@ -195,6 +237,19 @@ async def build_dashboard_status(
     sonarr_snap = snaps.get("sonarr")
     radarr_snap = snaps.get("radarr")
     emby_snap = snaps.get("emby")
+    sonarr_missing = int(sonarr_snap.missing_total) if sonarr_snap else 0
+    sonarr_upgrades = int(sonarr_snap.cutoff_unmet_total) if sonarr_snap else 0
+    radarr_missing = int(radarr_snap.missing_total) if radarr_snap else 0
+    radarr_upgrades = int(radarr_snap.cutoff_unmet_total) if radarr_snap else 0
+    live = await fetch_live_dashboard_queue_totals(settings)
+    if "sonarr_missing" in live:
+        sonarr_missing = live["sonarr_missing"]
+    if "sonarr_upgrades" in live:
+        sonarr_upgrades = live["sonarr_upgrades"]
+    if "radarr_missing" in live:
+        radarr_missing = live["radarr_missing"]
+    if "radarr_upgrades" in live:
+        radarr_upgrades = live["radarr_upgrades"]
     return {
         "last_run": last_run_display,
         "last_sonarr_run": last_sonarr,
@@ -204,10 +259,10 @@ async def build_dashboard_status(
         "next_sonarr_tick_local": next_sonarr_local,
         "next_radarr_tick_local": next_radarr_local,
         "next_trimmer_tick_local": next_trimmer_local,
-        "sonarr_missing": int(sonarr_snap.missing_total) if sonarr_snap else 0,
-        "sonarr_upgrades": int(sonarr_snap.cutoff_unmet_total) if sonarr_snap else 0,
-        "radarr_missing": int(radarr_snap.missing_total) if radarr_snap else 0,
-        "radarr_upgrades": int(radarr_snap.cutoff_unmet_total) if radarr_snap else 0,
+        "sonarr_missing": sonarr_missing,
+        "sonarr_upgrades": sonarr_upgrades,
+        "radarr_missing": radarr_missing,
+        "radarr_upgrades": radarr_upgrades,
         "emby_matched": int(emby_snap.missing_total) if emby_snap else 0,
     }
 

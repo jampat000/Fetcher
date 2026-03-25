@@ -50,7 +50,7 @@
     </a>
   </nav>
 
-  <div class="card gc stripe-green trimmer-settings-anchor" id="trimmer-connection">
+    <div class="card gc stripe-green trimmer-settings-anchor" id="trimmer-connection">
     <div class="gc-title">Connection</div>
     <p class="hint">Emby server URL, API key, and optional user ID. Example URL: <code class="code-inline">http://192.168.1.10:8096</code> or <code class="code-inline">http://localhost:8096</code>.</p>
     {% if emby and emby.status_message
@@ -61,8 +61,9 @@
       <div class="emby-status-snippet">{{ emby.status_message }}</div>
     </div>
     {% endif %}
-    <form method="post" action="/trimmer/settings/connection">
+    <form method="post" action="/trimmer/settings/connection" data-fetcher-trimmer-async-connection="1">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <div class="settings-async-feedback" hidden aria-live="polite"></div>
       {% call toggle_checkbox("emby_enabled", settings.emby_enabled) %}<strong>Enable Emby Trimmer</strong>{% endcall %}
 
       <div class="row">
@@ -91,11 +92,12 @@
     </form>
   </div>
 
-  <form method="post" action="/trimmer/settings/cleaner">
+  <form method="post" action="/trimmer/settings/cleaner" data-fetcher-trimmer-async-cleaner="1">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
 
     <div class="card gc stripe-gray trimmer-settings-anchor" id="trimmer-schedule">
       <div class="gc-title">Schedule &amp; limits</div>
+      <div class="settings-async-feedback" hidden aria-live="polite"></div>
       <p class="hint">How often Trimmer runs, scan/delete caps, dry run, and the time window when scheduled runs are allowed.</p>
       <div class="row">
         <div class="field">
@@ -131,12 +133,13 @@
       </div>
 
       <div class="btn-row">
-        <button class="btn" type="submit" name="save_scope" value="global" formaction="/trimmer/settings/cleaner?trimmer_section=schedule">Save schedule &amp; limits</button>
+        <button class="btn" type="submit" name="save_scope" value="schedule" formaction="/trimmer/settings/cleaner?trimmer_section=schedule">Save schedule &amp; limits</button>
       </div>
     </div>
 
     <div class="card gc stripe-blue trimmer-settings-anchor" id="trimmer-rules">
       <div class="gc-title">TV &amp; movie rules</div>
+      <div class="settings-async-feedback" hidden aria-live="polite"></div>
       <p class="hint">Genre and watch/rating rules. Use the buttons below to save TV or movie criteria independently.</p>
       <div class="criteria-grid">
         <div class="criteria-panel">
@@ -210,6 +213,7 @@
 
     <div class="card gc stripe-purple trimmer-settings-anchor" id="trimmer-people">
       <div class="gc-title">People rules</div>
+      <div class="settings-async-feedback" hidden aria-live="polite"></div>
       <p class="hint">Match titles by credited names (substring, case-insensitive). Save TV and movie people criteria separately.</p>
       <div class="criteria-grid criteria-people-row">
         <div class="criteria-panel people-criteria-panel">

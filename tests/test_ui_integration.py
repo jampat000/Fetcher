@@ -297,29 +297,99 @@ def test_post_emby_connection_save(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "/trimmer/settings" in resp.headers.get("location", "")
 
 
-def test_post_trimmer_settings_full(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Trimmer form: genres (multi), People credits, schedules."""
-    # Use URL-encoded body so duplicate keys (genres, credit types) parse like a real browser.
+def test_post_emby_form_async_returns_json_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Trimmer Emby test-from-form: JSON contract for in-place UI (no 303)."""
+
+    class _FakeEmbyClient:
+        def __init__(self, *_a: object, **_kw: object) -> None:
+            pass
+
+        async def health(self) -> bool:
+            return True
+
+        async def users(self) -> list[dict[str, str]]:
+            return []
+
+        async def aclose(self) -> None:
+            return None
+
+    monkeypatch.setattr("app.routers.trimmer.EmbyClient", _FakeEmbyClient)
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/test/emby-form",
+            data={
+                "emby_enabled": "false",
+                "emby_url": "http://localhost:8096",
+                "emby_api_key": "fake-key",
+                "emby_user_id": "",
+            },
+            headers={"X-Fetcher-Trimmer-Settings-Async": "1"},
+        )
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "section": "connection", "test": "emby_ok"}
+
+
+def test_post_trimmer_connection_async_header_returns_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Trimmer connection XHR path: JSON instead of 303 (same persistence as normal POST)."""
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/trimmer/settings/connection",
+            data={
+                "emby_enabled": "false",
+                "emby_url": "http://localhost:8096",
+                "emby_api_key": "async-test-key",
+                "emby_user_id": "",
+            },
+            headers={"X-Fetcher-Trimmer-Settings-Async": "1"},
+        )
+    assert resp.status_code == 200
+    assert "application/json" in (resp.headers.get("content-type") or "").lower()
+    assert resp.json() == {"ok": True, "section": "connection"}
+
+
+def test_post_trimmer_cleaner_async_header_returns_json(monkeypatch: pytest.MonkeyPatch) -> None:
     pairs: list[tuple[str, str]] = [
         ("emby_dry_run", "true"),
         ("emby_schedule_enabled", "false"),
         *_schedule_flag_pairs("emby_schedule"),
-        ("emby_schedule_start", "09:00"),
-        ("emby_schedule_end", "17:00"),
-        ("emby_max_items_scan", "1500"),
-        ("emby_max_deletes_per_run", "10"),
-        ("emby_rule_movie_watched_rating_below", "3"),
-        ("emby_rule_movie_unwatched_days", "30"),
-        ("emby_rule_movie_genres", "Action"),
-        ("emby_rule_movie_genres", "Drama"),
-        ("emby_rule_movie_people", "Test Actor"),
-        ("emby_rule_movie_people_credit_types", "Actor"),
-        ("emby_rule_movie_people_credit_types", "Director"),
-        ("emby_rule_tv_delete_watched", "true"),
-        ("emby_rule_tv_genres", "Comedy"),
-        ("emby_rule_tv_people", "Show Runner"),
-        ("emby_rule_tv_people_credit_types", "Writer"),
-        ("emby_rule_tv_unwatched_days", "14"),
+        ("emby_schedule_start", "10:00"),
+        ("emby_schedule_end", "18:00"),
+        ("emby_max_items_scan", "2000"),
+        ("emby_max_deletes_per_run", "25"),
+        ("emby_interval_minutes", "95"),
+        ("save_scope", "schedule"),
+    ]
+    encoded = urlencode(pairs)
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/trimmer/settings/cleaner",
+            content=encoded,
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "X-Fetcher-Trimmer-Settings-Async": "1",
+            },
+        )
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "section": "schedule"}
+
+    async def verify_interval() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            assert row.emby_interval_minutes == 95
+
+    asyncio.run(verify_interval())
+
+
+def test_post_trimmer_cleaner_rejects_missing_save_scope(monkeypatch: pytest.MonkeyPatch) -> None:
+    pairs: list[tuple[str, str]] = [
+        ("emby_dry_run", "true"),
+        ("emby_schedule_enabled", "false"),
+        *_schedule_flag_pairs("emby_schedule"),
+        ("emby_schedule_start", "00:00"),
+        ("emby_schedule_end", "23:59"),
+        ("emby_max_items_scan", "2000"),
+        ("emby_max_deletes_per_run", "25"),
+        ("emby_interval_minutes", "60"),
     ]
     encoded = urlencode(pairs)
     with _client(monkeypatch) as client:
@@ -327,11 +397,461 @@ def test_post_trimmer_settings_full(monkeypatch: pytest.MonkeyPatch) -> None:
             "/trimmer/settings/cleaner",
             content=encoded,
             headers={"Content-Type": "application/x-www-form-urlencoded"},
-            follow_redirects=True,
+            follow_redirects=False,
+        )
+    assert resp.status_code == 303
+    loc = resp.headers.get("location") or ""
+    assert "save=fail" in loc
+    assert "invalid_scope" in loc
+
+
+def test_post_trimmer_cleaner_async_rejects_invalid_save_scope_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fetcher-only scopes must not be accepted on Trimmer cleaner POST."""
+    pairs: list[tuple[str, str]] = [
+        ("emby_dry_run", "true"),
+        ("emby_schedule_enabled", "false"),
+        *_schedule_flag_pairs("emby_schedule"),
+        ("emby_schedule_start", "00:00"),
+        ("emby_schedule_end", "23:59"),
+        ("emby_max_items_scan", "2000"),
+        ("emby_max_deletes_per_run", "25"),
+        ("emby_interval_minutes", "60"),
+        ("save_scope", "sonarr"),
+    ]
+    encoded = urlencode(pairs)
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/trimmer/settings/cleaner",
+            content=encoded,
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "X-Fetcher-Trimmer-Settings-Async": "1",
+            },
         )
     assert resp.status_code == 200
-    body = resp.text
-    assert "saved=1" in str(resp.url) or "?saved=1" in str(resp.url)
+    assert resp.json() == {"ok": False, "section": "schedule", "reason": "invalid_scope"}
+
+
+def test_post_trimmer_cleaner_rejects_legacy_global_save_scope(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``save_scope=global`` is Fetcher-only; Trimmer schedule saves must use ``schedule``."""
+    pairs: list[tuple[str, str]] = [
+        ("emby_dry_run", "false"),
+        ("emby_schedule_enabled", "false"),
+        *_schedule_flag_pairs("emby_schedule"),
+        ("emby_schedule_start", "00:00"),
+        ("emby_schedule_end", "23:59"),
+        ("emby_max_items_scan", "2000"),
+        ("emby_max_deletes_per_run", "25"),
+        ("emby_interval_minutes", "30"),
+        ("save_scope", "global"),
+    ]
+    encoded = urlencode(pairs)
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/trimmer/settings/cleaner",
+            content=encoded,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
+    assert resp.status_code == 303
+    loc = resp.headers.get("location") or ""
+    assert "save=fail" in loc
+    assert "invalid_scope" in loc
+
+
+def test_post_trimmer_cleaner_legacy_global_async_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/trimmer/settings/cleaner",
+            data={
+                "emby_dry_run": "true",
+                "emby_schedule_enabled": "false",
+                **{f"emby_schedule_{d}": "0" for d in _WEEKDAYS},
+                "emby_schedule_start": "00:00",
+                "emby_schedule_end": "23:59",
+                "emby_max_items_scan": "2000",
+                "emby_max_deletes_per_run": "25",
+                "emby_interval_minutes": "60",
+                "save_scope": "global",
+            },
+            headers={"X-Fetcher-Trimmer-Settings-Async": "1"},
+        )
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is False
+    assert resp.json()["reason"] == "invalid_scope"
+
+
+def test_post_trimmer_cleaner_legacy_global_does_not_mutate_db(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def seed() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.emby_interval_minutes = 88
+            row.emby_dry_run = True
+            row.emby_max_items_scan = 2000
+            await session.commit()
+
+    asyncio.run(seed())
+    pairs: list[tuple[str, str]] = [
+        ("emby_dry_run", "false"),
+        ("emby_schedule_enabled", "false"),
+        *_schedule_flag_pairs("emby_schedule"),
+        ("emby_schedule_start", "00:00"),
+        ("emby_schedule_end", "23:59"),
+        ("emby_max_items_scan", "1"),
+        ("emby_max_deletes_per_run", "99"),
+        ("emby_interval_minutes", "5"),
+        ("save_scope", "global"),
+    ]
+    encoded = urlencode(pairs)
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/trimmer/settings/cleaner",
+            content=encoded,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        assert "invalid_scope" in (resp.headers.get("location") or "")
+
+    async def verify() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            assert row.emby_interval_minutes == 88
+            assert row.emby_dry_run is True
+            assert row.emby_max_items_scan == 2000
+
+    asyncio.run(verify())
+
+
+def test_post_trimmer_cleaner_rejects_save_scope_all(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Catch-all ``save_scope=all`` is not part of the Trimmer cleaner contract."""
+    pairs: list[tuple[str, str]] = [
+        ("emby_dry_run", "true"),
+        ("emby_schedule_enabled", "false"),
+        *_schedule_flag_pairs("emby_schedule"),
+        ("emby_schedule_start", "00:00"),
+        ("emby_schedule_end", "23:59"),
+        ("emby_max_items_scan", "2000"),
+        ("emby_max_deletes_per_run", "25"),
+        ("emby_interval_minutes", "60"),
+        ("save_scope", "all"),
+    ]
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/trimmer/settings/cleaner",
+            content=urlencode(pairs),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
+    assert resp.status_code == 303
+    assert "invalid_scope" in (resp.headers.get("location") or "")
+
+
+def test_post_trimmer_cleaner_save_scope_all_async_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/trimmer/settings/cleaner",
+            data={"save_scope": "all", "emby_interval_minutes": "99"},
+            headers={"X-Fetcher-Trimmer-Settings-Async": "1"},
+        )
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is False
+    assert resp.json()["reason"] == "invalid_scope"
+
+
+def test_post_trimmer_cleaner_save_scope_all_does_not_mutate_db(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def seed() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.emby_interval_minutes = 33
+            row.emby_rule_movie_watched_rating_below = 5
+            row.emby_rule_tv_unwatched_days = 20
+            await session.commit()
+
+    asyncio.run(seed())
+    pairs: list[tuple[str, str]] = [
+        ("save_scope", "all"),
+        ("emby_interval_minutes", "1"),
+        ("emby_rule_movie_watched_rating_below", "9"),
+        ("emby_rule_tv_unwatched_days", "99"),
+    ]
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/trimmer/settings/cleaner",
+            content=urlencode(pairs),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        assert "invalid_scope" in (resp.headers.get("location") or "")
+
+    async def verify() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            assert row.emby_interval_minutes == 33
+            assert row.emby_rule_movie_watched_rating_below == 5
+            assert row.emby_rule_tv_unwatched_days == 20
+
+    asyncio.run(verify())
+
+
+def test_trimmer_schedule_save_does_not_update_rule_columns(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def seed() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.emby_rule_movie_watched_rating_below = 7
+            row.emby_rule_tv_unwatched_days = 42
+            row.emby_rule_movie_genres_csv = "SciFi"
+            row.emby_rule_tv_genres_csv = "News"
+            await session.commit()
+
+    asyncio.run(seed())
+    pairs: list[tuple[str, str]] = [
+        ("emby_dry_run", "true"),
+        ("emby_schedule_enabled", "false"),
+        *_schedule_flag_pairs("emby_schedule"),
+        ("emby_schedule_start", "10:00"),
+        ("emby_schedule_end", "11:00"),
+        ("emby_max_items_scan", "1234"),
+        ("emby_max_deletes_per_run", "15"),
+        ("emby_interval_minutes", "45"),
+        ("save_scope", "schedule"),
+        ("emby_rule_movie_watched_rating_below", "1"),
+        ("emby_rule_tv_unwatched_days", "2"),
+        ("emby_rule_movie_genres", "Horror"),
+        ("emby_rule_tv_genres", "Sport"),
+    ]
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/trimmer/settings/cleaner",
+            content=urlencode(pairs),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+
+    async def verify() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            assert row.emby_interval_minutes == 45
+            assert row.emby_max_items_scan == 1234
+            assert row.emby_rule_movie_watched_rating_below == 7
+            assert row.emby_rule_tv_unwatched_days == 42
+            assert row.emby_rule_movie_genres_csv == "SciFi"
+            assert row.emby_rule_tv_genres_csv == "News"
+
+    asyncio.run(verify())
+
+
+def test_trimmer_tv_save_does_not_update_movie_columns(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def seed() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.emby_rule_movie_watched_rating_below = 8
+            row.emby_rule_movie_unwatched_days = 15
+            row.emby_rule_tv_unwatched_days = 10
+            await session.commit()
+
+    asyncio.run(seed())
+    pairs: list[tuple[str, str]] = [
+        ("save_scope", "tv"),
+        ("emby_rule_tv_delete_watched", "true"),
+        ("emby_rule_tv_genres", "Comedy"),
+        ("emby_rule_tv_unwatched_days", "25"),
+        ("emby_rule_movie_watched_rating_below", "1"),
+        ("emby_rule_movie_unwatched_days", "99"),
+    ]
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/trimmer/settings/cleaner",
+            content=urlencode(pairs),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+
+    async def verify() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            assert row.emby_rule_tv_unwatched_days == 25
+            assert row.emby_rule_movie_watched_rating_below == 8
+            assert row.emby_rule_movie_unwatched_days == 15
+
+    asyncio.run(verify())
+
+
+def test_trimmer_movies_save_does_not_update_tv_columns(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def seed() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.emby_rule_tv_unwatched_days = 40
+            row.emby_rule_tv_delete_watched = False
+            row.emby_rule_movie_watched_rating_below = 2
+            await session.commit()
+
+    asyncio.run(seed())
+    pairs: list[tuple[str, str]] = [
+        ("save_scope", "movies"),
+        ("emby_rule_movie_watched_rating_below", "6"),
+        ("emby_rule_movie_unwatched_days", "11"),
+        ("emby_rule_tv_unwatched_days", "1"),
+        ("emby_rule_tv_delete_watched", "true"),
+    ]
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/trimmer/settings/cleaner",
+            content=urlencode(pairs),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+
+    async def verify() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            assert row.emby_rule_movie_watched_rating_below == 6
+            assert row.emby_rule_movie_unwatched_days == 11
+            assert row.emby_rule_tv_unwatched_days == 40
+            assert row.emby_rule_tv_delete_watched is False
+
+    asyncio.run(verify())
+
+
+def test_trimmer_cleaner_validation_redirect_preserves_section_in_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    """422 form validation on cleaner should redirect back with trimmer_section fragment (non-JS)."""
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/trimmer/settings/cleaner?trimmer_section=people",
+            data={
+                "save_scope": "tv",
+                "emby_interval_minutes": "not-an-int",
+            },
+            follow_redirects=False,
+        )
+    assert resp.status_code == 303
+    loc = resp.headers.get("location") or ""
+    assert "save=fail" in loc
+    assert "reason=invalid" in loc
+    assert "#trimmer-people" in loc
+
+
+def test_global_fetcher_save_does_not_mutate_trimmer_emby_interval(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def seed() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.emby_interval_minutes = 77
+            row.emby_dry_run = True
+            await session.commit()
+
+    asyncio.run(seed())
+    payload = {
+        "arr_search_cooldown_minutes": "720",
+        "log_retention_days": "120",
+        "timezone": "Europe/Berlin",
+        "save_scope": "global",
+    }
+    encoded = urlencode(list(payload.items()))
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/settings",
+            content=encoded,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+
+    async def verify() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            assert row.emby_interval_minutes == 77
+            assert row.emby_dry_run is True
+
+    asyncio.run(verify())
+
+
+def test_trimmer_schedule_save_does_not_mutate_sonarr_fields(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def seed() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.sonarr_url = "http://sonarr-preserved.example:8989"
+            row.sonarr_interval_minutes = 31
+            await session.commit()
+
+    asyncio.run(seed())
+    pairs: list[tuple[str, str]] = [
+        ("emby_dry_run", "false"),
+        ("emby_schedule_enabled", "false"),
+        *_schedule_flag_pairs("emby_schedule"),
+        ("emby_schedule_start", "08:00"),
+        ("emby_schedule_end", "20:00"),
+        ("emby_max_items_scan", "100"),
+        ("emby_max_deletes_per_run", "5"),
+        ("emby_interval_minutes", "55"),
+        ("save_scope", "schedule"),
+    ]
+    encoded = urlencode(pairs)
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/trimmer/settings/cleaner",
+            content=encoded,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+
+    async def verify() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            assert row.sonarr_url == "http://sonarr-preserved.example:8989"
+            assert row.sonarr_interval_minutes == 31
+            assert row.emby_interval_minutes == 55
+
+    asyncio.run(verify())
+
+
+def test_post_trimmer_settings_full(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Trimmer cleaner: strict scopes — schedule, TV, and movies require separate saves (like the UI)."""
+    schedule_pairs: list[tuple[str, str]] = [
+        ("emby_dry_run", "true"),
+        ("emby_schedule_enabled", "false"),
+        *_schedule_flag_pairs("emby_schedule"),
+        ("emby_schedule_start", "09:00"),
+        ("emby_schedule_end", "17:00"),
+        ("emby_max_items_scan", "1500"),
+        ("emby_max_deletes_per_run", "10"),
+        ("emby_interval_minutes", "60"),
+        ("save_scope", "schedule"),
+    ]
+    tv_pairs: list[tuple[str, str]] = [
+        ("save_scope", "tv"),
+        ("emby_rule_tv_delete_watched", "true"),
+        ("emby_rule_tv_genres", "Comedy"),
+        ("emby_rule_tv_people", "Show Runner"),
+        ("emby_rule_tv_people_credit_types", "Writer"),
+        ("emby_rule_tv_unwatched_days", "14"),
+    ]
+    movie_pairs: list[tuple[str, str]] = [
+        ("save_scope", "movies"),
+        ("emby_rule_movie_watched_rating_below", "3"),
+        ("emby_rule_movie_unwatched_days", "30"),
+        ("emby_rule_movie_genres", "Action"),
+        ("emby_rule_movie_genres", "Drama"),
+        ("emby_rule_movie_people", "Test Actor"),
+        ("emby_rule_movie_people_credit_types", "Actor"),
+        ("emby_rule_movie_people_credit_types", "Director"),
+    ]
+    with _client(monkeypatch) as client:
+        for pairs in (schedule_pairs, tv_pairs, movie_pairs):
+            resp = client.post(
+                "/trimmer/settings/cleaner",
+                content=urlencode(pairs),
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                follow_redirects=False,
+            )
+            assert resp.status_code == 303
+            assert "saved=1" in (resp.headers.get("location") or "")
+        page = client.get("/trimmer/settings")
+    body = page.text
     assert "Test Actor" in body
     assert "Show Runner" in body
 
@@ -689,7 +1209,7 @@ def test_trimmer_schedule_all_days_stays_enabled(monkeypatch: pytest.MonkeyPatch
         ("emby_schedule_end", "23:59"),
         ("emby_max_items_scan", "2000"),
         ("emby_max_deletes_per_run", "25"),
-        ("save_scope", "global"),
+        ("save_scope", "schedule"),
     ]
     encoded = urlencode(pairs)
     with _client(monkeypatch) as client:

@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""Setup wizard: each step POST persists via ``try_commit_and_reschedule`` then redirects to the next step.
+
+This is intentional multi-page navigation (not in-place XHR); parity with hardened *settings* applies to
+CSRF, validation, and DB busy handling—not full-page SPA-style saves.
+"""
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession

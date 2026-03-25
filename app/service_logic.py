@@ -1092,7 +1092,9 @@ async def _execute_sonarr_block(
                 sonarr,
                 session,
                 kind="missing",
-                id_keys=("episodeId", "id"),
+                # Prefer Sonarr's internal episode id (``id``) for ``EpisodeSearch`` + cooldown keys.
+                # Some payloads also expose ``episodeId`` (may differ); wrong id would bypass cooldown.
+                id_keys=("id", "episodeId"),
                 item_type="episode",
                 app="sonarr",
                 action="missing",
@@ -1106,8 +1108,8 @@ async def _execute_sonarr_block(
                     tag_id = await sonarr.ensure_tag("fetcher-missing")
                     series_ids = _sonarr_series_ids_for_episode_batch(
                         allowed_records,
-                        "episodeId",
                         "id",
+                        "episodeId",
                         limit=len(allowed_records),
                     )
                     await sonarr.add_tags_to_series(series_ids=series_ids, tag_ids=[tag_id])
@@ -1159,7 +1161,7 @@ async def _execute_sonarr_block(
                 sonarr,
                 session,
                 kind="cutoff",
-                id_keys=("episodeId", "id"),
+                id_keys=("id", "episodeId"),
                 item_type="episode",
                 app="sonarr",
                 action="upgrade",
@@ -1172,8 +1174,8 @@ async def _execute_sonarr_block(
                     tag_id = await sonarr.ensure_tag("fetcher-upgrade")
                     series_ids = _sonarr_series_ids_for_episode_batch(
                         allowed_records,
-                        "episodeId",
                         "id",
+                        "episodeId",
                         limit=len(allowed_records),
                     )
                     await sonarr.add_tags_to_series(series_ids=series_ids, tag_ids=[tag_id])
@@ -1309,7 +1311,7 @@ async def _execute_radarr_block(
                 radarr,
                 session,
                 kind="missing",
-                id_keys=("movieId", "id"),
+                id_keys=("id", "movieId"),
                 item_type="movie",
                 app="radarr",
                 action="missing",
@@ -1366,7 +1368,7 @@ async def _execute_radarr_block(
                 radarr,
                 session,
                 kind="cutoff",
-                id_keys=("movieId", "id"),
+                id_keys=("id", "movieId"),
                 item_type="movie",
                 app="radarr",
                 action="upgrade",
