@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import cast
 
 import httpx
 from fastapi import APIRouter, Depends
@@ -22,7 +23,14 @@ from app.models import ActivityLog
 from app.resolvers.api_keys import resolve_setup_api_key
 from app.resolvers.api_keys import resolve_radarr_api_key, resolve_sonarr_api_key
 from app.schemas import ArrSearchNowIn, SetupConnTestIn, SetupEmbyTestIn
-from app.service_logic import run_once
+from app.service_logic import (
+    ArrManualScope,
+    _build_run_context,
+    _paginate_wanted_for_search,
+    _radarr_select_monitored_missing_with_cooldown,
+    _sonarr_select_monitored_missing_with_cooldown,
+    run_once,
+)
 from app.setup_helpers import test_emby_connection, test_radarr_connection, test_sonarr_connection
 from app.version_info import get_app_version
 from app.web_common import build_dashboard_status
@@ -82,33 +90,43 @@ async def trigger_manual_arr_search_now(scope: str, session: AsyncSession) -> No
     """Dispatch the Arr search command immediately for manual button clicks."""
     settings = await _get_or_create_settings(session)
     kind = "missing" if scope.endswith("_missing") else "upgrade"
+    manual_scope: ArrManualScope | None = (
+        cast(ArrManualScope, scope)
+        if scope in ("sonarr_missing", "sonarr_upgrade", "radarr_missing", "radarr_upgrade")
+        else None
+    )
     if scope.startswith("sonarr_"):
         son_key = resolve_sonarr_api_key(settings)
         if not (settings.sonarr_enabled and settings.sonarr_url and son_key):
             raise RuntimeError("Sonarr is not enabled or missing URL/API key.")
         client = ArrClient(ArrConfig(settings.sonarr_url, son_key))
+        ids: list[int] = []
+        selected_records: list[dict] = []
         try:
             await client.health()
-            page = (
-                await client.wanted_missing(page=1, page_size=50)
-                if scope == "sonarr_missing"
-                else await client.wanted_cutoff_unmet(page=1, page_size=50)
-            )
-            records = page.get("records") if isinstance(page, dict) else []
-            records = records if isinstance(records, list) else []
-            pairs: list[tuple[int, dict]] = []
-            for r in records:
-                raw = r.get("episodeId", r.get("id"))
-                try:
-                    n = int(raw)
-                except (TypeError, ValueError):
-                    continue
-                if n > 0:
-                    pairs.append((n, r))
+            ctx = _build_run_context(settings, arr_manual_scope=manual_scope)
             sonarr_limit = max(1, int((settings.sonarr_max_items_per_run or 0) or 50))
-            selected = pairs[:sonarr_limit]
-            ids = [n for n, _ in selected]
-            selected_records = [r for _, r in selected]
+            if scope == "sonarr_missing":
+                ids, selected_records, _pool = await _sonarr_select_monitored_missing_with_cooldown(
+                    client,
+                    session,
+                    limit=sonarr_limit,
+                    cooldown_minutes=ctx.sonarr_cooldown_minutes,
+                    now=ctx.now,
+                )
+            else:
+                ids, selected_records, _ = await _paginate_wanted_for_search(
+                    client,
+                    session,
+                    kind="cutoff",
+                    id_keys=("id", "episodeId"),
+                    item_type="episode",
+                    app="sonarr",
+                    action="upgrade",
+                    limit=sonarr_limit,
+                    cooldown_minutes=ctx.sonarr_cooldown_minutes,
+                    now=ctx.now,
+                )
             if ids:
                 if scope == "sonarr_missing":
                     await trigger_sonarr_missing_search(client, episode_ids=ids)
@@ -132,41 +150,46 @@ async def trigger_manual_arr_search_now(scope: str, session: AsyncSession) -> No
     if not (settings.radarr_enabled and settings.radarr_url and rad_key):
         raise RuntimeError("Radarr is not enabled or missing URL/API key.")
     client = ArrClient(ArrConfig(settings.radarr_url, rad_key))
+    ids_r: list[int] = []
+    selected_records_r: list[dict] = []
     try:
         await client.health()
-        page = (
-            await client.wanted_missing(page=1, page_size=50)
-            if scope == "radarr_missing"
-            else await client.wanted_cutoff_unmet(page=1, page_size=50)
-        )
-        records = page.get("records") if isinstance(page, dict) else []
-        records = records if isinstance(records, list) else []
-        pairs: list[tuple[int, dict]] = []
-        for r in records:
-            raw = r.get("movieId", r.get("id"))
-            try:
-                n = int(raw)
-            except (TypeError, ValueError):
-                continue
-            if n > 0:
-                pairs.append((n, r))
+        ctx = _build_run_context(settings, arr_manual_scope=manual_scope)
         radarr_limit = max(1, int((settings.radarr_max_items_per_run or 0) or 50))
-        selected = pairs[:radarr_limit]
-        ids = [n for n, _ in selected]
-        selected_records = [r for _, r in selected]
-        if ids:
+        if scope == "radarr_missing":
+            ids_r, selected_records_r, _pool = await _radarr_select_monitored_missing_with_cooldown(
+                client,
+                session,
+                limit=radarr_limit,
+                cooldown_minutes=ctx.radarr_cooldown_minutes,
+                now=ctx.now,
+            )
+        else:
+            ids_r, selected_records_r, _ = await _paginate_wanted_for_search(
+                client,
+                session,
+                kind="cutoff",
+                id_keys=("id", "movieId"),
+                item_type="movie",
+                app="radarr",
+                action="upgrade",
+                limit=radarr_limit,
+                cooldown_minutes=ctx.radarr_cooldown_minutes,
+                now=ctx.now,
+            )
+        if ids_r:
             if scope == "radarr_missing":
-                await trigger_radarr_missing_search(client, movie_ids=ids)
+                await trigger_radarr_missing_search(client, movie_ids=ids_r)
             else:
-                await trigger_radarr_cutoff_search(client, movie_ids=ids)
+                await trigger_radarr_cutoff_search(client, movie_ids=ids_r)
     finally:
         await client.aclose()
     session.add(
         ActivityLog(
             app="radarr",
             kind=kind,
-            count=len(ids),
-            detail=_manual_detail_text(scope, selected_records)
+            count=len(ids_r),
+            detail=_manual_detail_text(scope, selected_records_r)
             or f"Manual {kind} search: command triggered immediately.",
         )
     )
