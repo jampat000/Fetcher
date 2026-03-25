@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import delete, desc, select
 
 from app.db import SessionLocal, _get_or_create_settings
-from app.models import ActivityLog, AppSnapshot, JobRunLog
+from app.models import ActivityLog, AppSnapshot, ArrActionLog, JobRunLog
 from app.service_logic import ArrManualScope, run_once
 
 
@@ -24,6 +24,7 @@ async def _set_settings(**updates: Any) -> None:
 async def _clear_run_tables() -> None:
     async with SessionLocal() as s:
         await s.execute(delete(ActivityLog))
+        await s.execute(delete(ArrActionLog))
         await s.execute(delete(AppSnapshot))
         await s.execute(delete(JobRunLog))
         await s.commit()
@@ -167,13 +168,11 @@ def test_run_once_sonarr_no_internal_interval_skip_anymore(monkeypatch: pytest.M
 
         async def episodes_for_series(self, *, series_id: int):
             assert series_id == 10
+            # No monitored+missing rows — inclusive scan matches empty "no missing" outcome.
             return [
-                {"monitored": True, "hasFile": False},
-                {"monitored": True, "hasFile": False},
-                {"monitored": True, "hasFile": False},
-                {"monitored": True, "hasFile": False},
-                {"monitored": True, "hasFile": True},
-                {"monitored": False, "hasFile": False},
+                {"id": 1, "monitored": True, "hasFile": True},
+                {"id": 2, "monitored": True, "hasFile": True},
+                {"id": 3, "monitored": False, "hasFile": False},
             ]
 
         async def wanted_missing(self, **kwargs):
@@ -187,10 +186,6 @@ def test_run_once_sonarr_no_internal_interval_skip_anymore(monkeypatch: pytest.M
 
     monkeypatch.setattr("app.service_logic.in_window", lambda **_kw: True)
     monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
-    async def _paginate(*args, **kwargs):
-        return [], [], 0
-
-    monkeypatch.setattr("app.service_logic._paginate_wanted_for_search", _paginate)
     result = asyncio.run(_run_once())
     assert result.ok is True
     assert "Sonarr: no missing episodes found" in result.message
@@ -398,12 +393,9 @@ def test_sonarr_due_outside_window_skips_then_runs_when_window_opens(monkeypatch
         async def episodes_for_series(self, *, series_id: int):
             assert series_id == 10
             return [
-                {"monitored": True, "hasFile": False},
-                {"monitored": True, "hasFile": False},
-                {"monitored": True, "hasFile": False},
-                {"monitored": True, "hasFile": False},
-                {"monitored": True, "hasFile": True},
-                {"monitored": False, "hasFile": False},
+                {"id": 1, "monitored": True, "hasFile": True},
+                {"id": 2, "monitored": True, "hasFile": True},
+                {"id": 3, "monitored": False, "hasFile": False},
             ]
 
         async def wanted_missing(self, **kwargs):
@@ -478,6 +470,22 @@ def test_run_once_sonarr_suppressed_cooldown_snapshot_and_lifecycle(monkeypatch:
     )
     seen = {"health": 0, "aclose": 0}
 
+    async def _seed_cooldown() -> None:
+        async with SessionLocal() as s:
+            for eid in (201, 202, 203, 204):
+                s.add(
+                    ArrActionLog(
+                        created_at=fixed_now - timedelta(minutes=5),
+                        app="sonarr",
+                        action="missing",
+                        item_type="episode",
+                        item_id=eid,
+                    )
+                )
+            await s.commit()
+
+    asyncio.run(_seed_cooldown())
+
     class _FakeArrClient:
         def __init__(self, _cfg):
             pass
@@ -491,19 +499,16 @@ def test_run_once_sonarr_suppressed_cooldown_snapshot_and_lifecycle(monkeypatch:
         async def episodes_for_series(self, *, series_id: int):
             assert series_id == 10
             return [
-                {"monitored": True, "hasFile": False},
-                {"monitored": True, "hasFile": False},
-                {"monitored": True, "hasFile": False},
-                {"monitored": True, "hasFile": False},
-                {"monitored": True, "hasFile": True},
-                {"monitored": False, "hasFile": False},
+                {"id": 201, "monitored": True, "hasFile": False},
+                {"id": 202, "monitored": True, "hasFile": False},
+                {"id": 203, "monitored": True, "hasFile": False},
+                {"id": 204, "monitored": True, "hasFile": False},
+                {"id": 205, "monitored": True, "hasFile": True},
+                {"id": 206, "monitored": False, "hasFile": False},
             ]
 
         async def aclose(self):
             seen["aclose"] += 1
-
-    async def _paginate(*args, **kwargs):
-        return [], [], 3
 
     async def _wanted_total(*args, **kwargs):
         return 7
@@ -514,7 +519,6 @@ def test_run_once_sonarr_suppressed_cooldown_snapshot_and_lifecycle(monkeypatch:
     monkeypatch.setattr("app.service_logic.resolve_emby_api_key", lambda _s: "")
     monkeypatch.setattr("app.service_logic.in_window", lambda **_kw: True)
     monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
-    monkeypatch.setattr("app.service_logic._paginate_wanted_for_search", _paginate)
     monkeypatch.setattr("app.service_logic._wanted_queue_total", _wanted_total)
     result = asyncio.run(_run_once())
     assert result.ok is True
@@ -641,9 +645,6 @@ def test_run_once_manual_sonarr_missing_no_results_writes_activity(monkeypatch: 
         async def aclose(self):
             return None
 
-    async def _paginate(*args, **kwargs):
-        return [], [], 0
-
     async def _wanted_total(*args, **kwargs):
         return 0
 
@@ -651,7 +652,6 @@ def test_run_once_manual_sonarr_missing_no_results_writes_activity(monkeypatch: 
     monkeypatch.setattr("app.service_logic.resolve_radarr_api_key", lambda _s: "")
     monkeypatch.setattr("app.service_logic.resolve_emby_api_key", lambda _s: "")
     monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
-    monkeypatch.setattr("app.service_logic._paginate_wanted_for_search", _paginate)
     monkeypatch.setattr("app.service_logic._wanted_queue_total", _wanted_total)
     result = asyncio.run(_run_once("sonarr_missing"))
     assert result.ok is True
@@ -684,11 +684,11 @@ def test_run_once_manual_radarr_missing_no_results_writes_activity(monkeypatch: 
         async def health(self):
             return None
 
+        async def movies(self):
+            return []
+
         async def aclose(self):
             return None
-
-    async def _paginate(*args, **kwargs):
-        return [], [], 0
 
     async def _wanted_total(*args, **kwargs):
         return 0
@@ -697,7 +697,6 @@ def test_run_once_manual_radarr_missing_no_results_writes_activity(monkeypatch: 
     monkeypatch.setattr("app.service_logic.resolve_radarr_api_key", lambda _s: "rk")
     monkeypatch.setattr("app.service_logic.resolve_emby_api_key", lambda _s: "")
     monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
-    monkeypatch.setattr("app.service_logic._paginate_wanted_for_search", _paginate)
     monkeypatch.setattr("app.service_logic._wanted_queue_total", _wanted_total)
     result = asyncio.run(_run_once("radarr_missing"))
     assert result.ok is True
@@ -770,16 +769,27 @@ def test_run_once_tag_warning_is_nonfatal(monkeypatch: pytest.MonkeyPatch) -> No
             return None
 
         async def series(self):
-            return []
+            return [{"id": 10}]
+
+        async def episodes_for_series(self, *, series_id: int):
+            return [
+                {
+                    "id": 101,
+                    "seriesId": 10,
+                    "seriesTitle": "X",
+                    "seasonNumber": 1,
+                    "episodeNumber": 2,
+                    "title": "Ep",
+                    "monitored": True,
+                    "hasFile": False,
+                },
+            ]
 
         async def ensure_tag(self, _label: str):
             raise ValueError("tag fail")
 
         async def aclose(self):
             return None
-
-    async def _paginate(*args, **kwargs):
-        return [101], [{"seriesTitle": "X", "seasonNumber": 1, "episodeNumber": 2, "title": "Ep"}], 1
 
     async def _trigger(*args, **kwargs):
         return None
@@ -792,7 +802,6 @@ def test_run_once_tag_warning_is_nonfatal(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr("app.service_logic.resolve_emby_api_key", lambda _s: "")
     monkeypatch.setattr("app.service_logic.in_window", lambda **_kw: True)
     monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
-    monkeypatch.setattr("app.service_logic._paginate_wanted_for_search", _paginate)
     monkeypatch.setattr("app.service_logic._wanted_queue_total", _wanted_total)
     monkeypatch.setattr("app.service_logic.trigger_sonarr_missing_search", _trigger)
     result = asyncio.run(_run_once())

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import logging
@@ -334,6 +335,172 @@ async def _paginate_wanted_for_search(
         page += 1
 
     return allowed_ids, allowed_recs, total_records
+
+
+async def _sonarr_iter_monitored_missing_episodes(client: ArrClient) -> AsyncIterator[dict[str, Any]]:
+    """Yield Sonarr episode dicts that are monitored and missing files (same eligibility as inclusive missing count).
+
+    Ordering is stable: series by internal id ascending, then API episode order. This universe is broader than
+    ``/api/v3/wanted/missing`` (which omits unreleased / not-yet-available rows), so search selection can
+    progress through the full missing set the dashboard counts.
+    """
+    series_list = await client.series()
+    for series in sorted(
+        (s for s in series_list if isinstance(s, dict)),
+        key=lambda s: _safe_int(s.get("id")) or 0,
+    ):
+        sid = _safe_int(series.get("id"))
+        if not sid:
+            continue
+        episodes = await client.episodes_for_series(series_id=sid)
+        for episode in episodes:
+            if not isinstance(episode, dict):
+                continue
+            if not bool(episode.get("monitored")):
+                continue
+            if bool(episode.get("hasFile")):
+                continue
+            yield episode
+
+
+async def _radarr_iter_monitored_missing_movies(client: ArrClient) -> AsyncIterator[dict[str, Any]]:
+    """Yield Radarr movie dicts that are monitored and missing files (same eligibility as inclusive missing count).
+
+    Ordering: internal movie ``id`` ascending. Broader than ``/api/v3/wanted/missing`` when the queue excludes
+    some monitored missing titles.
+    """
+    movies = await client.movies()
+    for movie in sorted(
+        (m for m in movies if isinstance(m, dict)),
+        key=lambda m: _safe_int(m.get("id")) or 0,
+    ):
+        if not bool(movie.get("monitored")):
+            continue
+        if bool(movie.get("hasFile")):
+            continue
+        yield movie
+
+
+async def _drain_monitored_missing_scan_with_cooldown(
+    session: AsyncSession,
+    *,
+    entries: AsyncIterator[dict[str, Any]],
+    id_keys: tuple[str, ...],
+    app: str,
+    action: str,
+    item_type: str,
+    limit: int,
+    cooldown_minutes: int,
+    now: datetime,
+) -> tuple[list[int], list[dict[str, Any]], int]:
+    """Walk all monitored-missing rows; apply batch cooldown like ``_paginate_wanted_for_search``; return dispatch batch.
+
+    ``total_candidates`` matches the inclusive missing scan cardinality (one per yielded row), regardless of whether
+    an internal id could be resolved for dispatch.
+    """
+    limit = max(1, int(limit))
+    page_size = min(100, max(50, limit))
+    allowed_ids: list[int] = []
+    allowed_recs: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    total_candidates = 0
+    buffer: list[tuple[int, dict[str, Any]]] = []
+
+    async def flush_buffer() -> None:
+        nonlocal buffer
+        if not buffer:
+            return
+        need = limit - len(allowed_ids)
+        if need <= 0:
+            return
+        batch = buffer
+        buffer = []
+        batch_ids = [i for i, _ in batch]
+        newly = await _filter_ids_by_cooldown(
+            session,
+            app=app,
+            action=action,
+            item_type=item_type,
+            ids=batch_ids,
+            cooldown_minutes=cooldown_minutes,
+            now=now,
+            max_apply=need,
+        )
+        new_set = set(newly)
+        for i, r in batch:
+            if i in new_set:
+                allowed_ids.append(i)
+                allowed_recs.append(r)
+                if len(allowed_ids) >= limit:
+                    break
+
+    async for raw in entries:
+        total_candidates += 1
+        eid = _extract_first_int(raw, *id_keys)
+        if eid is None or eid in seen:
+            continue
+        seen.add(eid)
+        if len(allowed_ids) >= limit:
+            continue
+        buffer.append((eid, raw))
+        if len(buffer) >= page_size:
+            await flush_buffer()
+
+    if buffer and len(allowed_ids) < limit:
+        await flush_buffer()
+
+    logger.info(
+        "%s %s (%s): monitored-missing pool=%d after_cooldown_dispatch=%d ids=%s",
+        app,
+        action,
+        item_type,
+        total_candidates,
+        len(allowed_ids),
+        allowed_ids[:40],
+    )
+    return allowed_ids, allowed_recs, total_candidates
+
+
+async def _sonarr_select_monitored_missing_with_cooldown(
+    client: ArrClient,
+    session: AsyncSession,
+    *,
+    limit: int,
+    cooldown_minutes: int,
+    now: datetime,
+) -> tuple[list[int], list[dict[str, Any]], int]:
+    return await _drain_monitored_missing_scan_with_cooldown(
+        session,
+        entries=_sonarr_iter_monitored_missing_episodes(client),
+        id_keys=("id", "episodeId"),
+        app="sonarr",
+        action="missing",
+        item_type="episode",
+        limit=limit,
+        cooldown_minutes=cooldown_minutes,
+        now=now,
+    )
+
+
+async def _radarr_select_monitored_missing_with_cooldown(
+    client: ArrClient,
+    session: AsyncSession,
+    *,
+    limit: int,
+    cooldown_minutes: int,
+    now: datetime,
+) -> tuple[list[int], list[dict[str, Any]], int]:
+    return await _drain_monitored_missing_scan_with_cooldown(
+        session,
+        entries=_radarr_iter_monitored_missing_movies(client),
+        id_keys=("id", "movieId"),
+        app="radarr",
+        action="missing",
+        item_type="movie",
+        limit=limit,
+        cooldown_minutes=cooldown_minutes,
+        now=now,
+    )
 
 
 async def _wanted_queue_total(client: ArrClient, *, kind: str) -> int:
@@ -1081,27 +1248,21 @@ async def _execute_sonarr_block(
         missing_total_including_unreleased = 0
         include_count_ready = False
         cutoff_total = 0
-        try:
-            missing_total_including_unreleased = await _sonarr_missing_total_including_unreleased(sonarr)
-            include_count_ready = True
-        except Exception as e:  # noqa: BLE001
-            actions.append(f"Sonarr: missing (including unreleased) count unavailable ({format_http_error_detail(e)})")
 
         if want_missing:
-            allowed_ids, allowed_records, missing_total = await _paginate_wanted_for_search(
-                sonarr,
-                session,
-                kind="missing",
-                # Prefer Sonarr's internal episode id (``id``) for ``EpisodeSearch`` + cooldown keys.
-                # Some payloads also expose ``episodeId`` (may differ); wrong id would bypass cooldown.
-                id_keys=("id", "episodeId"),
-                item_type="episode",
-                app="sonarr",
-                action="missing",
-                limit=sonarr_limit,
-                cooldown_minutes=ctx.sonarr_cooldown_minutes,
-                now=ctx.now,
-            )
+            try:
+                allowed_ids, allowed_records, missing_total = await _sonarr_select_monitored_missing_with_cooldown(
+                    sonarr,
+                    session,
+                    limit=sonarr_limit,
+                    cooldown_minutes=ctx.sonarr_cooldown_minutes,
+                    now=ctx.now,
+                )
+                missing_total_including_unreleased = missing_total
+                include_count_ready = True
+            except Exception as e:  # noqa: BLE001
+                actions.append(f"Sonarr: missing selection unavailable ({format_http_error_detail(e)})")
+                allowed_ids, allowed_records, missing_total = [], [], 0
             if allowed_ids:
                 # Tagging is best-effort; it should not block the search trigger.
                 try:
@@ -1155,6 +1316,12 @@ async def _execute_sonarr_block(
                             detail="Manual missing search: no missing episodes found.",
                         )
                     )
+        else:
+            try:
+                missing_total_including_unreleased = await _sonarr_missing_total_including_unreleased(sonarr)
+                include_count_ready = True
+            except Exception as e:  # noqa: BLE001
+                actions.append(f"Sonarr: missing (including unreleased) count unavailable ({format_http_error_detail(e)})")
 
         if want_upgrade:
             allowed_ids, allowed_records, cutoff_total = await _paginate_wanted_for_search(
@@ -1300,25 +1467,21 @@ async def _execute_radarr_block(
         missing_total_including_unreleased = 0
         include_count_ready = False
         cutoff_total = 0
-        try:
-            missing_total_including_unreleased = _radarr_missing_total_including_unreleased(await radarr.movies())
-            include_count_ready = True
-        except Exception as e:  # noqa: BLE001
-            actions.append(f"Radarr: missing (including unreleased) count unavailable ({format_http_error_detail(e)})")
 
         if want_missing:
-            allowed_ids, allowed_records, missing_total = await _paginate_wanted_for_search(
-                radarr,
-                session,
-                kind="missing",
-                id_keys=("id", "movieId"),
-                item_type="movie",
-                app="radarr",
-                action="missing",
-                limit=radarr_limit,
-                cooldown_minutes=ctx.radarr_cooldown_minutes,
-                now=ctx.now,
-            )
+            try:
+                allowed_ids, allowed_records, missing_total = await _radarr_select_monitored_missing_with_cooldown(
+                    radarr,
+                    session,
+                    limit=radarr_limit,
+                    cooldown_minutes=ctx.radarr_cooldown_minutes,
+                    now=ctx.now,
+                )
+                missing_total_including_unreleased = missing_total
+                include_count_ready = True
+            except Exception as e:  # noqa: BLE001
+                actions.append(f"Radarr: missing selection unavailable ({format_http_error_detail(e)})")
+                allowed_ids, allowed_records, missing_total = [], [], 0
             if allowed_ids:
                 try:
                     tag_id = await radarr.ensure_tag("fetcher-missing")
@@ -1362,6 +1525,12 @@ async def _execute_radarr_block(
                             detail="Manual missing search: no missing movies found.",
                         )
                     )
+        else:
+            try:
+                missing_total_including_unreleased = _radarr_missing_total_including_unreleased(await radarr.movies())
+                include_count_ready = True
+            except Exception as e:  # noqa: BLE001
+                actions.append(f"Radarr: missing (including unreleased) count unavailable ({format_http_error_detail(e)})")
 
         if want_upgrade:
             allowed_ids, allowed_records, cutoff_total = await _paginate_wanted_for_search(

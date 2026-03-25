@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.4.4] - 2026-03-25
+
+### Fixed
+
+- **Sonarr/Radarr missing search progression:** Scheduled and dashboard **Search now** **missing** actions walk the full **monitored, no-file** library (same universe as inclusive missing counts), batch by existing cooldown, then dispatch **EpisodeSearch** / **MoviesSearch** in stable order. Selection no longer depends only on **`/api/v3/wanted/missing`**, which excludes some monitored-missing titles and caused the same small batch to be searched repeatedly while a larger missing pool existed. **Upgrade/cutoff** behavior is unchanged (**`/wanted/cutoff`** pagination and cooldown).
+
 ## [2.4.3] - 2026-03-25
 
 ### Fixed
