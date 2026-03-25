@@ -2077,6 +2077,12 @@ textarea.input:focus {
   gap: 6px;
   margin-bottom: 20px;
 }
+.setup-step-join {
+  width: 12px;
+  height: 1px;
+  background: var(--border);
+  opacity: 0.6;
+}
 .setup-step {
   display: flex;
   align-items: center;
@@ -2096,6 +2102,26 @@ textarea.input:focus {
 }
 .setup-step-num {
   font-weight: 800;
+}
+.setup-wizard-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.setup-wizard-buttons {
+  margin-top: var(--space-2);
+}
+.setup-wizard-footer {
+  margin-top: var(--space-5);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.setup-done-list {
+  margin: var(--space-3) 0 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: var(--space-2);
 }
 
 .updates-kv {
@@ -2176,6 +2202,17 @@ th {
 .updates-panels {
   display: grid;
   gap: 16px;
+}
+.criteria-grid {
+  align-items: stretch;
+}
+.criteria-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.criteria-panel .btn-row {
+  margin-top: auto;
 }
 @media (min-width: 768px) {
   .criteria-grid {

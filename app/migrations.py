@@ -370,6 +370,49 @@ async def _migrate_023_radarr_remove_failed_imports(engine: AsyncEngine) -> None
         await _add_column(engine, table=table, ddl="radarr_remove_failed_imports BOOLEAN NOT NULL DEFAULT 0")
 
 
+async def _migrate_024_arr_retry_delay_columns(engine: AsyncEngine) -> None:
+    table = "app_settings"
+    has_old = await _has_column(engine, table=table, column="arr_search_cooldown_minutes")
+    if not await _has_column(engine, table=table, column="sonarr_retry_delay_minutes"):
+        await _add_column(engine, table=table, ddl="sonarr_retry_delay_minutes INTEGER NOT NULL DEFAULT 1440")
+    if not await _has_column(engine, table=table, column="radarr_retry_delay_minutes"):
+        await _add_column(engine, table=table, ddl="radarr_retry_delay_minutes INTEGER NOT NULL DEFAULT 1440")
+    async with engine.begin() as conn:
+        if has_old:
+            await conn.execute(
+                text(
+                    f"""
+                    UPDATE {table}
+                    SET sonarr_retry_delay_minutes = CASE
+                          WHEN arr_search_cooldown_minutes < 1 THEN 1
+                          ELSE arr_search_cooldown_minutes
+                        END,
+                        radarr_retry_delay_minutes = CASE
+                          WHEN arr_search_cooldown_minutes < 1 THEN 1
+                          ELSE arr_search_cooldown_minutes
+                        END
+                    WHERE (sonarr_retry_delay_minutes = 1440 OR sonarr_retry_delay_minutes < 1)
+                       OR (radarr_retry_delay_minutes = 1440 OR radarr_retry_delay_minutes < 1)
+                    """
+                )
+            )
+        await conn.execute(
+            text(
+                f"""
+                UPDATE {table}
+                SET sonarr_retry_delay_minutes = CASE WHEN sonarr_retry_delay_minutes < 1 THEN 1 ELSE sonarr_retry_delay_minutes END,
+                    radarr_retry_delay_minutes = CASE WHEN radarr_retry_delay_minutes < 1 THEN 1 ELSE radarr_retry_delay_minutes END
+                """
+            )
+        )
+
+
+async def _migrate_025_sonarr_remove_failed_imports(engine: AsyncEngine) -> None:
+    table = "app_settings"
+    if not await _has_column(engine, table=table, column="sonarr_remove_failed_imports"):
+        await _add_column(engine, table=table, ddl="sonarr_remove_failed_imports BOOLEAN NOT NULL DEFAULT 0")
+
+
 async def migrate(engine: AsyncEngine) -> None:
     await _migrate_001_sonarr_per_app_columns(engine)
     await _migrate_002_radarr_per_app_columns(engine)
@@ -394,3 +437,5 @@ async def migrate(engine: AsyncEngine) -> None:
     await _migrate_021_activity_trimmed_kind(engine)
     await _migrate_022_refresh_token_columns(engine)
     await _migrate_023_radarr_remove_failed_imports(engine)
+    await _migrate_024_arr_retry_delay_columns(engine)
+    await _migrate_025_sonarr_remove_failed_imports(engine)

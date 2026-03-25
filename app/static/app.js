@@ -207,12 +207,14 @@ function runHeroCountUp() {
   document.querySelectorAll(".hs-val[data-target]").forEach((el) => {
     const raw = el.getAttribute("data-target");
     const target = Math.max(0, parseInt(raw, 10) || 0);
+    const startVal = Math.max(0, parseInt(el.textContent || "0", 10) || 0);
+    if (startVal === target) return;
     const start = performance.now();
     const dur = 800;
     const tick = (now) => {
       const t = Math.min(1, (now - start) / dur);
       const eased = 1 - (1 - t) * (1 - t);
-      const v = Math.round(target * eased);
+      const v = Math.round(startVal + (target - startVal) * eased);
       el.textContent = String(v);
       if (t < 1) requestAnimationFrame(tick);
     };
@@ -684,10 +686,16 @@ const FETCHER_SETTINGS_SAVE_REASON_TEXT = {
   db_error: "Save failed — try again.",
   invalid: "Save failed — check this form and try again.",
   invalid_scope: "Save failed — reload the page and try again.",
+  sonarr_retry_delay_min: "Save failed — Sonarr Retry Delay must be at least 1 minute.",
+  radarr_retry_delay_min: "Save failed — Radarr Retry Delay must be at least 1 minute.",
   error: "Save failed — try again.",
 };
 const FETCHER_SETTINGS_SAVE_PENDING_LABEL = "Saving…";
-const FETCHER_SETTINGS_SAVE_SUCCESS_BANNER = "Settings saved.";
+const FETCHER_SETTINGS_SAVE_SUCCESS_BANNER_BY_TAB = {
+  global: "Global settings saved.",
+  sonarr: "Sonarr settings saved.",
+  radarr: "Radarr settings saved.",
+};
 const FETCHER_SETTINGS_TEST_PENDING_LABEL = "Testing…";
 const FETCHER_SETTINGS_TEST_RESULT_TEXT = {
   sonarr_ok: "Sonarr connection succeeded.",
@@ -792,8 +800,21 @@ function syncFetcherSettingsUrlAfterInPlacePost(tabKey) {
   }
 }
 
+function fetcherScopeLabelFromTab(tabKey) {
+  const t = String(tabKey || "").toLowerCase();
+  if (t === "global") return "Global";
+  if (t === "sonarr") return "Sonarr";
+  if (t === "radarr") return "Radarr";
+  return "Settings";
+}
+
 const TRIMMER_SETTINGS_INPLACE_JSON_HEADER = "X-Fetcher-Trimmer-Settings-Async";
-const TRIMMER_SETTINGS_SAVE_SUCCESS_BANNER = "Settings saved.";
+const TRIMMER_SETTINGS_SAVE_SUCCESS_BANNER_BY_SECTION = {
+  connection: "Trimmer settings saved (Connection).",
+  schedule: "Trimmer settings saved (Schedule & limits).",
+  rules: "Trimmer settings saved (Rules).",
+  people: "Trimmer settings saved (People rules).",
+};
 const TRIMMER_EMBY_TEST_RESULT_TEXT = {
   emby_ok: "Emby connection succeeded.",
   emby_fail: "Emby connection failed — check URL, API key, and that the server is reachable.",
@@ -964,13 +985,17 @@ function initTrimmerSettingsAsyncConnection() {
           }
           if (data && typeof data.ok === "boolean") {
             if (data.ok) {
-              setFetcherSettingsInPlaceFeedback(feedback, "ok", TRIMMER_SETTINGS_SAVE_SUCCESS_BANNER);
-              syncTrimmerSettingsUrlAfterInPlacePost(data.section || "connection");
+              const section = String(data.section || "connection");
+              const okMsg =
+                TRIMMER_SETTINGS_SAVE_SUCCESS_BANNER_BY_SECTION[section] ||
+                "Trimmer settings saved.";
+              setFetcherSettingsInPlaceFeedback(feedback, "ok", okMsg);
+              syncTrimmerSettingsUrlAfterInPlacePost(section);
               clearTrimmerSettingsSaveFeedbackTimer(form);
               form._trimmerSaveFeedbackTimer = window.setTimeout(() => {
                 form._trimmerSaveFeedbackTimer = null;
                 if (form._fetcherTrimmerSaveGen !== saveGen) return;
-                if (feedback && feedback.textContent === TRIMMER_SETTINGS_SAVE_SUCCESS_BANNER) {
+                if (feedback && feedback.textContent === okMsg) {
                   setFetcherSettingsInPlaceFeedback(feedback, "ok", "");
                 }
               }, 2600);
@@ -978,7 +1003,11 @@ function initTrimmerSettingsAsyncConnection() {
             }
             syncTrimmerSettingsUrlAfterInPlacePost(data.section || "connection");
             const r = data.reason ? String(data.reason) : "error";
-            const msg = FETCHER_SETTINGS_SAVE_REASON_TEXT[r] || FETCHER_SETTINGS_SAVE_REASON_TEXT.error;
+            const baseMsg = FETCHER_SETTINGS_SAVE_REASON_TEXT[r] || FETCHER_SETTINGS_SAVE_REASON_TEXT.error;
+            const msg =
+              r === "invalid_scope"
+                ? baseMsg
+                : `Trimmer save failed — ${baseMsg.replace(/^Save failed —\s*/i, "")}`;
             setFetcherSettingsInPlaceFeedback(feedback, "err", msg);
             return;
           }
@@ -1083,13 +1112,17 @@ function initTrimmerSettingsAsyncCleaner() {
           }
           if (data && typeof data.ok === "boolean") {
             if (data.ok) {
-              setFetcherSettingsInPlaceFeedback(feedback, "ok", TRIMMER_SETTINGS_SAVE_SUCCESS_BANNER);
-              syncTrimmerSettingsUrlAfterInPlacePost(data.section || "");
+              const section = String(data.section || "connection");
+              const okMsg =
+                TRIMMER_SETTINGS_SAVE_SUCCESS_BANNER_BY_SECTION[section] ||
+                "Trimmer settings saved.";
+              setFetcherSettingsInPlaceFeedback(feedback, "ok", okMsg);
+              syncTrimmerSettingsUrlAfterInPlacePost(section);
               clearTrimmerSettingsSaveFeedbackTimer(form);
               form._trimmerSaveFeedbackTimer = window.setTimeout(() => {
                 form._trimmerSaveFeedbackTimer = null;
                 if (form._fetcherTrimmerSaveGen !== saveGen) return;
-                if (feedback && feedback.textContent === TRIMMER_SETTINGS_SAVE_SUCCESS_BANNER) {
+                if (feedback && feedback.textContent === okMsg) {
                   setFetcherSettingsInPlaceFeedback(feedback, "ok", "");
                 }
               }, 2600);
@@ -1097,7 +1130,11 @@ function initTrimmerSettingsAsyncCleaner() {
             }
             syncTrimmerSettingsUrlAfterInPlacePost(data.section || "");
             const r = data.reason ? String(data.reason) : "error";
-            const msg = FETCHER_SETTINGS_SAVE_REASON_TEXT[r] || FETCHER_SETTINGS_SAVE_REASON_TEXT.error;
+            const baseMsg = FETCHER_SETTINGS_SAVE_REASON_TEXT[r] || FETCHER_SETTINGS_SAVE_REASON_TEXT.error;
+            const msg =
+              r === "invalid_scope"
+                ? baseMsg
+                : `Trimmer save failed — ${baseMsg.replace(/^Save failed —\s*/i, "")}`;
             setFetcherSettingsInPlaceFeedback(feedback, "err", msg);
             return;
           }
@@ -1277,13 +1314,15 @@ function initFetcherSettingsAsyncSave() {
           }
           if (data && typeof data.ok === "boolean") {
             if (data.ok) {
-              setFetcherSettingsInPlaceFeedback(feedback, "ok", FETCHER_SETTINGS_SAVE_SUCCESS_BANNER);
-              syncFetcherSettingsUrlAfterInPlacePost(data.tab || "");
+              const tab = String(data.tab || "");
+              const okMsg = FETCHER_SETTINGS_SAVE_SUCCESS_BANNER_BY_TAB[tab] || "Settings saved.";
+              setFetcherSettingsInPlaceFeedback(feedback, "ok", okMsg);
+              syncFetcherSettingsUrlAfterInPlacePost(tab);
               clearSettingsSaveFeedbackTimer(form);
               form._fetcherSaveFeedbackTimer = window.setTimeout(() => {
                 form._fetcherSaveFeedbackTimer = null;
                 if (form._fetcherSaveGen !== saveGen) return;
-                if (feedback && feedback.textContent === FETCHER_SETTINGS_SAVE_SUCCESS_BANNER) {
+                if (feedback && feedback.textContent === okMsg) {
                   setFetcherSettingsInPlaceFeedback(feedback, "ok", "");
                 }
               }, 2600);
@@ -1291,7 +1330,10 @@ function initFetcherSettingsAsyncSave() {
             }
             if (data.tab) syncFetcherSettingsUrlAfterInPlacePost(data.tab);
             const r = data.reason ? String(data.reason) : "error";
-            const msg = FETCHER_SETTINGS_SAVE_REASON_TEXT[r] || FETCHER_SETTINGS_SAVE_REASON_TEXT.error;
+            const baseMsg = FETCHER_SETTINGS_SAVE_REASON_TEXT[r] || FETCHER_SETTINGS_SAVE_REASON_TEXT.error;
+            const scopeLabel = fetcherScopeLabelFromTab(data.tab);
+            const msg =
+              r === "invalid_scope" ? baseMsg : `${scopeLabel} save failed — ${baseMsg.replace(/^Save failed —\s*/i, "")}`;
             setFetcherSettingsInPlaceFeedback(feedback, "err", msg);
             return;
           }
@@ -1404,7 +1446,9 @@ function initFetcherSettingsAsyncTest() {
 
 function initSettingsTabs() {
   const tabButtons = document.querySelectorAll(".settings-tab-btn[data-settings-tab]");
-  const panels = document.querySelectorAll(".settings-tab-target[data-settings-panel]");
+  const panels = document.querySelectorAll(
+    ".settings-tab-target[data-settings-panel], .settings-panel-slice[data-settings-panel]",
+  );
   if (!tabButtons.length || !panels.length) return;
 
   const validKeys = new Set(
@@ -1466,7 +1510,7 @@ function initSettingsTabs() {
       const pk = panel.getAttribute("data-settings-panel");
       const on = pk === key;
       panel.classList.toggle("is-active", on);
-      panel.removeAttribute("hidden");
+      panel.hidden = !on;
     });
 
     if (updateHash) {
@@ -1516,13 +1560,25 @@ window.addEventListener("DOMContentLoaded", () => {
     window.setTimeout(() => loginCard.classList.add("anim-in"), 50);
   }
 
-  window.setTimeout(runHeroCountUp, 200);
+  runHeroCountUp();
 
   startHeroMetricsPolling();
   startDashboardStatusPolling();
   startLiveTilePolling();
 
-  if (qs("saved") === "1") showToast("Settings saved.");
+  if (qs("saved") === "1") {
+    if (window.location.pathname === "/trimmer/settings") {
+      showToast("Trimmer settings saved.");
+    } else {
+      const tab = (qs("tab") || "").toLowerCase();
+      const byTab = {
+        global: "Global settings saved.",
+        sonarr: "Sonarr settings saved.",
+        radarr: "Radarr settings saved.",
+      };
+      showToast(byTab[tab] || "Settings saved.");
+    }
+  }
   if (qs("ran") === "1") showToast("Run triggered");
   if (qs("test") === "sonarr_ok") showToast("Sonarr connection succeeded");
   if (qs("test") === "sonarr_fail") showToast("Sonarr connection failed");

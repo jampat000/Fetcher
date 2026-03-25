@@ -79,16 +79,33 @@ def test_dashboard_renders_main_sections(monkeypatch: pytest.MonkeyPatch) -> Non
     assert r.status_code == 200
     assert b"dashboard-overview" in r.content
     assert b"Dashboard" in r.content
+    assert b'data-target="' in r.content
 
 
 def test_settings_page_has_forms(monkeypatch: pytest.MonkeyPatch) -> None:
     with _client(monkeypatch) as client:
         r = client.get("/settings")
+    html = r.text
     assert r.status_code == 200
     assert b"sonarr_url" in r.content
     assert b"radarr_url" in r.content
     assert b"section-trimmer" not in r.content
     assert b"Trimmer settings" in r.content
+    assert b"name=\"sonarr_remove_failed_imports\"" in r.content
+    assert b"name=\"radarr_remove_failed_imports\"" in r.content
+    assert (
+        html.count("When enabled, each run removes download queue items that match an explicit") == 2
+    )
+    assert "each Sonarr run removes" not in html
+    assert "each Radarr run removes" not in html
+
+    expected_interval_helper = (
+        "How often runs are due; the schedule window only limits when runs may start. "
+        "Applies to missing and upgrade searches. Save settings saves only this tab."
+    )
+    assert html.count(expected_interval_helper) == 2
+    assert "How often Sonarr runs are due" not in html
+    assert "How often Radarr runs are due" not in html
 
 
 def test_settings_page_hidden_save_scope_per_section_form(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -105,6 +122,30 @@ def test_settings_page_hidden_save_scope_per_section_form(monkeypatch: pytest.Mo
     assert 'data-fetcher-async-test="1"' in html
 
 
+def test_settings_backup_restore_upgrade_are_global_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        r = client.get("/settings")
+    html = r.text
+    assert 'class="settings-panel-slice" data-settings-panel="global"' in html
+    assert "Backup &amp; restore" in html
+    assert "Software updates" in html
+
+
+@pytest.mark.parametrize(
+    "url,needle",
+    [
+        ("/settings?saved=1&tab=global", "Global settings saved."),
+        ("/settings?saved=1&tab=sonarr", "Sonarr settings saved."),
+        ("/settings?saved=1&tab=radarr", "Radarr settings saved."),
+    ],
+)
+def test_settings_saved_message_is_scope_aware(monkeypatch: pytest.MonkeyPatch, url: str, needle: str) -> None:
+    with _client(monkeypatch) as client:
+        r = client.get(url)
+    assert r.status_code == 200
+    assert needle in r.text
+
+
 def test_trimmer_settings_has_content_criteria(monkeypatch: pytest.MonkeyPatch) -> None:
     with _client(monkeypatch) as client:
         r = client.get("/trimmer/settings")
@@ -118,6 +159,15 @@ def test_trimmer_settings_has_content_criteria(monkeypatch: pytest.MonkeyPatch) 
     assert "People rules" in html
     assert "emby_rule_movie_people" in html
     assert "emby_rule_tv_people" in html
+
+
+def test_trimmer_page_uses_overview_wording(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        r = client.get("/trimmer")
+    assert r.status_code == 200
+    assert "Trimmer overview" in r.text
+    assert "Trimmer review" not in r.text
+    assert "Overview" in r.text
 
 
 @pytest.mark.parametrize(
@@ -256,7 +306,8 @@ def test_post_settings_validation_error_redirects_not_422(monkeypatch: pytest.Mo
         "radarr_schedule_end": "23:59",
         "sonarr_interval_minutes": "60",
         "radarr_interval_minutes": "60",
-        "arr_search_cooldown_minutes": "1440",
+        "sonarr_retry_delay_minutes": "1440",
+        "radarr_retry_delay_minutes": "1440",
         "log_retention_days": "90",
         "timezone": "UTC",
         "save_scope": "sonarr",
@@ -283,7 +334,8 @@ def test_post_settings_validation_error_redirects_not_422(monkeypatch: pytest.Mo
 def test_post_settings_save_redirects(monkeypatch: pytest.MonkeyPatch) -> None:
     """Minimal global Fetcher settings form post (strict save_scope)."""
     payload = {
-        "arr_search_cooldown_minutes": "1440",
+        "sonarr_retry_delay_minutes": "1440",
+        "radarr_retry_delay_minutes": "1440",
         "log_retention_days": "90",
         "timezone": "UTC",
         "save_scope": "global",
@@ -818,7 +870,8 @@ def test_global_fetcher_save_does_not_mutate_trimmer_emby_interval(monkeypatch: 
 
     asyncio.run(seed())
     payload = {
-        "arr_search_cooldown_minutes": "720",
+        "sonarr_retry_delay_minutes": "720",
+        "radarr_retry_delay_minutes": "720",
         "log_retention_days": "120",
         "timezone": "Europe/Berlin",
         "save_scope": "global",
@@ -931,11 +984,20 @@ def test_post_trimmer_settings_full(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_post_settings_async_header_returns_json(monkeypatch: pytest.MonkeyPatch) -> None:
     """XHR/fetch path: JSON body instead of 303 (same scoping as normal POST)."""
+    async def seed() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.sonarr_retry_delay_minutes = 17
+            row.radarr_retry_delay_minutes = 23
+            await session.commit()
+
+    asyncio.run(seed())
     with _client(monkeypatch) as client:
         resp = client.post(
             "/settings",
             data={
-                "arr_search_cooldown_minutes": "2000",
+                "sonarr_retry_delay_minutes": "2000",
+                "radarr_retry_delay_minutes": "2000",
                 "log_retention_days": "90",
                 "timezone": "UTC",
                 "save_scope": "global",
@@ -946,12 +1008,13 @@ def test_post_settings_async_header_returns_json(monkeypatch: pytest.MonkeyPatch
     assert "application/json" in (resp.headers.get("content-type") or "")
     assert resp.json() == {"ok": True, "tab": "global"}
 
-    async def verify_cooldown() -> None:
+    async def verify_retry_delay_unchanged() -> None:
         async with SessionLocal() as session:
             row = await _get_or_create_settings(session)
-            assert row.arr_search_cooldown_minutes == 2000
+            assert row.sonarr_retry_delay_minutes == 17
+            assert row.radarr_retry_delay_minutes == 23
 
-    asyncio.run(verify_cooldown())
+    asyncio.run(verify_retry_delay_unchanged())
 
 
 def test_post_settings_rejects_missing_save_scope(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -959,7 +1022,8 @@ def test_post_settings_rejects_missing_save_scope(monkeypatch: pytest.MonkeyPatc
         resp = client.post(
             "/settings",
             data={
-                "arr_search_cooldown_minutes": "100",
+                "sonarr_retry_delay_minutes": "100",
+                "radarr_retry_delay_minutes": "100",
                 "log_retention_days": "90",
                 "timezone": "UTC",
             },
@@ -977,7 +1041,8 @@ def test_post_settings_rejects_legacy_save_scope_all(monkeypatch: pytest.MonkeyP
         resp = client.post(
             "/settings",
             data={
-                "arr_search_cooldown_minutes": "100",
+                "sonarr_retry_delay_minutes": "100",
+                "radarr_retry_delay_minutes": "100",
                 "log_retention_days": "90",
                 "timezone": "UTC",
                 "save_scope": "all",
@@ -1005,7 +1070,8 @@ def test_post_settings_invalid_scope_does_not_change_database(monkeypatch: pytes
     async def seed() -> None:
         async with SessionLocal() as session:
             row = await _get_or_create_settings(session)
-            row.arr_search_cooldown_minutes = 7777
+            row.sonarr_retry_delay_minutes = 7777
+            row.radarr_retry_delay_minutes = 7777
             await session.commit()
 
     asyncio.run(seed())
@@ -1014,7 +1080,8 @@ def test_post_settings_invalid_scope_does_not_change_database(monkeypatch: pytes
             "/settings",
             data={
                 "save_scope": "all",
-                "arr_search_cooldown_minutes": "1111",
+                "sonarr_retry_delay_minutes": "1111",
+                "radarr_retry_delay_minutes": "1111",
                 "log_retention_days": "90",
                 "timezone": "UTC",
             },
@@ -1025,7 +1092,8 @@ def test_post_settings_invalid_scope_does_not_change_database(monkeypatch: pytes
     async def verify() -> None:
         async with SessionLocal() as session:
             row = await _get_or_create_settings(session)
-            assert row.arr_search_cooldown_minutes == 7777
+            assert row.sonarr_retry_delay_minutes == 7777
+            assert row.radarr_retry_delay_minutes == 7777
 
     asyncio.run(verify())
 
@@ -1080,7 +1148,7 @@ def test_test_sonarr_post_does_not_mutate_app_settings_url(monkeypatch: pytest.M
         asyncio.run(reset_url())
 
 
-def test_global_save_updates_only_cooldown_retention_timezone(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_global_save_updates_only_retention_timezone(monkeypatch: pytest.MonkeyPatch) -> None:
     """Save global settings must not apply Sonarr/Radarr fields from the posted form."""
 
     async def seed() -> None:
@@ -1089,7 +1157,8 @@ def test_global_save_updates_only_cooldown_retention_timezone(monkeypatch: pytes
             row.sonarr_interval_minutes = 33
             row.radarr_interval_minutes = 44
             row.sonarr_max_items_per_run = 50
-            row.arr_search_cooldown_minutes = 1440
+            row.sonarr_retry_delay_minutes = 1440
+            row.radarr_retry_delay_minutes = 1440
             row.log_retention_days = 90
             row.timezone = "UTC"
             await session.commit()
@@ -1117,7 +1186,8 @@ def test_global_save_updates_only_cooldown_retention_timezone(monkeypatch: pytes
         "radarr_schedule_start": "00:00",
         "radarr_schedule_end": "23:59",
         "radarr_interval_minutes": "88",
-        "arr_search_cooldown_minutes": "720",
+        "sonarr_retry_delay_minutes": "720",
+        "radarr_retry_delay_minutes": "720",
         "log_retention_days": "120",
         "timezone": "Europe/Berlin",
         "save_scope": "global",
@@ -1141,7 +1211,8 @@ def test_global_save_updates_only_cooldown_retention_timezone(monkeypatch: pytes
             assert row.sonarr_interval_minutes == 33
             assert row.radarr_interval_minutes == 44
             assert row.sonarr_max_items_per_run == 50
-            assert row.arr_search_cooldown_minutes == 720
+            assert row.sonarr_retry_delay_minutes == 1440
+            assert row.radarr_retry_delay_minutes == 1440
             assert row.log_retention_days == 120
             assert row.timezone == "Europe/Berlin"
             assert (row.sonarr_url or "").strip() == ""
@@ -1184,7 +1255,8 @@ def test_sonarr_save_preserves_radarr_interval_when_post_includes_wrong_radarr_i
         "radarr_schedule_start": "00:00",
         "radarr_schedule_end": "23:59",
         "radarr_interval_minutes": "999",
-        "arr_search_cooldown_minutes": "1440",
+        "sonarr_retry_delay_minutes": "1440",
+        "radarr_retry_delay_minutes": "1440",
         "log_retention_days": "90",
         "timezone": "UTC",
         "save_scope": "sonarr",
@@ -1215,6 +1287,42 @@ def test_sonarr_save_preserves_radarr_interval_when_post_includes_wrong_radarr_i
     asyncio.run(verify_db())
 
 
+def test_sonarr_remove_failed_imports_saves_without_touching_radarr(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def seed() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.sonarr_remove_failed_imports = False
+            row.radarr_remove_failed_imports = True
+            await session.commit()
+
+    asyncio.run(seed())
+    payload = {
+        "save_scope": "sonarr",
+        "sonarr_enabled": "false",
+        "sonarr_url": "",
+        "sonarr_api_key": "",
+        "sonarr_search_missing": "true",
+        "sonarr_search_upgrades": "true",
+        "sonarr_remove_failed_imports": "true",
+        "sonarr_max_items_per_run": "50",
+        "sonarr_interval_minutes": "60",
+        "sonarr_retry_delay_minutes": "15",
+        "sonarr_schedule_start": "00:00",
+        "sonarr_schedule_end": "23:59",
+    }
+    with _client(monkeypatch) as client:
+        resp = client.post("/settings", data=payload, follow_redirects=False)
+    assert resp.status_code == 303
+
+    async def verify() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            assert row.sonarr_remove_failed_imports is True
+            assert row.radarr_remove_failed_imports is True
+
+    asyncio.run(verify())
+
+
 def test_sonarr_schedule_all_days_stays_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     payload = {
         "sonarr_enabled": "true",
@@ -1237,7 +1345,8 @@ def test_sonarr_schedule_all_days_stays_enabled(monkeypatch: pytest.MonkeyPatch)
         "sonarr_interval_minutes": "60",
         "radarr_interval_minutes": "60",
         "radarr_schedule_enabled": "false",
-        "arr_search_cooldown_minutes": "1440",
+        "sonarr_retry_delay_minutes": "1440",
+        "radarr_retry_delay_minutes": "1440",
         "log_retention_days": "90",
         "timezone": "UTC",
         "save_scope": "sonarr",

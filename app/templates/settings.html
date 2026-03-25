@@ -4,7 +4,7 @@
 {% macro settings_fetcher_save_fail_banner() -%}
 {% if request.query_params.get('save') == 'fail' and request.query_params.get('reason') != 'invalid_ip' %}
 {% set _sr = (request.query_params.get('reason') or '') %}
-<div class="banner banner-warn settings-fetcher-save-fail" role="alert">{% if _sr == 'db_busy' %}Save failed — the database was busy. Try again.{% elif _sr == 'invalid' %}Save failed — check this form and try again.{% elif _sr == 'invalid_scope' %}Save failed — reload the page and try again.{% else %}Save failed — try again.{% endif %}</div>
+<div class="banner banner-warn settings-fetcher-save-fail" role="alert">{% if _sr == 'db_busy' %}Save failed — the database was busy. Try again.{% elif _sr == 'invalid' %}Save failed — check this form and try again.{% elif _sr == 'invalid_scope' %}Save failed — reload the page and try again.{% elif _sr == 'sonarr_retry_delay_min' %}Save failed — Sonarr Retry Delay must be at least 1 minute.{% elif _sr == 'radarr_retry_delay_min' %}Save failed — Radarr Retry Delay must be at least 1 minute.{% else %}Save failed — try again.{% endif %}</div>
 {% endif %}
 {%- endmacro %}
 {% macro arr_connection_hints() %}
@@ -46,7 +46,7 @@
       <div class="settings-async-feedback" hidden role="status" aria-live="polite"></div>
       <div class="gc-title">Global</div>
       {% if request.query_params.get('saved') == '1' %}
-      <div class="banner banner-ok" role="status">Settings saved.</div>
+      <div class="banner banner-ok" role="status">Global settings saved.</div>
       {% endif %}
       {{ settings_fetcher_save_fail_banner() }}
       {% if im == 'ok' %}
@@ -60,11 +60,6 @@
       {% endif %}
       <p class="small muted lead-muted"><strong>Emby Trimmer</strong> is configured separately: use <strong>Trimmer</strong> in the sidebar → <a href="/trimmer/settings">Trimmer settings</a>. <strong>Sonarr</strong>, <strong>Radarr</strong>, and <strong>Emby Trimmer</strong> each use their own run interval and scheduled job — they are not tied to a shared “minimum wake” cadence.</p>
       <div class="settings-global-stack">
-        <div class="field settings-global-field">
-          <label>Arr search cooldown (minutes)</label>
-          <input class="number settings-global-number" type="number" name="arr_search_cooldown_minutes" value="{{ settings.arr_search_cooldown_minutes }}" min="0" max="525600" />
-          <div class="small settings-global-hint">Minimum time before Fetcher asks Sonarr/Radarr to <strong>search the same episode or movie</strong> again. Use <strong>0</strong> to tie cooldown to each app’s <strong>run interval</strong> (Sonarr vs Radarr can differ). Default <strong>1440</strong> (24h) avoids hammering the same missing titles every tick. Missing + upgrade in one run share this cooldown. Fetcher <strong>pages through the whole wanted queue</strong> each run (like Huntarr-style batching) until it fills “max items per run” with titles that are off cooldown — not only the first API page.</div>
-        </div>
         <div class="field settings-global-field">
           <label for="log_retention_days">Log retention (days)</label>
           <input class="number settings-global-number" id="log_retention_days" type="number" name="log_retention_days" value="{{ settings.log_retention_days|default(90, true) }}" min="7" max="3650" />
@@ -85,7 +80,7 @@
         <button class="btn" type="submit">Save global settings</button>
         <a class="btn secondary" href="/">Back to dashboard</a>
       </div>
-      <p class="small muted">Saves <strong>only</strong> this tab: cooldown, log retention, and timezone. Sonarr and Radarr each have their own save button.</p>
+      <p class="small muted">Saves <strong>only</strong> this tab: log retention and timezone. Sonarr and Radarr each have their own save button.</p>
     </form>
     </div>
     </div>
@@ -98,6 +93,9 @@
       <div class="settings-async-feedback" hidden role="status" aria-live="polite"></div>
       <div class="gc-title">Sonarr</div>
       {{ settings_fetcher_save_fail_banner() }}
+      {% if request.query_params.get('saved') == '1' %}
+      <div class="banner banner-ok" role="status">Sonarr settings saved.</div>
+      {% endif %}
       {% if tst == 'sonarr_ok' %}
       <div class="banner banner-ok" role="status">Sonarr connection succeeded.</div>
       {% elif tst == 'sonarr_fail' %}
@@ -121,8 +119,14 @@
         <div class="section">
           {% call toggle_checkbox("sonarr_search_missing", settings.sonarr_search_missing) %}Missing searches{% endcall %}
           {% call toggle_checkbox("sonarr_search_upgrades", settings.sonarr_search_upgrades) %}Cutoff-unmet searches (upgrades){% endcall %}
+          {% call toggle_checkbox("sonarr_remove_failed_imports", settings.sonarr_remove_failed_imports | default(false)) %}Remove failed imports from queue{% endcall %}
+          <div class="small settings-global-hint">When enabled, each run removes download queue items that match an explicit <strong>import failed</strong> history event by exact <strong>download ID</strong> only (no title matching). Skips when there is no queue match or more than one match. Logs removals to <strong>Activity</strong>.</div>
           <label>Max items per run</label>
           <input class="number" type="number" name="sonarr_max_items_per_run" value="{{ settings.sonarr_max_items_per_run }}" min="1" max="1000" />
+          <label>Retry Delay (minutes)</label>
+          <input class="number" type="number" name="sonarr_retry_delay_minutes" value="{{ settings.sonarr_retry_delay_minutes }}" min="1" max="525600" />
+          <div class="small settings-global-hint">Minimum time before the same item can be searched again.</div>
+          <div class="small settings-global-hint">Lower values may cause repeated searches for the same items.</div>
         </div>
 
         <div class="section">
@@ -138,7 +142,7 @@
             <div class="field">
               <label>Run interval (minutes)</label>
               <input class="number" type="number" name="sonarr_interval_minutes" value="{{ settings.sonarr_interval_minutes }}" min="1" max="10080" placeholder="60" />
-              <div class="small">How often Sonarr runs are due; the schedule window only limits when runs may start. Applies to <strong>TV</strong> (missing and upgrade searches). <strong>Save Sonarr settings</strong> saves only this tab.</div>
+              <div class="small">How often runs are due; the schedule window only limits when runs may start. Applies to missing and upgrade searches. Save settings saves only this tab.</div>
             </div>
           </div>
         </div>
@@ -161,6 +165,9 @@
       <div class="settings-async-feedback" hidden role="status" aria-live="polite"></div>
       <div class="gc-title">Radarr</div>
       {{ settings_fetcher_save_fail_banner() }}
+      {% if request.query_params.get('saved') == '1' %}
+      <div class="banner banner-ok" role="status">Radarr settings saved.</div>
+      {% endif %}
       {% if tst == 'radarr_ok' %}
       <div class="banner banner-ok" role="status">Radarr connection succeeded.</div>
       {% elif tst == 'radarr_fail' %}
@@ -185,9 +192,13 @@
           {% call toggle_checkbox("radarr_search_missing", settings.radarr_search_missing) %}Missing searches{% endcall %}
           {% call toggle_checkbox("radarr_search_upgrades", settings.radarr_search_upgrades) %}Cutoff-unmet searches (upgrades){% endcall %}
           {% call toggle_checkbox("radarr_remove_failed_imports", settings.radarr_remove_failed_imports | default(false)) %}Remove failed imports from queue{% endcall %}
-          <div class="small settings-global-hint">When enabled, each Radarr run removes download queue items that match an explicit <strong>import failed</strong> history event by exact <strong>download ID</strong> only (no title matching). Skips when there is no queue match or more than one match. Logs removals to <strong>Activity</strong>.</div>
+          <div class="small settings-global-hint">When enabled, each run removes download queue items that match an explicit <strong>import failed</strong> history event by exact <strong>download ID</strong> only (no title matching). Skips when there is no queue match or more than one match. Logs removals to <strong>Activity</strong>.</div>
           <label>Max items per run</label>
           <input class="number" type="number" name="radarr_max_items_per_run" value="{{ settings.radarr_max_items_per_run }}" min="1" max="1000" />
+          <label>Retry Delay (minutes)</label>
+          <input class="number" type="number" name="radarr_retry_delay_minutes" value="{{ settings.radarr_retry_delay_minutes }}" min="1" max="525600" />
+          <div class="small settings-global-hint">Minimum time before the same item can be searched again.</div>
+          <div class="small settings-global-hint">Lower values may cause repeated searches for the same items.</div>
         </div>
 
         <div class="section">
@@ -203,7 +214,7 @@
             <div class="field">
               <label>Run interval (minutes)</label>
               <input class="number" type="number" name="radarr_interval_minutes" value="{{ settings.radarr_interval_minutes }}" min="1" max="10080" placeholder="60" />
-              <div class="small">How often Radarr runs are due; the schedule window only limits when runs may start. Applies to <strong>movies</strong> (missing and upgrade searches). <strong>Save Radarr settings</strong> saves only this tab and reschedules Radarr — Sonarr is unchanged.</div>
+              <div class="small">How often runs are due; the schedule window only limits when runs may start. Applies to missing and upgrade searches. Save settings saves only this tab.</div>
             </div>
           </div>
         </div>
@@ -314,6 +325,7 @@
   </form>
 
   <div class="settings-panel-slice" data-settings-panel="global">
+  <div class="gc-title">Global operations</div>
   <div class="card backup-restore-card gc">
     <div class="gc-title">Backup &amp; restore</div>
     <p class="hint backup-restore-lead">Saves <strong>everything in Settings</strong> to one file: <strong>Fetcher</strong> (Sonarr, Radarr, schedules) and <strong>Trimmer</strong> (Emby connection, rules, schedules). <strong>Activity</strong> history is <em>not</em> included. Treat the file as secret—it contains your API keys.</p>
