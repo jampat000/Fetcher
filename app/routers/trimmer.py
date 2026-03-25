@@ -127,7 +127,7 @@ async def trimmer_page(request: Request, session: AsyncSession = Depends(get_ses
             "app_name": APP_NAME,
             "app_tagline": APP_TAGLINE,
             "title": f"{APP_NAME} — Trimmer",
-            "subtitle": "Review exact titles matching Emby Trimmer rules",
+            "subtitle": "Overview of exact titles matching Emby Trimmer rules",
             "settings": settings,
             "rows": review.rows,
             "error": review.error,

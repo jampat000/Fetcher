@@ -30,6 +30,8 @@ class AppSettings(Base):
     # Minutes between Sonarr runs when schedule allows (minimum 1; invalid/low values coerced to 60 on startup/save).
     sonarr_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     sonarr_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Sonarr-only: when enabled, remove queue rows that match import-failed history by exact downloadId.
+    sonarr_remove_failed_imports: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Radarr
     radarr_url: Mapped[str] = mapped_column(String(512), default="")
@@ -51,9 +53,10 @@ class AppSettings(Base):
     # How often Emby Trimmer may run (Trimmer Settings only; independent of Sonarr/Radarr).
     emby_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     emby_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    # Min minutes before Fetcher will ask Sonarr/Radarr to search the same episode/movie again.
-    # 0 = tie cooldown to each app’s run interval (Sonarr vs Radarr may differ). Default 1440 = 24h.
-    arr_search_cooldown_minutes: Mapped[int] = mapped_column(Integer, default=1440)
+    # Min minutes before Fetcher retries searching the same Sonarr episode.
+    sonarr_retry_delay_minutes: Mapped[int] = mapped_column(Integer, default=1440)
+    # Min minutes before Fetcher retries searching the same Radarr movie.
+    radarr_retry_delay_minutes: Mapped[int] = mapped_column(Integer, default=1440)
     # Activity, job_run_log, app_snapshot pruning window (days); clamped 7–3650 when pruning.
     log_retention_days: Mapped[int] = mapped_column(Integer, default=90)
     timezone: Mapped[str] = mapped_column(String(64), default="UTC")  # IANA e.g. America/New_York

@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.4.5] - 2026-03-25
+
+### Fixed
+
+- **Sonarr/Radarr missing progression stability:** Kept monitored-missing search progression aligned to the full monitored missing universe with cooldown/retry exclusion so successive runs continue advancing instead of looping a small subset.
+- **Dashboard first-load responsiveness:** Removed delayed zero-first paint for hero stats by rendering current values server-side immediately, then continuing live refresh updates.
+- **Settings scope clarity:** Backup, Restore, and Upgrade controls are now clearly Global-only in structure/presentation with no ambiguous app-section crossover.
+
+### Changed
+
+- **Retry policy model:** Replaced shared Arr cooldown semantics with explicit per-app **Retry Delay (minutes)** settings for Sonarr and Radarr; removed shared fallback behavior.
+- **Arr parity:** Added Sonarr support for **Remove failed imports from queue** with matching settings/persistence style alongside Radarr.
+- **Trimmer wording:** Renamed user-facing **Trimmer Review** wording to **Trimmer Overview**.
+- **Settings UX polish:** Added context-aware save/scope feedback so Global, Sonarr, Radarr, and Trimmer saves/errors reflect the section being changed.
+- **Layout consistency:** Applied targeted TV/Movies and setup-page spacing/alignment polish for more consistent control rhythm without redesign.
+
 ## [2.4.4] - 2026-03-25
 
 ### Fixed

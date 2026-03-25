@@ -111,7 +111,7 @@ async def trigger_manual_arr_search_now(scope: str, session: AsyncSession) -> No
                     client,
                     session,
                     limit=sonarr_limit,
-                    cooldown_minutes=ctx.sonarr_cooldown_minutes,
+                    cooldown_minutes=ctx.sonarr_retry_delay_minutes,
                     now=ctx.now,
                 )
             else:
@@ -124,7 +124,7 @@ async def trigger_manual_arr_search_now(scope: str, session: AsyncSession) -> No
                     app="sonarr",
                     action="upgrade",
                     limit=sonarr_limit,
-                    cooldown_minutes=ctx.sonarr_cooldown_minutes,
+                    cooldown_minutes=ctx.sonarr_retry_delay_minutes,
                     now=ctx.now,
                 )
             if ids:
@@ -161,7 +161,7 @@ async def trigger_manual_arr_search_now(scope: str, session: AsyncSession) -> No
                 client,
                 session,
                 limit=radarr_limit,
-                cooldown_minutes=ctx.radarr_cooldown_minutes,
+                cooldown_minutes=ctx.radarr_retry_delay_minutes,
                 now=ctx.now,
             )
         else:
@@ -174,7 +174,7 @@ async def trigger_manual_arr_search_now(scope: str, session: AsyncSession) -> No
                 app="radarr",
                 action="upgrade",
                 limit=radarr_limit,
-                cooldown_minutes=ctx.radarr_cooldown_minutes,
+                cooldown_minutes=ctx.radarr_retry_delay_minutes,
                 now=ctx.now,
             )
         if ids_r:

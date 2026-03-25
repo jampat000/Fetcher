@@ -226,6 +226,12 @@ def test_scheduled_scoped_run_sonarr_only(monkeypatch: pytest.MonkeyPatch) -> No
         async def series(self):
             return []
 
+        async def queue_page(self, **_kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def history_page(self, **_kwargs):
+            return {"records": [], "totalRecords": 0}
+
         async def aclose(self):
             return None
 
@@ -316,6 +322,12 @@ async def _run_scheduled_window_disabled_case(scope: str) -> None:
 
         async def series(self):
             return []
+
+        async def queue_page(self, **_kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def history_page(self, **_kwargs):
+            return {"records": [], "totalRecords": 0}
 
         async def aclose(self):
             return None
@@ -522,7 +534,7 @@ def test_run_once_sonarr_suppressed_cooldown_snapshot_and_lifecycle(monkeypatch:
     monkeypatch.setattr("app.service_logic._wanted_queue_total", _wanted_total)
     result = asyncio.run(_run_once())
     assert result.ok is True
-    assert result.message == "Sonarr: missing search suppressed (cooldown)"
+    assert result.message == "Sonarr: missing search suppressed (retry delay)"
     assert seen["health"] == 1
     assert seen["aclose"] == 1
     snap = asyncio.run(_latest_snapshot())
@@ -641,6 +653,12 @@ def test_run_once_manual_sonarr_missing_no_results_writes_activity(monkeypatch: 
 
         async def series(self):
             return []
+
+        async def queue_page(self, **_kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def history_page(self, **_kwargs):
+            return {"records": [], "totalRecords": 0}
 
         async def aclose(self):
             return None

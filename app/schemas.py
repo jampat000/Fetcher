@@ -11,6 +11,7 @@ class SettingsIn(BaseModel):
     sonarr_api_key: str = ""
     sonarr_search_missing: bool = True
     sonarr_search_upgrades: bool = True
+    sonarr_remove_failed_imports: bool = False
     sonarr_max_items_per_run: int = Field(default=50, ge=1, le=1000)
     sonarr_interval_minutes: int = Field(default=60, ge=1, le=7 * 24 * 60)
 
@@ -29,11 +30,17 @@ class SettingsIn(BaseModel):
         le=7 * 24 * 60,
         description="Emby Trimmer run cadence only (Trimmer settings).",
     )
-    arr_search_cooldown_minutes: int = Field(
+    sonarr_retry_delay_minutes: int = Field(
         default=1440,
-        ge=0,
+        ge=1,
         le=365 * 24 * 60,
-        description="0 = same as run interval; else min minutes before re-searching the same Sonarr/Radarr item.",
+        description="Min minutes before retrying the same Sonarr item search.",
+    )
+    radarr_retry_delay_minutes: int = Field(
+        default=1440,
+        ge=1,
+        le=365 * 24 * 60,
+        description="Min minutes before retrying the same Radarr item search.",
     )
 
     emby_enabled: bool = False

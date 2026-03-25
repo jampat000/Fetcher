@@ -38,14 +38,16 @@ ANCHOR = datetime(2026, 6, 15, 12, 0, 0)
 async def _seed_settings(
     session: AsyncSession,
     *,
-    arr_search_cooldown_minutes: int = 1440,
+    sonarr_retry_delay_minutes: int = 1440,
+    radarr_retry_delay_minutes: int = 1440,
     log_retention_days: int = 90,
 ) -> None:
     row = (await session.execute(select(AppSettings).order_by(AppSettings.id.asc()).limit(1))).scalars().first()
     if row is None:
         row = AppSettings()
         session.add(row)
-    row.arr_search_cooldown_minutes = arr_search_cooldown_minutes
+    row.sonarr_retry_delay_minutes = sonarr_retry_delay_minutes
+    row.radarr_retry_delay_minutes = radarr_retry_delay_minutes
     row.log_retention_days = log_retention_days
     await session.commit()
 
@@ -124,13 +126,13 @@ def test_activity_job_snapshot_older_than_retention_deleted(prune_session, monke
     assert kept.count == 2
 
 
-def test_arr_action_log_older_than_cooldown_doubled_deleted(prune_session, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_arr_action_log_older_than_retry_delay_doubled_deleted(prune_session, monkeypatch: pytest.MonkeyPatch) -> None:
     factory, _ = prune_session
     monkeypatch.setattr("app.service_logic.utc_now_naive", lambda: ANCHOR)
 
     async def run():
         async with factory() as session:
-            await _seed_settings(session, arr_search_cooldown_minutes=60)
+            await _seed_settings(session, sonarr_retry_delay_minutes=60, radarr_retry_delay_minutes=60)
             # window = 120 minutes
             stale = ANCHOR - timedelta(minutes=121)
             fresh = ANCHOR - timedelta(minutes=30)
@@ -170,15 +172,15 @@ def test_arr_action_log_older_than_cooldown_doubled_deleted(prune_session, monke
     assert row2 is not None
 
 
-def test_arr_action_log_zero_cooldown_uses_48h_window(prune_session, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_arr_action_log_uses_max_retry_delay_window(prune_session, monkeypatch: pytest.MonkeyPatch) -> None:
     factory, _ = prune_session
     monkeypatch.setattr("app.service_logic.utc_now_naive", lambda: ANCHOR)
 
     async def run():
         async with factory() as session:
-            await _seed_settings(session, arr_search_cooldown_minutes=0)
-            # 2880 minutes = 48h
-            stale = ANCHOR - timedelta(minutes=2881)
+            await _seed_settings(session, sonarr_retry_delay_minutes=1, radarr_retry_delay_minutes=120)
+            # max retry delay is 120; prune window = 240 minutes.
+            stale = ANCHOR - timedelta(minutes=241)
             fresh = ANCHOR - timedelta(minutes=100)
             session.add(
                 ArrActionLog(

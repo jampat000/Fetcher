@@ -38,6 +38,7 @@ from app.emby_rules import (
     tv_matches_selected_genres,
 )
 from app.radarr_failed_import_cleanup import run_radarr_failed_import_queue_cleanup
+from app.sonarr_failed_import_cleanup import run_sonarr_failed_import_queue_cleanup
 from app.resolvers.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
 
 logger = logging.getLogger(__name__)
@@ -65,8 +66,8 @@ class RunContext:
     tz: str
     sonarr_tick_m: int
     radarr_tick_m: int
-    sonarr_cooldown_minutes: int
-    radarr_cooldown_minutes: int
+    sonarr_retry_delay_minutes: int
+    radarr_retry_delay_minutes: int
     emby_interval_m: int
     now: datetime
     do_sonarr_block: bool
@@ -81,18 +82,14 @@ def _build_run_context(settings: AppSettings, *, arr_manual_scope: ArrManualScop
     tz = (settings.timezone or "UTC").strip() or "UTC"
     sonarr_tick_m = effective_arr_interval_minutes(settings.sonarr_interval_minutes)
     radarr_tick_m = effective_arr_interval_minutes(settings.radarr_interval_minutes)
-    _cd = settings.arr_search_cooldown_minutes
     try:
-        cd_raw = int(_cd) if _cd is not None else 0
+        sonarr_retry_delay_minutes = min(max(1, int(settings.sonarr_retry_delay_minutes)), 365 * 24 * 60)
     except (TypeError, ValueError):
-        cd_raw = 0
-    # 0 = tie Arr cooldown fallback to that app's scheduler interval.
-    sonarr_cooldown_minutes = max(
-        1, sonarr_tick_m if cd_raw <= 0 else min(cd_raw, 365 * 24 * 60)
-    )
-    radarr_cooldown_minutes = max(
-        1, radarr_tick_m if cd_raw <= 0 else min(cd_raw, 365 * 24 * 60)
-    )
+        sonarr_retry_delay_minutes = 1440
+    try:
+        radarr_retry_delay_minutes = min(max(1, int(settings.radarr_retry_delay_minutes)), 365 * 24 * 60)
+    except (TypeError, ValueError):
+        radarr_retry_delay_minutes = 1440
     now = utc_now_naive()
     emby_interval_m = max(5, int(settings.emby_interval_minutes or 60))
     do_sonarr_block = bool(
@@ -116,8 +113,8 @@ def _build_run_context(settings: AppSettings, *, arr_manual_scope: ArrManualScop
         tz=tz,
         sonarr_tick_m=sonarr_tick_m,
         radarr_tick_m=radarr_tick_m,
-        sonarr_cooldown_minutes=sonarr_cooldown_minutes,
-        radarr_cooldown_minutes=radarr_cooldown_minutes,
+        sonarr_retry_delay_minutes=sonarr_retry_delay_minutes,
+        radarr_retry_delay_minutes=radarr_retry_delay_minutes,
         emby_interval_m=emby_interval_m,
         now=now,
         do_sonarr_block=do_sonarr_block,
@@ -553,7 +550,7 @@ async def _sonarr_missing_total_including_unreleased(client: ArrClient) -> int:
 async def prune_old_records(session: AsyncSession, settings: AppSettings | None = None) -> None:
     """Delete old log/snapshot rows in one transaction batch (committed with the next run commit).
 
-    - ``arr_action_log``: older than ``arr_search_cooldown_minutes * 2`` (minutes); if cooldown is 0, use 2880 min.
+    - ``arr_action_log``: older than ``max(sonarr_retry_delay_minutes, radarr_retry_delay_minutes) * 2`` (minutes).
     - ``activity_log``, ``job_run_log``, ``app_snapshot``: older than ``log_retention_days`` (clamped 7–3650).
 
     Pass ``settings`` when already loaded to avoid a duplicate ``AppSettings`` query (e.g. from ``run_once``).
@@ -569,10 +566,14 @@ async def prune_old_records(session: AsyncSession, settings: AppSettings | None 
             return
 
         try:
-            cd_raw = int(row.arr_search_cooldown_minutes)
+            son_delay = int(row.sonarr_retry_delay_minutes)
         except (TypeError, ValueError):
-            cd_raw = 0
-        arr_window_min = 2880 if cd_raw <= 0 else cd_raw * 2
+            son_delay = 1440
+        try:
+            rad_delay = int(row.radarr_retry_delay_minutes)
+        except (TypeError, ValueError):
+            rad_delay = 1440
+        arr_window_min = max(1, max(son_delay, rad_delay)) * 2
         arr_cutoff = now - timedelta(minutes=arr_window_min)
 
         try:
@@ -1222,6 +1223,13 @@ async def _execute_sonarr_block(
     sonarr = ArrClient(ArrConfig(settings.sonarr_url, ctx.son_key))
     try:
         await sonarr.health()
+        if settings.sonarr_remove_failed_imports and hasattr(sonarr, "queue_page") and hasattr(sonarr, "history_page"):
+            await run_sonarr_failed_import_queue_cleanup(
+                sonarr,
+                session=session,
+                job_run_id=log.id,
+                actions=actions,
+            )
         sonarr_series_title_map: dict[int, str] = {}
         try:
             for s in await sonarr.series():
@@ -1255,7 +1263,7 @@ async def _execute_sonarr_block(
                     sonarr,
                     session,
                     limit=sonarr_limit,
-                    cooldown_minutes=ctx.sonarr_cooldown_minutes,
+                    cooldown_minutes=ctx.sonarr_retry_delay_minutes,
                     now=ctx.now,
                 )
                 missing_total_including_unreleased = missing_total
@@ -1293,7 +1301,7 @@ async def _execute_sonarr_block(
                     )
                 )
             elif missing_total > 0:
-                actions.append("Sonarr: missing search suppressed (cooldown)")
+                actions.append("Sonarr: missing search suppressed (retry delay)")
                 if arr_manual_scope == "sonarr_missing":
                     session.add(
                         ActivityLog(
@@ -1301,7 +1309,7 @@ async def _execute_sonarr_block(
                             app="sonarr",
                             kind="missing",
                             count=0,
-                            detail="Manual missing search: suppressed by cooldown (no search triggered).",
+                            detail="Manual missing search: suppressed by retry delay (no search triggered).",
                         )
                     )
             else:
@@ -1333,7 +1341,7 @@ async def _execute_sonarr_block(
                 app="sonarr",
                 action="upgrade",
                 limit=sonarr_limit,
-                cooldown_minutes=ctx.sonarr_cooldown_minutes,
+                cooldown_minutes=ctx.sonarr_retry_delay_minutes,
                 now=ctx.now,
             )
             if allowed_ids:
@@ -1365,7 +1373,7 @@ async def _execute_sonarr_block(
                     )
                 )
             elif cutoff_total > 0:
-                actions.append("Sonarr: cutoff-unmet search suppressed (cooldown)")
+                actions.append("Sonarr: cutoff-unmet search suppressed (retry delay)")
                 if arr_manual_scope == "sonarr_upgrade":
                     session.add(
                         ActivityLog(
@@ -1373,7 +1381,7 @@ async def _execute_sonarr_block(
                             app="sonarr",
                             kind="upgrade",
                             count=0,
-                            detail="Manual upgrade search: suppressed by cooldown (no search triggered).",
+                            detail="Manual upgrade search: suppressed by retry delay (no search triggered).",
                         )
                     )
             else:
@@ -1444,7 +1452,7 @@ async def _execute_radarr_block(
     try:
         await radarr.health()
 
-        if settings.radarr_remove_failed_imports:
+        if settings.radarr_remove_failed_imports and hasattr(radarr, "queue_page") and hasattr(radarr, "history_page"):
             await run_radarr_failed_import_queue_cleanup(
                 radarr,
                 session=session,
@@ -1474,7 +1482,7 @@ async def _execute_radarr_block(
                     radarr,
                     session,
                     limit=radarr_limit,
-                    cooldown_minutes=ctx.radarr_cooldown_minutes,
+                    cooldown_minutes=ctx.radarr_retry_delay_minutes,
                     now=ctx.now,
                 )
                 missing_total_including_unreleased = missing_total
@@ -1502,7 +1510,7 @@ async def _execute_radarr_block(
                     )
                 )
             elif missing_total > 0:
-                actions.append("Radarr: missing search suppressed (cooldown)")
+                actions.append("Radarr: missing search suppressed (retry delay)")
                 if arr_manual_scope == "radarr_missing":
                     session.add(
                         ActivityLog(
@@ -1510,7 +1518,7 @@ async def _execute_radarr_block(
                             app="radarr",
                             kind="missing",
                             count=0,
-                            detail="Manual missing search: suppressed by cooldown (no search triggered).",
+                            detail="Manual missing search: suppressed by retry delay (no search triggered).",
                         )
                     )
             else:
@@ -1542,7 +1550,7 @@ async def _execute_radarr_block(
                 app="radarr",
                 action="upgrade",
                 limit=radarr_limit,
-                cooldown_minutes=ctx.radarr_cooldown_minutes,
+                cooldown_minutes=ctx.radarr_retry_delay_minutes,
                 now=ctx.now,
             )
             if allowed_ids:
@@ -1565,7 +1573,7 @@ async def _execute_radarr_block(
                     )
                 )
             elif cutoff_total > 0:
-                actions.append("Radarr: cutoff-unmet search suppressed (cooldown)")
+                actions.append("Radarr: cutoff-unmet search suppressed (retry delay)")
                 if arr_manual_scope == "radarr_upgrade":
                     session.add(
                         ActivityLog(
@@ -1573,7 +1581,7 @@ async def _execute_radarr_block(
                             app="radarr",
                             kind="upgrade",
                             count=0,
-                            detail="Manual upgrade search: suppressed by cooldown (no search triggered).",
+                            detail="Manual upgrade search: suppressed by retry delay (no search triggered).",
                         )
                     )
             else:
@@ -1757,8 +1765,8 @@ async def _run_once_inner(
         tz = ctx.tz
         sonarr_tick_m = ctx.sonarr_tick_m
         radarr_tick_m = ctx.radarr_tick_m
-        sonarr_cooldown_minutes = ctx.sonarr_cooldown_minutes
-        radarr_cooldown_minutes = ctx.radarr_cooldown_minutes
+        sonarr_retry_delay_minutes = ctx.sonarr_retry_delay_minutes
+        radarr_retry_delay_minutes = ctx.radarr_retry_delay_minutes
         now = ctx.now
         emby_interval_m = ctx.emby_interval_m
 

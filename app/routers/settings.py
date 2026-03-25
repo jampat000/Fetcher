@@ -212,6 +212,7 @@ async def save_settings(
     sonarr_api_key: str = Form(""),
     sonarr_search_missing: bool = Form(False),
     sonarr_search_upgrades: bool = Form(False),
+    sonarr_remove_failed_imports: bool = Form(False),
     sonarr_max_items_per_run: int = Form(50),
     sonarr_interval_minutes: int = Form(60),
     sonarr_schedule_enabled: bool = Form(False),
@@ -242,7 +243,8 @@ async def save_settings(
     radarr_schedule_Sun: int = Form(0),
     radarr_schedule_start: str = Form("00:00"),
     radarr_schedule_end: str = Form("23:59"),
-    arr_search_cooldown_minutes: int = Form(1440),
+    sonarr_retry_delay_minutes: int = Form(1440),
+    radarr_retry_delay_minutes: int = Form(1440),
     log_retention_days: int = Form(90),
     timezone: str = Form("UTC"),
     save_scope: str = Form(""),
@@ -271,6 +273,10 @@ async def save_settings(
 
     if scope not in _SETTINGS_POST_SAVE_SCOPES:
         return respond(saved=False, reason="invalid_scope")
+    if scope == "sonarr" and int(sonarr_retry_delay_minutes or 0) < 1:
+        return respond(saved=False, reason="sonarr_retry_delay_min")
+    if scope == "radarr" and int(radarr_retry_delay_minutes or 0) < 1:
+        return respond(saved=False, reason="radarr_retry_delay_min")
 
     try:
         row = await _get_or_create_settings(session)
@@ -288,6 +294,7 @@ async def save_settings(
             sonarr_api_key=sonarr_api_key.strip(),
             sonarr_search_missing=sonarr_search_missing,
             sonarr_search_upgrades=sonarr_search_upgrades,
+            sonarr_remove_failed_imports=sonarr_remove_failed_imports,
             sonarr_max_items_per_run=sonarr_max_items_per_run,
             sonarr_interval_minutes=son_im,
             # schedule fields are not in SettingsIn; set on ORM row below
@@ -299,7 +306,8 @@ async def save_settings(
             radarr_remove_failed_imports=radarr_remove_failed_imports,
             radarr_max_items_per_run=radarr_max_items_per_run,
             radarr_interval_minutes=rad_im,
-            arr_search_cooldown_minutes=arr_search_cooldown_minutes,
+            sonarr_retry_delay_minutes=sonarr_retry_delay_minutes,
+            radarr_retry_delay_minutes=radarr_retry_delay_minutes,
         )
         if scope == "sonarr":
             row.sonarr_enabled = data.sonarr_enabled
@@ -307,8 +315,10 @@ async def save_settings(
             row.sonarr_api_key = encrypt_secret_for_storage(data.sonarr_api_key)
             row.sonarr_search_missing = data.sonarr_search_missing
             row.sonarr_search_upgrades = data.sonarr_search_upgrades
+            row.sonarr_remove_failed_imports = data.sonarr_remove_failed_imports
             row.sonarr_max_items_per_run = data.sonarr_max_items_per_run
             row.sonarr_interval_minutes = data.sonarr_interval_minutes
+            row.sonarr_retry_delay_minutes = data.sonarr_retry_delay_minutes
             row.sonarr_schedule_enabled = sonarr_schedule_enabled
             row.sonarr_schedule_days = schedule_days_csv_from_named_day_checks(
                 sonarr_schedule_Mon,
@@ -331,6 +341,7 @@ async def save_settings(
             row.radarr_remove_failed_imports = data.radarr_remove_failed_imports
             row.radarr_max_items_per_run = data.radarr_max_items_per_run
             row.radarr_interval_minutes = data.radarr_interval_minutes
+            row.radarr_retry_delay_minutes = data.radarr_retry_delay_minutes
             row.radarr_schedule_enabled = radarr_schedule_enabled
             row.radarr_schedule_days = schedule_days_csv_from_named_day_checks(
                 radarr_schedule_Mon,
@@ -345,7 +356,6 @@ async def save_settings(
             row.radarr_schedule_end = _normalize_hhmm(radarr_schedule_end, "23:59")
 
         if scope == "global":
-            row.arr_search_cooldown_minutes = data.arr_search_cooldown_minutes
             row.log_retention_days = max(7, min(3650, int(log_retention_days or 90)))
             row.timezone = _resolve_timezone_name(timezone)
 
