@@ -44,8 +44,27 @@ def needs_password_rehash(stored_hash: str) -> bool:
 
 
 def get_jwt_secret_from_env() -> str:
-    # Dedicated signing secret for JWT only.
+    """Read ``FETCHER_JWT_SECRET`` for HS256 signing of access and refresh JWTs.
+
+    **Required at process start:** the app lifespan in ``app.main`` refuses to boot if this is empty.
+    Set it in the service environment, installer defaults, or shell to a stable, high-entropy secret
+    (32+ random bytes encoded as hex or base64 is typical). Rotating it invalidates outstanding
+    refresh tokens.
+    """
     return (os.environ.get("FETCHER_JWT_SECRET") or "").strip()
+
+
+def warn_if_data_encryption_key_missing(logger: logging.Logger) -> None:
+    """Log once at startup when ``FETCHER_DATA_ENCRYPTION_KEY`` is unset (non-fatal)."""
+    if _data_encryption_key():
+        return
+    logger.warning(
+        "FETCHER_DATA_ENCRYPTION_KEY is not set: Sonarr, Radarr, and Emby API keys in the SQLite "
+        "database are stored in plaintext on disk. To encrypt them at rest, set "
+        "FETCHER_DATA_ENCRYPTION_KEY to a Fernet key (for example: "
+        "python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"). "
+        "Use the same key on every run; losing or changing it prevents decrypting stored keys."
+    )
 
 
 def _jwt_access_minutes() -> int:

@@ -33,7 +33,7 @@ from app.service_logic import (
 )
 from app.setup_helpers import test_emby_connection, test_radarr_connection, test_sonarr_connection
 from app.version_info import get_app_version
-from app.web_common import build_dashboard_status
+from app.dashboard_service import build_dashboard_status
 
 
 def _manual_search_scope_phrase(scope: str) -> tuple[str, str]:
@@ -46,7 +46,7 @@ def _manual_search_scope_phrase(scope: str) -> tuple[str, str]:
     }
     return mapping.get(scope, ("Arr", "search"))
 
-from app.routers.deps import AUTH_DEPS
+from app.routers.deps import AUTH_API_DEPS
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -223,28 +223,28 @@ async def api_version() -> dict[str, str]:
     return {"app": APP_NAME, "version": get_app_version()}
 
 
-@router.post("/api/setup/test-sonarr", dependencies=AUTH_DEPS)
+@router.post("/api/setup/test-sonarr", dependencies=AUTH_API_DEPS)
 async def api_setup_test_sonarr(body: SetupConnTestIn) -> JSONResponse:
     key = resolve_setup_api_key(body.api_key, "sonarr")
     ok, msg = await test_sonarr_connection(body.url, key)
     return JSONResponse({"ok": ok, "message": msg})
 
 
-@router.post("/api/setup/test-radarr", dependencies=AUTH_DEPS)
+@router.post("/api/setup/test-radarr", dependencies=AUTH_API_DEPS)
 async def api_setup_test_radarr(body: SetupConnTestIn) -> JSONResponse:
     key = resolve_setup_api_key(body.api_key, "radarr")
     ok, msg = await test_radarr_connection(body.url, key)
     return JSONResponse({"ok": ok, "message": msg})
 
 
-@router.post("/api/setup/test-emby", dependencies=AUTH_DEPS)
+@router.post("/api/setup/test-emby", dependencies=AUTH_API_DEPS)
 async def api_setup_test_emby(body: SetupEmbyTestIn) -> JSONResponse:
     key = resolve_setup_api_key(body.api_key, "emby")
     ok, msg = await test_emby_connection(body.url, key, body.user_id)
     return JSONResponse({"ok": ok, "message": msg})
 
 
-@router.post("/api/arr/search-now", dependencies=AUTH_DEPS)
+@router.post("/api/arr/search-now", dependencies=AUTH_API_DEPS)
 async def api_arr_search_now(body: ArrSearchNowIn, session: AsyncSession = Depends(get_session)) -> JSONResponse:
     """Trigger Arr search command immediately for manual action."""
     try:
@@ -308,7 +308,7 @@ async def api_arr_search_now(body: ArrSearchNowIn, session: AsyncSession = Depen
         )
 
 
-@router.get("/api/dashboard/status", dependencies=AUTH_DEPS)
+@router.get("/api/dashboard/status", dependencies=AUTH_API_DEPS)
 async def api_dashboard_status(
     session: AsyncSession = Depends(get_session),
 ) -> JSONResponse:

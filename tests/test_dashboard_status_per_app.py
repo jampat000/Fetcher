@@ -7,7 +7,7 @@ from sqlalchemy import delete
 
 from app.db import SessionLocal, _get_or_create_settings
 from app.models import AppSnapshot
-from app.web_common import build_dashboard_status, fetch_live_dashboard_queue_totals
+from app.dashboard_service import build_dashboard_status, fetch_live_dashboard_queue_totals
 
 
 async def _seed_snapshot_state() -> None:
@@ -50,8 +50,8 @@ def test_build_dashboard_status_has_per_app_last_run_status(monkeypatch) -> None
     async def _no_live(_settings):
         return {}
 
-    monkeypatch.setattr("app.web_common.fetch_live_dashboard_queue_totals", _no_live)
-    monkeypatch.setattr("app.web_common.scheduler", _FakeScheduler())
+    monkeypatch.setattr("app.dashboard_service.fetch_live_dashboard_queue_totals", _no_live)
+    monkeypatch.setattr("app.dashboard_service.scheduler", _FakeScheduler())
     asyncio.run(_seed_snapshot_state())
 
     async def _go():
@@ -81,7 +81,7 @@ def test_fetch_live_dashboard_missing_uses_including_unreleased_semantics(monkey
         return 501
 
     monkeypatch.setattr(
-        "app.web_common._sonarr_missing_total_including_unreleased",
+        "app.dashboard_service._sonarr_missing_total_including_unreleased",
         _sonarr_missing_fixed,
     )
 
@@ -106,9 +106,9 @@ def test_fetch_live_dashboard_missing_uses_including_unreleased_semantics(monkey
                 {"monitored": False, "hasFile": False},
             ]
 
-    monkeypatch.setattr("app.web_common.ArrClient", _FakeArrClient)
-    monkeypatch.setattr("app.web_common.resolve_sonarr_api_key", lambda _row: "k1")
-    monkeypatch.setattr("app.web_common.resolve_radarr_api_key", lambda _row: "k2")
+    monkeypatch.setattr("app.dashboard_service.ArrClient", _FakeArrClient)
+    monkeypatch.setattr("app.dashboard_service.resolve_sonarr_api_key", lambda _row: "k1")
+    monkeypatch.setattr("app.dashboard_service.resolve_radarr_api_key", lambda _row: "k2")
     asyncio.run(_seed_snapshot_state())
 
     async def _go():
@@ -133,7 +133,7 @@ def test_build_dashboard_status_live_queue_totals_override_snapshot(monkeypatch)
         def is_run_in_progress():
             return False
 
-    monkeypatch.setattr("app.web_common.scheduler", _FakeScheduler())
+    monkeypatch.setattr("app.dashboard_service.scheduler", _FakeScheduler())
 
     async def _fake_live(_settings):
         return {
@@ -143,7 +143,7 @@ def test_build_dashboard_status_live_queue_totals_override_snapshot(monkeypatch)
             "radarr_upgrades": 9,
         }
 
-    monkeypatch.setattr("app.web_common.fetch_live_dashboard_queue_totals", _fake_live)
+    monkeypatch.setattr("app.dashboard_service.fetch_live_dashboard_queue_totals", _fake_live)
     asyncio.run(_seed_snapshot_state())
 
     async def _go():

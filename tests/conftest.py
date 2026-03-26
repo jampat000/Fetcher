@@ -50,7 +50,7 @@ def _init_fetcher_test_database() -> None:
 
 @pytest.fixture(autouse=True)
 def _dependency_override_require_auth(request: pytest.FixtureRequest) -> None:
-    from app.auth import require_auth
+    from app.auth import require_api_auth, require_auth
     from app.main import app
 
     if request.node.get_closest_marker("no_auth_override"):
@@ -60,9 +60,14 @@ def _dependency_override_require_auth(request: pytest.FixtureRequest) -> None:
     async def _ok() -> None:
         return None
 
+    async def _ok_api() -> None:
+        return None
+
     app.dependency_overrides[require_auth] = _ok
+    app.dependency_overrides[require_api_auth] = _ok_api
     yield
     app.dependency_overrides.pop(require_auth, None)
+    app.dependency_overrides.pop(require_api_auth, None)
 
 
 @pytest.fixture(autouse=True)

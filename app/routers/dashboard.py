@@ -25,11 +25,11 @@ from app.emby_rules import (
 from app.models import ActivityLog, JobRunLog
 from app.paths import is_safe_path, resolved_logs_dir
 from app.time_util import utc_now_naive
+from app.dashboard_service import build_dashboard_status
 from app.ui_templates import templates
 from app.web_common import (
     ACTIVITY_DETAIL_PREVIEW_LINES,
     activity_display_row,
-    build_dashboard_status,
     dedupe_job_run_logs_for_display,
     is_setup_complete,
     movie_credit_types_summary,

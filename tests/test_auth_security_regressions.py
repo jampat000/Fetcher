@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 import pytest
 from fastapi.testclient import TestClient
@@ -53,9 +54,19 @@ def _token_pair(client: TestClient) -> dict[str, str | int]:
 def test_startup_fails_without_fetcher_jwt_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     _scheduler_noop(monkeypatch)
     monkeypatch.delenv("FETCHER_JWT_SECRET", raising=False)
-    with pytest.raises(RuntimeError, match="Missing required JWT configuration"):
+    with pytest.raises(RuntimeError, match="FETCHER_JWT_SECRET"):
         with TestClient(app):
             pass
+
+
+def test_startup_warns_when_data_encryption_key_missing(monkeypatch: pytest.MonkeyPatch, caplog) -> None:
+    _scheduler_noop(monkeypatch)
+    monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+    monkeypatch.delenv("FETCHER_DATA_ENCRYPTION_KEY", raising=False)
+    caplog.set_level(logging.WARNING)
+    with TestClient(app):
+        pass
+    assert any("FETCHER_DATA_ENCRYPTION_KEY" in r.message for r in caplog.records)
 
 
 def test_refresh_token_cannot_be_reused_after_rotation(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -73,6 +84,51 @@ def test_refresh_token_cannot_be_reused_after_rotation(monkeypatch: pytest.Monke
         r2 = client.post("/api/auth/refresh", json={"refresh_token": first["refresh_token"]})
         assert r2.status_code == 401
         assert r2.json() == {"message": "Invalid refresh token"}
+
+
+def _http_exception_message(resp) -> str:
+    body = resp.json()
+    detail = body.get("detail")
+    if isinstance(detail, dict):
+        return str(detail.get("message") or "")
+    if isinstance(detail, str):
+        return detail
+    return str(body.get("message") or "")
+
+
+def test_api_invalid_bearer_token_returns_actionable_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    _scheduler_noop(monkeypatch)
+    monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+    asyncio.run(_seed_auth_state())
+    with TestClient(app) as client:
+        r = client.get(
+            "/api/dashboard/status",
+            headers={
+                "Authorization": "Bearer not-a-valid-jwt",
+                "Accept": "application/json",
+            },
+        )
+    assert r.status_code == 401
+    msg = _http_exception_message(r)
+    assert "POST /api/auth/token" in msg
+    assert "Bearer" in msg
+
+
+def test_api_refresh_token_as_bearer_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    _scheduler_noop(monkeypatch)
+    monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+    asyncio.run(_seed_auth_state())
+    with TestClient(app) as client:
+        tokens = _token_pair(client)
+        r = client.get(
+            "/api/dashboard/status",
+            headers={
+                "Authorization": f"Bearer {tokens['refresh_token']}",
+                "Accept": "application/json",
+            },
+        )
+    assert r.status_code == 401
+    assert "access token" in _http_exception_message(r).lower()
 
 
 def test_refresh_validation_fails_with_wrong_jwt_secret(monkeypatch: pytest.MonkeyPatch) -> None:

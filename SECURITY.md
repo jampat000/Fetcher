@@ -7,6 +7,22 @@ We fix security issues in the **latest release** on the default branch (`master`
 - **Windows:** **`FetcherSetup.exe`** from [Releases](https://github.com/jampat000/Fetcher/releases/latest) (or in-app **Settings → Software updates** when enabled).  
 - **Docker:** pull **`ghcr.io/jampat000/fetcher:latest`** (or the image tag matching the release you run) — see **[`docs/DOCKER.md`](docs/DOCKER.md)**.
 
+## Application environment (JWT and encryption)
+
+These are **runtime** requirements for the Fetcher process (Windows service, Docker, or dev). Full install context is in **[`README.md`](README.md)** and **[`docs/INSTALL-AND-OPERATIONS.md`](docs/INSTALL-AND-OPERATIONS.md)**.
+
+### `FETCHER_JWT_SECRET` (required)
+
+- Used only to sign **JWT access and refresh tokens** for the JSON API (`HS256`).
+- **If unset or empty, Fetcher exits on startup**—by design, with an error message that names the variable.
+- Generate a long random secret; set it in the **machine** environment (Windows service) or container env, then restart.
+
+### `FETCHER_DATA_ENCRYPTION_KEY` (optional)
+
+- If set to a valid **Fernet** key, Sonarr/Radarr/Emby API keys in SQLite are written **encrypted** (`enc:v1:` prefix).
+- If **not** set, those values remain **plaintext** in `fetcher.db`, and startup emits a **warning** explaining that—so operators are not misled into thinking encryption is on.
+- Losing or changing the key after data is encrypted prevents decryption; back up the key with the same care as the database.
+
 ## Reporting a vulnerability
 
 Please **do not** open a public issue for unfixed security problems.
@@ -36,7 +52,7 @@ Fetcher targets a **single trusted operator** on the **same machine** or a **pri
 | **CSRF** | Authenticated **POST** forms include a signed **`csrf_token`** (see `app/auth.py`). The session cookie is **HttpOnly** and **SameSite=Lax**. For broader exposure still use **network isolation** or **proxy auth**. |
 | **In-app upgrade** | **`POST /api/updates/apply`** downloads the release **`FetcherSetup.exe`** from GitHub and runs a **silent** Inno install (stops/restarts the Windows service). Treat like any admin installer: only use on **trusted networks**; do not expose the Web UI to the internet without proxy auth. Forks can set **`FETCHER_UPDATES_REPO`** (`owner/repo`). The **update check** calls GitHub’s API; if you see **403** (rate limits or policy), set **`FETCHER_GITHUB_TOKEN`** (or **`GITHUB_TOKEN`**) to a **read-only** PAT with minimal scope—never commit it. |
 | **Injection** | Data access uses **SQLAlchemy** ORM/API for normal queries; migrations use fixed table names. | Keep dependencies updated (`pip-audit` in CI). |
-| **Secrets in storage** | Keys live in **SQLite** and **backup JSON** (documented above). | Encrypt backups, restrict file permissions. |
+| **Secrets in storage** | Keys live in **SQLite** and **backup JSON** (documented above). **Without `FETCHER_DATA_ENCRYPTION_KEY`, Arr API keys are plaintext in SQLite**; optional Fernet key encrypts them at rest. | Encrypt backups, restrict file permissions; set **`FETCHER_DATA_ENCRYPTION_KEY`** if disk exposure matters. |
 
 ## Access control
 
