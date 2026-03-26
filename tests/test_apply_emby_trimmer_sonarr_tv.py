@@ -40,6 +40,7 @@ class _RecordingSonarrArrClient:
         self.delete_episode_file_ids: list[int] = []
         self.set_episodes_monitored_calls: list[tuple[list[int], bool]] = []
         self.unmonitor_episodes_calls: list[list[int]] = []
+        self.update_series_calls: list[dict[str, Any]] = []
 
     async def series(self) -> list[dict[str, Any]]:
         return self._catalog
@@ -60,6 +61,9 @@ class _RecordingSonarrArrClient:
     async def unmonitor_episodes(self, *, episode_ids: list[int]) -> None:
         self.unmonitor_episodes_calls.append(list(episode_ids))
 
+    async def update_series(self, series: dict[str, Any]) -> None:
+        self.update_series_calls.append(series)
+
     async def aclose(self) -> None:
         return None
 
@@ -79,6 +83,9 @@ def _series_catalog(*, status: str) -> list[dict[str, Any]]:
             "year": 2020,
             "tvdbId": 12345,
             "status": status,
+            "seasons": [
+                {"seasonNumber": 1, "monitored": False},
+            ],
         }
     ]
 
@@ -160,6 +167,7 @@ def test_sonarr_deletes_all_episode_file_ids_ended_series(monkeypatch: pytest.Mo
     assert len(fake.delete_episode_file_ids) == 3
     assert fake.set_episodes_monitored_calls == []
     assert fake.unmonitor_episodes_calls == [[201, 202, 203]]
+    assert fake.update_series_calls == []
     assert any(
         a == "Sonarr: deleted 3 on-disk episode file(s) for 3 episode(s)" for a in actions
     )
@@ -187,12 +195,18 @@ def test_sonarr_deletes_airing_then_monitor(monkeypatch: pytest.MonkeyPatch) -> 
     assert set(fake.delete_episode_file_ids) == {501, 502, 503}
     assert fake.set_episodes_monitored_calls == [([201, 202, 203], True)]
     assert fake.unmonitor_episodes_calls == []
+    assert len(fake.update_series_calls) == 1
+    updated = fake.update_series_calls[0]
+    seasons = updated.get("seasons")
+    assert isinstance(seasons, list)
+    assert any(isinstance(s, dict) and s.get("seasonNumber") == 1 and s.get("monitored") is True for s in seasons)
     assert any(
         a == "Sonarr: deleted 3 on-disk episode file(s) for 3 episode(s)" for a in actions
     )
     assert any(
         a == "Sonarr: left 3 episode(s) monitored (series still airing)" for a in actions
     )
+    assert any(a.startswith("Sonarr: preserved season monitoring for ") for a in actions)
 
 
 def test_no_duplicate_episode_file_deletes_overlapping_candidates(

@@ -93,6 +93,11 @@ class ArrClient:
         data = r.json()
         return data if isinstance(data, list) else []
 
+    async def update_series(self, series: dict[str, Any]) -> None:
+        """Sonarr: update one series (used for surgical monitored-state adjustments)."""
+        r = await self._req("PUT", "/api/v3/series", json=series)
+        r.raise_for_status()
+
     async def episodes_for_series(self, *, series_id: int) -> list[dict[str, Any]]:
         r = await self._req("GET", "/api/v3/episode", params={"seriesId": int(series_id)})
         r.raise_for_status()

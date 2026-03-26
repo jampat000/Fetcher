@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.4.13] - 2026-03-26
+
+### Fixed
+
+- **Trimmer / Sonarr TV cleanup:** After deleting watched episode files for continuing series, Fetcher now preserves Sonarr season monitoring for the affected season(s) so future episodes are not stranded (no broad TV-trimming redesign; ended series behavior unchanged).
+
+### Maintenance
+
+- **Tests:** Added focused coverage for continuing-series season-monitor preservation vs ended-series no-op.
+
 ## [2.4.12] - 2026-03-26
 
 ### Changed
