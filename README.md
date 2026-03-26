@@ -2,6 +2,8 @@
 
 Fetcher is a small **Windows-first** web app (FastAPI + SQLite + background scheduler) that talks to **Sonarr**, **Radarr**, and optionally **Emby** on your network. It runs as a **64-bit Windows service** installed with **`FetcherSetup.exe`** (Inno Setup), or in **Docker** on Linux (`ghcr.io/jampat000/fetcher`). The UI is plain HTML with a bit of glass-style polish—nothing fancy, but it’s meant to be readable day to day.
 
+Fetcher is a production-ready automation service for Sonarr, Radarr, and Emby, focused on accurate monitored-missing progression and truthful system state reporting.
+
 **What it’s for:** automate **missing** and **upgrade (cutoff)** searches on a schedule, keep an eye on **what ran and when**, and optionally drive **Emby Trimmer** rules (scan, review, apply) from the same place. Sonarr and Radarr still own your library; Fetcher just calls their APIs on your behalf. Emby is the playback server Trimmer uses to find candidates against your rules.
 
 **License:** [MIT](LICENSE) · **Security:** [SECURITY.md](SECURITY.md) · **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) · **Install / ops detail:** [docs/INSTALL-AND-OPERATIONS.md](docs/INSTALL-AND-OPERATIONS.md)

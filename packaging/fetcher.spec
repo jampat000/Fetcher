@@ -11,6 +11,8 @@ block_cipher = None
 
 # PyInstaller defines SPECPATH while executing this file.
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
+# Bundle contents come only from explicit ``datas`` below (templates, static, VERSION) plus traced
+# imports from ``app/cli.py``. Repo tooling (e.g. ``.cursor/``) is not packaged.
 
 _version_file = os.path.join(ROOT, "VERSION")
 _extra_datas = []
