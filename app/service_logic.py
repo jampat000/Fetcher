@@ -1125,6 +1125,7 @@ async def apply_emby_trimmer_live_deletes(
             to_keep_monitored: list[int] = []
             seen_episode_ids: set[int] = set()
             episodes_cache: dict[int, list[dict[str, Any]]] = {}
+            continuing_series_ids_touched: set[int] = set()
             for item in tv_candidates:
                 sid = _match_sonarr_series_id(item, catalog)
                 if not sid:
@@ -1140,6 +1141,7 @@ async def apply_emby_trimmer_live_deletes(
                     if ended:
                         to_unmonitor.append(eid)
                     else:
+                        continuing_series_ids_touched.add(int(sid))
                         to_keep_monitored.append(eid)
 
             to_unmonitor = list(dict.fromkeys(to_unmonitor))
@@ -1178,6 +1180,60 @@ async def apply_emby_trimmer_live_deletes(
                     f"Sonarr: left {len(to_keep_monitored)} episode(s) monitored "
                     f"(series still airing)"
                 )
+
+                # Sonarr can effectively unmonitor a season after episode-file deletes (e.g. when
+                # Unmonitor Deleted Episodes is enabled), which can strand future unaired episodes.
+                # For continuing series we touched, preserve monitoring for the affected season(s)
+                # only (no broad remonitor of unrelated seasons/series).
+                preserved_series = 0
+                preserved_seasons = 0
+                for sid in sorted(continuing_series_ids_touched):
+                    series_rec = series_by_id.get(sid) or {}
+                    seasons = series_rec.get("seasons")
+                    if not isinstance(seasons, list) or not seasons:
+                        continue
+
+                    eps = episodes_cache.get(sid) or []
+                    keep_ids = set(to_keep_monitored)
+                    season_numbers: set[int] = set()
+                    for ep in eps:
+                        eid = _safe_int(ep.get("id"))
+                        if not eid or eid not in keep_ids:
+                            continue
+                        sn = _safe_int(ep.get("seasonNumber"))
+                        if sn is not None:
+                            season_numbers.add(int(sn))
+                    if not season_numbers:
+                        continue
+
+                    changed = False
+                    new_seasons: list[dict[str, Any]] = []
+                    for s in seasons:
+                        if not isinstance(s, dict):
+                            new_seasons.append(s)
+                            continue
+                        sn = _safe_int(s.get("seasonNumber"))
+                        if sn is not None and int(sn) in season_numbers and s.get("monitored") is False:
+                            ss = dict(s)
+                            ss["monitored"] = True
+                            new_seasons.append(ss)
+                            preserved_seasons += 1
+                            changed = True
+                        else:
+                            new_seasons.append(s)
+                    if not changed:
+                        continue
+
+                    payload = dict(series_rec)
+                    payload["seasons"] = new_seasons
+                    await sonarr2.update_series(payload)
+                    preserved_series += 1
+
+                if preserved_series:
+                    actions.append(
+                        f"Sonarr: preserved season monitoring for {preserved_seasons} season(s) "
+                        f"across {preserved_series} continuing series after watched-episode cleanup"
+                    )
 
             if to_unmonitor:
                 await sonarr2.unmonitor_episodes(episode_ids=to_unmonitor)
