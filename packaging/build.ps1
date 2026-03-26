@@ -1,5 +1,6 @@
 param(
-  [switch]$Clean
+  [switch]$Clean,
+  [switch]$AllowPathFallback
 )
 
 $ErrorActionPreference = "Stop"
@@ -33,7 +34,7 @@ if ($LASTEXITCODE -ne 0) { throw "pip install -r requirements.txt failed (exit $
 .\.venv\Scripts\pip install pyinstaller
 if ($LASTEXITCODE -ne 0) { throw "pip install pyinstaller failed (exit $LASTEXITCODE)" }
 
-# Optional ffmpeg/ffprobe staging for packaged Windows Stream Manager support.
+# Optional ffmpeg/ffprobe staging for packaged Windows Refiner support.
 $ffStage = ".\packaging\ffmpeg-bin"
 if (Test-Path $ffStage) { Remove-Item $ffStage -Recurse -Force }
 New-Item -ItemType Directory -Path $ffStage | Out-Null
@@ -52,7 +53,11 @@ if ($ffSrc.Count -eq 2) {
   Copy-Item -LiteralPath $ffSrc[1] -Destination (Join-Path $ffStage "ffprobe.exe") -Force
   Write-Host "Staged ffmpeg/ffprobe for packaged build."
 } else {
-  Write-Warning "ffmpeg/ffprobe not staged. Packaged Stream Manager will fall back to PATH."
+  if ($AllowPathFallback) {
+    Write-Warning "ffmpeg/ffprobe not staged. Packaged Refiner will fall back to PATH."
+  } else {
+    throw "ffmpeg/ffprobe not found for packaging. Set FETCHER_FFMPEG_BIN_DIR to a folder containing ffmpeg.exe and ffprobe.exe, or run with -AllowPathFallback for non-release local builds."
+  }
 }
 
 .\.venv\Scripts\pyinstaller --noconfirm packaging\fetcher.spec

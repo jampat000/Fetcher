@@ -1,12 +1,13 @@
-# Build Fetcher PyInstaller bundle + Inno Setup installer on Windows.
-# Produces installer/output/FetcherSetup.exe as a workflow artifact.
-# Runs only when you push a version tag (v*) or run this workflow manually — not on every branch/PR push.
-# Tag push v* also runs the release job (GitHub Release + FetcherSetup.exe).
+# Build Fetcher PyInstaller bundle (ffmpeg/ffprobe via FETCHER_FFMPEG_BIN_DIR) + Inno Setup installer.
+# Artifacts: FetcherSetup.exe, portable Fetcher-Windows-{VERSION}-bundle.zip (workflow run + GitHub Release on tag).
 
 name: Build installer
 
 on:
   push:
+    branches:
+      - main
+      - master
     tags:
       - "v*"
   workflow_dispatch:
@@ -19,6 +20,9 @@ concurrency:
 # Opt in to Node 24 for JS actions until all deps default to it (GitHub deprecation of Node 20).
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # Pinned Gyan essentials (Windows x64). Bump URL + SHA256 together when upgrading.
+  FFMPEG_ESSENTIALS_URL: https://github.com/GyanD/codexffmpeg/releases/download/8.1/ffmpeg-8.1-essentials_build.zip
+  FFMPEG_ESSENTIALS_SHA256: 8748283d821613d930b0e7be685aaa9df4ca6f0ad4d0c42fd02622b3623463c6
 
 permissions:
   contents: read
@@ -42,6 +46,24 @@ jobs:
           if (-not (Test-Path ".venv\Scripts\python.exe")) {
             python -m venv .venv
           }
+
+      - name: Prepare FFmpeg for packaging (Refiner)
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $zip = Join-Path $env:RUNNER_TEMP 'ffmpeg-8.1-essentials_build.zip'
+          Invoke-WebRequest -Uri $env:FFMPEG_ESSENTIALS_URL -OutFile $zip
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
+          $want = ($env:FFMPEG_ESSENTIALS_SHA256).ToLowerInvariant()
+          if ($actual -ne $want) {
+            throw "FFmpeg zip SHA256 mismatch (expected $want, got $actual)"
+          }
+          Expand-Archive -LiteralPath $zip -DestinationPath $env:RUNNER_TEMP -Force
+          $bin = Join-Path $env:RUNNER_TEMP 'ffmpeg-8.1-essentials_build\bin'
+          if (-not (Test-Path (Join-Path $bin 'ffmpeg.exe'))) { throw "ffmpeg.exe missing under $bin" }
+          if (-not (Test-Path (Join-Path $bin 'ffprobe.exe'))) { throw "ffprobe.exe missing under $bin" }
+          "FETCHER_FFMPEG_BIN_DIR=$bin" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Build FetcherSetup.exe
         shell: pwsh
@@ -94,6 +116,36 @@ jobs:
             Remove-Item -LiteralPath $env:FETCHER_DEV_DB_PATH -Force -ErrorAction SilentlyContinue
           }
 
+      - name: Verify PyInstaller bundle (Refiner templates + FFmpeg)
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path "${{ github.workspace }}" 'dist\Fetcher\_internal'
+          @(
+            'app\templates\refiner.html',
+            'app\templates\refiner_settings.html',
+            'bin\ffmpeg\ffmpeg.exe',
+            'bin\ffmpeg\ffprobe.exe'
+          ) | ForEach-Object {
+            $p = Join-Path $root $_
+            if (-not (Test-Path -LiteralPath $p)) {
+              throw "Missing required bundle path: $p"
+            }
+          }
+
+      - name: Create portable Windows bundle zip
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path 'dist\artifacts' | Out-Null
+          $v = (Get-Content -LiteralPath 'VERSION' -Raw).Trim()
+          $zip = Join-Path 'dist\artifacts' "Fetcher-Windows-${v}-bundle.zip"
+          if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
+          $bundleRoot = Join-Path "${{ github.workspace }}" 'dist\Fetcher'
+          Compress-Archive -Path (Join-Path $bundleRoot '*') -DestinationPath $zip
+
       # Repo Settings → Variables: ENABLE_CODE_SIGNING = true
       # Repo Settings → Secrets: WINDOWS_PFX_BASE64 (PFX as base64), WINDOWS_PFX_PASSWORD
       - name: Sign installer (optional)
@@ -114,7 +166,14 @@ jobs:
           path: installer/output/FetcherSetup.exe
           if-no-files-found: error
 
-  # Creates the GitHub Release + attaches FetcherSetup.exe (no deployment Environment gate — those often
+      - name: Upload portable bundle (zip)
+        uses: actions/upload-artifact@v7
+        with:
+          name: FetcherWindowsBundle
+          path: dist/artifacts/*.zip
+          if-no-files-found: error
+
+  # Creates the GitHub Release + attaches installer + portable zip (no deployment Environment gate — those often
   # stall on “Review deployments” and leave tags without a Latest release).
   release:
     # Tag push (PAT or rare cases) OR manual "Run workflow" with ref = tag (recover missed releases).
@@ -128,7 +187,22 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: FetcherSetup
-          path: release-asset
+          path: release-asset/installer
+
+      - name: Download portable bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: FetcherWindowsBundle
+          path: release-asset/bundle
+
+      - name: Stage release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-files
+          cp "release-asset/installer/FetcherSetup.exe" release-files/
+          cp release-asset/bundle/*.zip release-files/
+          ls -la release-files/
 
       # Prepended above GitHub-generated notes (softprops: body + generate_release_notes).
       - name: Standard install section (Windows + Docker)
@@ -147,7 +221,7 @@ jobs:
             echo "## Install"
             echo ""
             echo "### Windows"
-            echo "Download **FetcherSetup.exe** (attached below)."
+            echo "Download **FetcherSetup.exe** or the portable **Fetcher-Windows-$V-bundle.zip** (attached below)."
             echo ""
             echo "### Docker (Linux)"
             echo "Pull the image for this release (**${GITHUB_REF_NAME}**):"
@@ -169,7 +243,9 @@ jobs:
         uses: softprops/action-gh-release@v2.6.1
         with:
           body: ${{ steps.install.outputs.body }}
-          files: release-asset/FetcherSetup.exe
+          files: |
+            release-files/FetcherSetup.exe
+            release-files/*.zip
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

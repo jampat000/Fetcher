@@ -6,8 +6,13 @@ from pathlib import Path
 from typing import Any, Literal
 
 SubtitleMode = Literal["remove_all", "keep_selected"]
-DefaultAudioSlot = Literal["primary", "secondary", "tertiary"]
-AudioPreferenceMode = Literal["best_available", "prefer_surround", "prefer_stereo", "prefer_lossless"]
+DefaultAudioSlot = Literal["primary", "secondary"]
+AudioPreferenceMode = Literal[
+    "best_available",
+    "prefer_surround",
+    "prefer_stereo",
+    "prefer_lossless",
+]
 
 _MEDIA_EXTENSIONS = frozenset({".mkv", ".mp4", ".m4v", ".webm", ".avi"})
 
@@ -71,7 +76,6 @@ def is_commentary_audio(stream: dict[str, Any]) -> bool:
 class StreamManagerRulesConfig:
     primary_audio_lang: str
     secondary_audio_lang: str
-    tertiary_audio_lang: str
     default_audio_slot: DefaultAudioSlot
     remove_commentary: bool
     subtitle_mode: SubtitleMode
@@ -90,6 +94,7 @@ class PlannedTrack:
     default: bool = False
     channels: int = 0
     lossless: bool = False
+    bitrate: int = 0
     kind: Literal["audio", "subtitle"] = "audio"
 
 
@@ -153,11 +158,11 @@ def _is_lossless_audio(codec_name: str | None) -> bool:
 def _audio_sort_key(
     track: PlannedTrack,
     *,
-    allowed_langs: list[tuple[str, Literal["primary", "secondary", "tertiary"]]],
+    allowed_langs: list[tuple[str, Literal["primary", "secondary"]]],
     preference: AudioPreferenceMode,
 ) -> tuple[int, int, int, int, int]:
-    tier_order = {"primary": 0, "secondary": 1, "tertiary": 2}
-    tier = "tertiary"
+    tier_order = {"primary": 0, "secondary": 1}
+    tier = "secondary"
     for lg, name in allowed_langs:
         if lg == track.lang_label:
             tier = name
@@ -165,14 +170,16 @@ def _audio_sort_key(
     surround = 1 if track.channels >= 6 else 0
     stereo = 1 if 2 <= track.channels < 6 else 0
     lossless = 1 if track.lossless else 0
-    if preference == "prefer_surround":
+    if preference == "best_available":
+        pref_tuple = (0, -surround, -lossless)
+    elif preference == "prefer_surround":
         pref_tuple = (0, -surround, -lossless)
     elif preference == "prefer_stereo":
         pref_tuple = (0, -stereo, -lossless)
     elif preference == "prefer_lossless":
         pref_tuple = (0, -lossless, -surround)
-    else:  # best_available
-        pref_tuple = (0, -lossless, -track.channels)
+    else:
+        pref_tuple = (0, -surround, -lossless)
     return (tier_order[tier], pref_tuple[1], pref_tuple[2], -track.channels, track.input_index)
 
 
@@ -188,16 +195,13 @@ def plan_remux(
     """
     video_indices = [int(s["index"]) for s in video]
 
-    allowed_langs: list[tuple[str, Literal["primary", "secondary", "tertiary"]]] = []
+    allowed_langs: list[tuple[str, Literal["primary", "secondary"]]] = []
     p = normalize_lang(config.primary_audio_lang)
     sec = normalize_lang(config.secondary_audio_lang)
-    ter = normalize_lang(config.tertiary_audio_lang)
     if p:
         allowed_langs.append((p, "primary"))
     if sec:
         allowed_langs.append((sec, "secondary"))
-    if ter:
-        allowed_langs.append((ter, "tertiary"))
     allowed_set = {lang for lang, _ in allowed_langs}
 
     removed_audio_labels: list[str] = []
@@ -225,13 +229,19 @@ def plan_remux(
                 default=bool(disp.get("default")),
                 channels=int(s.get("channels") or 0),
                 lossless=_is_lossless_audio(str(s.get("codec_name") or "")),
+                bitrate=int(s.get("bit_rate") or 0),
                 kind="audio",
             )
         )
 
     pref_mode: AudioPreferenceMode = (
         config.audio_preference_mode
-        if config.audio_preference_mode in ("best_available", "prefer_surround", "prefer_stereo", "prefer_lossless")
+        if config.audio_preference_mode in (
+            "best_available",
+            "prefer_surround",
+            "prefer_stereo",
+            "prefer_lossless",
+        )
         else "best_available"
     )
     kept_audio.sort(key=lambda t: _audio_sort_key(t, allowed_langs=allowed_langs, preference=pref_mode))
@@ -240,7 +250,7 @@ def plan_remux(
         return None
 
     slot: DefaultAudioSlot = (
-        config.default_audio_slot if config.default_audio_slot in ("primary", "secondary", "tertiary") else "primary"
+        config.default_audio_slot if config.default_audio_slot in ("primary", "secondary") else "primary"
     )
     matching = [
         i

@@ -96,7 +96,7 @@
       <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Emby (Trimmer)</h2>
       <p class="hint"><strong>Why:</strong> Trimmer talks to Emby to tidy libraries using rules you’ll set later — this step only proves Fetcher can reach your server. <strong>You can skip</strong> Emby entirely and still use Sonarr/Radarr automation.</p>
       <p class="small muted small--flush-top">Examples: LAN <code class="code-inline">http://192.168.1.10:8096</code>, this PC <code class="code-inline">http://localhost:8096</code>, reverse proxy <code class="code-inline">https://emby.example.com</code></p>
-      {% call toggle_checkbox("emby_enabled", settings.emby_enabled) %}<strong>Enable</strong> Emby Trimmer (optional library cleanup){% endcall %}
+      {% call toggle_checkbox("emby_enabled", settings.emby_enabled) %}<strong>Enable Trimmer</strong> (optional library cleanup){% endcall %}
       <label for="emby_url">Emby server URL — same host you use in the browser</label>
       <input class="input" id="emby_url" name="emby_url" type="text" value="{{ settings.emby_url }}" placeholder="http://localhost:8096" inputmode="url" autocomplete="off" autocorrect="off" spellcheck="false" />
       <label for="emby_api_key">Emby API key — from Dashboard → Advanced → API Keys (not your login password)</label>
@@ -119,7 +119,7 @@
       <label for="radarr_interval_minutes">Minutes between Radarr automation runs (after each run finishes)</label>
       <input class="number" id="radarr_interval_minutes" name="radarr_interval_minutes" type="number" value="{{ settings.radarr_interval_minutes | default(60, true) }}" min="5" max="10080" />
       <div class="small">Independent from Sonarr — tune movie searches separately from TV.</div>
-      <label for="emby_interval_minutes">Minutes between Emby Trimmer passes</label>
+      <label for="emby_interval_minutes">Minutes between Trimmer passes</label>
       <input class="number" id="emby_interval_minutes" name="emby_interval_minutes" type="number" value="{{ settings.emby_interval_minutes | default(60, true) }}" min="5" max="10080" />
       <div class="small">Only matters when Trimmer is enabled; same value as <strong>Trimmer settings</strong>.</div>
       <label for="timezone">Timezone for dashboard clocks and schedule labels</label>
@@ -146,7 +146,7 @@
       <p class="hint">Setup is complete. Use the links below when you want to fine-tune automation, Trimmer rules, or run a library match scan.</p>
       <ul class="small setup-done-list">
         <li><a href="/settings"><strong>Fetcher settings</strong></a> — Sonarr/Radarr search options, per-app schedules, max items, backups</li>
-        <li><a href="/trimmer/settings"><strong>Trimmer settings</strong></a> — Emby Trimmer rules, dry-run vs live, scan limits, schedule</li>
+        <li><a href="/trimmer/settings"><strong>Trimmer settings</strong></a> — Trimmer rules, dry-run vs live, scan limits, schedule</li>
         <li><a href="/trimmer"><strong>Trimmer</strong></a> — <strong>Scan Emby for matches</strong> to preview what your rules would target (on-demand)</li>
       </ul>
       <div class="setup-wizard-footer">

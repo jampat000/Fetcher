@@ -28,7 +28,7 @@ class SettingsIn(BaseModel):
         default=60,
         ge=5,
         le=7 * 24 * 60,
-        description="Emby Trimmer run cadence only (Trimmer settings).",
+        description="Trimmer run cadence only (Trimmer settings).",
     )
     sonarr_retry_delay_minutes: int = Field(
         default=1440,

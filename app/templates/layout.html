@@ -37,7 +37,17 @@
           <span class="sidebar-tagline">{{ app_tagline|default("Never miss a release.", true) }}</span>
         </a>
         <nav class="sidebar-nav">
-          <div class="sidebar-section-label">Main</div>
+          {% if show_setup_wizard %}
+          <a href="/setup" class="sidebar-link {% if request.url.path.startswith('/setup') %}active{% endif %}">
+            <i data-lucide="wand-2" class="sidebar-icon"></i>
+            <span>Setup</span>
+          </a>
+          <div class="sidebar-divider" aria-hidden="true"></div>
+          <a href="/logout" class="sidebar-link">
+            <i data-lucide="log-out" class="sidebar-icon"></i>
+            <span>Sign out</span>
+          </a>
+          {% else %}
           <a href="/" class="sidebar-link {% if request.url.path == '/' %}active{% endif %}">
             <i data-lucide="layout-dashboard" class="sidebar-icon"></i>
             <span>Dashboard</span>
@@ -50,25 +60,25 @@
             <i data-lucide="scroll-text" class="sidebar-icon"></i>
             <span>Logs</span>
           </a>
-          <div class="sidebar-section-label">Configure</div>
           <a href="/settings" class="sidebar-link {% if request.url.path == '/settings' %}active{% endif %}">
             <i data-lucide="settings" class="sidebar-icon"></i>
             <span>Settings</span>
+          </a>
+          <div class="sidebar-divider" aria-hidden="true"></div>
+          <a href="/refiner" class="sidebar-link {% if request.url.path in ['/refiner', '/refiner/settings'] %}active{% endif %}">
+            <i data-lucide="sliders-horizontal" class="sidebar-icon"></i>
+            <span>Refiner</span>
           </a>
           <a href="/trimmer" class="sidebar-link {% if request.url.path in ['/trimmer', '/trimmer/settings'] %}active{% endif %}">
             <i data-lucide="sparkles" class="sidebar-icon"></i>
             <span>Trimmer</span>
           </a>
-          {% if show_setup_wizard %}
-          <a href="/setup" class="sidebar-link {% if request.url.path.startswith('/setup') %}active{% endif %}">
-            <i data-lucide="wand-2" class="sidebar-icon"></i>
-            <span>Setup</span>
-          </a>
-          {% endif %}
+          <div class="sidebar-divider" aria-hidden="true"></div>
           <a href="/logout" class="sidebar-link">
             <i data-lucide="log-out" class="sidebar-icon"></i>
             <span>Sign out</span>
           </a>
+          {% endif %}
         </nav>
         <div class="sidebar-footer">
           <div class="sidebar-time" title="Your timezone: {{ timezone|default('UTC', true) }}">

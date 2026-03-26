@@ -1,0 +1,66 @@
+{% extends "layout.html" %}
+{% from "macros/refiner_area.html" import refiner_area_tabs %}
+{% block content %}
+<div class="wrap">
+  <div class="page-head">
+    <div>
+      <h1 class="ph-title">Refiner</h1>
+      <p>Review Refiner status before running processing. Rules and behavior live under <a href="/refiner/settings">Refiner settings</a>.</p>
+    </div>
+  </div>
+
+  {{ refiner_area_tabs('overview') }}
+
+  {% if request.query_params.get('run') == 'ok' %}
+  <div class="banner banner-ok" role="status">Refiner run completed. Check Activity and Logs for details.</div>
+  {% elif request.query_params.get('run') == 'fail' %}
+  <div class="banner banner-warn" role="alert">Refiner run did not complete. ({{ request.query_params.get('reason', 'error') | e }})</div>
+  {% endif %}
+  {% if not settings.stream_manager_enabled %}
+  <div class="banner banner-ok trimmer-mode-banner banner--soft" role="status">
+    <strong>Refiner off</strong> — Turn on <strong>Enable Refiner</strong> in <a href="/refiner/settings">Settings</a> to use dry run or live mode.
+  </div>
+  {% endif %}
+
+  <div class="card gc">
+    <div class="gc-title">Refiner overview</div>
+    <div class="hint">Use this page as a quick pre-flight check before running Refiner.</div>
+
+    <div class="m-grid">
+      <div class="m">
+        <div class="label">Safety</div>
+        <div class="value {% if settings.stream_manager_dry_run %}mode-safe{% else %}mode-live{% endif %}">
+          {{ "Dry run (safe preview)" if settings.stream_manager_dry_run else "Live processing" }}
+        </div>
+      </div>
+      <div class="m">
+        <div class="label">Watched folder</div>
+        <div class="value">{{ "Configured" if settings.stream_manager_watched_folder else "Not configured" }}</div>
+      </div>
+      <div class="m">
+        <div class="label">Output folder</div>
+        <div class="value">{{ "Configured" if settings.stream_manager_output_folder else "Not configured" }}</div>
+      </div>
+    </div>
+
+    {% if settings.stream_manager_enabled and not settings.stream_manager_dry_run %}
+    <div class="section">
+      <p class="preview-warning">Live processing is enabled in Refiner settings. Source files can be deleted after successful output.</p>
+    </div>
+    {% endif %}
+    <div class="section">
+      <div class="small"><strong>Audio:</strong> Keeps selected languages and applies your preferred track choice.</div>
+      <div class="small"><strong>Subtitles:</strong> Removes all or keeps only selected subtitle languages.</div>
+      <div class="small"><strong>Commentary:</strong> Optionally removes commentary audio tracks.</div>
+    </div>
+
+    <div class="btn-row">
+      <form method="post" action="/refiner/settings/run">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <button class="btn" type="submit">Run Refiner now</button>
+      </form>
+      <a class="btn secondary" href="/refiner/settings">Open settings</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

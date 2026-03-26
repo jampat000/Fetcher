@@ -33,18 +33,22 @@ def _rules_config_from_settings(row: AppSettings) -> StreamManagerRulesConfig | 
     if not row.stream_manager_enabled:
         return None
     slot = (row.stream_manager_default_audio_slot or "primary").strip().lower()
-    if slot not in ("primary", "secondary", "tertiary"):
+    if slot not in ("primary", "secondary"):
         slot = "primary"
     mode = (row.stream_manager_subtitle_mode or "remove_all").strip().lower()
     if mode not in ("remove_all", "keep_selected"):
         mode = "remove_all"
     pref = (row.stream_manager_audio_preference_mode or "best_available").strip().lower()
-    if pref not in ("best_available", "prefer_surround", "prefer_stereo", "prefer_lossless"):
+    if pref not in (
+        "best_available",
+        "prefer_surround",
+        "prefer_stereo",
+        "prefer_lossless",
+    ):
         pref = "best_available"
     return StreamManagerRulesConfig(
         primary_audio_lang=row.stream_manager_primary_audio_lang or "",
         secondary_audio_lang=row.stream_manager_secondary_audio_lang or "",
-        tertiary_audio_lang=row.stream_manager_tertiary_audio_lang or "",
         default_audio_slot=slot,  # type: ignore[arg-type]
         remove_commentary=bool(row.stream_manager_remove_commentary),
         subtitle_mode=mode,  # type: ignore[arg-type]
@@ -73,7 +77,7 @@ def _pipeline_from_settings(row: AppSettings) -> tuple[Path, Path, Path] | tuple
         return None, None, None
     work = _safe_resolve_folder(row.stream_manager_work_folder or "")
     if work is None:
-        work = db_path().parent / "stream-manager-work"
+        work = db_path().parent / "refiner-work"
     return watched, output, work
 
 
@@ -104,21 +108,21 @@ def _log_plan_outcome(*, path: Path, plan: Any, dry: bool) -> None:
     rem_s = ", ".join(sorted({x for x in plan.removed_subtitles})) if plan.removed_subtitles else ""
     name = path.name
     if dry:
-        logger.info("Stream Manager: dry-run: no file changes applied for %s", name)
-        logger.info("Stream Manager: would keep audio: %s", kept_a or "(none)")
+        logger.info("Refiner: dry-run: no file changes applied for %s", name)
+        logger.info("Refiner: would keep audio: %s", kept_a or "(none)")
         if rem_a:
-            logger.info("Stream Manager: would remove audio: %s", rem_a)
-        logger.info("Stream Manager: would keep subtitles: %s", kept_s)
+            logger.info("Refiner: would remove audio: %s", rem_a)
+        logger.info("Refiner: would keep subtitles: %s", kept_s)
         if rem_s:
-            logger.info("Stream Manager: would remove subtitles: %s", rem_s)
+            logger.info("Refiner: would remove subtitles: %s", rem_s)
         return
-    logger.info("Stream Manager: cleaned streams for %s", name)
-    logger.info("Stream Manager: kept audio: %s", kept_a)
+    logger.info("Refiner: cleaned streams for %s", name)
+    logger.info("Refiner: kept audio: %s", kept_a)
     if rem_a:
-        logger.info("Stream Manager: removed audio: %s", rem_a)
-    logger.info("Stream Manager: kept subtitles: %s", kept_s)
+        logger.info("Refiner: removed audio: %s", rem_a)
+    logger.info("Refiner: kept subtitles: %s", kept_s)
     if rem_s:
-        logger.info("Stream Manager: removed subtitles: %s", rem_s)
+        logger.info("Refiner: removed subtitles: %s", rem_s)
 
 
 def _output_path_for_source(*, src: Path, watched_root: Path, output_root: Path) -> Path:
@@ -134,30 +138,31 @@ def _process_one_sync(
     output_root: Path,
     work_dir: Path,
 ) -> tuple[str, dict[str, Any]]:
+    """Per file: ffprobe analysis → rule planning from probe data → remux/validate/move (source delete only after success)."""
     meta: dict[str, Any] = {"path": str(path)}
     try:
-        probe = ffprobe_json(path)
+        ffprobe_report = ffprobe_json(path)
     except Exception as e:
-        logger.warning("Stream Manager: ffprobe failed for %s — %s", path.name, e)
+        logger.warning("Refiner: ffprobe failed for %s — %s", path.name, e)
         return "error", {**meta, "error": str(e)}
-    video, audio, subs = split_streams(probe)
+    video, audio, subs = split_streams(ffprobe_report)
     if not audio:
-        logger.warning("Stream Manager: no audio streams in %s", path.name)
+        logger.warning("Refiner: no audio streams in %s", path.name)
         return "error", {**meta, "error": "no audio in source"}
     plan = plan_remux(video=video, audio=audio, subtitles=subs, config=cfg)
     if plan is None:
-        logger.warning("Stream Manager: no audio would remain for %s — skipping", path.name)
+        logger.warning("Refiner: no audio would remain for %s — skipping", path.name)
         return "error", {**meta, "error": "no audio would remain"}
     if not is_remux_required(plan, audio, subs):
         return "noop", meta
     _log_plan_outcome(path=path, plan=plan, dry=dry)
     destination = _output_path_for_source(src=path, watched_root=watched_root, output_root=output_root)
     if dry:
-        logger.info("Stream Manager: dry-run: source preserved, no file changes applied (%s)", path.name)
-        logger.info("Stream Manager: dry-run: would output to %s", destination)
+        logger.info("Refiner: dry-run: source preserved, no file changes applied (%s)", path.name)
+        logger.info("Refiner: dry-run: would output to %s", destination)
         return "dry_run", meta
     if destination.exists():
-        logger.error("Stream Manager: output already exists, refusing overwrite: %s", destination)
+        logger.error("Refiner: output already exists, refusing overwrite: %s", destination)
         return "error", {**meta, "error": "output_exists"}
     temp_file: Path | None = None
     try:
@@ -165,16 +170,16 @@ def _process_one_sync(
         temp_file = remux_to_temp_file(src=path, work_dir=work_dir, plan=plan)
         os.replace(temp_file, destination)
         path.unlink()
-        logger.info("Stream Manager: processed file to output folder: %s", destination)
-        logger.info("Stream Manager: source deleted after confirmed successful output: %s", path)
+        logger.info("Refiner: processed file to output folder: %s", destination)
+        logger.info("Refiner: source deleted after confirmed successful output: %s", path)
     except Exception as e:
         if temp_file is not None:
             try:
                 if temp_file.exists():
                     temp_file.unlink()
             except OSError:
-                logger.warning("Stream Manager: could not clean work artifact %s", temp_file, exc_info=True)
-        logger.error("Stream Manager: remux failed for %s — %s", path.name, e)
+                logger.warning("Refiner: could not clean work artifact %s", temp_file, exc_info=True)
+        logger.error("Refiner: processing failed for %s — %s", path.name, e)
         return "error", {**meta, "error": str(e)}
     return "ok", meta
 
@@ -198,7 +203,7 @@ async def run_scheduled_stream_manager_pass(session: AsyncSession) -> dict[str, 
 async def run_stream_manager_pass(
     session: AsyncSession, *, trigger: Literal["manual", "scheduled"]
 ) -> dict[str, Any]:
-    """Run Stream Manager over configured paths. Serialised with an internal lock."""
+    """Run Refiner over configured paths. Serialised with an internal lock."""
     async with _stream_manager_lock:
         row = (await session.execute(select(AppSettings).order_by(AppSettings.id.asc()).limit(1))).scalars().first()
         if not row or not row.stream_manager_enabled:
@@ -207,21 +212,21 @@ async def run_stream_manager_pass(
         if cfg is None:
             return {"ok": True, "ran": False, "reason": "disabled"}
         if not normalize_lang(cfg.primary_audio_lang):
-            logger.warning("Stream Manager: primary audio language is required when Stream Manager is enabled.")
+            logger.warning("Refiner: primary audio language is required when Refiner is enabled.")
             return {"ok": False, "ran": False, "error": "primary_lang_required"}
         watched_root, output_root, work_dir = _pipeline_from_settings(row)
         if watched_root is None or output_root is None or work_dir is None:
-            logger.warning("Stream Manager: watched folder and output folder are required when enabled.")
+            logger.warning("Refiner: watched folder and output folder are required when enabled.")
             return {"ok": False, "ran": False, "error": "folders_required"}
         if not watched_root.exists() or not watched_root.is_dir():
-            logger.warning("Stream Manager: watched folder is not a readable directory: %s", watched_root)
+            logger.warning("Refiner: watched folder is not a readable directory: %s", watched_root)
             return {"ok": False, "ran": False, "error": "watched_folder_invalid"}
         if not output_root.exists() or not output_root.is_dir():
-            logger.warning("Stream Manager: output folder is not a directory: %s", output_root)
+            logger.warning("Refiner: output folder is not a directory: %s", output_root)
             return {"ok": False, "ran": False, "error": "output_folder_invalid"}
         files = _gather_watched_files(watched_root)
         if not files:
-            logger.info("Stream Manager: watched folder has no supported media files — nothing to do.")
+            logger.info("Refiner: watched folder has no supported media files — nothing to do.")
             return {"ok": True, "ran": False, "reason": "no_files"}
         dry = bool(row.stream_manager_dry_run)
         ok_c = noop_c = dry_c = err_c = 0
@@ -240,7 +245,7 @@ async def run_stream_manager_pass(
         row.stream_manager_last_run_at = utc_now_naive()
         row.updated_at = utc_now_naive()
         detail = (
-            f"Stream Manager ({trigger}): remuxed={ok_c} unchanged={noop_c} "
+            f"Refiner ({trigger}): processed={ok_c} unchanged={noop_c} "
             f"dry_run_items={dry_c} errors={err_c}"
         )
         session.add(

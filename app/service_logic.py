@@ -1753,7 +1753,7 @@ async def _execute_emby_block(
         dry_run = bool(settings.emby_dry_run)
 
         if movie_rating_below <= 0 and movie_unwatched_days <= 0 and (not tv_delete_watched) and tv_unwatched_days <= 0:
-            actions.append("Emby: skipped (no Emby Trimmer rules enabled)")
+            actions.append("Trimmer: skipped (no Trimmer rules enabled)")
         else:
             items = await emby.items_for_user(user_id=effective_user_id, limit=scan_limit)
             candidates: list[tuple[str, str, str, dict[str, Any]]] = []
@@ -1888,7 +1888,7 @@ async def _run_once_inner(
                 default_limit=default_limit,
             )
 
-        # Emby Trimmer (not part of manual Arr “search now”)
+        # Trimmer (not part of manual Arr “search now”)
         if do_trimmer_block and arr_manual_scope is None and settings.emby_enabled and settings.emby_url and em_key:
             if not in_window(
                 schedule_enabled=settings.emby_schedule_enabled,
@@ -1897,7 +1897,7 @@ async def _run_once_inner(
                 schedule_end=settings.emby_schedule_end,
                 timezone=tz,
             ):
-                actions.append("Emby: skipped (outside schedule window)")
+                actions.append("Trimmer: skipped (outside schedule window)")
             else:
                 await _execute_emby_block(
                     session,
@@ -1906,7 +1906,7 @@ async def _run_once_inner(
                     actions=actions,
                 )
         elif do_trimmer_block and settings.emby_enabled:
-            actions.append("Emby: skipped (missing URL/API key)")
+            actions.append("Trimmer: skipped (missing URL/API key)")
 
         msg = " | ".join(actions) if actions else "No actions (check enabled flags + URLs + API keys)."
         log.ok = True

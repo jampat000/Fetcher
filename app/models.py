@@ -87,13 +87,13 @@ class AppSettings(Base):
     emby_rule_tv_watched_rating_below: Mapped[int] = mapped_column(Integer, default=0)  # 0 -> fallback/global or disabled
     emby_rule_tv_unwatched_days: Mapped[int] = mapped_column(Integer, default=0)  # 0 -> fallback/global or disabled
 
-    # Stream Manager (remux-only audio/subtitle cleanup; isolated from Trimmer orchestration)
+    # Refiner (remux-only audio/subtitle cleanup; isolated from Trimmer orchestration)
     stream_manager_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     stream_manager_dry_run: Mapped[bool] = mapped_column(Boolean, default=True)
     stream_manager_primary_audio_lang: Mapped[str] = mapped_column(String(16), default="")
     stream_manager_secondary_audio_lang: Mapped[str] = mapped_column(String(16), default="")
     stream_manager_tertiary_audio_lang: Mapped[str] = mapped_column(String(16), default="")
-    # Which language slot gets the default audio disposition: primary | secondary | tertiary
+    # Which language slot gets the default audio disposition: primary | secondary
     stream_manager_default_audio_slot: Mapped[str] = mapped_column(String(16), default="primary")
     stream_manager_remove_commentary: Mapped[bool] = mapped_column(Boolean, default=False)
     stream_manager_subtitle_mode: Mapped[str] = mapped_column(String(24), default="remove_all")

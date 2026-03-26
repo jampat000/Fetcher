@@ -127,7 +127,7 @@ def _activity_primary_label(e: ActivityLog) -> str:
     if kind == "cleanup":
         return f"Radarr queue cleanup ({count} item{'s' if count != 1 else ''})"
     if kind == "trimmed":
-        return f"{count} item{'s' if count != 1 else ''} matched Emby Trimmer rules"
+        return f"{count} item{'s' if count != 1 else ''} matched Trimmer rules"
     if kind == "missing":
         unit = "episode" if app == "sonarr" else "movie"
         return f"Missing search for {count} {unit}{'s' if count != 1 else ''}"
@@ -169,7 +169,6 @@ def trimmer_settings_fragment(trimmer_section: str | None) -> str:
         "schedule": "trimmer-schedule",
         "rules": "trimmer-rules",
         "people": "trimmer-people",
-        "stream_manager": "stream-manager",
     }
     fid = ids.get(key)
     return f"#{fid}" if fid else ""

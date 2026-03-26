@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from pathlib import Path
 from urllib.parse import urlencode
 
 import pytest
@@ -276,6 +277,135 @@ def test_trimmer_settings_has_content_criteria(monkeypatch: pytest.MonkeyPatch) 
     assert "People rules" in html
     assert "emby_rule_movie_people" in html
     assert "emby_rule_tv_people" in html
+
+
+def test_refiner_audio_dropdowns_are_two_language_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        r = client.get("/refiner/settings")
+    assert r.status_code == 200
+    html = r.text
+    assert 'name="stream_manager_primary_audio_lang"' in html
+    assert 'name="stream_manager_secondary_audio_lang"' in html
+    assert 'name="stream_manager_default_audio_slot"' in html
+    assert "Tertiary audio" not in html
+
+
+def test_refiner_micro_helper_text_is_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        r = client.get("/refiner/settings")
+    assert r.status_code == 200
+    html = r.text
+    assert "Files are processed from the watched folder and moved to the output folder after completion." in html
+    assert "Original files are deleted after successful processing." in html
+    assert "Only selected languages are kept. Preference determines which track is chosen when multiple exist." in html
+
+
+def test_refiner_dry_run_save_does_not_modify_emby_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def seed() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.emby_dry_run = True
+            row.stream_manager_dry_run = True
+            await session.commit()
+
+    asyncio.run(seed())
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/refiner/settings/save",
+            data={
+                "stream_manager_enabled": "true",
+                "stream_manager_dry_run": "false",
+                "stream_manager_primary_audio_lang": "eng",
+                "stream_manager_secondary_audio_lang": "",
+                "stream_manager_default_audio_slot": "primary",
+                "stream_manager_audio_preference_mode": "best_available",
+                "stream_manager_watched_folder": "D:\\incoming",
+                "stream_manager_output_folder": "D:\\processed",
+                "stream_manager_schedule_enabled": "false",
+                "stream_manager_interval_minutes": "60",
+                **{f"stream_manager_schedule_{d}": "0" for d in _WEEKDAYS},
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
+    assert resp.status_code in (302, 303)
+
+    async def verify() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            assert row.emby_dry_run is True
+            assert row.stream_manager_dry_run is False
+
+    asyncio.run(verify())
+
+
+def test_trimmer_dry_run_save_does_not_modify_stream_manager_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def seed() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.emby_dry_run = True
+            row.stream_manager_dry_run = False
+            await session.commit()
+
+    asyncio.run(seed())
+    pairs: list[tuple[str, str]] = [
+        ("emby_dry_run", "false"),
+        ("emby_schedule_enabled", "false"),
+        *_schedule_flag_pairs("emby_schedule"),
+        ("emby_schedule_start", "00:00"),
+        ("emby_schedule_end", "23:59"),
+        ("emby_interval_minutes", "60"),
+        ("emby_max_items_scan", "100"),
+        ("emby_max_deletes_per_run", "5"),
+        ("save_scope", "schedule"),
+    ]
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/trimmer/settings/cleaner",
+            content=urlencode(pairs),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
+    assert resp.status_code in (302, 303)
+
+    async def verify() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            assert row.emby_dry_run is False
+            assert row.stream_manager_dry_run is False
+
+    asyncio.run(verify())
+
+
+def test_refiner_is_not_embedded_in_trimmer_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        r = client.get("/trimmer/settings")
+    assert r.status_code == 200
+    assert "Refiner settings" not in r.text
+    assert 'name="stream_manager_primary_audio_lang"' not in r.text
+
+
+def test_refiner_page_is_separate_from_trimmer(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        r = client.get("/refiner/settings")
+    assert r.status_code == 200
+    assert "Refiner settings" in r.text
+    assert "Trimmer settings" in r.text
+
+
+def test_refiner_overview_page_exists_and_has_tabs(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        r = client.get("/refiner")
+    assert r.status_code == 200
+    assert "Refiner overview" in r.text
+    assert 'href="/refiner"' in r.text
+    assert 'href="/refiner/settings"' in r.text
+
+
+def test_trimmer_settings_section_visibility_script_registered() -> None:
+    js = Path("app/static/app.js").read_text(encoding="utf-8")
+    assert "function initTrimmerSettingsSectionTabs()" in js
+    assert "initTrimmerSettingsSectionTabs();" in js
 
 
 def test_trimmer_page_uses_overview_wording(monkeypatch: pytest.MonkeyPatch) -> None:

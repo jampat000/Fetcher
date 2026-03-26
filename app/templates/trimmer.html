@@ -5,16 +5,22 @@
   <div class="page-head">
     <div>
       <h1 class="ph-title">Trimmer</h1>
-      <p>Review <strong>Emby Trimmer</strong> candidates clearly before scheduled delete runs. Rules and schedules live under <a href="/trimmer/settings">Trimmer settings</a>.</p>
+      <p>Review Trimmer candidates before running delete operations. Rules and schedules live under <a href="/trimmer/settings">Trimmer settings</a>.</p>
     </div>
   </div>
 
   {{ trimmer_area_tabs('review') }}
 
+  {% if not settings.emby_enabled %}
+  <div class="banner banner-ok trimmer-mode-banner banner--soft" role="status">
+    <strong>Trimmer off</strong> — Turn on <strong>Enable Trimmer</strong> in <a href="/trimmer/settings">Settings</a> to use dry run or live mode.
+  </div>
+  {% endif %}
+
   <div class="card gc">
       <div class="gc-title">Trimmer overview</div>
       <div class="hint">
-        See <strong>which titles in Emby match your Emby Trimmer rules</strong> — same checks the scheduler uses.
+        See <strong>which titles in Emby match your Trimmer rules</strong> — same checks the scheduler uses.
         <strong>Scan Emby for matches</strong> loads from Emby; with <strong>dry run</strong> on you get a preview only, with <strong>dry run</strong> off matched items are removed during that scan (up to max rows). Opening <strong>Trimmer</strong> without scanning stays fast.
       </div>
 

@@ -28,7 +28,7 @@ def resolve_ffprobe_ffmpeg() -> tuple[str, str]:
     ffmpeg = shutil.which("ffmpeg")
     if not ffprobe or not ffmpeg:
         raise RuntimeError(
-            "Stream Manager requires ffprobe/ffmpeg. In packaged Windows builds, place them under "
+            "Refiner requires ffprobe/ffmpeg. In packaged Windows builds, place them under "
             "'bin/ffmpeg' (or package with build); in non-packaged environments ensure both are on PATH."
         )
     return ffprobe, ffmpeg
@@ -111,7 +111,7 @@ def remux_to_temp_file(*, src: Path, work_dir: Path, plan: RemuxPlan) -> Path:
     tmp_path = Path(tmp_name)
     try:
         argv = build_ffmpeg_argv(ffmpeg_bin=ffmpeg_bin, src=src, dst=tmp_path, plan=plan)
-        logger.debug("Stream Manager: ffmpeg %s", " ".join(argv[:8]) + " ...")
+        logger.debug("Refiner: ffmpeg %s", " ".join(argv[:8]) + " ...")
         run_ffmpeg(argv)
         validate_remux_output(tmp_path)
     except Exception:
@@ -119,6 +119,6 @@ def remux_to_temp_file(*, src: Path, work_dir: Path, plan: RemuxPlan) -> Path:
             if tmp_path.is_file():
                 tmp_path.unlink()
         except OSError:
-            logger.warning("Stream Manager: could not remove temp file %s", tmp_path, exc_info=True)
+            logger.warning("Refiner: could not remove temp file %s", tmp_path, exc_info=True)
         raise
     return tmp_path

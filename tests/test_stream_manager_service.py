@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from app.db import SessionLocal, _get_or_create_settings
-from app.stream_manager_service import _pipeline_from_settings, run_stream_manager_pass
+from app.stream_manager_service import _pipeline_from_settings, _rules_config_from_settings, run_stream_manager_pass
 
 
 def _fake_probe_multi_audio() -> dict:
@@ -200,7 +200,7 @@ def test_default_work_folder_usage(monkeypatch: pytest.MonkeyPatch, tmp_path) ->
             await session.commit()
             await run_stream_manager_pass(session, trigger="manual")
         assert seen
-        assert seen[0].name == "stream-manager-work"
+        assert seen[0].name == "refiner-work"
 
     asyncio.run(_go())
 
@@ -215,3 +215,24 @@ def test_pipeline_settings_parser(tmp_path) -> None:
     assert watched is not None and watched.name == "watched"
     assert output is not None and output.name == "out"
     assert work is not None and work.name == "work"
+
+
+def test_rules_config_parses_dropdown_values() -> None:
+    class _Row:
+        stream_manager_enabled = True
+        stream_manager_primary_audio_lang = "eng"
+        stream_manager_secondary_audio_lang = "spa"
+        stream_manager_default_audio_slot = "secondary"
+        stream_manager_remove_commentary = True
+        stream_manager_subtitle_mode = "remove_all"
+        stream_manager_subtitle_langs_csv = ""
+        stream_manager_preserve_forced_subs = True
+        stream_manager_preserve_default_subs = True
+        stream_manager_audio_preference_mode = "best_available"
+
+    cfg = _rules_config_from_settings(_Row())  # type: ignore[arg-type]
+    assert cfg is not None
+    assert cfg.primary_audio_lang == "eng"
+    assert cfg.secondary_audio_lang == "spa"
+    assert cfg.default_audio_slot == "secondary"
+    assert cfg.audio_preference_mode == "best_available"

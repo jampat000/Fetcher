@@ -73,3 +73,11 @@ jobs:
           context: .
           push: true
           tags: ${{ steps.tags.outputs.tags }}
+
+      - name: Verify image (ffmpeg + ffprobe in PATH)
+        shell: bash
+        run: |
+          set -euo pipefail
+          FIRST="$(echo '${{ steps.tags.outputs.tags }}' | cut -d',' -f1)"
+          docker pull "$FIRST"
+          docker run --rm "$FIRST" sh -c 'command -v ffmpeg >/dev/null && command -v ffprobe >/dev/null && ffmpeg -version | head -n1 && ffprobe -version | head -n1'

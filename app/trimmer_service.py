@@ -90,7 +90,7 @@ class TrimmerReviewService:
             and (not result.tv_delete_watched)
             and result.tv_unwatched_days <= 0
         ):
-            result.error = "No rules are enabled. Set at least one Emby Trimmer rule in Trimmer settings."
+            result.error = "No rules are enabled. Set at least one Trimmer rule in Trimmer settings."
             return result
 
         if not run_emby_scan:

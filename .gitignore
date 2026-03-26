@@ -15,6 +15,7 @@ installer/_inno/
 installer/_innosetup-*.exe
 service/winsw.exe
 packaging/ffmpeg-bin/
+packaging/ffmpeg-download/
 # Ignore stray PyInstaller specs; keep the real one for CI/local builds
 *.spec
 !packaging/fetcher.spec

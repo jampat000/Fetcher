@@ -60,7 +60,7 @@
       {% elif im == 'fail' %}
       <div class="banner banner-warn" role="alert"><strong>Import</strong> failed: {{ request.query_params.get('reason', 'Unknown error') | e }}</div>
       {% endif %}
-      <p class="small muted lead-muted"><strong>Emby Trimmer</strong> is configured separately: use <strong>Trimmer</strong> in the sidebar → <a href="/trimmer/settings">Trimmer settings</a>. <strong>Sonarr</strong>, <strong>Radarr</strong>, and <strong>Emby Trimmer</strong> each use their own run interval and scheduled job — they are not tied to a shared “minimum wake” cadence.</p>
+      <p class="small muted lead-muted"><strong>Trimmer</strong> is configured separately: open it from the sidebar → <a href="/trimmer/settings">Trimmer settings</a>. <strong>Sonarr</strong>, <strong>Radarr</strong>, and <strong>Trimmer</strong> each use their own run interval and scheduled job — they are not tied to a shared “minimum wake” cadence.</p>
       <div class="settings-global-stack">
         <div class="field settings-global-field">
           <label for="log_retention_days">Log retention (days)</label>

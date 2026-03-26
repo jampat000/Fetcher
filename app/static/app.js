@@ -853,7 +853,7 @@ function fetcherScopeLabelFromTab(tabKey) {
 
 const TRIMMER_SETTINGS_INPLACE_JSON_HEADER = "X-Fetcher-Trimmer-Settings-Async";
 const TRIMMER_SETTINGS_SAVE_SUCCESS_BANNER_BY_SECTION = {
-  connection: "Trimmer settings saved (Connection).",
+  connection: "Trimmer settings saved (Emby connection).",
   schedule: "Trimmer settings saved (Schedule & limits).",
   rules: "Trimmer settings saved (Rules).",
   people: "Trimmer settings saved (People rules).",
@@ -1576,6 +1576,47 @@ function initSettingsTabs() {
   });
 }
 
+function initTrimmerSettingsSectionTabs() {
+  const tabButtons = Array.from(
+    document.querySelectorAll(".trimmer-settings-section-tabs .settings-tab[href^='#']"),
+  );
+  const anchors = Array.from(document.querySelectorAll(".trimmer-settings-anchor[id]"));
+  if (!tabButtons.length || !anchors.length) return;
+
+  const byId = new Map(anchors.map((el) => [el.id, el]));
+
+  function showSection(sectionId, opts) {
+    const targetId = byId.has(sectionId) ? sectionId : anchors[0].id;
+    anchors.forEach((el) => {
+      const active = el.id === targetId;
+      el.hidden = !active;
+      el.setAttribute("aria-hidden", active ? "false" : "true");
+    });
+    tabButtons.forEach((btn) => {
+      const id = (btn.getAttribute("href") || "").replace(/^#/, "");
+      const active = id === targetId;
+      btn.classList.toggle("is-active", active);
+      btn.setAttribute("aria-current", active ? "page" : "false");
+    });
+    if (opts && opts.updateHash) {
+      const url = `${window.location.pathname}${window.location.search}#${targetId}`;
+      history.replaceState(null, "", url);
+    }
+  }
+
+  let initial = (window.location.hash || "").replace(/^#/, "").trim();
+  if (!initial || !byId.has(initial)) initial = anchors[0].id;
+  showSection(initial, { updateHash: false });
+
+  tabButtons.forEach((btn) => {
+    btn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      const id = (btn.getAttribute("href") || "").replace(/^#/, "");
+      showSection(id, { updateHash: true });
+    });
+  });
+}
+
 window.addEventListener("DOMContentLoaded", () => {
   injectMeshAndNoise();
   bindInternalLinksTargetTop();
@@ -1591,6 +1632,7 @@ window.addEventListener("DOMContentLoaded", () => {
   initActivityFilterPills();
   initActivityDetailExpand();
   initSettingsTabs();
+  initTrimmerSettingsSectionTabs();
   initSettingsPageCollapses();
 
   staggerClass(".hero-stat", 0, 60, "anim-in");

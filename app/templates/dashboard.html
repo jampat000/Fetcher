@@ -114,7 +114,7 @@
             {% if last_trimmer_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif last_trimmer_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
           {% else %}<span class="muted">Not yet run</span>{% endif %}
         </div>
-        <div class="automation-card-subline">{% if settings.emby_enabled %}<span class="muted">Next run:</span> <span id="dash-next-trimmer-tick">{% if next_trimmer_tick_local %}{{ next_trimmer_tick_local }}{% else %}<span class="muted automation-value-pending">Scheduled</span>{% endif %}</span>{% if next_trimmer_relative %} <span class="small muted" id="dash-next-trimmer-rel">({{ next_trimmer_relative }})</span>{% endif %}{% else %}<span class="muted">Trimmer off — enable Emby Trimmer in Fetcher or Trimmer settings.</span>{% endif %}</div>
+        <div class="automation-card-subline">{% if settings.emby_enabled %}<span class="muted">Next run:</span> <span id="dash-next-trimmer-tick">{% if next_trimmer_tick_local %}{{ next_trimmer_tick_local }}{% else %}<span class="muted automation-value-pending">Scheduled</span>{% endif %}</span>{% if next_trimmer_relative %} <span class="small muted" id="dash-next-trimmer-rel">({{ next_trimmer_relative }})</span>{% endif %}{% else %}<span class="muted">Trimmer off — Turn on Enable Trimmer in <a href="/trimmer/settings">Settings</a> to use dry run or live mode.</span>{% endif %}</div>
         <div class="small muted automation-app-hint" id="dash-trimmer-hint"{% if not trimmer_automation_sub %} hidden{% endif %}>{{ trimmer_automation_sub }}</div>
       </div>
 
@@ -184,11 +184,11 @@
           {% else %}
             <span class="status-dot dot-blue"></span>
           {% endif %}
-          Emby Trimmer
+          Trimmer
         </div>
         {% if not settings.emby_enabled %}
           {% set emby_matched_n = (emby.missing_total if emby else 0) %}
-          <div class="small muted emby-trimmer-disabled-summary">
+          <div class="small muted trimmer-disabled-summary">
             <span class="badge {% if settings.emby_dry_run %}b-off{% else %}b-live{% endif %}">{{ "Dry run" if settings.emby_dry_run else "Live delete" }}</span>
             <span class="badge {% if emby_matched_n > 0 %}b-warn{% else %}b-off{% endif %}">{{ emby_matched_n }} matched</span>
           </div>
