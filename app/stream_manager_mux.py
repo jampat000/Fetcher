@@ -10,15 +10,27 @@ from pathlib import Path
 from typing import Any
 
 from app.stream_manager_rules import RemuxPlan
+from app.paths import BASE_DIR
 
 logger = logging.getLogger(__name__)
 
 
 def resolve_ffprobe_ffmpeg() -> tuple[str, str]:
+    # Prefer bundled tools for packaged builds, then PATH.
+    bundled = [
+        BASE_DIR / "bin" / "ffmpeg" / "ffprobe.exe",
+        BASE_DIR / "bin" / "ffmpeg" / "ffmpeg.exe",
+    ]
+    if bundled[0].is_file() and bundled[1].is_file():
+        return str(bundled[0]), str(bundled[1])
+
     ffprobe = shutil.which("ffprobe")
     ffmpeg = shutil.which("ffmpeg")
     if not ffprobe or not ffmpeg:
-        raise RuntimeError("ffprobe and ffmpeg must be on PATH for Stream Manager.")
+        raise RuntimeError(
+            "Stream Manager requires ffprobe/ffmpeg. In packaged Windows builds, place them under "
+            "'bin/ffmpeg' (or package with build); in non-packaged environments ensure both are on PATH."
+        )
     return ffprobe, ffmpeg
 
 
@@ -86,13 +98,14 @@ def run_ffmpeg(argv: list[str], *, timeout_s: int | None = 3600) -> None:
         raise RuntimeError(msg or "ffmpeg failed")
 
 
-def remux_to_temp_then_replace(src: Path, plan: RemuxPlan) -> None:
-    """Write remux next to src, validate, then atomically replace src. Original untouched on any failure."""
+def remux_to_temp_file(*, src: Path, work_dir: Path, plan: RemuxPlan) -> Path:
+    """Write remux output into work_dir and validate it. Caller owns move/delete decisions."""
     _, ffmpeg_bin = resolve_ffprobe_ffmpeg()
+    work_dir.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(
         suffix=src.suffix or ".mkv",
         prefix=f"{src.stem}.streammgr.",
-        dir=str(src.parent),
+        dir=str(work_dir),
     )
     os.close(fd)
     tmp_path = Path(tmp_name)
@@ -101,7 +114,6 @@ def remux_to_temp_then_replace(src: Path, plan: RemuxPlan) -> None:
         logger.debug("Stream Manager: ffmpeg %s", " ".join(argv[:8]) + " ...")
         run_ffmpeg(argv)
         validate_remux_output(tmp_path)
-        os.replace(tmp_path, src)
     except Exception:
         try:
             if tmp_path.is_file():
@@ -109,3 +121,4 @@ def remux_to_temp_then_replace(src: Path, plan: RemuxPlan) -> None:
         except OSError:
             logger.warning("Stream Manager: could not remove temp file %s", tmp_path, exc_info=True)
         raise
+    return tmp_path

@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 SubtitleMode = Literal["remove_all", "keep_selected"]
 DefaultAudioSlot = Literal["primary", "secondary", "tertiary"]
+AudioPreferenceMode = Literal["best_available", "prefer_surround", "prefer_stereo", "prefer_lossless"]
 
 _MEDIA_EXTENSIONS = frozenset({".mkv", ".mp4", ".m4v", ".webm", ".avi"})
 
@@ -77,6 +78,7 @@ class StreamManagerRulesConfig:
     subtitle_langs: tuple[str, ...]
     preserve_forced_subs: bool
     preserve_default_subs: bool
+    audio_preference_mode: AudioPreferenceMode
 
 
 @dataclass
@@ -86,6 +88,8 @@ class PlannedTrack:
     commentary: bool = False
     forced: bool = False
     default: bool = False
+    channels: int = 0
+    lossless: bool = False
     kind: Literal["audio", "subtitle"] = "audio"
 
 
@@ -141,6 +145,37 @@ def split_streams(probe: dict[str, Any]) -> tuple[list[dict], list[dict], list[d
     return video, audio, subs
 
 
+def _is_lossless_audio(codec_name: str | None) -> bool:
+    c = (codec_name or "").strip().lower()
+    return c in {"flac", "truehd", "alac", "pcm_s16le", "pcm_s24le", "pcm_s32le", "wavpack"}
+
+
+def _audio_sort_key(
+    track: PlannedTrack,
+    *,
+    allowed_langs: list[tuple[str, Literal["primary", "secondary", "tertiary"]]],
+    preference: AudioPreferenceMode,
+) -> tuple[int, int, int, int, int]:
+    tier_order = {"primary": 0, "secondary": 1, "tertiary": 2}
+    tier = "tertiary"
+    for lg, name in allowed_langs:
+        if lg == track.lang_label:
+            tier = name
+            break
+    surround = 1 if track.channels >= 6 else 0
+    stereo = 1 if 2 <= track.channels < 6 else 0
+    lossless = 1 if track.lossless else 0
+    if preference == "prefer_surround":
+        pref_tuple = (0, -surround, -lossless)
+    elif preference == "prefer_stereo":
+        pref_tuple = (0, -stereo, -lossless)
+    elif preference == "prefer_lossless":
+        pref_tuple = (0, -lossless, -surround)
+    else:  # best_available
+        pref_tuple = (0, -lossless, -track.channels)
+    return (tier_order[tier], pref_tuple[1], pref_tuple[2], -track.channels, track.input_index)
+
+
 def plan_remux(
     *,
     video: list[dict[str, Any]],
@@ -165,7 +200,6 @@ def plan_remux(
         allowed_langs.append((ter, "tertiary"))
     allowed_set = {lang for lang, _ in allowed_langs}
 
-    tier_order = {"primary": 0, "secondary": 1, "tertiary": 2}
     removed_audio_labels: list[str] = []
 
     kept_audio: list[PlannedTrack] = []
@@ -189,20 +223,18 @@ def plan_remux(
                 commentary=com,
                 forced=bool(disp.get("forced")),
                 default=bool(disp.get("default")),
+                channels=int(s.get("channels") or 0),
+                lossless=_is_lossless_audio(str(s.get("codec_name") or "")),
                 kind="audio",
             )
         )
 
-    def _sort_audio_key(t: PlannedTrack) -> tuple[int, int]:
-        # tier order, then original stream index
-        tier = "tertiary"
-        for lg, name in allowed_langs:
-            if lg == t.lang_label:
-                tier = name
-                break
-        return (tier_order[tier], t.input_index)
-
-    kept_audio.sort(key=_sort_audio_key)
+    pref_mode: AudioPreferenceMode = (
+        config.audio_preference_mode
+        if config.audio_preference_mode in ("best_available", "prefer_surround", "prefer_stereo", "prefer_lossless")
+        else "best_available"
+    )
+    kept_audio.sort(key=lambda t: _audio_sort_key(t, allowed_langs=allowed_langs, preference=pref_mode))
 
     if not kept_audio:
         return None

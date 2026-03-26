@@ -453,6 +453,53 @@ async def _migrate_026_stream_manager_columns(engine: AsyncEngine) -> None:
         await _add_column(engine, table=table, ddl="stream_manager_last_run_at DATETIME")
 
 
+async def _migrate_027_stream_manager_pipeline_columns(engine: AsyncEngine) -> None:
+    table = "app_settings"
+    if not await _has_column(engine, table=table, column="stream_manager_watched_folder"):
+        await _add_column(engine, table=table, ddl="stream_manager_watched_folder TEXT NOT NULL DEFAULT ''")
+    if not await _has_column(engine, table=table, column="stream_manager_output_folder"):
+        await _add_column(engine, table=table, ddl="stream_manager_output_folder TEXT NOT NULL DEFAULT ''")
+    if not await _has_column(engine, table=table, column="stream_manager_work_folder"):
+        await _add_column(engine, table=table, ddl="stream_manager_work_folder TEXT NOT NULL DEFAULT ''")
+    if not await _has_column(engine, table=table, column="stream_manager_audio_preference_mode"):
+        await _add_column(
+            engine,
+            table=table,
+            ddl="stream_manager_audio_preference_mode TEXT NOT NULL DEFAULT 'best_available'",
+        )
+    # One-time carry forward from v1 paths model when pipeline folders are blank.
+    if await _has_column(engine, table=table, column="stream_manager_paths"):
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    f"""
+                    UPDATE {table}
+                    SET stream_manager_watched_folder = CASE
+                          WHEN trim(stream_manager_watched_folder) = ''
+                           AND trim(stream_manager_paths) <> ''
+                          THEN trim(
+                            CASE
+                              WHEN instr(replace(stream_manager_paths, char(13), ''), char(10)) > 0
+                              THEN substr(replace(stream_manager_paths, char(13), ''), 1, instr(replace(stream_manager_paths, char(13), ''), char(10)) - 1)
+                              ELSE stream_manager_paths
+                            END
+                          )
+                          ELSE stream_manager_watched_folder
+                        END
+                    """
+                )
+            )
+            await conn.execute(
+                text(
+                    f"""
+                    UPDATE {table}
+                    SET stream_manager_output_folder = stream_manager_watched_folder
+                    WHERE trim(stream_manager_output_folder) = '' AND trim(stream_manager_watched_folder) <> ''
+                    """
+                )
+            )
+
+
 async def migrate(engine: AsyncEngine) -> None:
     await _migrate_001_sonarr_per_app_columns(engine)
     await _migrate_002_radarr_per_app_columns(engine)
@@ -480,3 +527,4 @@ async def migrate(engine: AsyncEngine) -> None:
     await _migrate_024_arr_retry_delay_columns(engine)
     await _migrate_025_sonarr_remove_failed_imports(engine)
     await _migrate_026_stream_manager_columns(engine)
+    await _migrate_027_stream_manager_pipeline_columns(engine)

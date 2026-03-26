@@ -2,22 +2,22 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from pathlib import Path
 from typing import Any, Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db import db_path
 from app.models import ActivityLog, AppSettings
 from app.schedule import in_window
 from app.time_util import utc_now_naive
-from app.stream_manager_mux import ffprobe_json, remux_to_temp_then_replace
+from app.stream_manager_mux import ffprobe_json, remux_to_temp_file
 from app.stream_manager_rules import (
     StreamManagerRulesConfig,
-    collect_media_files_under_path,
     is_remux_required,
     normalize_lang,
-    parse_path_lines,
     parse_subtitle_langs_csv,
     plan_remux,
     split_streams,
@@ -26,6 +26,7 @@ from app.stream_manager_rules import (
 logger = logging.getLogger(__name__)
 
 _stream_manager_lock = asyncio.Lock()
+_MEDIA_EXTENSIONS = frozenset({".mkv", ".mp4", ".m4v", ".webm", ".avi"})
 
 
 def _rules_config_from_settings(row: AppSettings) -> StreamManagerRulesConfig | None:
@@ -37,6 +38,9 @@ def _rules_config_from_settings(row: AppSettings) -> StreamManagerRulesConfig | 
     mode = (row.stream_manager_subtitle_mode or "remove_all").strip().lower()
     if mode not in ("remove_all", "keep_selected"):
         mode = "remove_all"
+    pref = (row.stream_manager_audio_preference_mode or "best_available").strip().lower()
+    if pref not in ("best_available", "prefer_surround", "prefer_stereo", "prefer_lossless"):
+        pref = "best_available"
     return StreamManagerRulesConfig(
         primary_audio_lang=row.stream_manager_primary_audio_lang or "",
         secondary_audio_lang=row.stream_manager_secondary_audio_lang or "",
@@ -47,20 +51,43 @@ def _rules_config_from_settings(row: AppSettings) -> StreamManagerRulesConfig | 
         subtitle_langs=parse_subtitle_langs_csv(row.stream_manager_subtitle_langs_csv or ""),
         preserve_forced_subs=bool(row.stream_manager_preserve_forced_subs),
         preserve_default_subs=bool(row.stream_manager_preserve_default_subs),
+        audio_preference_mode=pref,  # type: ignore[arg-type]
     )
 
 
-def _gather_files(row: AppSettings) -> list[Path]:
-    lines = parse_path_lines(row.stream_manager_paths or "")
-    acc: list[str] = []
-    for line in lines:
-        acc.extend(collect_media_files_under_path(line))
-    seen: set[str] = set()
+def _safe_resolve_folder(raw: str) -> Path | None:
+    s = (raw or "").strip()
+    if not s:
+        return None
+    p = Path(s).expanduser()
+    try:
+        return p.resolve()
+    except OSError:
+        return p
+
+
+def _pipeline_from_settings(row: AppSettings) -> tuple[Path, Path, Path] | tuple[None, None, None]:
+    watched = _safe_resolve_folder(row.stream_manager_watched_folder or "")
+    output = _safe_resolve_folder(row.stream_manager_output_folder or "")
+    if watched is None or output is None:
+        return None, None, None
+    work = _safe_resolve_folder(row.stream_manager_work_folder or "")
+    if work is None:
+        work = db_path().parent / "stream-manager-work"
+    return watched, output, work
+
+
+def _gather_watched_files(watched_folder: Path) -> list[Path]:
+    if not watched_folder.exists() or not watched_folder.is_dir():
+        return []
     out: list[Path] = []
-    for f in acc:
-        if f not in seen:
-            seen.add(f)
-            out.append(Path(f))
+    try:
+        for p in watched_folder.rglob("*"):
+            if p.is_file() and p.suffix.lower() in _MEDIA_EXTENSIONS:
+                out.append(p)
+    except OSError:
+        return []
+    out.sort(key=lambda x: str(x).lower())
     return out
 
 
@@ -94,7 +121,19 @@ def _log_plan_outcome(*, path: Path, plan: Any, dry: bool) -> None:
         logger.info("Stream Manager: removed subtitles: %s", rem_s)
 
 
-def _process_one_sync(path: Path, cfg: StreamManagerRulesConfig, dry: bool) -> tuple[str, dict[str, Any]]:
+def _output_path_for_source(*, src: Path, watched_root: Path, output_root: Path) -> Path:
+    rel = src.relative_to(watched_root)
+    return output_root / rel
+
+
+def _process_one_sync(
+    path: Path,
+    cfg: StreamManagerRulesConfig,
+    dry: bool,
+    watched_root: Path,
+    output_root: Path,
+    work_dir: Path,
+) -> tuple[str, dict[str, Any]]:
     meta: dict[str, Any] = {"path": str(path)}
     try:
         probe = ffprobe_json(path)
@@ -112,11 +151,29 @@ def _process_one_sync(path: Path, cfg: StreamManagerRulesConfig, dry: bool) -> t
     if not is_remux_required(plan, audio, subs):
         return "noop", meta
     _log_plan_outcome(path=path, plan=plan, dry=dry)
+    destination = _output_path_for_source(src=path, watched_root=watched_root, output_root=output_root)
     if dry:
+        logger.info("Stream Manager: dry-run: source preserved, no file changes applied (%s)", path.name)
+        logger.info("Stream Manager: dry-run: would output to %s", destination)
         return "dry_run", meta
+    if destination.exists():
+        logger.error("Stream Manager: output already exists, refusing overwrite: %s", destination)
+        return "error", {**meta, "error": "output_exists"}
+    temp_file: Path | None = None
     try:
-        remux_to_temp_then_replace(path, plan)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temp_file = remux_to_temp_file(src=path, work_dir=work_dir, plan=plan)
+        os.replace(temp_file, destination)
+        path.unlink()
+        logger.info("Stream Manager: processed file to output folder: %s", destination)
+        logger.info("Stream Manager: source deleted after confirmed successful output: %s", path)
     except Exception as e:
+        if temp_file is not None:
+            try:
+                if temp_file.exists():
+                    temp_file.unlink()
+            except OSError:
+                logger.warning("Stream Manager: could not clean work artifact %s", temp_file, exc_info=True)
         logger.error("Stream Manager: remux failed for %s — %s", path.name, e)
         return "error", {**meta, "error": str(e)}
     return "ok", meta
@@ -152,14 +209,26 @@ async def run_stream_manager_pass(
         if not normalize_lang(cfg.primary_audio_lang):
             logger.warning("Stream Manager: primary audio language is required when Stream Manager is enabled.")
             return {"ok": False, "ran": False, "error": "primary_lang_required"}
-        files = _gather_files(row)
+        watched_root, output_root, work_dir = _pipeline_from_settings(row)
+        if watched_root is None or output_root is None or work_dir is None:
+            logger.warning("Stream Manager: watched folder and output folder are required when enabled.")
+            return {"ok": False, "ran": False, "error": "folders_required"}
+        if not watched_root.exists() or not watched_root.is_dir():
+            logger.warning("Stream Manager: watched folder is not a readable directory: %s", watched_root)
+            return {"ok": False, "ran": False, "error": "watched_folder_invalid"}
+        if not output_root.exists() or not output_root.is_dir():
+            logger.warning("Stream Manager: output folder is not a directory: %s", output_root)
+            return {"ok": False, "ran": False, "error": "output_folder_invalid"}
+        files = _gather_watched_files(watched_root)
         if not files:
-            logger.info("Stream Manager: no media paths configured — nothing to do.")
-            return {"ok": True, "ran": False, "reason": "no_paths"}
+            logger.info("Stream Manager: watched folder has no supported media files — nothing to do.")
+            return {"ok": True, "ran": False, "reason": "no_files"}
         dry = bool(row.stream_manager_dry_run)
         ok_c = noop_c = dry_c = err_c = 0
         for fp in files:
-            status, _meta = await asyncio.to_thread(_process_one_sync, fp, cfg, dry)
+            status, _meta = await asyncio.to_thread(
+                _process_one_sync, fp, cfg, dry, watched_root, output_root, work_dir
+            )
             if status == "ok":
                 ok_c += 1
             elif status == "noop":

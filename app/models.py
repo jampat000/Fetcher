@@ -100,7 +100,14 @@ class AppSettings(Base):
     stream_manager_subtitle_langs_csv: Mapped[str] = mapped_column(Text, default="")
     stream_manager_preserve_forced_subs: Mapped[bool] = mapped_column(Boolean, default=True)
     stream_manager_preserve_default_subs: Mapped[bool] = mapped_column(Boolean, default=True)
+    stream_manager_watched_folder: Mapped[str] = mapped_column(Text, default="")
+    stream_manager_output_folder: Mapped[str] = mapped_column(Text, default="")
+    # Optional advanced override. Empty uses managed internal work folder.
+    stream_manager_work_folder: Mapped[str] = mapped_column(Text, default="")
+    # Legacy v1 field retained for migration compatibility only.
     stream_manager_paths: Mapped[str] = mapped_column(Text, default="")
+    # Small preset for choosing the best kept audio stream within allowed languages.
+    stream_manager_audio_preference_mode: Mapped[str] = mapped_column(String(24), default="best_available")
     stream_manager_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     stream_manager_schedule_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     stream_manager_schedule_days: Mapped[str] = mapped_column(Text, default="")

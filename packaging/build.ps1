@@ -33,6 +33,28 @@ if ($LASTEXITCODE -ne 0) { throw "pip install -r requirements.txt failed (exit $
 .\.venv\Scripts\pip install pyinstaller
 if ($LASTEXITCODE -ne 0) { throw "pip install pyinstaller failed (exit $LASTEXITCODE)" }
 
+# Optional ffmpeg/ffprobe staging for packaged Windows Stream Manager support.
+$ffStage = ".\packaging\ffmpeg-bin"
+if (Test-Path $ffStage) { Remove-Item $ffStage -Recurse -Force }
+New-Item -ItemType Directory -Path $ffStage | Out-Null
+
+$ffSrc = @()
+$envDir = ($env:FETCHER_FFMPEG_BIN_DIR -as [string])
+if ($envDir -and (Test-Path (Join-Path $envDir "ffmpeg.exe")) -and (Test-Path (Join-Path $envDir "ffprobe.exe"))) {
+  $ffSrc = @((Join-Path $envDir "ffmpeg.exe"), (Join-Path $envDir "ffprobe.exe"))
+} else {
+  try { $ffmpegCmd = (Get-Command ffmpeg -ErrorAction Stop).Source } catch { $ffmpegCmd = $null }
+  try { $ffprobeCmd = (Get-Command ffprobe -ErrorAction Stop).Source } catch { $ffprobeCmd = $null }
+  if ($ffmpegCmd -and $ffprobeCmd) { $ffSrc = @($ffmpegCmd, $ffprobeCmd) }
+}
+if ($ffSrc.Count -eq 2) {
+  Copy-Item -LiteralPath $ffSrc[0] -Destination (Join-Path $ffStage "ffmpeg.exe") -Force
+  Copy-Item -LiteralPath $ffSrc[1] -Destination (Join-Path $ffStage "ffprobe.exe") -Force
+  Write-Host "Staged ffmpeg/ffprobe for packaged build."
+} else {
+  Write-Warning "ffmpeg/ffprobe not staged. Packaged Stream Manager will fall back to PATH."
+}
+
 .\.venv\Scripts\pyinstaller --noconfirm packaging\fetcher.spec
 if ($LASTEXITCODE -ne 0) { throw "pyinstaller failed (exit $LASTEXITCODE)" }
 

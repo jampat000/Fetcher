@@ -289,11 +289,31 @@
 
       <div class="row">
         <div class="field">
+          <label>Watched folder</label>
+          <input class="input" type="text" name="stream_manager_watched_folder" value="{{ settings.stream_manager_watched_folder or '' }}" placeholder="D:\Media\Incoming" autocomplete="off" spellcheck="false" />
+          <div class="small">Required when enabled. Stream Manager scans this folder recursively.</div>
+        </div>
+        <div class="field">
+          <label>Output folder</label>
+          <input class="input" type="text" name="stream_manager_output_folder" value="{{ settings.stream_manager_output_folder or '' }}" placeholder="D:\Media\Processed" autocomplete="off" spellcheck="false" />
+          <div class="small">Required when enabled. Only validated output is moved here.</div>
+        </div>
+      </div>
+      <details class="section">
+        <summary class="small"><strong>Advanced:</strong> temp/work folder (optional)</summary>
+        <div class="field section">
+          <label>Temp/work folder</label>
+          <input class="input" type="text" name="stream_manager_work_folder" value="{{ settings.stream_manager_work_folder or '' }}" placeholder="Leave empty for managed default work folder" autocomplete="off" spellcheck="false" />
+          <div class="small">If empty, Stream Manager uses an internal managed work location.</div>
+        </div>
+      </details>
+
+      <div class="row">
+        <div class="field">
           <label>Primary audio language</label>
           <select class="input" name="stream_manager_primary_audio_lang">
-            {% for code, label in [
-              ('','— required when enabled —'), ('eng','English'), ('jpn','Japanese'), ('spa','Spanish'), ('fre','French'), ('deu','German'), ('ita','Italian'), ('por','Portuguese'), ('rus','Russian'), ('zho','Chinese'), ('kor','Korean'), ('hin','Hindi'), ('ara','Arabic'), ('pol','Polish'), ('tur','Turkish'), ('swe','Swedish'), ('dan','Danish'), ('fin','Finnish'), ('nld','Dutch'), ('nor','Norwegian'), ('hun','Hungarian'), ('ces','Czech'), ('ell','Greek'), ('heb','Hebrew'), ('tha','Thai'), ('vie','Vietnamese'), ('ukr','Ukrainian'), ('ron','Romanian'), ('ind','Indonesian'), ('msa','Malay'), ('und','Undetermined')
-            ] %}
+            <option value="" {% if (settings.stream_manager_primary_audio_lang or '') == '' %}selected{% endif %}>— required when enabled —</option>
+            {% for code, label in stream_language_options %}
             <option value="{{ code }}" {% if (settings.stream_manager_primary_audio_lang or '') == code %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
@@ -301,9 +321,8 @@
         <div class="field">
           <label>Secondary audio (optional)</label>
           <select class="input" name="stream_manager_secondary_audio_lang">
-            {% for code, label in [
-              ('','— off —'), ('eng','English'), ('jpn','Japanese'), ('spa','Spanish'), ('fre','French'), ('deu','German'), ('ita','Italian'), ('por','Portuguese'), ('rus','Russian'), ('zho','Chinese'), ('kor','Korean'), ('hin','Hindi'), ('ara','Arabic'), ('pol','Polish'), ('tur','Turkish'), ('swe','Swedish'), ('dan','Danish'), ('fin','Finnish'), ('nld','Dutch'), ('nor','Norwegian'), ('hun','Hungarian'), ('ces','Czech'), ('ell','Greek'), ('heb','Hebrew'), ('tha','Thai'), ('vie','Vietnamese'), ('ukr','Ukrainian'), ('ron','Romanian'), ('ind','Indonesian'), ('msa','Malay'), ('und','Undetermined')
-            ] %}
+            <option value="" {% if (settings.stream_manager_secondary_audio_lang or '') == '' %}selected{% endif %}>— off —</option>
+            {% for code, label in stream_language_options %}
             <option value="{{ code }}" {% if (settings.stream_manager_secondary_audio_lang or '') == code %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
@@ -311,20 +330,29 @@
         <div class="field">
           <label>Tertiary audio (optional)</label>
           <select class="input" name="stream_manager_tertiary_audio_lang">
-            {% for code, label in [
-              ('','— off —'), ('eng','English'), ('jpn','Japanese'), ('spa','Spanish'), ('fre','French'), ('deu','German'), ('ita','Italian'), ('por','Portuguese'), ('rus','Russian'), ('zho','Chinese'), ('kor','Korean'), ('hin','Hindi'), ('ara','Arabic'), ('pol','Polish'), ('tur','Turkish'), ('swe','Swedish'), ('dan','Danish'), ('fin','Finnish'), ('nld','Dutch'), ('nor','Norwegian'), ('hun','Hungarian'), ('ces','Czech'), ('ell','Greek'), ('heb','Hebrew'), ('tha','Thai'), ('vie','Vietnamese'), ('ukr','Ukrainian'), ('ron','Romanian'), ('ind','Indonesian'), ('msa','Malay'), ('und','Undetermined')
-            ] %}
+            <option value="" {% if (settings.stream_manager_tertiary_audio_lang or '') == '' %}selected{% endif %}>— off —</option>
+            {% for code, label in stream_language_options %}
             <option value="{{ code }}" {% if (settings.stream_manager_tertiary_audio_lang or '') == code %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
         </div>
       </div>
       <div class="field">
-        <label>Default audio track</label>
+        <label>Default audio language slot</label>
         <select class="input" name="stream_manager_default_audio_slot">
           <option value="primary" {% if (settings.stream_manager_default_audio_slot or 'primary') == 'primary' %}selected{% endif %}>Primary language slot</option>
           <option value="secondary" {% if (settings.stream_manager_default_audio_slot or '') == 'secondary' %}selected{% endif %}>Secondary slot</option>
           <option value="tertiary" {% if (settings.stream_manager_default_audio_slot or '') == 'tertiary' %}selected{% endif %}>Tertiary slot</option>
+        </select>
+        <div class="small">Priority order decides track order; this controls which slot receives the default audio flag.</div>
+      </div>
+      <div class="field">
+        <label>Audio preference mode (within kept languages)</label>
+        <select class="input" name="stream_manager_audio_preference_mode">
+          <option value="best_available" {% if (settings.stream_manager_audio_preference_mode or 'best_available') == 'best_available' %}selected{% endif %}>Best available</option>
+          <option value="prefer_surround" {% if (settings.stream_manager_audio_preference_mode or '') == 'prefer_surround' %}selected{% endif %}>Prefer surround</option>
+          <option value="prefer_stereo" {% if (settings.stream_manager_audio_preference_mode or '') == 'prefer_stereo' %}selected{% endif %}>Prefer stereo</option>
+          <option value="prefer_lossless" {% if (settings.stream_manager_audio_preference_mode or '') == 'prefer_lossless' %}selected{% endif %}>Prefer lossless</option>
         </select>
       </div>
       {% call toggle_checkbox("stream_manager_remove_commentary", settings.stream_manager_remove_commentary) %}Remove commentary audio (title tag match){% endcall %}
@@ -340,9 +368,7 @@
       <div class="field">
         <label>Subtitle languages to keep</label>
         <div class="section small">
-          {% for code, label in [
-            ('eng','English'), ('jpn','Japanese'), ('spa','Spanish'), ('fre','French'), ('deu','German'), ('ita','Italian'), ('por','Portuguese'), ('rus','Russian'), ('zho','Chinese'), ('kor','Korean'), ('hin','Hindi'), ('ara','Arabic'), ('pol','Polish'), ('tur','Turkish'), ('swe','Swedish'), ('dan','Danish'), ('fin','Finnish'), ('nld','Dutch'), ('nor','Norwegian'), ('hun','Hungarian'), ('ces','Czech'), ('ell','Greek'), ('heb','Hebrew'), ('tha','Thai'), ('vie','Vietnamese'), ('ukr','Ukrainian'), ('ron','Romanian'), ('ind','Indonesian'), ('msa','Malay'), ('und','Undetermined')
-          ] %}
+          {% for code, label in stream_language_options %}
           {% call toggle_checkbox_value("stream_manager_subtitle_langs", code, "stream-sub-lang-" ~ loop.index0, code in selected_stream_subtitle_langs) %}{{ label }}{% endcall %}
           {% endfor %}
         </div>
@@ -350,10 +376,6 @@
       </div>
       {% call toggle_checkbox("stream_manager_preserve_forced_subs", settings.stream_manager_preserve_forced_subs) %}Preserve forced subtitle disposition on kept tracks{% endcall %}
       {% call toggle_checkbox("stream_manager_preserve_default_subs", settings.stream_manager_preserve_default_subs) %}Preserve default subtitle disposition on kept tracks{% endcall %}
-
-      <label>Media paths (one file or folder per line)</label>
-      <textarea class="input" name="stream_manager_paths" rows="4" placeholder="D:\Media\Movies\Example.mkv&#10;D:\Media\TV">{{ settings.stream_manager_paths or '' }}</textarea>
-      <div class="small">Folders are scanned recursively for common video containers.</div>
 
       <div class="section section--push">
         {% call toggle_checkbox("stream_manager_schedule_enabled", settings.stream_manager_schedule_enabled) %}Enable Stream Manager schedule window{% endcall %}
@@ -368,7 +390,7 @@
           </div>
         </div>
         <div class="field">
-          <label>Minutes between runs (when enabled and paths set)</label>
+          <label>Minutes between runs (when enabled and watched/output are set)</label>
           <input class="number" type="number" name="stream_manager_interval_minutes" value="{{ settings.stream_manager_interval_minutes or 60 }}" min="5" max="10080" />
         </div>
       </div>

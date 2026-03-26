@@ -18,6 +18,12 @@ _version_file = os.path.join(ROOT, "VERSION")
 _extra_datas = []
 if os.path.isfile(_version_file):
     _extra_datas.append((_version_file, "."))
+_ffmpeg_stage = os.path.join(ROOT, "packaging", "ffmpeg-bin")
+_ffmpeg_exe = os.path.join(_ffmpeg_stage, "ffmpeg.exe")
+_ffprobe_exe = os.path.join(_ffmpeg_stage, "ffprobe.exe")
+if os.path.isfile(_ffmpeg_exe) and os.path.isfile(_ffprobe_exe):
+    _extra_datas.append((_ffmpeg_exe, os.path.join("bin", "ffmpeg")))
+    _extra_datas.append((_ffprobe_exe, os.path.join("bin", "ffmpeg")))
 
 hiddenimports = []
 hiddenimports += collect_submodules("apscheduler")

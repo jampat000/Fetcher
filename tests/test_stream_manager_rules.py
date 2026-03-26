@@ -37,6 +37,7 @@ def test_plan_audio_ordering_primary_before_secondary() -> None:
         subtitle_langs=(),
         preserve_forced_subs=True,
         preserve_default_subs=True,
+        audio_preference_mode="best_available",
     )
     plan = plan_remux(video=video, audio=audio, subtitles=subs, config=cfg)
     assert plan is not None
@@ -66,6 +67,7 @@ def test_plan_removes_commentary_when_enabled() -> None:
         subtitle_langs=(),
         preserve_forced_subs=True,
         preserve_default_subs=True,
+        audio_preference_mode="best_available",
     )
     plan = plan_remux(video=video, audio=audio, subtitles=subs, config=cfg)
     assert plan is not None
@@ -94,6 +96,7 @@ def test_subtitle_remove_all() -> None:
         subtitle_langs=("eng",),
         preserve_forced_subs=True,
         preserve_default_subs=True,
+        audio_preference_mode="best_available",
     )
     plan = plan_remux(video=video, audio=audio, subtitles=subs, config=cfg)
     assert plan is not None
@@ -118,6 +121,7 @@ def test_subtitle_keep_selected_and_order() -> None:
         subtitle_langs=("jpn", "eng"),
         preserve_forced_subs=True,
         preserve_default_subs=True,
+        audio_preference_mode="best_available",
     )
     plan = plan_remux(video=video, audio=audio, subtitles=subs, config=cfg)
     assert plan is not None
@@ -141,6 +145,7 @@ def test_is_remux_required_detects_audio_default_change() -> None:
         subtitle_langs=(),
         preserve_forced_subs=True,
         preserve_default_subs=True,
+        audio_preference_mode="best_available",
     )
     plan = plan_remux(video=video, audio=audio, subtitles=subs, config=cfg)
     assert plan is not None
@@ -157,3 +162,40 @@ def test_split_streams_groups_by_codec_type() -> None:
     v, a, s = split_streams(probe)
     assert [x["index"] for x in v] == [0]
     assert [x["index"] for x in a] == [1]
+
+
+def test_audio_preference_mode_prefer_surround() -> None:
+    video = [{"index": 0, "codec_type": "video"}]
+    audio = [
+        {
+            "index": 1,
+            "codec_type": "audio",
+            "codec_name": "aac",
+            "channels": 2,
+            "tags": {"language": "eng"},
+            "disposition": {},
+        },
+        {
+            "index": 2,
+            "codec_type": "audio",
+            "codec_name": "aac",
+            "channels": 6,
+            "tags": {"language": "eng"},
+            "disposition": {},
+        },
+    ]
+    cfg = StreamManagerRulesConfig(
+        primary_audio_lang="eng",
+        secondary_audio_lang="",
+        tertiary_audio_lang="",
+        default_audio_slot="primary",
+        remove_commentary=False,
+        subtitle_mode="remove_all",
+        subtitle_langs=(),
+        preserve_forced_subs=True,
+        preserve_default_subs=True,
+        audio_preference_mode="prefer_surround",
+    )
+    plan = plan_remux(video=video, audio=audio, subtitles=[], config=cfg)
+    assert plan is not None
+    assert [t.input_index for t in plan.audio] == [2, 1]

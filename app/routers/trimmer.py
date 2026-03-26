@@ -44,6 +44,39 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(dependencies=AUTH_DEPS)
 
+_STREAM_LANGUAGE_OPTIONS: list[tuple[str, str]] = [
+    ("eng", "English"),
+    ("jpn", "Japanese"),
+    ("spa", "Spanish"),
+    ("fre", "French"),
+    ("deu", "German"),
+    ("ita", "Italian"),
+    ("por", "Portuguese"),
+    ("rus", "Russian"),
+    ("zho", "Chinese"),
+    ("kor", "Korean"),
+    ("hin", "Hindi"),
+    ("ara", "Arabic"),
+    ("pol", "Polish"),
+    ("tur", "Turkish"),
+    ("swe", "Swedish"),
+    ("dan", "Danish"),
+    ("fin", "Finnish"),
+    ("nld", "Dutch"),
+    ("nor", "Norwegian"),
+    ("hun", "Hungarian"),
+    ("ces", "Czech"),
+    ("ell", "Greek"),
+    ("heb", "Hebrew"),
+    ("tha", "Thai"),
+    ("vie", "Vietnamese"),
+    ("ukr", "Ukrainian"),
+    ("ron", "Romanian"),
+    ("ind", "Indonesian"),
+    ("msa", "Malay"),
+    ("und", "Undetermined"),
+]
+
 # In-place JSON for Trimmer settings (separate header from Fetcher /settings — different routes, no shared business logic).
 TRIMMER_SETTINGS_INPLACE_JSON_HEADER = "x-fetcher-trimmer-settings-async"
 # ``POST /trimmer/settings/cleaner`` — ``save_scope`` only: ``schedule`` (interval/window/limits), ``tv``, ``movies`` (each mutates only its columns).
@@ -120,6 +153,7 @@ async def trimmer_settings_page(request: Request, session: AsyncSession = Depend
             "selected_stream_subtitle_langs": list(
                 parse_subtitle_langs_csv(settings.stream_manager_subtitle_langs_csv or "")
             ),
+            "stream_language_options": _STREAM_LANGUAGE_OPTIONS,
             "csrf_token": await get_csrf_token_for_template(request, session),
             "show_setup_wizard": show_setup_wizard,
         },

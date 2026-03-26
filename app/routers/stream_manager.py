@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form
 from fastapi.responses import RedirectResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,7 +40,10 @@ async def stream_manager_settings_save(
     stream_manager_subtitle_langs: list[str] = Form(default=[]),
     stream_manager_preserve_forced_subs: bool = Form(False),
     stream_manager_preserve_default_subs: bool = Form(False),
-    stream_manager_paths: str = Form(""),
+    stream_manager_audio_preference_mode: str = Form("best_available"),
+    stream_manager_watched_folder: str = Form(""),
+    stream_manager_output_folder: str = Form(""),
+    stream_manager_work_folder: str = Form(""),
     stream_manager_interval_minutes: int = Form(60),
     stream_manager_schedule_enabled: bool = Form(False),
     stream_manager_schedule_Mon: bool = Form(False),
@@ -69,8 +72,20 @@ async def stream_manager_settings_save(
         mode = (stream_manager_subtitle_mode or "remove_all").strip().lower()
         if mode not in ("remove_all", "keep_selected"):
             mode = "remove_all"
+        pref = (stream_manager_audio_preference_mode or "best_available").strip().lower()
+        if pref not in ("best_available", "prefer_surround", "prefer_stereo", "prefer_lossless"):
+            pref = "best_available"
         lang_set = sorted({str(v).strip() for v in stream_manager_subtitle_langs if str(v).strip()})
         sim = max(5, min(7 * 24 * 60, int(stream_manager_interval_minutes or 60)))
+        watched_folder = (stream_manager_watched_folder or "").strip()
+        output_folder = (stream_manager_output_folder or "").strip()
+        if stream_manager_enabled and (not watched_folder or not output_folder):
+            return RedirectResponse(
+                trimmer_settings_redirect_url(
+                    saved=False, reason="watched_output_required", section="stream_manager"
+                ),
+                status_code=303,
+            )
         row.stream_manager_enabled = stream_manager_enabled
         row.stream_manager_dry_run = stream_manager_dry_run
         row.stream_manager_primary_audio_lang = (stream_manager_primary_audio_lang or "").strip()[:16]
@@ -80,9 +95,12 @@ async def stream_manager_settings_save(
         row.stream_manager_remove_commentary = stream_manager_remove_commentary
         row.stream_manager_subtitle_mode = mode
         row.stream_manager_subtitle_langs_csv = ",".join(lang_set)
+        row.stream_manager_audio_preference_mode = pref
         row.stream_manager_preserve_forced_subs = stream_manager_preserve_forced_subs
         row.stream_manager_preserve_default_subs = stream_manager_preserve_default_subs
-        row.stream_manager_paths = (stream_manager_paths or "").strip()[:200_000]
+        row.stream_manager_watched_folder = watched_folder[:8000]
+        row.stream_manager_output_folder = output_folder[:8000]
+        row.stream_manager_work_folder = (stream_manager_work_folder or "").strip()[:8000]
         row.stream_manager_interval_minutes = sim
         row.stream_manager_schedule_enabled = stream_manager_schedule_enabled
         row.stream_manager_schedule_days = schedule_days_csv_from_named_day_checks(

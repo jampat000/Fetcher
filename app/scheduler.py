@@ -43,7 +43,8 @@ def _emby_configured(settings: AppSettings) -> bool:
 def _stream_manager_configured(settings: AppSettings) -> bool:
     return bool(
         getattr(settings, "stream_manager_enabled", False)
-        and (getattr(settings, "stream_manager_paths", "") or "").strip()
+        and (getattr(settings, "stream_manager_watched_folder", "") or "").strip()
+        and (getattr(settings, "stream_manager_output_folder", "") or "").strip()
     )
 
 

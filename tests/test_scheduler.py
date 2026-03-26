@@ -64,7 +64,8 @@ def test_compute_job_intervals_minutes_uses_single_configured_app() -> None:
 def test_compute_job_intervals_includes_stream_manager_when_configured() -> None:
     s = _arr_settings(
         stream_manager_enabled=True,
-        stream_manager_paths="D:\\Media",
+        stream_manager_watched_folder="D:\\Media\\incoming",
+        stream_manager_output_folder="D:\\Media\\processed",
         stream_manager_interval_minutes=120,
     )
     assert compute_job_intervals_minutes(s) == {"stream_manager": 120}
