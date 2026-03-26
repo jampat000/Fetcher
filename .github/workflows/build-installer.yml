@@ -1,5 +1,5 @@
 # Build Fetcher PyInstaller bundle (ffmpeg/ffprobe via FETCHER_FFMPEG_BIN_DIR) + Inno Setup installer.
-# Artifacts: FetcherSetup.exe, portable Fetcher-Windows-{VERSION}-bundle.zip (workflow run + GitHub Release on tag).
+# Artifacts: FetcherSetup.exe (workflow run + GitHub Release on tag).
 
 name: Build installer
 
@@ -134,18 +134,6 @@ jobs:
             }
           }
 
-      - name: Create portable Windows bundle zip
-        shell: pwsh
-        run: |
-          Set-StrictMode -Version Latest
-          $ErrorActionPreference = 'Stop'
-          New-Item -ItemType Directory -Force -Path 'dist\artifacts' | Out-Null
-          $v = (Get-Content -LiteralPath 'VERSION' -Raw).Trim()
-          $zip = Join-Path 'dist\artifacts' "Fetcher-Windows-${v}-bundle.zip"
-          if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
-          $bundleRoot = Join-Path "${{ github.workspace }}" 'dist\Fetcher'
-          Compress-Archive -Path (Join-Path $bundleRoot '*') -DestinationPath $zip
-
       # Repo Settings → Variables: ENABLE_CODE_SIGNING = true
       # Repo Settings → Secrets: WINDOWS_PFX_BASE64 (PFX as base64), WINDOWS_PFX_PASSWORD
       - name: Sign installer (optional)
@@ -166,14 +154,7 @@ jobs:
           path: installer/output/FetcherSetup.exe
           if-no-files-found: error
 
-      - name: Upload portable bundle (zip)
-        uses: actions/upload-artifact@v7
-        with:
-          name: FetcherWindowsBundle
-          path: dist/artifacts/*.zip
-          if-no-files-found: error
-
-  # Creates the GitHub Release + attaches installer + portable zip (no deployment Environment gate — those often
+  # Creates the GitHub Release + attaches FetcherSetup.exe (no deployment Environment gate — those often
   # stall on “Review deployments” and leave tags without a Latest release).
   release:
     # Tag push (PAT or rare cases) OR manual "Run workflow" with ref = tag (recover missed releases).
@@ -187,22 +168,7 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: FetcherSetup
-          path: release-asset/installer
-
-      - name: Download portable bundle
-        uses: actions/download-artifact@v8
-        with:
-          name: FetcherWindowsBundle
-          path: release-asset/bundle
-
-      - name: Stage release assets
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p release-files
-          cp "release-asset/installer/FetcherSetup.exe" release-files/
-          cp release-asset/bundle/*.zip release-files/
-          ls -la release-files/
+          path: release-asset
 
       # Prepended above GitHub-generated notes (softprops: body + generate_release_notes).
       - name: Standard install section (Windows + Docker)
@@ -221,7 +187,7 @@ jobs:
             echo "## Install"
             echo ""
             echo "### Windows"
-            echo "Download **FetcherSetup.exe** or the portable **Fetcher-Windows-$V-bundle.zip** (attached below)."
+            echo "Download **FetcherSetup.exe** (attached below)."
             echo ""
             echo "### Docker (Linux)"
             echo "Pull the image for this release (**${GITHUB_REF_NAME}**):"
@@ -243,9 +209,7 @@ jobs:
         uses: softprops/action-gh-release@v2.6.1
         with:
           body: ${{ steps.install.outputs.body }}
-          files: |
-            release-files/FetcherSetup.exe
-            release-files/*.zip
+          files: release-asset/FetcherSetup.exe
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
