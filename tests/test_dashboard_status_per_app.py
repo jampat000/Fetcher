@@ -69,7 +69,7 @@ def test_build_dashboard_status_has_per_app_last_run_status(monkeypatch) -> None
             assert data["last_sonarr_run"]["relative"] != ""
             assert data["next_sonarr_relative"] != ""
             assert data["fetcher_phase"] in ("processing", "idle", "active")
-            assert data["sonarr_automation_sub"] != ""
+            assert "No line for this app" not in (data["sonarr_automation_sub"] or "")
 
     asyncio.run(_go())
 

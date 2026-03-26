@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.4.10] - 2026-03-26
+
+### Fixed
+- **Dashboard automation cards:** Per-app hint text no longer shows the **“No line for this app in the last service run…”** fallback when the card already has a **last run** timestamp for that app (avoids contradicting **Succeeded** / recent-run state). When the message has no extra signal beyond the log line, the subtext stays **empty** instead of a generic “reported normally” line.
+
+### Changed
+- **Tests:** Coverage for automation subtext with and without per-app run evidence.
+
 ## [2.4.9] - 2026-03-26
 
 ### Added
@@ -955,7 +963,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.4.9...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.4.10...HEAD
+[2.4.10]: https://github.com/jampat000/Fetcher/compare/v2.4.9...v2.4.10
 [2.4.9]: https://github.com/jampat000/Fetcher/compare/v2.4.8...v2.4.9
 [2.4.8]: https://github.com/jampat000/Fetcher/compare/v2.4.7...v2.4.8
 [2.4.7]: https://github.com/jampat000/Fetcher/compare/v2.4.6...v2.4.7
