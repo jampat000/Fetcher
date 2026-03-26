@@ -89,7 +89,7 @@ def test_parse_radarr_import_failed_reason_non_string_values_ignored() -> None:
 
 class _FakeRadarrClient:
     def __init__(self) -> None:
-        self.deleted: list[int] = []
+        self.delete_calls: list[dict[str, Any]] = []
 
     async def history_page(self, *, page: int, page_size: int) -> dict[str, Any]:
         if page != 1:
@@ -114,8 +114,8 @@ class _FakeRadarrClient:
             "totalRecords": 1,
         }
 
-    async def delete_queue_item(self, *, queue_id: int) -> None:
-        self.deleted.append(int(queue_id))
+    async def delete_queue_item(self, *, queue_id: int, blocklist: bool = False, **kwargs: Any) -> None:
+        self.delete_calls.append({"queue_id": int(queue_id), "blocklist": bool(blocklist)})
 
 
 def test_run_cleanup_success_removes_queue_and_writes_activity() -> None:
@@ -138,8 +138,8 @@ async def _run_cleanup_success() -> None:
         )
         await session.commit()
 
-    assert client.deleted == [42]
-    assert any("removed failed import" in a.lower() for a in actions)
+    assert client.delete_calls == [{"queue_id": 42, "blocklist": True}]
+    assert any("removed failed import" in a.lower() and "blocklist requested" in a.lower() for a in actions)
 
     async with SessionLocal() as session:
         row = (
@@ -153,7 +153,7 @@ async def _run_cleanup_success() -> None:
         assert row.count == 1
         assert "Test Movie" in (row.detail or "")
         assert "Reason: corrupt" in (row.detail or "")
-        assert "removed from download queue" in (row.detail or "").lower()
+        assert "blocklist requested via radarr api" in (row.detail or "").lower()
         await session.execute(delete(ActivityLog))
         await session.execute(delete(JobRunLog))
         await session.commit()
@@ -179,7 +179,7 @@ async def _run_no_match() -> None:
             actions=actions,
         )
         await session.commit()
-    assert client.deleted == []
+    assert client.delete_calls == []
 
 
 class _FakeAmbiguousClient(_FakeRadarrClient):
@@ -208,8 +208,37 @@ async def _run_ambiguous() -> None:
             actions=actions,
         )
         await session.commit()
-    assert client.deleted == []
+    assert client.delete_calls == []
     assert any("ambiguous" in a.lower() for a in actions)
+
+
+class _FakeDeleteFailsClient(_FakeRadarrClient):
+    async def delete_queue_item(self, *, queue_id: int, blocklist: bool = False, **kwargs: Any) -> None:
+        self.delete_calls.append({"queue_id": int(queue_id), "blocklist": bool(blocklist)})
+        raise RuntimeError("radarr delete failed")
+
+
+def test_run_cleanup_delete_failure_appends_action_with_blocklist_attempt() -> None:
+    asyncio.run(_run_delete_failure())
+
+
+async def _run_delete_failure() -> None:
+    client = _FakeDeleteFailsClient()
+    actions: list[str] = []
+    async with SessionLocal() as session:
+        await run_radarr_failed_import_queue_cleanup(
+            client,
+            session=session,
+            job_run_id=None,
+            actions=actions,
+        )
+        await session.commit()
+
+    assert client.delete_calls == [{"queue_id": 42, "blocklist": True}]
+    assert any("failed-import queue remove failed" in a.lower() for a in actions)
+    async with SessionLocal() as session:
+        n = (await session.execute(select(ActivityLog))).scalars().all()
+        assert len(n) == 0
 
 
 def test_run_once_radarr_failed_import_cleanup_disabled_skips_api(monkeypatch: pytest.MonkeyPatch) -> None:

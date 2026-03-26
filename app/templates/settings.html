@@ -119,10 +119,10 @@
         </div>
 
         <div class="section">
-          {% call toggle_checkbox("sonarr_search_missing", settings.sonarr_search_missing) %}Missing searches{% endcall %}
-          {% call toggle_checkbox("sonarr_search_upgrades", settings.sonarr_search_upgrades) %}Cutoff-unmet searches (upgrades){% endcall %}
-          {% call toggle_checkbox("sonarr_remove_failed_imports", settings.sonarr_remove_failed_imports | default(false)) %}Remove failed imports from queue{% endcall %}
-          <div class="small settings-global-hint">When enabled, each run removes download queue items that match an explicit <strong>import failed</strong> history event by exact <strong>download ID</strong> only (no title matching). Skips when there is no queue match or more than one match. Logs removals to <strong>Activity</strong>.</div>
+          {% call toggle_checkbox("sonarr_search_missing", settings.sonarr_search_missing) %}Search monitored missing items{% endcall %}
+          {% call toggle_checkbox("sonarr_search_upgrades", settings.sonarr_search_upgrades) %}Search cutoff-unmet items (upgrade){% endcall %}
+          {% call toggle_checkbox("sonarr_remove_failed_imports", settings.sonarr_remove_failed_imports | default(false)) %}Remove failed imports (queue + blocklist){% endcall %}
+          <div class="small settings-global-hint">When enabled, each run removes queue rows that match an explicit <strong>import failed</strong> history event by exact <strong>download ID</strong> only (no title matching). Skips when there is no queue match or more than one match. Removal calls the Sonarr API with <strong>blocklist</strong> so the associated release is blocklisted and less likely to re-grab immediately. Logged to <strong>Activity</strong>.</div>
           <label>Max items per run</label>
           <input class="number" type="number" name="sonarr_max_items_per_run" value="{{ settings.sonarr_max_items_per_run }}" min="1" max="1000" />
           <label>Retry Delay (minutes)</label>
@@ -191,10 +191,10 @@
         </div>
 
         <div class="section">
-          {% call toggle_checkbox("radarr_search_missing", settings.radarr_search_missing) %}Missing searches{% endcall %}
-          {% call toggle_checkbox("radarr_search_upgrades", settings.radarr_search_upgrades) %}Cutoff-unmet searches (upgrades){% endcall %}
-          {% call toggle_checkbox("radarr_remove_failed_imports", settings.radarr_remove_failed_imports | default(false)) %}Remove failed imports from queue{% endcall %}
-          <div class="small settings-global-hint">When enabled, each run removes download queue items that match an explicit <strong>import failed</strong> history event by exact <strong>download ID</strong> only (no title matching). Skips when there is no queue match or more than one match. Logs removals to <strong>Activity</strong>.</div>
+          {% call toggle_checkbox("radarr_search_missing", settings.radarr_search_missing) %}Search monitored missing items{% endcall %}
+          {% call toggle_checkbox("radarr_search_upgrades", settings.radarr_search_upgrades) %}Search cutoff-unmet items (upgrade){% endcall %}
+          {% call toggle_checkbox("radarr_remove_failed_imports", settings.radarr_remove_failed_imports | default(false)) %}Remove failed imports (queue + blocklist){% endcall %}
+          <div class="small settings-global-hint">When enabled, each run removes queue rows that match an explicit <strong>import failed</strong> history event by exact <strong>download ID</strong> only (no title matching). Skips when there is no queue match or more than one match. Removal calls the Radarr API with <strong>blocklist</strong> so the associated release is blocklisted and less likely to re-grab immediately. Logged to <strong>Activity</strong>.</div>
           <label>Max items per run</label>
           <input class="number" type="number" name="radarr_max_items_per_run" value="{{ settings.radarr_max_items_per_run }}" min="1" max="1000" />
           <label>Retry Delay (minutes)</label>

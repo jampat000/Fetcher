@@ -7,6 +7,8 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.arr_client import ArrClient
+from app.http_status_hints import format_http_error_detail
+from app.log_sanitize import redact_sensitive_text
 from app.models import ActivityLog
 from app.radarr_failed_import_cleanup import (
     classify_queue_matches_by_download_id,
@@ -55,13 +57,22 @@ async def run_sonarr_failed_import_queue_cleanup(
         assert qid is not None
         title = history_item_title(rec)
         reason = parse_radarr_import_failed_reason(rec)
-        await client.delete_queue_item(queue_id=qid)
+        try:
+            await client.delete_queue_item(queue_id=qid, blocklist=True)
+        except Exception as exc:  # noqa: BLE001
+            suffix = f" ({title})" if title else ""
+            actions.append(
+                f"Sonarr: failed-import queue remove failed{suffix}: {format_http_error_detail(exc)}"
+            )
+            continue
+
         detail_parts: list[str] = []
         if title:
             detail_parts.append(title)
         if reason:
             detail_parts.append(f"Reason: {reason}")
-        detail_parts.append("Action: removed from download queue")
+        detail_parts.append("Action: removed from queue; blocklist requested via Sonarr API")
+        detail = redact_sensitive_text("\n".join(detail_parts))
         session.add(
             ActivityLog(
                 job_run_id=job_run_id,
@@ -69,7 +80,8 @@ async def run_sonarr_failed_import_queue_cleanup(
                 kind="cleanup",
                 count=1,
                 status="ok",
-                detail="\n".join(detail_parts),
+                detail=detail,
             )
         )
-        actions.append(f"Sonarr: removed failed import from queue — {title if title else f'queue id {qid}'}")
+        label = title if title else f"queue id {qid}"
+        actions.append(f"Sonarr: removed failed import from queue; blocklist requested — {label}")

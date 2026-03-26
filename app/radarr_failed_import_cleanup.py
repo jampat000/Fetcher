@@ -174,7 +174,7 @@ async def run_radarr_failed_import_queue_cleanup(
         title = history_item_title(rec)
         reason = parse_radarr_import_failed_reason(rec)
         try:
-            await client.delete_queue_item(queue_id=qid)
+            await client.delete_queue_item(queue_id=qid, blocklist=True)
         except Exception as exc:  # noqa: BLE001
             suffix = f" ({title})" if title else ""
             actions.append(
@@ -187,7 +187,7 @@ async def run_radarr_failed_import_queue_cleanup(
             detail_parts.append(title)
         if reason:
             detail_parts.append(f"Reason: {reason}")
-        detail_parts.append("Action: removed from download queue")
+        detail_parts.append("Action: removed from queue; blocklist requested via Radarr API")
         detail = redact_sensitive_text("\n".join(detail_parts))
 
         session.add(
@@ -201,7 +201,7 @@ async def run_radarr_failed_import_queue_cleanup(
             )
         )
         label = title if title else f"queue id {qid}"
-        actions.append(f"Radarr: removed failed import from queue — {label}")
+        actions.append(f"Radarr: removed failed import from queue; blocklist requested — {label}")
 
         queue_records = [
             q

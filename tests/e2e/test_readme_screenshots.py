@@ -1,5 +1,12 @@
 """Regenerate README screenshots under docs/screenshots/.
 
+**Default verification:** this module is not collected when running ``pytest tests/``
+(see ``pytest_ignore_collect`` in ``tests/conftest.py``), so it does not add skip noise.
+
+**Direct invocation:** pytest always collects this file if you pass its path. Without
+``REGEN_README_SCREENSHOTS``, the test is **skipped** with an explicit reason (not “no tests ran”).
+With the env var set, the test runs and overwrites PNGs under ``docs/screenshots/``.
+
 Run (from repo root, dev deps + Chromium installed):
 
     set REGEN_README_SCREENSHOTS=1
@@ -25,9 +32,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SHOT_DIR = REPO_ROOT / "docs" / "screenshots"
 
 
+@pytest.mark.regen_screenshots
 @pytest.mark.skipif(
-    not os.environ.get("REGEN_README_SCREENSHOTS", "").strip(),
-    reason="Set REGEN_README_SCREENSHOTS=1 to overwrite docs/screenshots/*.png",
+    not (os.environ.get("REGEN_README_SCREENSHOTS") or "").strip(),
+    reason="Set REGEN_README_SCREENSHOTS=1 to regenerate docs/screenshots/*.png (maintenance only)",
 )
 def test_regenerate_readme_screenshots(e2e_server: str) -> None:
     SHOT_DIR.mkdir(parents=True, exist_ok=True)

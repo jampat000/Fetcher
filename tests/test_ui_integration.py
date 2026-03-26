@@ -211,7 +211,7 @@ def test_settings_page_has_forms(monkeypatch: pytest.MonkeyPatch) -> None:
     assert b"name=\"sonarr_remove_failed_imports\"" in r.content
     assert b"name=\"radarr_remove_failed_imports\"" in r.content
     assert (
-        html.count("When enabled, each run removes download queue items that match an explicit") == 2
+        html.count("When enabled, each run removes queue rows that match an explicit") == 2
     )
     assert "each Sonarr run removes" not in html
     assert "each Radarr run removes" not in html
