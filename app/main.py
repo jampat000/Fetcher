@@ -32,6 +32,7 @@ from app.routers import auth as auth_router
 from app.routers import dashboard as dashboard_router
 from app.routers import settings as settings_router
 from app.routers import setup as setup_router
+from app.routers import stream_manager as stream_manager_router
 from app.routers import trimmer as trimmer_router
 
 configure_fetcher_logging()
@@ -165,4 +166,5 @@ app.include_router(auth_router.router)
 app.include_router(setup_router.router)
 app.include_router(dashboard_router.router)
 app.include_router(settings_router.router)
+app.include_router(stream_manager_router.router)
 app.include_router(trimmer_router.router)

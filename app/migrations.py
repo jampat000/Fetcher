@@ -413,6 +413,46 @@ async def _migrate_025_sonarr_remove_failed_imports(engine: AsyncEngine) -> None
         await _add_column(engine, table=table, ddl="sonarr_remove_failed_imports BOOLEAN NOT NULL DEFAULT 0")
 
 
+async def _migrate_026_stream_manager_columns(engine: AsyncEngine) -> None:
+    table = "app_settings"
+    if not await _has_column(engine, table=table, column="stream_manager_enabled"):
+        await _add_column(engine, table=table, ddl="stream_manager_enabled BOOLEAN NOT NULL DEFAULT 0")
+    if not await _has_column(engine, table=table, column="stream_manager_dry_run"):
+        await _add_column(engine, table=table, ddl="stream_manager_dry_run BOOLEAN NOT NULL DEFAULT 1")
+    if not await _has_column(engine, table=table, column="stream_manager_primary_audio_lang"):
+        await _add_column(engine, table=table, ddl="stream_manager_primary_audio_lang TEXT NOT NULL DEFAULT ''")
+    if not await _has_column(engine, table=table, column="stream_manager_secondary_audio_lang"):
+        await _add_column(engine, table=table, ddl="stream_manager_secondary_audio_lang TEXT NOT NULL DEFAULT ''")
+    if not await _has_column(engine, table=table, column="stream_manager_tertiary_audio_lang"):
+        await _add_column(engine, table=table, ddl="stream_manager_tertiary_audio_lang TEXT NOT NULL DEFAULT ''")
+    if not await _has_column(engine, table=table, column="stream_manager_default_audio_slot"):
+        await _add_column(engine, table=table, ddl="stream_manager_default_audio_slot TEXT NOT NULL DEFAULT 'primary'")
+    if not await _has_column(engine, table=table, column="stream_manager_remove_commentary"):
+        await _add_column(engine, table=table, ddl="stream_manager_remove_commentary BOOLEAN NOT NULL DEFAULT 0")
+    if not await _has_column(engine, table=table, column="stream_manager_subtitle_mode"):
+        await _add_column(engine, table=table, ddl="stream_manager_subtitle_mode TEXT NOT NULL DEFAULT 'remove_all'")
+    if not await _has_column(engine, table=table, column="stream_manager_subtitle_langs_csv"):
+        await _add_column(engine, table=table, ddl="stream_manager_subtitle_langs_csv TEXT NOT NULL DEFAULT ''")
+    if not await _has_column(engine, table=table, column="stream_manager_preserve_forced_subs"):
+        await _add_column(engine, table=table, ddl="stream_manager_preserve_forced_subs BOOLEAN NOT NULL DEFAULT 1")
+    if not await _has_column(engine, table=table, column="stream_manager_preserve_default_subs"):
+        await _add_column(engine, table=table, ddl="stream_manager_preserve_default_subs BOOLEAN NOT NULL DEFAULT 1")
+    if not await _has_column(engine, table=table, column="stream_manager_paths"):
+        await _add_column(engine, table=table, ddl="stream_manager_paths TEXT NOT NULL DEFAULT ''")
+    if not await _has_column(engine, table=table, column="stream_manager_interval_minutes"):
+        await _add_column(engine, table=table, ddl="stream_manager_interval_minutes INTEGER NOT NULL DEFAULT 60")
+    if not await _has_column(engine, table=table, column="stream_manager_schedule_enabled"):
+        await _add_column(engine, table=table, ddl="stream_manager_schedule_enabled BOOLEAN NOT NULL DEFAULT 0")
+    if not await _has_column(engine, table=table, column="stream_manager_schedule_days"):
+        await _add_column(engine, table=table, ddl="stream_manager_schedule_days TEXT NOT NULL DEFAULT ''")
+    if not await _has_column(engine, table=table, column="stream_manager_schedule_start"):
+        await _add_column(engine, table=table, ddl="stream_manager_schedule_start TEXT NOT NULL DEFAULT '00:00'")
+    if not await _has_column(engine, table=table, column="stream_manager_schedule_end"):
+        await _add_column(engine, table=table, ddl="stream_manager_schedule_end TEXT NOT NULL DEFAULT '23:59'")
+    if not await _has_column(engine, table=table, column="stream_manager_last_run_at"):
+        await _add_column(engine, table=table, ddl="stream_manager_last_run_at DATETIME")
+
+
 async def migrate(engine: AsyncEngine) -> None:
     await _migrate_001_sonarr_per_app_columns(engine)
     await _migrate_002_radarr_per_app_columns(engine)
@@ -439,3 +479,4 @@ async def migrate(engine: AsyncEngine) -> None:
     await _migrate_023_radarr_remove_failed_imports(engine)
     await _migrate_024_arr_retry_delay_columns(engine)
     await _migrate_025_sonarr_remove_failed_imports(engine)
+    await _migrate_026_stream_manager_columns(engine)

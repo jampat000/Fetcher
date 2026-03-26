@@ -61,6 +61,15 @@ def test_compute_job_intervals_minutes_uses_single_configured_app() -> None:
     assert compute_job_intervals_minutes(s) == {"sonarr": 45}
 
 
+def test_compute_job_intervals_includes_stream_manager_when_configured() -> None:
+    s = _arr_settings(
+        stream_manager_enabled=True,
+        stream_manager_paths="D:\\Media",
+        stream_manager_interval_minutes=120,
+    )
+    assert compute_job_intervals_minutes(s) == {"stream_manager": 120}
+
+
 def test_start_creates_independent_jobs_for_enabled_apps() -> None:
     s = ServiceScheduler()
     calls: list[tuple[str, int]] = []
@@ -130,6 +139,7 @@ def test_next_runs_by_job_returns_independent_values() -> None:
     assert runs["sonarr"] == datetime(2026, 3, 24, 12, 0, 0)
     assert runs["radarr"] == datetime(2026, 3, 24, 12, 30, 0)
     assert runs["trimmer"] is None
+    assert runs["stream_manager"] is None
 
 
 def test_shutdown_ignores_runtime_error_when_loop_closed() -> None:

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-03-26
+
+### Added
+
+- **Stream Manager:** optional remux-only cleanup of audio and subtitle streams by language (ffmpeg copy; no transcoding), optional commentary removal, dry-run, and a separate scheduler job — isolated from Trimmer and Sonarr/Radarr automation.
+
 ## [2.4.14] - 2026-03-26
 
 ### Changed
