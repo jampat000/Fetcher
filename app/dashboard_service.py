@@ -60,12 +60,24 @@ def _segment_suggests_items_dispatched(seg: str) -> bool:
     return bool(re.search(r"\bsearch for \d+\b", seg.lower()))
 
 
-def automation_card_subtext(*, app_key: str, enabled: bool, last_job_message: str | None) -> str:
-    """Per-dashboard-card hint from the last JobRunLog only (no cross-app inference)."""
+def automation_card_subtext(
+    *,
+    app_key: str,
+    enabled: bool,
+    last_job_message: str | None,
+    app_has_run_evidence: bool = False,
+) -> str:
+    """Per-dashboard-card hint from the last JobRunLog message plus per-app run timing on the card.
+
+    When the card already shows a last-run time for this app, an empty message for that app is
+    treated as unknown formatting — not as “never ran” — so we omit the skipped-by-config fallback.
+    """
     if not enabled:
         return ""
     lines = _job_segments_for_prefix(_job_message_segments(last_job_message), app_key)
     if not lines:
+        if app_has_run_evidence:
+            return ""
         return (
             "No line for this app in the last service run - it may have been skipped by schedule, "
             "manual scope, or configuration."
@@ -81,7 +93,7 @@ def automation_card_subtext(*, app_key: str, enabled: bool, last_job_message: st
         )
     if any("skipped" in s.lower() for s in lines):
         return "Last run skipped this app - see the service log for the exact reason."
-    return "Last service run reported normally for this app."
+    return ""
 
 
 async def fetch_live_dashboard_queue_totals(settings: AppSettings) -> dict[str, int]:
@@ -300,14 +312,26 @@ async def build_dashboard_status(
         run_busy=scheduler.is_run_in_progress(),
         job_intervals=job_intervals,
     )
+    def _card_has_run(row: dict[str, Any]) -> bool:
+        return bool((str(row.get("time_local") or "")).strip())
+
     sonarr_automation_sub = automation_card_subtext(
-        app_key="sonarr", enabled=bool(settings.sonarr_enabled), last_job_message=job_msg
+        app_key="sonarr",
+        enabled=bool(settings.sonarr_enabled),
+        last_job_message=job_msg,
+        app_has_run_evidence=_card_has_run(last_sonarr),
     )
     radarr_automation_sub = automation_card_subtext(
-        app_key="radarr", enabled=bool(settings.radarr_enabled), last_job_message=job_msg
+        app_key="radarr",
+        enabled=bool(settings.radarr_enabled),
+        last_job_message=job_msg,
+        app_has_run_evidence=_card_has_run(last_radarr),
     )
     trimmer_automation_sub = automation_card_subtext(
-        app_key="emby", enabled=bool(settings.emby_enabled), last_job_message=job_msg
+        app_key="emby",
+        enabled=bool(settings.emby_enabled),
+        last_job_message=job_msg,
+        app_has_run_evidence=_card_has_run(last_trimmer),
     )
     sonarr_snap = snaps.get("sonarr")
     radarr_snap = snaps.get("radarr")

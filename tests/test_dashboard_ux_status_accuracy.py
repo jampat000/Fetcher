@@ -34,7 +34,7 @@ def test_per_app_automation_subtext_independent() -> None:
     son = automation_card_subtext(app_key="sonarr", enabled=True, last_job_message=msg)
     rad = automation_card_subtext(app_key="radarr", enabled=True, last_job_message=msg)
     assert "retry-delay" in son.lower() or "retry delay" in son.lower()
-    assert "normally" in rad.lower() or "reported normally" in rad.lower()
+    assert rad == ""
     assert "sonarr" not in rad.lower()
 
 
@@ -44,6 +44,35 @@ def test_per_app_partial_retry_mixed_with_dispatched_search() -> None:
     )
     son = automation_card_subtext(app_key="sonarr", enabled=True, last_job_message=msg)
     assert "some items were skipped" in son.lower()
+
+
+def test_automation_subtext_skips_fallback_when_app_has_run_evidence() -> None:
+    """No per-app log line but card shows a last-run time → omit skipped-by-config fallback."""
+    sub = automation_card_subtext(
+        app_key="sonarr",
+        enabled=True,
+        last_job_message="Radarr: only radarr in summary",
+        app_has_run_evidence=True,
+    )
+    assert sub == ""
+
+
+def test_automation_subtext_fallback_when_no_run_evidence_and_no_line() -> None:
+    sub = automation_card_subtext(
+        app_key="sonarr",
+        enabled=True,
+        last_job_message="Radarr: missing search for 1",
+        app_has_run_evidence=False,
+    )
+    assert "No line for this app" in sub
+
+
+def test_automation_subtext_retry_delay_still_shown_with_run_evidence() -> None:
+    msg = "Sonarr: all items within retry delay (candidates=2)"
+    sub = automation_card_subtext(
+        app_key="sonarr", enabled=True, last_job_message=msg, app_has_run_evidence=True
+    )
+    assert "retry-delay" in sub.lower() or "retry delay" in sub.lower()
 
 
 def test_user_visible_job_run_message_non_empty() -> None:
