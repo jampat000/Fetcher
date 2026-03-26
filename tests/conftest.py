@@ -18,6 +18,18 @@ except OSError:
     pass
 os.environ["FETCHER_DEV_DB_PATH"] = _TEST_DB_PATH
 
+def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool | None:
+    """Keep README screenshot regen out of default collection (``pytest tests/``, etc.).
+
+    Explicit ``pytest tests/e2e/test_readme_screenshots.py`` bypasses this (initial path);
+    that path uses ``skipif`` in the module for a clear message when REGEN is unset.
+    """
+    if (os.environ.get("REGEN_README_SCREENSHOTS") or "").strip():
+        return None
+    if collection_path.name == "test_readme_screenshots.py":
+        return True
+    return None
+
 
 @pytest.fixture(scope="session", autouse=True)
 def _init_fetcher_test_database() -> None:

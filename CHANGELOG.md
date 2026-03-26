@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.4.12] - 2026-03-26
+
+### Changed
+
+- **Sonarr/Radarr failed-import cleanup:** Queue removal now calls the native API with **`blocklist=true`** on the same delete, so the associated release is blocklisted per Sonarr/Radarr (reduces immediate re-grab). Activity and run summaries use explicit wording: removed from queue; blocklist requested via Sonarr/Radarr API (no claim of independent verification).
+- **Sonarr failed-import cleanup:** Delete failures are caught and reported like Radarr (**`failed-import queue remove failed`** + HTTP detail), with no misleading success Activity row.
+- **Settings (Sonarr & Radarr):** Checkbox labels clarified for **search missing**, **cutoff-unmet upgrade search**, and **remove failed imports (queue + blocklist)**; helper text notes API blocklist on removal.
+
+### Maintenance
+
+- **Tests:** Radarr cleanup asserts **`blocklist=True`** on delete; added focused Sonarr failed-import cleanup tests. Default pytest suite and screenshot-regeneration opt-in behavior unchanged.
+
 ## [2.4.11] - 2026-03-26
 
 ### Maintenance
