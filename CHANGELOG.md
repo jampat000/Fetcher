@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.4.14] - 2026-03-26
+
+### Changed
+
+- Clarified **Delete watched TV episodes** setting to explicitly state that future episode monitoring is preserved for continuing series.
+
 ## [2.4.13] - 2026-03-26
 
 ### Fixed
