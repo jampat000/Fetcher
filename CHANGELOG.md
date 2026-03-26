@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.4.11] - 2026-03-26
+
+### Maintenance
+
+- Ensured internal tooling and non-runtime files are excluded from packaged artifacts
+- Verified Dockerfile and build packaging for production correctness
+- Confirmed module naming remains coherent and non-conflicting
+- Re-validated authentication and security-sensitive paths with no behavior changes
+- Tightened release hygiene and changelog clarity for maintenance consistency
+
 ## [2.4.10] - 2026-03-26
 
 ### Fixed
@@ -963,7 +973,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.4.10...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.4.11...HEAD
+[2.4.11]: https://github.com/jampat000/Fetcher/compare/v2.4.10...v2.4.11
 [2.4.10]: https://github.com/jampat000/Fetcher/compare/v2.4.9...v2.4.10
 [2.4.9]: https://github.com/jampat000/Fetcher/compare/v2.4.8...v2.4.9
 [2.4.8]: https://github.com/jampat000/Fetcher/compare/v2.4.7...v2.4.8
