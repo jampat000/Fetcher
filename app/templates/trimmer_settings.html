@@ -152,6 +152,7 @@
           <div class="field">
             <label>Delete watched TV shows</label>
             {% call toggle_checkbox("emby_rule_tv_delete_watched", settings.emby_rule_tv_delete_watched) %}Yes, delete watched TV shows{% endcall %}
+            <div class="small">Removes watched episodes. Continuing shows keep future episodes monitored.</div>
           </div>
           <div class="field">
             <label>Delete unwatched TV older than N days</label>
