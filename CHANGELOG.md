@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.5.1] - 2026-03-26
+
+### Changed
+
+- **Stream Manager workflow:** replaced generic media paths with a watched-folder to output-folder pipeline, using temp/work remux artifacts and validating output before move.
+- **Stream Manager safety:** live mode now deletes source files only after validated output is moved successfully; dry-run remains no-change with explicit source-preserved logging.
+- **Stream Manager settings:** added required watched/output folders, optional advanced temp/work folder, clearer audio priority vs default slot wording, and a small audio preference mode (`best available`, `prefer surround`, `prefer stereo`, `prefer lossless`).
+- **Stream Manager packaging/provisioning:** Docker now installs `ffmpeg`; Windows packaging now stages and bundles `ffmpeg`/`ffprobe` when available during build, with clear fallback messaging.
+
+### Maintenance
+
+- **Tests:** added focused coverage for watched→work→output flow, source deletion gating, failure/source preservation, custom/default work-folder behavior, settings validation for required folders, and audio preference ordering.
+
+## [2.5.0] - 2026-03-26
+
+### Added
+
+- **Stream Manager:** optional remux-only cleanup of audio and subtitle streams by language (ffmpeg copy; no transcoding), optional commentary removal, dry-run, and a separate scheduler job — isolated from Trimmer and Sonarr/Radarr automation.
+
 ## [2.4.14] - 2026-03-26
 
 ### Changed

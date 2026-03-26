@@ -25,6 +25,7 @@ from app.models import AppSnapshot
 from app.resolvers.api_keys import resolve_emby_api_key
 from app.schedule import normalize_schedule_days_csv, schedule_time_dropdown_choices
 from app.security_utils import encrypt_secret_for_storage
+from app.stream_manager_rules import parse_subtitle_langs_csv
 from app.time_util import utc_now_naive
 from app.trimmer_service import TrimmerApplyService, TrimmerReviewService
 from app.ui_templates import templates
@@ -42,6 +43,39 @@ from app.routers.deps import AUTH_DEPS, AUTH_FORM_DEPS
 logger = logging.getLogger(__name__)
 
 router = APIRouter(dependencies=AUTH_DEPS)
+
+_STREAM_LANGUAGE_OPTIONS: list[tuple[str, str]] = [
+    ("eng", "English"),
+    ("jpn", "Japanese"),
+    ("spa", "Spanish"),
+    ("fre", "French"),
+    ("deu", "German"),
+    ("ita", "Italian"),
+    ("por", "Portuguese"),
+    ("rus", "Russian"),
+    ("zho", "Chinese"),
+    ("kor", "Korean"),
+    ("hin", "Hindi"),
+    ("ara", "Arabic"),
+    ("pol", "Polish"),
+    ("tur", "Turkish"),
+    ("swe", "Swedish"),
+    ("dan", "Danish"),
+    ("fin", "Finnish"),
+    ("nld", "Dutch"),
+    ("nor", "Norwegian"),
+    ("hun", "Hungarian"),
+    ("ces", "Czech"),
+    ("ell", "Greek"),
+    ("heb", "Hebrew"),
+    ("tha", "Thai"),
+    ("vie", "Vietnamese"),
+    ("ukr", "Ukrainian"),
+    ("ron", "Romanian"),
+    ("ind", "Indonesian"),
+    ("msa", "Malay"),
+    ("und", "Undetermined"),
+]
 
 # In-place JSON for Trimmer settings (separate header from Fetcher /settings — different routes, no shared business logic).
 TRIMMER_SETTINGS_INPLACE_JSON_HEADER = "x-fetcher-trimmer-settings-async"
@@ -73,6 +107,9 @@ async def trimmer_settings_page(request: Request, session: AsyncSession = Depend
     em_days = normalize_schedule_days_csv(settings.emby_schedule_days or "")
     es = _normalize_hhmm(settings.emby_schedule_start, "00:00")
     ee = _normalize_hhmm(settings.emby_schedule_end, "23:59")
+    sm_days = normalize_schedule_days_csv(settings.stream_manager_schedule_days or "")
+    sm_s = _normalize_hhmm(settings.stream_manager_schedule_start, "00:00")
+    sm_e = _normalize_hhmm(settings.stream_manager_schedule_end, "23:59")
     return templates.TemplateResponse(
         request,
         "trimmer_settings.html",
@@ -95,6 +132,14 @@ async def trimmer_settings_page(request: Request, session: AsyncSession = Depend
             "emby_schedule_end_hhmm": ee,
             "emby_start_orphan": _time_select_orphan(es, time_choice_keys, fallback_display="12:00 AM"),
             "emby_end_orphan": _time_select_orphan(ee, time_choice_keys, fallback_display="11:59 PM"),
+            "stream_manager_schedule_days_normalized": sm_days,
+            "stream_manager_schedule_days_selected": schedule_weekdays_selected_dict(
+                settings.stream_manager_schedule_days or ""
+            ),
+            "stream_manager_schedule_start_hhmm": sm_s,
+            "stream_manager_schedule_end_hhmm": sm_e,
+            "stream_manager_start_orphan": _time_select_orphan(sm_s, time_choice_keys, fallback_display="12:00 AM"),
+            "stream_manager_end_orphan": _time_select_orphan(sm_e, time_choice_keys, fallback_display="11:59 PM"),
             "movie_genre_options": _MOVIE_GENRE_OPTIONS,
             "selected_movie_genres": parse_genres_csv(settings.emby_rule_movie_genres_csv),
             "selected_tv_genres": parse_genres_csv(settings.emby_rule_tv_genres_csv),
@@ -105,6 +150,10 @@ async def trimmer_settings_page(request: Request, session: AsyncSession = Depend
             "selected_tv_people_credit_types": parse_movie_people_credit_types_csv(
                 settings.emby_rule_tv_people_credit_types_csv
             ),
+            "selected_stream_subtitle_langs": list(
+                parse_subtitle_langs_csv(settings.stream_manager_subtitle_langs_csv or "")
+            ),
+            "stream_language_options": _STREAM_LANGUAGE_OPTIONS,
             "csrf_token": await get_csrf_token_for_template(request, session),
             "show_setup_wizard": show_setup_wizard,
         },

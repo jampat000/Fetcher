@@ -169,6 +169,7 @@ def trimmer_settings_fragment(trimmer_section: str | None) -> str:
         "schedule": "trimmer-schedule",
         "rules": "trimmer-rules",
         "people": "trimmer-people",
+        "stream_manager": "stream-manager",
     }
     fid = ids.get(key)
     return f"#{fid}" if fid else ""

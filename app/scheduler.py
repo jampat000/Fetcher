@@ -11,6 +11,7 @@ from app.arr_intervals import effective_arr_interval_minutes
 from app.db import SessionLocal
 from app.models import AppSettings
 from app.service_logic import run_once
+from app.stream_manager_service import run_scheduled_stream_manager_pass
 from app.resolvers.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
 from app.time_util import utc_now_naive
 
@@ -39,6 +40,14 @@ def _emby_configured(settings: AppSettings) -> bool:
     )
 
 
+def _stream_manager_configured(settings: AppSettings) -> bool:
+    return bool(
+        getattr(settings, "stream_manager_enabled", False)
+        and (getattr(settings, "stream_manager_watched_folder", "") or "").strip()
+        and (getattr(settings, "stream_manager_output_folder", "") or "").strip()
+    )
+
+
 def compute_job_intervals_minutes(settings: AppSettings) -> dict[str, int]:
     """Independent scheduler intervals per configured app job."""
     out: dict[str, int] = {}
@@ -48,6 +57,10 @@ def compute_job_intervals_minutes(settings: AppSettings) -> dict[str, int]:
         out["radarr"] = effective_arr_interval_minutes(getattr(settings, "radarr_interval_minutes", None))
     if _emby_configured(settings):
         out["trimmer"] = max(5, int(settings.emby_interval_minutes or 60))
+    if _stream_manager_configured(settings):
+        out["stream_manager"] = max(
+            5, int(getattr(settings, "stream_manager_interval_minutes", 60) or 60)
+        )
     return out
 
 
@@ -59,6 +72,7 @@ class ServiceScheduler:
             "sonarr": "fetcher_sonarr",
             "radarr": "fetcher_radarr",
             "trimmer": "fetcher_trimmer",
+            "stream_manager": "fetcher_stream_manager",
         }
 
     async def _current_job_intervals_minutes(self) -> dict[str, int]:
@@ -84,11 +98,17 @@ class ServiceScheduler:
     async def _job_trimmer(self) -> None:
         await self._run_scope("trimmer")
 
+    async def _job_stream_manager(self) -> None:
+        async with SessionLocal() as session:
+            await run_scheduled_stream_manager_pass(session)
+
     def _job_fn_for_scope(self, scope: str):
         if scope == "sonarr":
             return self._job_sonarr
         if scope == "radarr":
             return self._job_radarr
+        if scope == "stream_manager":
+            return self._job_stream_manager
         return self._job_trimmer
 
     async def start(self) -> None:
@@ -145,6 +165,7 @@ class ServiceScheduler:
             "sonarr": self._job_next_run_at("sonarr"),
             "radarr": self._job_next_run_at("radarr"),
             "trimmer": self._job_next_run_at("trimmer"),
+            "stream_manager": self._job_next_run_at("stream_manager"),
         }
 
     def is_run_in_progress(self) -> bool:
