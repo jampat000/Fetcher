@@ -24,7 +24,7 @@ from app.models import Base
 from app.paths import STATIC_DIR, resolved_logs_dir
 from app.rate_limit import limiter
 from app.scheduler import scheduler
-from app.security_utils import get_jwt_secret_from_env
+from app.security_utils import get_jwt_secret_from_env, warn_if_data_encryption_key_missing
 from app.web_common import trimmer_settings_redirect_url
 from app import updates as app_updates
 from app.routers import api as api_router
@@ -45,9 +45,13 @@ async def _lifespan(_app: FastAPI):
     jwt_secret = (get_jwt_secret_from_env() or "").strip()
     if not jwt_secret:
         raise RuntimeError(
-            "Missing required JWT configuration: set FETCHER_JWT_SECRET to a stable, high-entropy value."
+            "Missing required JWT configuration: FETCHER_JWT_SECRET is not set or is empty. "
+            "Set this environment variable to a stable, high-entropy secret before starting Fetcher "
+            "(Windows service environment, installer, or shell). "
+            "It signs API access and refresh tokens; changing it invalidates existing refresh tokens."
         )
     _app.state.jwt_secret = jwt_secret
+    warn_if_data_encryption_key_missing(logger)
     logger.info("SQLite database path: %s", db_path())
     logger.info(
         "Application log file: %s (override with FETCHER_LOG_DIR)",

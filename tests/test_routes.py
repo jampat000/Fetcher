@@ -79,7 +79,7 @@ def test_dashboard_hero_does_not_fetch_live_totals_before_render(monkeypatch) ->
     async def _boom(_settings):
         raise RuntimeError("live totals must not run during dashboard HTML render")
 
-    monkeypatch.setattr("app.web_common.fetch_live_dashboard_queue_totals", _boom)
+    monkeypatch.setattr("app.dashboard_service.fetch_live_dashboard_queue_totals", _boom)
     with _build_client(monkeypatch) as client:
         resp = client.get("/")
     assert resp.status_code == 200
@@ -95,7 +95,7 @@ def test_api_dashboard_status_uses_live_totals(monkeypatch) -> None:
             "radarr_upgrades": 14,
         }
 
-    monkeypatch.setattr("app.web_common.fetch_live_dashboard_queue_totals", _live)
+    monkeypatch.setattr("app.dashboard_service.fetch_live_dashboard_queue_totals", _live)
     with _build_client(monkeypatch) as client:
         resp = client.get("/api/dashboard/status")
     assert resp.status_code == 200

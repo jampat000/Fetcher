@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from app.models import ActivityLog
-from app.web_common import (
+from app.dashboard_service import (
     _fetcher_phase_for_dashboard,
-    activity_display_row,
     automation_card_subtext,
-    user_visible_job_run_message,
 )
+from app.models import ActivityLog
+from app.web_common import activity_display_row, user_visible_job_run_message
 
 
 def test_global_phase_never_cooling_and_uses_active_when_scheduled() -> None:

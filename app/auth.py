@@ -308,9 +308,25 @@ async def require_api_auth(
                 algorithms=["HS256"],
             )
         except Exception:
-            raise HTTPException(status_code=401, detail={"message": "Invalid or expired bearer token"}) from None
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "message": (
+                        "Invalid or expired access token. Sign in with POST /api/auth/token or renew with "
+                        "POST /api/auth/refresh, then send the returned access_token as Authorization: Bearer …."
+                    )
+                },
+            ) from None
         if payload.get("typ") != "access" or not (payload.get("sub") or "").strip():
-            raise HTTPException(status_code=401, detail={"message": "Invalid bearer token"})
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "message": (
+                        "This endpoint expects a Bearer access token (not a refresh token). "
+                        "Use POST /api/auth/token after signing in, or POST /api/auth/refresh."
+                    )
+                },
+            )
         return
     await require_auth(request, session)
 
@@ -341,12 +357,28 @@ async def require_auth(
     secret = (settings.auth_session_secret or "").strip()
     if not secret:
         if _wants_json(request):
-            raise HTTPException(status_code=401, detail={"message": "Unauthorized"})
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "message": (
+                        "Not signed in. Use POST /api/auth/token with your credentials, then send the "
+                        "access_token as Authorization: Bearer …, or open the web UI to establish a session."
+                    )
+                },
+            )
         raise FetcherAuthRequired(RedirectResponse(url=login_url_with_next(request=request), status_code=303))
 
     raw = request.cookies.get(SESSION_COOKIE_NAME) or ""
     expected = (settings.auth_username or "admin").strip() or "admin"
     if not verify_session_cookie(secret=secret, cookie_value=raw, expected_username=expected):
         if _wants_json(request):
-            raise HTTPException(status_code=401, detail={"message": "Unauthorized"})
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "message": (
+                        "Session missing or expired. Sign in via POST /api/auth/token or the /login page, "
+                        "then retry with a valid session cookie or Bearer access token."
+                    )
+                },
+            )
         raise FetcherAuthRequired(RedirectResponse(url=login_url_with_next(request=request), status_code=303))

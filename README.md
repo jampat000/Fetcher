@@ -1,22 +1,141 @@
 # Fetcher
 
-**Fetcher** is a **FastAPI** web app with a **glass-style** UI (**Inter**), a **SQLite** database, and a background scheduler. It ships as a **64-bit Windows service** (Inno Setup **`FetcherSetup.exe`**) and as an optional **Linux** image on **GitHub Container Registry** (**`ghcr.io/jampat000/fetcher`**). It automates **Sonarr** and **Radarr** searches and optionally applies **Emby Trimmer** rules (with dry-run support).
+Fetcher is a small **Windows-first** web app (FastAPI + SQLite + background scheduler) that talks to **Sonarr**, **Radarr**, and optionally **Emby** on your network. It runs as a **64-bit Windows service** installed with **`FetcherSetup.exe`** (Inno Setup), or in **Docker** on Linux (`ghcr.io/jampat000/fetcher`). The UI is plain HTML with a bit of glass-style polish—nothing fancy, but it’s meant to be readable day to day.
 
-- Search for **missing** movies and episodes  
-- Re-run **upgrade** searches until Arr reports **quality cutoff** is met (your Quality Profiles define “better”)  
-- Optional **Emby Trimmer** to match and remove titles by rules — use **Trimmer** in the UI to scan and review  
+**What it’s for:** automate **missing** and **upgrade (cutoff)** searches on a schedule, keep an eye on **what ran and when**, and optionally drive **Emby Trimmer** rules (scan, review, apply) from the same place. Sonarr and Radarr still own your library; Fetcher just calls their APIs on your behalf. Emby is the playback server Trimmer uses to find candidates against your rules.
 
-**License:** [MIT](LICENSE) · **Security:** [SECURITY.md](SECURITY.md) · **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md)
+**License:** [MIT](LICENSE) · **Security:** [SECURITY.md](SECURITY.md) · **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) · **Install / ops detail:** [docs/INSTALL-AND-OPERATIONS.md](docs/INSTALL-AND-OPERATIONS.md)
 
-## ⚡ Vibe coded
+---
 
-This is vibe coded.
+## Core features
 
-I needed something like this, couldn’t find anything that did exactly what I wanted, and I can’t code — so I built it with a lot of help.
+- **Missing & upgrade automation** — scheduled (and manual) searches for monitored items without files and for cutoff-unmet queues, with **per-app Retry Delay** so you’re not hammering the same items every tick.
+- **Dashboard** — per-app last/next run, live-style queue counts when Arr is reachable, and short hints from the last service run (including retry-delay context where it applies).
+- **Activity & job logs** — human-readable summaries; logs page reads the same log directory the service writes to.
+- **Failed import cleanup** — optional Radarr/Sonarr queue cleanup where supported.
+- **Setup wizard** — shown until real configuration is in place (password + at least one integration configured the way the app checks it). No separate “I’m done” flag; it’s driven by saved state.
+- **Auth** — password (bcrypt), session cookie, optional IP allowlist; JSON API can use **Bearer access tokens** from the auth endpoints.
+- **Backup / restore** — settings JSON from the UI (treat it as secret).
 
-Not asking anyone to use it.
+---
 
-If you want to try it, go for it.
+## Requirements
+
+- **Windows (installed service):** 64-bit Windows; installer bundles the app and WinSW. You need **Sonarr** and/or **Radarr** (and **Emby** if you use Trimmer) reachable on your LAN; Fetcher stores **base URLs and API keys** you provide.
+- **Python (from source / dev only):** see **Development** at the bottom; the shipped product does not require a system Python install.
+- **Network:** the service listens on **TCP 8765** by default (`0.0.0.0` in the packaged service so other PCs on the LAN can open the UI—tighten with firewall or `--host 127.0.0.1` if you want loopback only).
+
+---
+
+## Required environment variables
+
+### `FETCHER_JWT_SECRET` (required)
+
+- **What it is:** signing secret for **access and refresh JWTs** used by the JSON API (`HS256`). It is **not** your login password.
+- **What happens without it:** the process **exits on startup** with a clear error. There is no baked-in default.
+- **How to set it (Windows service):** persistent **Machine** environment variable, then restart the service:
+
+```powershell
+[Environment]::SetEnvironmentVariable(
+  "FETCHER_JWT_SECRET",
+  "<long-random-secret>",
+  "Machine"
+)
+Restart-Service Fetcher
+```
+
+- **How to generate a value:** any high-entropy string (e.g. 32+ bytes random, hex or base64). Examples:
+
+```powershell
+# PowerShell — random 32 bytes as base64
+[Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Maximum 256 } | ForEach-Object { [byte]$_ }))
+```
+
+```bash
+# OpenSSL (if installed)
+openssl rand -base64 32
+```
+
+**Dev / tests:** set it in the environment before `scripts/dev-start.ps1` or pytest (see `CONTRIBUTING.md`).
+
+---
+
+## Optional environment variables (security-relevant)
+
+### `FETCHER_DATA_ENCRYPTION_KEY` (optional, recommended)
+
+- **What it does:** when set to a valid **Fernet** key, Sonarr/Radarr/Emby API keys in SQLite are stored **encrypted at rest** (`enc:v1:…` prefix).  
+- **If unset:** those fields stay **plaintext** in the database file. Startup logs a **warning** that says so—this is intentional, not a silent failure.
+- **Generate a key:**
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Set the same variable for every run; **changing or losing the key** means existing encrypted values can’t be decrypted—plan backups accordingly.
+
+Other useful vars (logs, data dir, dev DB) are documented in **[docs/INSTALL-AND-OPERATIONS.md](docs/INSTALL-AND-OPERATIONS.md)** and **`service/README.md`**.
+
+---
+
+## Installation (Windows, fresh)
+
+1. Download **`FetcherSetup.exe`** from **[Releases](https://github.com/jampat000/Fetcher/releases/latest)**.
+2. Run the installer (admin prompt is normal). Binaries land under **Program Files**; **data** defaults to **`%ProgramData%\Fetcher`** (SQLite DB + `logs\`).
+3. Set **`FETCHER_JWT_SECRET`** at machine scope (see above), then **restart** the **Fetcher** service.
+4. Open **`http://127.0.0.1:8765`** on the machine, or **`http://<host-ip>:8765`** from another device (open **TCP 8765** in Windows Firewall if needed).
+5. Complete **setup** (account, integrations, schedule). After that you’ll use **`/login`** when the session expires.
+
+**Where things live (defaults):**
+
+| What | Where |
+| --- | --- |
+| App binaries | `Program Files` (per installer) |
+| SQLite DB | `%ProgramData%\Fetcher\fetcher.db` |
+| App log file | `%ProgramData%\Fetcher\logs\fetcher.log` (override: `FETCHER_LOG_DIR`) |
+
+WinSW may drop small **wrapper** `*.out.log` / `*.err.log` next to the service under Program Files—they’re not the main app log.
+
+---
+
+## Updating
+
+- **In-app:** **Settings → Software updates** can fetch and run a newer **`FetcherSetup.exe`** (treat like any installer: service stop/start is handled in the upgrade flow).
+- **Manual:** download the new **`FetcherSetup.exe`**, run it over the existing install. **ProgramData** (database, logs) is kept; migrations run on next startup.
+- **After update:** confirm the **Fetcher** service is **Running**, open the UI, check **Settings → Software updates** or **`GET /api/version`** for the version you expect.
+
+If you use **`FETCHER_DATA_ENCRYPTION_KEY`**, keep it set the same way after upgrades.
+
+---
+
+## Troubleshooting
+
+| Symptom | What to check |
+| --- | --- |
+| Service won’t start / app exits immediately | **`FETCHER_JWT_SECRET`** set? Machine-level env + **restart service**. Read the Windows Application log or **`fetcher.log`** for the exact message. |
+| “Plaintext” / encryption warning at startup | **`FETCHER_DATA_ENCRYPTION_KEY`** not set—optional but recommended; see above. |
+| Can’t reach Sonarr/Radarr/Emby from Fetcher | Base URL (no trailing junk), API key, firewall between hosts, HTTPS certs if you use HTTPS. Use the setup **Test connection** actions. |
+| 401 / “not signed in” on API | Session cookie expired or missing; or use **`POST /api/auth/token`** and send **`Authorization: Bearer <access_token>`**. Don’t send a **refresh** token as the Bearer header for API calls. |
+| UI loops to setup | Wizard visibility follows **saved** config: password missing or an enabled integration missing URL/key. Fix the relevant fields in setup or settings. |
+| Where are logs? | Default **`%ProgramData%\Fetcher\logs\fetcher.log`**. The **Logs** page in the UI lists that directory. |
+
+---
+
+## Security notes (short)
+
+- **JWT secret** is mandatory; it signs API tokens. Protect it like any signing key.
+- **Encryption key** is optional; without it, Arr API keys in SQLite are **plaintext** on disk—fine for many home setups, bad for shared backup drives or stolen disks.
+- **Session cookie** is HttpOnly, SameSite=Lax; use **HTTPS + reverse proxy** if you expose the UI beyond a trusted LAN.
+- **IP allowlist** is a convenience for trusted networks; don’t rely on it alone on hostile networks (see **SECURITY.md**).
+
+---
+
+## Project status
+
+Fetcher is a **stable, production-usable personal tool** I run at home. It’s **maintained when something breaks or needs tightening**—not a product roadmap with SLAs. If it fits your setup, use it; if not, no worries.
+
+---
 
 ## Screenshots
 
@@ -28,110 +147,85 @@ If you want to try it, go for it.
 | --- | --- |
 | ![Trimmer settings](docs/screenshots/trimmer-settings.png) | ![Activity](docs/screenshots/activity.png) |
 
-## Download (Windows)
+---
 
-**[FetcherSetup.exe (latest release)](https://github.com/jampat000/Fetcher/releases/latest/download/FetcherSetup.exe)**
+## Docker (Linux / NAS)
 
-- **64-bit Windows** only  
-- Installs **Fetcher** as a **Windows service** and opens the web UI when setup finishes  
+Not the Windows installer path. See **[docs/DOCKER.md](docs/DOCKER.md)** and pull **`ghcr.io/jampat000/fetcher:latest`** (or a version tag matching **Releases**). Data under **`/data`** in the image layout described there.
 
-## Install and first run
-
-1. Run **`FetcherSetup.exe`** (administrator prompt is normal).  
-2. Open **`http://127.0.0.1:8765`** on the PC running the service, or **`http://<host>:8765`** from another device on your network. Allow **TCP 8765** through the firewall if needed.  
-3. On first visit you complete **setup** (account, then Sonarr / Radarr / Emby and options). After that, sign in at **`/login`** when your session expires.  
-4. Use **Fetcher settings** and **Trimmer** in the sidebar for ongoing configuration.  
-
-### Required service environment variable (JWT signing)
-
-Installed builds require **`FETCHER_JWT_SECRET`** at startup. Set it as a **persistent machine environment variable** (administrator PowerShell), then restart the service:
-
-```powershell
-[Environment]::SetEnvironmentVariable("FETCHER_JWT_SECRET","<your-32+char-random-secret>","Machine")
-Restart-Service Fetcher
-```
-
-If this variable is missing, Fetcher intentionally fails fast on startup (no fallback signing secret).
-
-### Logs (Windows service)
-
-Application logs (exceptions, startup, Trimmer/settings saves, migration messages) are written to a **rotating file** next to your database:
-
-- **Default:** `%ProgramData%\Fetcher\logs\fetcher.log` (and `fetcher.log.1`, … on rotation)
-- **Override:** set machine env **`FETCHER_LOG_DIR`** to a folder path if you want logs elsewhere.
-
-The web UI **Logs** page lists files from that same directory. WinSW may also write short **`*.out.log` / `*.err.log`** files under the install folder (Program Files); those are **wrapper-only** and can be removed on uninstall — they are not the main application log.
-
-**Security:** Password-protected UI (bcrypt + session cookie). Optional **IP allowlist** for trusted networks. See **[`SECURITY.md`](SECURITY.md)** for reporting issues, API keys, downloads, and lockout recovery.  
-
-**Updates:** **Settings → Software updates** can install a newer **`FetcherSetup.exe`**, or install manually from [Releases](https://github.com/jampat000/Fetcher/releases).  
-
-## Docker (Linux / NAS / container hosts)
-
-**Separate from Windows:** use **`FetcherSetup.exe`** above for the Windows service. Docker is an optional **Linux** image: build from this repo or pull from **GHCR** after each release (**Docker publish** runs with **Tag release**).
-
-**[`docs/DOCKER.md`](docs/DOCKER.md)** — **`docker compose up -d --build`** from git, or:
-
-```bash
-docker pull ghcr.io/jampat000/fetcher:latest
-```
-
-Tags match **[Releases](https://github.com/jampat000/Fetcher/releases)** (e.g. **`v2.0.18`**). Open **`http://127.0.0.1:8765`**. The database persists in a volume under **`/data`**.
+---
 
 ## Health checks (no login)
 
-- **`GET /healthz`** — JSON status for uptime monitoring  
-- **`GET /api/version`** — JSON app version  
+- **`GET /healthz`** — JSON for uptime checks  
+- **`GET /api/version`** — app version string  
+
+---
 
 ## Repository layout
 
 | Path | Purpose |
 | --- | --- |
-| `app/` | FastAPI app and scheduler |
-| `service/` | Windows service (WinSW) configuration |
-| `installer/` | Inno Setup → **`FetcherSetup.exe`** |
-| `Dockerfile`, `docker-compose.yml` | Linux/container install (see **`docs/DOCKER.md`**) |
-| `VERSION` | Release version (semver) |
+| `app/` | FastAPI app, scheduler, templates |
+| `app/dashboard_service.py` | Dashboard status + live Arr totals (non-router logic) |
+| `service/` | WinSW service notes |
+| `installer/` | Inno → **`FetcherSetup.exe`** |
+| `docs/` | Docker, CLI, **INSTALL-AND-OPERATIONS**, etc. |
+| `VERSION` | Release semver |
 
-Optional **`config.yaml`** next to **`Fetcher.exe`** can supply API keys instead of (or overriding) the database — see **`app/config.py`** / **`app/resolvers/api_keys.py`**. **`config.example.yaml`** is a template (copy to **`config.yaml`**, gitignored).
+Optional **`config.yaml`** next to **`Fetcher.exe`** can supply API keys—see **`config.example.yaml`** (gitignored when copied to **`config.yaml`**).
+
+---
 
 ## Backup and restore
 
-**Settings → Backup & Restore** exports Fetcher + Trimmer settings to one JSON file. Treat it as **sensitive** (includes auth material). More detail: **[`HOWTO-RESTORE.md`](HOWTO-RESTORE.md)**.
+**Settings → Backup & Restore** exports JSON including secrets—store it safely. Details: **[HOWTO-RESTORE.md](HOWTO-RESTORE.md)**.
+
+---
 
 ## Changelog
 
-**[`CHANGELOG.md`](CHANGELOG.md)** — includes maintainer **Releasing** notes.
+**[CHANGELOG.md](CHANGELOG.md)** — release history and maintainer **Releasing** notes.
+
+---
 
 ## More documentation
 
-**[`docs/README.md`](docs/README.md)** — index of guides (Docker, **`gh`**, public repo, workspace).  
-**[`HOWTO-RESTORE.md`](HOWTO-RESTORE.md)** — settings backup JSON (also linked from the index).
+**[docs/README.md](docs/README.md)** — index of guides.
+
+---
 
 ## Contributing
 
-Pull requests are welcome against **`master`** (branch protection / rulesets apply — see **[`CONTRIBUTING.md`](CONTRIBUTING.md)**). That file covers workflow, tests, **Windows** and **Docker** release automation, and **`gh`** usage.
+**[CONTRIBUTING.md](CONTRIBUTING.md)** — PRs against **`master`**, tests, releases, **`gh`**.
+
+---
 
 ## License
 
-**MIT** — see **[`LICENSE`](LICENSE)**.
+**MIT** — **[LICENSE](LICENSE)**.
+
+---
 
 ## GitHub “About” (repository metadata)
 
-These are **not** stored in git; set them under **Repository → ⚙ About** (or **Settings → General**) so the GitHub page matches the project.
+Set under **Repository → About** (not in git):
 
 | Field | Suggested value |
 | --- | --- |
-| **Description** | `Windows service + web UI for Sonarr/Radarr automation and optional Emby Trimmer. FastAPI, SQLite. Docker on GHCR.` |
+| **Description** | Windows service + web UI for Sonarr/Radarr automation and optional Emby Trimmer. FastAPI, SQLite. Docker on GHCR. |
 | **Website** | `https://github.com/jampat000/Fetcher/releases/latest` |
 | **Topics** | `sonarr`, `radarr`, `emby`, `fastapi`, `sqlite`, `windows-service`, `docker`, `automation`, `self-hosted` |
+
+---
 
 ## Development (quick start)
 
 ```powershell
 py -m venv .venv
 .\.venv\Scripts\pip install -r requirements.txt
+$env:FETCHER_JWT_SECRET = "dev-only-change-me"
 .\scripts\dev-start.ps1
 ```
 
-Open the URL the script prints (default **`http://127.0.0.1:8766`**). The installed service uses **8765**; local dev uses a separate temp database so it does not lock the service DB. For tests, screenshots, packaging, and CI details, see **`CONTRIBUTING.md`** and **`requirements-dev.txt`**.
+Default dev URL is **`http://127.0.0.1:8766`** with a separate temp DB so you don’t lock the service database. See **CONTRIBUTING.md** and **`requirements-dev.txt`**.

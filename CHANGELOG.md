@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.4.9] - 2026-03-26
+
+### Added
+- **Documentation:** **[`docs/INSTALL-AND-OPERATIONS.md`](docs/INSTALL-AND-OPERATIONS.md)** — Windows install paths, updates, logs, env var table, common failures.
+- **Tests:** JWT/encryption unit coverage and dashboard live-queue resilience tests; API Bearer rejection cases (see test suite).
+
+### Changed
+- **README:** Rewritten for a clear on-ramp: what Fetcher does, features, **required `FETCHER_JWT_SECRET`** and **optional `FETCHER_DATA_ENCRYPTION_KEY`**, install/update/troubleshooting/security sections, honest project status.
+- **SECURITY.md:** New **Application environment** section for JWT (required) and Fernet encryption (optional / plaintext warning); threat-model table notes plaintext storage without encryption key.
+- **service/README.md:** Documents optional **`FETCHER_DATA_ENCRYPTION_KEY`** for WinSW configs.
+- **docs index:** Links **INSTALL-AND-OPERATIONS**.
+- **API auth:** JSON routes under **`app/routers/api.py`** use **`require_api_auth`** so a present **`Authorization: Bearer`** header is validated (invalid token → 401 with actionable message); session cookie still used when no Bearer header. Test **`conftest`** overrides **`require_api_auth`** alongside **`require_auth`** where tests bypass auth.
+- **Structure:** Dashboard status and live Arr totals live in **`app/dashboard_service.py`**; **`app/web_common.py`** keeps settings/setup/activity helpers.
+
 ## [2.4.8] - 2026-03-26
 
 ### Fixed
@@ -941,7 +955,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.4.8...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.4.9...HEAD
+[2.4.9]: https://github.com/jampat000/Fetcher/compare/v2.4.8...v2.4.9
 [2.4.8]: https://github.com/jampat000/Fetcher/compare/v2.4.7...v2.4.8
 [2.4.7]: https://github.com/jampat000/Fetcher/compare/v2.4.6...v2.4.7
 [2.4.6]: https://github.com/jampat000/Fetcher/compare/v2.4.5...v2.4.6
