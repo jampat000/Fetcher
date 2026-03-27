@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.8] - 2026-03-27
+
+### Fixed
+
+- Windows service companion auto-launch now falls back to any usable active-session process token when WTSQueryUserToken and explorer.exe paths fail
+- Improved diagnostics for Windows session token acquisition and companion launch
+
+### Notes
+
+- Docker/headless behavior is unchanged and remains manual-entry only
+
 ## [3.0.7] - 2026-03-27
 
 ### Fixed
@@ -1113,7 +1124,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.0.7...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.0.8...HEAD
+[3.0.8]: https://github.com/jampat000/Fetcher/compare/v3.0.7...v3.0.8
 [3.0.7]: https://github.com/jampat000/Fetcher/compare/v3.0.6...v3.0.7
 [3.0.6]: https://github.com/jampat000/Fetcher/compare/v3.0.5...v3.0.6
 [3.0.5]: https://github.com/jampat000/Fetcher/compare/v3.0.4...v3.0.5

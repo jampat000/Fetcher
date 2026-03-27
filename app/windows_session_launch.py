@@ -227,79 +227,84 @@ def _duplicate_primary_token(token: wt.HANDLE, session_id: int, source: str) -> 
     return primary, "ok"
 
 
-def _get_primary_token_from_explorer(session_id: int) -> tuple[wt.HANDLE | None, str]:
-    logger.info("Companion launch/session: fallback token lookup started session_id=%s", int(session_id))
+def _iter_session_process_candidates(session_id: int) -> list[tuple[int, str]]:
     snap = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
     if not snap or int(snap) == int(INVALID_HANDLE_VALUE):
-        return None, "fallback_token_not_found"
+        return []
 
-    found_explorer = False
-    process_open_failed = False
+    procs: list[tuple[int, str]] = []
     entry = PROCESSENTRY32W()
     entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
-
     try:
         ok = kernel32.Process32FirstW(snap, ctypes.byref(entry))
         while ok:
-            exe = (entry.szExeFile or "").lower()
-            if exe == "explorer.exe":
-                pid = int(entry.th32ProcessID)
+            pid = int(entry.th32ProcessID)
+            if pid > 0:
+                exe = str(entry.szExeFile or "")
                 pid_session = wt.DWORD(0)
                 if kernel32.ProcessIdToSessionId(pid, ctypes.byref(pid_session)) and int(pid_session.value) == int(session_id):
-                    found_explorer = True
-                    logger.info(
-                        "Companion launch/session: fallback explorer.exe found pid=%s session_id=%s",
-                        pid,
-                        int(session_id),
-                    )
-                    ph = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
-                    if not ph:
-                        process_open_failed = True
-                        logger.warning(
-                            "Companion launch/session: fallback OpenProcess failed pid=%s winerr=%s",
-                            pid,
-                            _last_winerr(),
-                        )
-                    else:
-                        imp_token = wt.HANDLE()
-                        try:
-                            if not advapi32.OpenProcessToken(ph, TOKEN_QUERY | TOKEN_DUPLICATE, ctypes.byref(imp_token)):
-                                process_open_failed = True
-                                logger.warning(
-                                    "Companion launch/session: fallback OpenProcessToken failed pid=%s winerr=%s",
-                                    pid,
-                                    _last_winerr(),
-                                )
-                            else:
-                                logger.info(
-                                    "Companion launch/session: fallback OpenProcessToken ok pid=%s session_id=%s",
-                                    pid,
-                                    int(session_id),
-                                )
-                                primary, status = _duplicate_primary_token(imp_token, session_id, "fallback_explorer")
-                                if primary is not None:
-                                    logger.info(
-                                        "Companion launch/session: fallback token path selected session_id=%s",
-                                        int(session_id),
-                                    )
-                                    return primary, "ok"
-                                return None, "launch_failed"
-                        finally:
-                            _close_handle(imp_token)
-                            _close_handle(ph)
+                    procs.append((pid, exe))
             ok = kernel32.Process32NextW(snap, ctypes.byref(entry))
     finally:
         _close_handle(snap)
+    return procs
 
-    if not found_explorer:
-        logger.warning(
+
+def _try_primary_token_from_process(pid: int, name: str, session_id: int, source: str) -> tuple[wt.HANDLE | None, str]:
+    logger.info("Companion launch/session: fallback trying pid=%s name=%s", pid, name)
+    ph = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not ph:
+        logger.warning("Companion launch/session: fallback OpenProcess failed pid=%s winerr=%s", pid, _last_winerr())
+        return None, "fallback_token_open_failed"
+    imp_token = wt.HANDLE()
+    try:
+        if not advapi32.OpenProcessToken(ph, TOKEN_QUERY | TOKEN_DUPLICATE, ctypes.byref(imp_token)):
+            logger.warning(
+                "Companion launch/session: fallback OpenProcessToken failed pid=%s name=%s winerr=%s",
+                pid,
+                name,
+                _last_winerr(),
+            )
+            return None, "fallback_token_open_failed"
+        logger.info("Companion launch/session: fallback OpenProcessToken ok pid=%s name=%s", pid, name)
+        primary, status = _duplicate_primary_token(imp_token, session_id, source)
+        if primary is not None:
+            logger.info(
+                "Companion launch/session: fallback token acquired from pid=%s name=%s",
+                pid,
+                name,
+            )
+            return primary, "ok"
+        return None, "launch_failed"
+    finally:
+        _close_handle(imp_token)
+        _close_handle(ph)
+
+
+def _get_primary_token_from_fallback_process_scan(session_id: int) -> tuple[wt.HANDLE | None, str]:
+    logger.info("Companion launch/session: fallback process scan started session_id=%s", int(session_id))
+    procs = _iter_session_process_candidates(session_id)
+    if not procs:
+        return None, "fallback_no_usable_process_token"
+
+    explorer = [(pid, name) for pid, name in procs if name.lower() == "explorer.exe"]
+    others = [(pid, name) for pid, name in procs if name.lower() != "explorer.exe"]
+    if not explorer:
+        logger.info(
             "Companion launch/session: fallback explorer.exe not found in active session session_id=%s",
             int(session_id),
         )
-        return None, "fallback_token_not_found"
-    if process_open_failed:
+
+    last_status = "fallback_no_usable_process_token"
+    for pid, name in explorer + others:
+        source = "fallback_explorer" if name.lower() == "explorer.exe" else "fallback_process_scan"
+        primary, status = _try_primary_token_from_process(pid, name, session_id, source)
+        if primary is not None:
+            return primary, "ok"
+        last_status = status
+    if last_status == "fallback_token_open_failed":
         return None, "fallback_token_open_failed"
-    return None, "fallback_token_not_found"
+    return None, "fallback_no_usable_process_token"
 
 
 def _get_primary_token_for_session(session_id: int) -> tuple[wt.HANDLE | None, str, str]:
@@ -320,11 +325,17 @@ def _get_primary_token_for_session(session_id: int) -> tuple[wt.HANDLE | None, s
         int(session_id),
         err,
     )
-    primary, fallback_status = _get_primary_token_from_explorer(session_id)
+    logger.info("Companion launch/session: fallback token lookup started session_id=%s", int(session_id))
+    primary, fallback_status = _get_primary_token_from_fallback_process_scan(session_id)
     if primary is not None:
-        return primary, "ok", "fallback_explorer"
-    if fallback_status in ("fallback_token_not_found", "fallback_token_open_failed", "launch_failed"):
-        return None, fallback_status, "fallback_explorer"
+        return primary, "ok", "fallback"
+    if fallback_status in (
+        "fallback_token_not_found",
+        "fallback_token_open_failed",
+        "fallback_no_usable_process_token",
+        "launch_failed",
+    ):
+        return None, fallback_status, "fallback"
     return None, "wts_token_failed", "wts"
 
 

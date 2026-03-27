@@ -129,7 +129,13 @@ async def ensure_windows_companion_running(timeout_seconds: float = 4.0) -> bool
         logger.info("Refiner companion ensure: final_result=launch_skipped_throttled")
     elif launch.reason.startswith("no_active_session"):
         logger.info("Refiner companion ensure: final_result=no_active_session")
-    elif launch.reason in ("wts_token_failed", "fallback_token_not_found", "fallback_token_open_failed", "launch_failed"):
+    elif launch.reason in (
+        "wts_token_failed",
+        "fallback_token_not_found",
+        "fallback_token_open_failed",
+        "fallback_no_usable_process_token",
+        "launch_failed",
+    ):
         logger.info("Refiner companion ensure: final_result=launch_failed detail=%s", launch.reason)
     elif launch.launched:
         logger.info("Refiner companion ensure: final_result=launch_succeeded_but_companion_not_healthy")

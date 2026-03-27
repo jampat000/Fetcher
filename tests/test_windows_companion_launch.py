@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import types
 
 from app.refiner_folder_picker import ensure_windows_companion_running
@@ -54,7 +55,10 @@ def test_ensure_windows_companion_running_already_healthy_no_launch(monkeypatch)
 def test_start_companion_best_effort_invalid_path_fails_cleanly() -> None:
     out = start_companion_best_effort(r"C:\this\path\does\not\exist\FetcherCompanion.exe")
     assert out.launched is False
-    assert out.reason.startswith("invalid_companion_path:")
+    if os.name == "nt":
+        assert out.reason.startswith("invalid_companion_path:")
+    else:
+        assert out.reason == "non_windows"
 
 
 def test_ensure_windows_companion_running_launch_branch_executes(monkeypatch) -> None:
@@ -108,14 +112,14 @@ def test_wts_query_user_token_failure_uses_fallback(monkeypatch) -> None:
         return wsl.wt.HANDLE(111), "ok"
 
     monkeypatch.setattr(wsl, "wtsapi32", types.SimpleNamespace(WTSQueryUserToken=_wts_fail))
-    monkeypatch.setattr(wsl, "_get_primary_token_from_explorer", _fallback)
+    monkeypatch.setattr(wsl, "_get_primary_token_from_fallback_process_scan", _fallback)
     monkeypatch.setattr(wsl, "_close_handle", lambda _h: None)
     monkeypatch.setattr(wsl, "_last_winerr", lambda: 1008)
 
     primary, status, source = wsl._get_primary_token_for_session(3)
     assert primary is not None
     assert status == "ok"
-    assert source == "fallback_explorer"
+    assert source == "fallback"
     assert calls["fallback"] == 1
 
 
@@ -124,10 +128,55 @@ def test_wts_query_user_token_failure_fallback_not_found(monkeypatch) -> None:
         return False
 
     monkeypatch.setattr(wsl, "wtsapi32", types.SimpleNamespace(WTSQueryUserToken=_wts_fail))
-    monkeypatch.setattr(wsl, "_get_primary_token_from_explorer", lambda _sid: (None, "fallback_token_not_found"))
+    monkeypatch.setattr(
+        wsl,
+        "_get_primary_token_from_fallback_process_scan",
+        lambda _sid: (None, "fallback_no_usable_process_token"),
+    )
     monkeypatch.setattr(wsl, "_last_winerr", lambda: 1008)
 
     primary, status, source = wsl._get_primary_token_for_session(3)
     assert primary is None
-    assert status == "fallback_token_not_found"
-    assert source == "fallback_explorer"
+    assert status == "fallback_no_usable_process_token"
+    assert source == "fallback"
+
+
+def test_fallback_process_scan_uses_non_explorer_when_needed(monkeypatch) -> None:
+    monkeypatch.setattr(
+        wsl,
+        "_iter_session_process_candidates",
+        lambda _sid: [(4321, "cmd.exe"), (8765, "powershell.exe")],
+    )
+
+    def _try(pid: int, name: str, _sid: int, _source: str):
+        if pid == 4321:
+            return wsl.wt.HANDLE(222), "ok"
+        return None, "fallback_token_open_failed"
+
+    monkeypatch.setattr(wsl, "_try_primary_token_from_process", _try)
+    primary, status = wsl._get_primary_token_from_fallback_process_scan(3)
+    assert primary is not None
+    assert status == "ok"
+
+
+def test_fallback_process_scan_no_usable_token(monkeypatch) -> None:
+    monkeypatch.setattr(
+        wsl,
+        "_iter_session_process_candidates",
+        lambda _sid: [(1111, "foo.exe"), (2222, "bar.exe")],
+    )
+    monkeypatch.setattr(
+        wsl,
+        "_try_primary_token_from_process",
+        lambda _pid, _name, _sid, _source: (None, "fallback_token_open_failed"),
+    )
+    primary, status = wsl._get_primary_token_from_fallback_process_scan(7)
+    assert primary is None
+    assert status == "fallback_token_open_failed"
+
+
+def test_fallback_process_scan_empty_candidates(monkeypatch) -> None:
+    monkeypatch.setattr(wsl, "_iter_session_process_candidates", lambda _sid: [])
+    primary, status = wsl._get_primary_token_from_fallback_process_scan(9)
+    assert primary is None
+    assert status == "fallback_no_usable_process_token"
