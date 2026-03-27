@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.2] - 2026-03-27
+
+### Changed
+
+- **Refiner:** accurate off / enabled / ready state via `get_refiner_state`; async saves refresh top banners from `/api/refiner/readiness-brief` with overlap guard.
+- **Refiner folder picker:** runs in an isolated subprocess (hard timeout + process kill); stdout JSON parsed from the last line only; duplicate `--refiner-pick-folder-worker` argv ignored in CLI.
+- **Refiner folder picker:** single user-facing failure message (`Folder picker unavailable. Type or paste the path.`) for timeout, subprocess errors, and invalid output.
+
 ## [3.0.1] - 2026-03-27
 
 ### Changed
@@ -1038,7 +1046,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.0.1...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.0.2...HEAD
+[3.0.2]: https://github.com/jampat000/Fetcher/compare/v3.0.1...v3.0.2
 [3.0.1]: https://github.com/jampat000/Fetcher/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/jampat000/Fetcher/compare/v2.5.1...v3.0.0
 [2.5.1]: https://github.com/jampat000/Fetcher/compare/v2.5.0...v2.5.1

@@ -15,21 +15,28 @@
 
   {{ refiner_area_tabs('settings') }}
 
-  {% if not settings.stream_manager_enabled %}
-  <div class="banner banner-ok refiner-mode-banner banner--soft" role="status">
+  <div
+    id="refiner-banner-off"
+    class="banner banner-ok refiner-mode-banner banner--soft"
+    role="status"
+    {% if refiner_state.phase != "off" %}hidden{% endif %}
+  >
     <strong>Refiner is off.</strong> Enable it under <a href="#refiner-processing">Processing</a>, then choose dry run or live mode.
   </div>
-  {% elif refiner_readiness_issues %}
-  <div class="banner banner-warn refiner-readiness-banner banner--soft" role="status">
+  <div
+    id="refiner-banner-readiness"
+    class="banner banner-warn refiner-readiness-banner banner--soft"
+    role="status"
+    {% if refiner_state.phase != "not_ready" %}hidden{% endif %}
+  >
     <strong>Refiner is on but not ready to process yet.</strong>
-    <ul class="refiner-readiness-list">
-      {% for frag, msg in refiner_readiness_issues %}
+    <ul id="refiner-readiness-list" class="refiner-readiness-list">
+      {% for frag, msg in refiner_state.issue_pairs %}
       <li><a href="#{{ frag }}">{{ msg }}</a></li>
       {% endfor %}
     </ul>
     <p class="small muted refiner-readiness-hint">Refiner will not run until these are resolved. You can enable Processing first and finish Audio and Folders next.</p>
   </div>
-  {% endif %}
 
   <p class="hint refiner-settings-page-hint">Set processing, folders, audio, subtitles, and schedule in the sections below.</p>
 

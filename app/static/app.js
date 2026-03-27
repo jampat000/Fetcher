@@ -1275,6 +1275,61 @@ function initTrimmerSettingsAsyncCleaner() {
   });
 }
 
+/**
+ * Sync top Refiner banners from GET /api/refiner/readiness-brief only.
+ * Phase: !enabled → off; enabled && issues.length → not_ready; else → ready.
+ * Optional form + generation counter drops stale responses when saves overlap.
+ */
+function syncRefinerTopBannersFromServerBrief(form) {
+  let gen = null;
+  if (form) {
+    form._refinerBriefGen = (form._refinerBriefGen || 0) + 1;
+    gen = form._refinerBriefGen;
+  }
+  return fetch("/api/refiner/readiness-brief", {
+    method: "GET",
+    credentials: "same-origin",
+    headers: { Accept: "application/json" },
+  })
+    .then((res) => {
+      if (!res.ok) return null;
+      return res.json();
+    })
+    .then((data) => {
+      if (form && gen !== null && form._refinerBriefGen !== gen) return;
+      if (!data || typeof data.enabled !== "boolean") return;
+      const off = document.getElementById("refiner-banner-off");
+      const readyBanner = document.getElementById("refiner-banner-readiness");
+      const list = document.getElementById("refiner-readiness-list");
+      if (!off || !readyBanner) return;
+      const issues = Array.isArray(data.issues) ? data.issues : [];
+      let phase;
+      if (!data.enabled) phase = "off";
+      else if (issues.length > 0) phase = "not_ready";
+      else phase = "ready";
+      off.hidden = phase !== "off";
+      readyBanner.hidden = phase !== "not_ready";
+      if (list) {
+        if (phase === "not_ready") {
+          const onSettings = (window.location.pathname || "").indexOf("/refiner/settings") >= 0;
+          list.innerHTML = issues
+            .map((it) => {
+              const msg = escapeHtml(String((it && it.message) || ""));
+              const a = String((it && it.anchor) || "");
+              if (onSettings && a) {
+                return `<li><a href="#${escapeHtml(a)}">${msg}</a></li>`;
+              }
+              return `<li>${msg}</li>`;
+            })
+            .join("");
+        } else {
+          list.innerHTML = "";
+        }
+      }
+    })
+    .catch(() => {});
+}
+
 /** Refiner folder Browse → POST /api/refiner/pick-folder (native dialog on supported desktops). */
 function initRefinerFolderBrowse() {
   document.querySelectorAll("button.refiner-folder-browse[data-refiner-browse-target]").forEach((btn) => {
@@ -1293,7 +1348,18 @@ function initRefinerFolderBrowse() {
             return Promise.reject(new Error("Your session may have expired — reload the page and sign in again."));
           }
           const ct = (res.headers.get("content-type") || "").toLowerCase();
-          if (ct.indexOf("application/json") >= 0) return res.json();
+          if (ct.indexOf("application/json") >= 0) {
+            return res.json().then((data) => {
+              if (!res.ok) {
+                const m =
+                  (data && data.message) ||
+                  "Folder picker is not available in this environment. Type or paste the path.";
+                showToast(m);
+                return Promise.reject(new Error("_refinerPickFolderHandled"));
+              }
+              return data;
+            });
+          }
           return res.text().then((text) => Promise.reject(new Error(text || "Folder picker request failed.")));
         })
         .then((data) => {
@@ -1308,6 +1374,7 @@ function initRefinerFolderBrowse() {
           showToast(m);
         })
         .catch((err) => {
+          if (err && err.message === "_refinerPickFolderHandled") return;
           const m = err && err.message ? err.message : "Could not open folder picker.";
           showToast(m);
         })
@@ -1398,6 +1465,7 @@ function initRefinerSettingsAsyncSave() {
               const okMsg = refinerSaveSuccessMessage(section);
               setFetcherSettingsInPlaceFeedback(feedback, "ok", okMsg);
               syncRefinerSettingsUrlAfterInPlacePost(section);
+              syncRefinerTopBannersFromServerBrief(form);
               clearRefinerSettingsSaveFeedbackTimer(form);
               form._refinerSaveFeedbackTimer = window.setTimeout(() => {
                 form._refinerSaveFeedbackTimer = null;

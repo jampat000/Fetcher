@@ -2,10 +2,34 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from app.models import AppSettings
 from app.stream_manager_rules import normalize_lang
+
+RefinerUiPhase = Literal["off", "not_ready", "ready"]
+
+
+@dataclass(frozen=True, slots=True)
+class RefinerState:
+    """Single source of truth for Refiner banners and readiness-brief API."""
+
+    phase: RefinerUiPhase
+    enabled: bool
+    issue_pairs: tuple[tuple[str, str], ...]
+
+
+def get_refiner_state(config: AppSettings) -> RefinerState:
+    """Derive off / not_ready / ready from settings (same logic for Jinja and JSON)."""
+    enabled = bool(getattr(config, "stream_manager_enabled", False))
+    if not enabled:
+        return RefinerState(phase="off", enabled=False, issue_pairs=())
+    pairs = refiner_readiness_issues(config)
+    if pairs:
+        return RefinerState(phase="not_ready", enabled=True, issue_pairs=tuple(pairs))
+    return RefinerState(phase="ready", enabled=True, issue_pairs=())
 
 
 def _resolve_folder_path(raw: str) -> Path | None:

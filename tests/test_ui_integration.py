@@ -523,15 +523,63 @@ def test_refiner_readiness_banner_when_enabled_incomplete(monkeypatch: pytest.Mo
     assert "not ready" in r.text.lower()
 
 
+async def _fake_refiner_pick_folder_subprocess_ok() -> dict[str, str | bool]:
+    return {"ok": True, "path": "D:\\picked-folder"}
+
+
 def test_refiner_pick_folder_api_returns_path(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "app.routers.stream_manager.pick_folder_sync",
-        lambda: ("D:\\picked-folder", "ok"),
+        "app.routers.stream_manager.refiner_pick_folder_subprocess",
+        _fake_refiner_pick_folder_subprocess_ok,
     )
     with _client(monkeypatch) as client:
         resp = client.post("/api/refiner/pick-folder")
     assert resp.status_code == 200
     assert resp.json() == {"ok": True, "path": "D:\\picked-folder"}
+
+
+async def _fake_refiner_pick_folder_subprocess_boom() -> dict[str, str | bool]:
+    raise OSError("simulated subprocess failure")
+
+
+def test_refiner_pick_folder_api_returns_json_when_worker_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.routers.stream_manager.refiner_pick_folder_subprocess",
+        _fake_refiner_pick_folder_subprocess_boom,
+    )
+    with _client(monkeypatch) as client:
+        resp = client.post("/api/refiner/pick-folder")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is False
+    assert body["reason"] == "unavailable"
+    assert isinstance(body.get("message"), str) and len(body["message"]) > 5
+
+
+def test_refiner_readiness_brief_api_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def seed() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.stream_manager_enabled = True
+            row.stream_manager_primary_audio_lang = ""
+            await session.commit()
+
+    asyncio.run(seed())
+    with _client(monkeypatch) as client:
+        resp = client.get("/api/refiner/readiness-brief")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body.get("enabled") is True
+    assert isinstance(body.get("issues"), list)
+    assert len(body["issues"]) >= 1
+
+
+def test_refiner_settings_page_has_syncable_banner_ids(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        r = client.get("/refiner/settings")
+    assert r.status_code == 200
+    assert 'id="refiner-banner-off"' in r.text
+    assert 'id="refiner-banner-readiness"' in r.text
 
 
 def test_refiner_dry_run_save_does_not_modify_emby_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:

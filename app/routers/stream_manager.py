@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 
@@ -21,9 +20,9 @@ from app.display_helpers import _now_local, _time_select_orphan
 from app.display_helpers import _normalize_hhmm
 from app.schedule import normalize_schedule_days_csv
 from app.schedule import schedule_time_dropdown_choices
-from app.refiner_folder_picker import pick_folder_sync
+from app.refiner_folder_picker import REFINER_PICK_FOLDER_FAIL_MESSAGE, refiner_pick_folder_subprocess
 from app.refiner_readiness import (
-    refiner_readiness_issues,
+    get_refiner_state,
     refiner_validate_settings_save_section,
 )
 from app.refiner_watch_config import (
@@ -134,7 +133,7 @@ async def refiner_overview_page(request: Request, session: AsyncSession = Depend
             "show_setup_wizard": show_setup_wizard,
             "refiner_recent_activity": refiner_recent_activity,
             "activity_detail_preview": ACTIVITY_DETAIL_PREVIEW_LINES,
-            "refiner_readiness_issues": refiner_readiness_issues(settings),
+            "refiner_state": get_refiner_state(settings),
         },
     )
 
@@ -176,7 +175,7 @@ async def refiner_settings_page(request: Request, session: AsyncSession = Depend
             "refiner_default_work_folder_path": _refiner_default_work_folder_path(),
             "csrf_token": await get_csrf_token_for_template(request, session),
             "show_setup_wizard": show_setup_wizard,
-            "refiner_readiness_issues": refiner_readiness_issues(settings),
+            "refiner_state": get_refiner_state(settings),
         },
     )
 
@@ -312,18 +311,25 @@ async def stream_manager_settings_save(
         return respond(saved=False, reason="error")
 
 
+@router.get("/api/refiner/readiness-brief", response_model=None)
+async def refiner_readiness_brief_api(session: AsyncSession = Depends(get_session)) -> JSONResponse:
+    """JSON for Refiner banners after async save (enabled vs off, readiness list)."""
+    row = await _get_or_create_settings(session)
+    state = get_refiner_state(row)
+    issues = [{"anchor": a, "message": m} for a, m in state.issue_pairs]
+    return JSONResponse({"enabled": state.enabled, "issues": issues})
+
+
 @router.post("/api/refiner/pick-folder", response_model=None)
 async def refiner_pick_folder_api() -> JSONResponse:
-    """Open a native folder dialog (Windows/Linux desktop). Unavailable in Docker/headless."""
-    path, outcome = await asyncio.to_thread(pick_folder_sync)
-    if outcome == "ok" and path:
-        return JSONResponse({"ok": True, "path": path})
-    if outcome == "cancelled":
-        return JSONResponse({"ok": False, "reason": "cancelled"})
-    return JSONResponse(
-        {
+    """Open a native folder dialog (Windows/Linux desktop). Unavailable in Docker/headless/service."""
+    try:
+        body = await refiner_pick_folder_subprocess()
+    except Exception:
+        logger.exception("Refiner pick-folder: unexpected failure")
+        body = {
             "ok": False,
             "reason": "unavailable",
-            "message": "Folder picker is not available in this environment. Type or paste the path.",
+            "message": REFINER_PICK_FOLDER_FAIL_MESSAGE,
         }
-    )
+    return JSONResponse(body)
