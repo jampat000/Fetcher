@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.6] - 2026-03-27
+
+### Fixed
+
+- Windows service companion auto-launch reliability
+- Deterministic CreateProcessAsUserW launch for FetcherCompanion
+- Improved diagnostics for companion ensure/start path
+
+### Notes
+
+- Docker/headless Browse behavior is unchanged and remains manual-entry only
+
 ## [3.0.5] - 2026-03-27
 
 ### Added
@@ -1090,7 +1102,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.0.5...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.0.6...HEAD
+[3.0.6]: https://github.com/jampat000/Fetcher/compare/v3.0.5...v3.0.6
 [3.0.5]: https://github.com/jampat000/Fetcher/compare/v3.0.4...v3.0.5
 [3.0.4]: https://github.com/jampat000/Fetcher/compare/v3.0.3...v3.0.4
 [3.0.3]: https://github.com/jampat000/Fetcher/compare/v3.0.2...v3.0.3

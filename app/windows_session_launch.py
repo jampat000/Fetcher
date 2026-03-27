@@ -81,6 +81,11 @@ class LaunchResult:
     attempted: bool
     launched: bool
     reason: str
+    session_id: int | None = None
+    companion_exe: str = ""
+    working_dir: str = ""
+    process_id: int | None = None
+    environment_block_created: bool = False
 
 
 def _close_handle(h: wt.HANDLE | int | None) -> None:
@@ -142,6 +147,13 @@ def _configure_win32_signatures() -> None:
 _configure_win32_signatures()
 
 
+def _last_winerr() -> int:
+    try:
+        return int(ctypes.get_last_error())
+    except Exception:
+        return -1
+
+
 def resolve_companion_exe_path() -> str:
     """Best-effort path for FetcherCompanion.exe from service/runtime context."""
     env_override = (os.environ.get("FETCHER_COMPANION_EXE_PATH") or "").strip()
@@ -160,25 +172,62 @@ def launch_companion_in_active_session(companion_exe: str) -> LaunchResult:
     Uses WTSGetActiveConsoleSessionId + WTSQueryUserToken + CreateProcessAsUserW.
     """
     if os.name != "nt":
-        return LaunchResult(False, False, "non_windows")
+        return LaunchResult(False, False, "non_windows", companion_exe=companion_exe)
+    work_dir = os.path.dirname(companion_exe) or ""
+    logger.info(
+        "Companion launch/session: resolved_exe=%s exists=%s work_dir=%s",
+        companion_exe,
+        os.path.isfile(companion_exe),
+        work_dir,
+    )
     if not os.path.isfile(companion_exe):
-        return LaunchResult(False, False, f"missing_exe:{companion_exe}")
+        return LaunchResult(
+            False,
+            False,
+            f"invalid_companion_path:{companion_exe}",
+            companion_exe=companion_exe,
+            working_dir=work_dir,
+        )
 
     sess_id = kernel32.WTSGetActiveConsoleSessionId()
-    if sess_id == INVALID_SESSION_ID:
-        return LaunchResult(False, False, "no_active_session")
+    logger.info("Companion launch/session: active_console_session_id=%s", int(sess_id))
+    if sess_id == INVALID_SESSION_ID or int(sess_id) == 0:
+        # Session 0 is services, not an interactive desktop user.
+        return LaunchResult(
+            False,
+            False,
+            "no_active_session",
+            session_id=int(sess_id),
+            companion_exe=companion_exe,
+            working_dir=work_dir,
+        )
 
     user_token = wt.HANDLE()
     primary_token = wt.HANDLE()
     env_block = wt.LPVOID()
     proc_info = PROCESS_INFORMATION()
-    work_dir = os.path.dirname(companion_exe) or None
+    env_created = False
+    proc_pid: int | None = None
+    work_dir_arg = work_dir or None
     cmdline = ctypes.create_unicode_buffer(f"\"{companion_exe}\"")
 
     try:
         if not wtsapi32.WTSQueryUserToken(sess_id, ctypes.byref(user_token)):
-            err = ctypes.get_last_error()
-            return LaunchResult(True, False, f"wts_query_user_token_failed:{err}")
+            err = _last_winerr()
+            logger.warning(
+                "Companion launch/session: WTSQueryUserToken failed session_id=%s winerr=%s",
+                int(sess_id),
+                err,
+            )
+            return LaunchResult(
+                True,
+                False,
+                f"launch_failed:wts_query_user_token:{err}",
+                session_id=int(sess_id),
+                companion_exe=companion_exe,
+                working_dir=work_dir,
+            )
+        logger.info("Companion launch/session: WTSQueryUserToken ok session_id=%s", int(sess_id))
 
         desired_access = (
             MAXIMUM_ALLOWED
@@ -196,12 +245,37 @@ def launch_companion_in_active_session(companion_exe: str) -> LaunchResult:
             TokenPrimary,
             ctypes.byref(primary_token),
         ):
-            err = ctypes.get_last_error()
-            return LaunchResult(True, False, f"duplicate_token_failed:{err}")
+            err = _last_winerr()
+            logger.warning(
+                "Companion launch/session: DuplicateTokenEx failed session_id=%s winerr=%s",
+                int(sess_id),
+                err,
+            )
+            return LaunchResult(
+                True,
+                False,
+                f"launch_failed:duplicate_token:{err}",
+                session_id=int(sess_id),
+                companion_exe=companion_exe,
+                working_dir=work_dir,
+            )
+        logger.info("Companion launch/session: DuplicateTokenEx ok session_id=%s", int(sess_id))
 
         if not userenv.CreateEnvironmentBlock(ctypes.byref(env_block), primary_token, False):
             # Non-fatal: continue with process environment.
+            err = _last_winerr()
+            logger.warning(
+                "Companion launch/session: CreateEnvironmentBlock failed session_id=%s winerr=%s (continuing)",
+                int(sess_id),
+                err,
+            )
             env_block = wt.LPVOID()
+        else:
+            env_created = True
+            logger.info(
+                "Companion launch/session: CreateEnvironmentBlock ok session_id=%s",
+                int(sess_id),
+            )
 
         startup = STARTUPINFOW()
         startup.cb = ctypes.sizeof(STARTUPINFOW)
@@ -212,20 +286,50 @@ def launch_companion_in_active_session(companion_exe: str) -> LaunchResult:
         flags = CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW | NORMAL_PRIORITY_CLASS
         if not advapi32.CreateProcessAsUserW(
             primary_token,
-            None,
+            companion_exe,
             cmdline,
             None,
             None,
             False,
             flags,
             env_block,
-            work_dir,
+            work_dir_arg,
             ctypes.byref(startup),
             ctypes.byref(proc_info),
         ):
-            err = ctypes.get_last_error()
-            return LaunchResult(True, False, f"create_process_as_user_failed:{err}")
-        return LaunchResult(True, True, f"launched_pid:{int(proc_info.dwProcessId)}")
+            err = _last_winerr()
+            logger.warning(
+                "Companion launch/session: CreateProcessAsUserW failed session_id=%s winerr=%s app=%s cwd=%s",
+                int(sess_id),
+                err,
+                companion_exe,
+                work_dir,
+            )
+            return LaunchResult(
+                True,
+                False,
+                f"launch_failed:create_process_as_user:{err}",
+                session_id=int(sess_id),
+                companion_exe=companion_exe,
+                working_dir=work_dir,
+                environment_block_created=env_created,
+            )
+        proc_pid = int(proc_info.dwProcessId)
+        logger.info(
+            "Companion launch/session: CreateProcessAsUserW ok session_id=%s pid=%s",
+            int(sess_id),
+            proc_pid,
+        )
+        return LaunchResult(
+            True,
+            True,
+            "launch_succeeded",
+            session_id=int(sess_id),
+            companion_exe=companion_exe,
+            working_dir=work_dir,
+            process_id=proc_pid,
+            environment_block_created=env_created,
+        )
     finally:
         _close_handle(proc_info.hThread)
         _close_handle(proc_info.hProcess)
@@ -245,21 +349,40 @@ def start_companion_best_effort(companion_exe: str) -> LaunchResult:
     - Interactive Windows: local fallback via subprocess (dev/manual runs).
     """
     if os.name != "nt":
-        return LaunchResult(False, False, "non_windows")
+        return LaunchResult(False, False, "non_windows", companion_exe=companion_exe)
+    work_dir = os.path.dirname(companion_exe) or ""
     if not os.path.isfile(companion_exe):
-        return LaunchResult(False, False, f"missing_exe:{companion_exe}")
+        return LaunchResult(
+            False,
+            False,
+            f"invalid_companion_path:{companion_exe}",
+            companion_exe=companion_exe,
+            working_dir=work_dir,
+        )
     if not os.environ.get("SESSIONNAME") or os.environ.get("SESSIONNAME", "").upper() == "SERVICES":
         return launch_companion_in_active_session(companion_exe)
     try:
         subprocess.Popen(
             [companion_exe],
-            cwd=os.path.dirname(companion_exe) or None,
+            cwd=work_dir or None,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             creationflags=CREATE_NO_WINDOW,
             close_fds=True,
         )
-        return LaunchResult(True, True, "interactive_spawned")
+        return LaunchResult(
+            True,
+            True,
+            "launch_succeeded_interactive",
+            companion_exe=companion_exe,
+            working_dir=work_dir,
+        )
     except Exception as exc:
-        return LaunchResult(True, False, f"interactive_spawn_failed:{exc.__class__.__name__}")
+        return LaunchResult(
+            True,
+            False,
+            f"launch_failed:interactive_spawn:{exc.__class__.__name__}",
+            companion_exe=companion_exe,
+            working_dir=work_dir,
+        )

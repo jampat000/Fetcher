@@ -82,33 +82,58 @@ async def ensure_windows_companion_running(timeout_seconds: float = 4.0) -> bool
     - otherwise attempt launch and probe /health briefly
     """
     global _LAST_COMPANION_ENSURE_ATTEMPT_MONO
-    if get_refiner_pick_mode() != "windows_companion":
+    mode = get_refiner_pick_mode()
+    logger.info("Refiner companion ensure: mode=%s", mode)
+    if mode != "windows_companion":
+        logger.info("Refiner companion ensure: final_result=skip_not_windows_companion")
         return False
     is_healthy = await refiner_companion_reachable()
+    logger.info("Refiner companion ensure: prelaunch_health=%s", is_healthy)
     if is_healthy:
-        logger.info("Refiner companion ensure: already healthy.")
+        logger.info("Refiner companion ensure: final_result=already_running")
         return True
+    launch = None
     now = time.monotonic()
     if now - _LAST_COMPANION_ENSURE_ATTEMPT_MONO >= 1.0:
         _LAST_COMPANION_ENSURE_ATTEMPT_MONO = now
         companion_exe = resolve_companion_exe_path()
         launch = start_companion_best_effort(companion_exe)
         logger.info(
-            "Refiner companion ensure: launch attempted=%s launched=%s reason=%s",
+            "Refiner companion ensure: launch attempted=%s launched=%s reason=%s session_id=%s exe=%s cwd=%s env_block=%s pid=%s",
             launch.attempted,
             launch.launched,
             launch.reason,
+            launch.session_id,
+            launch.companion_exe,
+            launch.working_dir,
+            launch.environment_block_created,
+            launch.process_id,
         )
     else:
         logger.info("Refiner companion ensure: throttled repeated launch attempt.")
 
     deadline = time.monotonic() + max(0.5, timeout_seconds)
+    post_launch_healthy = False
     while time.monotonic() < deadline:
         if await refiner_companion_reachable():
-            logger.info("Refiner companion ensure: /health reachable after launch.")
-            return True
+            post_launch_healthy = True
+            break
         await asyncio.sleep(0.35)
-    logger.info("Refiner companion ensure: /health still unreachable after bounded probe.")
+    if post_launch_healthy:
+        logger.info("Refiner companion ensure: final_result=launch_succeeded_health_ok")
+        return True
+
+    # Classify internal outcomes for production diagnostics.
+    if launch is None:
+        logger.info("Refiner companion ensure: final_result=launch_skipped_throttled")
+    elif launch.reason.startswith("no_active_session"):
+        logger.info("Refiner companion ensure: final_result=no_active_session")
+    elif launch.reason.startswith("launch_failed:"):
+        logger.info("Refiner companion ensure: final_result=launch_failed detail=%s", launch.reason)
+    elif launch.launched:
+        logger.info("Refiner companion ensure: final_result=launch_succeeded_but_companion_not_healthy")
+    else:
+        logger.info("Refiner companion ensure: final_result=launch_failed detail=%s", launch.reason)
     return False
 
 
