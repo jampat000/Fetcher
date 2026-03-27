@@ -23,8 +23,6 @@ from app.migrations import migrate
 from app.models import Base
 from app.paths import STATIC_DIR, resolved_logs_dir
 from app.rate_limit import limiter
-from app.refiner_folder_picker import ensure_windows_companion_running
-from app.refiner_pick_capability import get_refiner_pick_mode, is_windows_noninteractive_service_session
 from app.scheduler import scheduler
 from app.security_utils import get_jwt_secret_from_env, warn_if_data_encryption_key_missing
 from app.web_common import refiner_settings_redirect_url, trimmer_settings_redirect_url
@@ -40,18 +38,6 @@ from app.routers import trimmer as trimmer_router
 configure_fetcher_logging()
 
 logger = logging.getLogger(__name__)
-
-
-async def _startup_windows_companion_self_heal() -> None:
-    # Non-blocking, bounded best-effort probe/launch for service mode.
-    try:
-        if get_refiner_pick_mode() != "windows_companion":
-            return
-        if not is_windows_noninteractive_service_session():
-            return
-        await ensure_windows_companion_running(timeout_seconds=3.0)
-    except Exception:
-        logger.exception("Windows companion startup self-heal failed.")
 
 
 @asynccontextmanager
@@ -110,8 +96,6 @@ async def _lifespan(_app: FastAPI):
         logger.warning("FETCHER_CI_SMOKE set — background scheduler not started (CI / smoke test only)")
     else:
         await scheduler.start()
-    # Do not block app startup on companion launch; this is best-effort only.
-    asyncio.create_task(_startup_windows_companion_self_heal())
     yield
     try:
         scheduler.shutdown(wait=False)

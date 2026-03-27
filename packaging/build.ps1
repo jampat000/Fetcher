@@ -64,16 +64,6 @@ if ($ffSrc.Count -eq 2) {
 .\.venv\Scripts\pyinstaller --noconfirm packaging\fetcher.spec
 if ($LASTEXITCODE -ne 0) { throw "pyinstaller failed (exit $LASTEXITCODE)" }
 
-Write-Host "Building FetcherCompanion.exe (user-session folder picker)..."
-.\.venv\Scripts\pyinstaller --noconfirm --distpath "dist\Fetcher" --workpath "build\companion" packaging\companion.spec
-if ($LASTEXITCODE -ne 0) { throw "pyinstaller companion failed (exit $LASTEXITCODE)" }
-
-$compExe = Join-Path $repoRoot "dist\Fetcher\FetcherCompanion.exe"
-if (-not (Test-Path -LiteralPath $compExe)) {
-  throw "PyInstaller companion output missing: $compExe"
-}
-
 Write-Host ""
 Write-Host "Built: dist\\Fetcher\\Fetcher.exe"
-Write-Host "Built: dist\\Fetcher\\FetcherCompanion.exe"
 

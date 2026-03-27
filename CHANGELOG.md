@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-03-27
+
+### Changed
+
+- Removed Refiner folder Browse feature.
+- Folder paths are now entered manually.
+
+### Removed
+
+- FetcherCompanion and all related functionality.
+- Windows session-based folder picker logic.
+- Companion startup scripts and installer integration.
+- Picker-related API endpoints.
+
+### Notes
+
+- This change improves reliability and simplifies installation.
+- Existing folder paths and processing behavior are unchanged.
+
 ## [3.0.9] - 2026-03-27
 
 ### Fixed
@@ -1136,7 +1155,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.0.9...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.1.0...HEAD
+[3.1.0]: https://github.com/jampat000/Fetcher/compare/v3.0.9...v3.1.0
 [3.0.9]: https://github.com/jampat000/Fetcher/compare/v3.0.8...v3.0.9
 [3.0.8]: https://github.com/jampat000/Fetcher/compare/v3.0.7...v3.0.8
 [3.0.7]: https://github.com/jampat000/Fetcher/compare/v3.0.6...v3.0.7

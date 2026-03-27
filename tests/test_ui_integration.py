@@ -336,6 +336,9 @@ def test_refiner_micro_helper_text_is_present(monkeypatch: pytest.MonkeyPatch) -
     assert "refiner_default_work_folder_path" not in html
     assert "Checks the watched folder on this interval and processes ready files." in html
     assert "Limits processing to the selected days and times." in html
+    assert "Enter the full folder path (e.g. F:\\Downloads\\Movies)" in html
+    assert "Enter the destination folder for processed files" in html
+    assert "Temporary working directory for processing" in html
     assert 'formaction="/refiner/settings/save?refiner_section=processing"' in html
     assert 'formaction="/refiner/settings/save?refiner_section=folders"' in html
     assert 'formaction="/refiner/settings/save?refiner_section=audio"' in html
@@ -495,16 +498,6 @@ def test_refiner_folders_save_async_rejects_missing_paths_when_enabled(
     assert isinstance(body.get("message"), str) and "folder" in body["message"].lower()
 
 
-def test_refiner_settings_shows_folder_browse_buttons(monkeypatch: pytest.MonkeyPatch) -> None:
-    with _client(monkeypatch) as client:
-        r = client.get("/refiner/settings")
-    assert r.status_code == 200
-    html = r.text
-    assert 'data-refiner-browse-target="refiner-input-watched"' in html
-    assert 'data-refiner-browse-target="refiner-input-output"' in html
-    assert 'data-refiner-browse-target="refiner-input-work"' in html
-
-
 def test_refiner_readiness_banner_when_enabled_incomplete(monkeypatch: pytest.MonkeyPatch) -> None:
     async def seed() -> None:
         async with SessionLocal() as session:
@@ -521,69 +514,6 @@ def test_refiner_readiness_banner_when_enabled_incomplete(monkeypatch: pytest.Mo
     assert r.status_code == 200
     assert "refiner-readiness-banner" in r.text
     assert "not ready" in r.text.lower()
-
-
-async def _fake_refiner_pick_folder_subprocess_ok() -> dict[str, str | bool]:
-    return {"ok": True, "path": "D:\\picked-folder"}
-
-
-def test_refiner_pick_folder_api_returns_path(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "app.routers.stream_manager.refiner_pick_folder_subprocess",
-        _fake_refiner_pick_folder_subprocess_ok,
-    )
-    with _client(monkeypatch) as client:
-        resp = client.post("/api/refiner/pick-folder")
-    assert resp.status_code == 200
-    assert resp.json() == {"ok": True, "path": "D:\\picked-folder"}
-
-
-async def _fake_refiner_pick_folder_subprocess_boom() -> dict[str, str | bool]:
-    raise OSError("simulated subprocess failure")
-
-
-def test_refiner_pick_folder_api_returns_json_when_worker_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "app.routers.stream_manager.refiner_pick_folder_subprocess",
-        _fake_refiner_pick_folder_subprocess_boom,
-    )
-    with _client(monkeypatch) as client:
-        resp = client.post("/api/refiner/pick-folder")
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["ok"] is False
-    assert body["reason"] == "unavailable"
-    assert isinstance(body.get("message"), str) and len(body["message"]) > 5
-
-
-def test_refiner_companion_status_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    with _client(monkeypatch) as client:
-        resp = client.get("/api/refiner/companion-status")
-    assert resp.status_code == 200
-    body = resp.json()
-    assert "available" in body and isinstance(body["available"], bool)
-    assert body.get("companion") in ("not_applicable", "reachable", "unreachable")
-    assert body.get("mode") in ("windows_companion", "linux_desktop", "headless_unavailable")
-
-
-def test_refiner_pick_capability_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    with _client(monkeypatch) as client:
-        resp = client.get("/api/refiner/pick-capability")
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body.get("mode") in ("windows_companion", "linux_desktop", "headless_unavailable")
-    assert "browse_supported" in body and isinstance(body["browse_supported"], bool)
-
-
-def test_refiner_pick_folder_headless_returns_manual_message(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FETCHER_HEADLESS_REFINER_PICK", "1")
-    with _client(monkeypatch) as client:
-        resp = client.post("/api/refiner/pick-folder")
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body.get("ok") is False
-    assert body.get("reason") == "unavailable"
-    assert "manually" in (body.get("message") or "").lower()
 
 
 def test_refiner_readiness_brief_api_json(monkeypatch: pytest.MonkeyPatch) -> None:

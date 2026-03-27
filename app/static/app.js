@@ -1330,110 +1330,6 @@ function syncRefinerTopBannersFromServerBrief(form) {
     .catch(() => {});
 }
 
-/** Refiner folder Browse → POST /api/refiner/pick-folder (companion on Windows; zenity on Linux desktop). */
-function initRefinerFolderBrowse() {
-  const pickFolderTimeoutMs = 11000;
-  const pickFolderTimeoutToast = "Folder picker unavailable. Type or paste the path.";
-
-  document.querySelectorAll("button.refiner-folder-browse[data-refiner-browse-target]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const id = btn.getAttribute("data-refiner-browse-target");
-      const input = id ? document.getElementById(id) : null;
-      if (!(input instanceof HTMLInputElement)) return;
-
-      const form = document.querySelector("form.refiner-settings-form[data-refiner-pick-mode]");
-      const mode = form ? form.getAttribute("data-refiner-pick-mode") || "" : "";
-
-      if (mode === "headless_unavailable") {
-        const msg =
-          (form && form.getAttribute("data-refiner-headless-message")) ||
-          "Folder Browse is unavailable in this environment. Type or paste the path manually.";
-        showToast(msg);
-        return;
-      }
-
-      if (mode === "windows_companion") {
-        try {
-          const capRes = await fetch("/api/refiner/pick-capability", {
-            credentials: "same-origin",
-            headers: { Accept: "application/json" },
-          });
-          const cap = await capRes.json();
-          if (cap && cap.preflight_message) {
-            showToast(String(cap.preflight_message));
-            return;
-          }
-        } catch {
-          showToast(pickFolderTimeoutToast);
-          return;
-        }
-      }
-
-      const labelOriginal = btn.textContent;
-      btn.disabled = true;
-      btn.textContent = "Opening folder picker...";
-
-      const ac = new AbortController();
-      const timeoutId = window.setTimeout(() => {
-        ac.abort();
-      }, pickFolderTimeoutMs);
-
-      const restoreUi = () => {
-        window.clearTimeout(timeoutId);
-        btn.disabled = false;
-        btn.textContent = labelOriginal;
-      };
-
-      fetch("/api/refiner/pick-folder", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { Accept: "application/json" },
-        signal: ac.signal,
-      })
-        .then((res) => {
-          if (res.status === 403) {
-            return Promise.reject(new Error("Your session may have expired — reload the page and sign in again."));
-          }
-          const ct = (res.headers.get("content-type") || "").toLowerCase();
-          if (ct.indexOf("application/json") >= 0) {
-            return res
-              .json()
-              .catch(() => Promise.reject(new Error("Folder picker response was invalid.")))
-              .then((data) => {
-                if (!res.ok) {
-                  const m = (data && data.message) || pickFolderTimeoutToast;
-                  showToast(m);
-                  return Promise.reject(new Error("_refinerPickFolderHandled"));
-                }
-                return data;
-              });
-          }
-          return res.text().then((text) => Promise.reject(new Error(text || "Folder picker request failed.")));
-        })
-        .then((data) => {
-          if (data && data.ok && data.path) {
-            input.value = String(data.path);
-            input.dispatchEvent(new Event("input", { bubbles: true }));
-            return;
-          }
-          if (data && data.reason === "cancelled") return;
-          const m = (data && data.message) || pickFolderTimeoutToast;
-          showToast(m);
-        })
-        .catch((err) => {
-          if (err && err.name === "AbortError") {
-            showToast(pickFolderTimeoutToast);
-            return;
-          }
-          if (err && err.message === "_refinerPickFolderHandled") return;
-          const m = err && err.message ? err.message : "Could not open folder picker.";
-          showToast(m);
-        })
-        .finally(restoreUi);
-    });
-  });
-}
-
 /** In-place save for Refiner settings (same fetch + JSON contract as Trimmer cleaner). */
 function initRefinerSettingsAsyncSave() {
   document.querySelectorAll('form[data-fetcher-refiner-async="1"]').forEach((form) => {
@@ -1979,7 +1875,6 @@ window.addEventListener("DOMContentLoaded", () => {
   initTrimmerSettingsAsyncConnection();
   initTrimmerSettingsAsyncCleaner();
   initRefinerSettingsAsyncSave();
-  initRefinerFolderBrowse();
   bindScrollRestoreOnFormSubmit();
   restoreScrollAfterFormRedirect();
   bindRevealButtons();

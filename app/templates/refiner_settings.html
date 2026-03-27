@@ -63,8 +63,6 @@
     method="post"
     action="/refiner/settings/save"
     data-fetcher-refiner-async="1"
-    data-refiner-pick-mode="{{ refiner_pick_mode }}"
-    data-refiner-headless-message="{{ refiner_headless_browse_message | e }}"
   >
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
 
@@ -102,30 +100,17 @@
       <div class="banner banner-warn refiner-section-save-feedback" role="alert">Could not save (Folders). Try again. ({{ request.query_params.get('reason', 'error') | e }})</div>
       {% endif %}
       <p class="small muted lead-muted">Sets watched and output folders, check interval, and optional work folder.</p>
-      {% if show_headless_browse_note %}
-      <p class="small settings-field-hint refiner-headless-browse-hint" role="status">{{ refiner_headless_browse_message | e }}</p>
-      {% endif %}
-      {% if show_refiner_companion_service_note %}
-      <div class="small settings-field-hint refiner-companion-service-hint" role="status">
-        <p class="refiner-companion-service-hint-line">{{ refiner_windows_companion_guidance_line1 | e }}</p>
-        <p class="refiner-companion-service-hint-line">{{ refiner_windows_companion_guidance_line2 | e }}</p>
-      </div>
-      {% endif %}
       <div class="settings-stack">
         <div class="row refiner-folder-paths-row">
           <div class="field">
             <label>Watched folder</label>
-            <div class="refiner-path-field-row">
-              <input id="refiner-input-watched" class="input refiner-path-input" type="text" name="stream_manager_watched_folder" value="{{ settings.stream_manager_watched_folder or '' }}" placeholder="D:\Media\Incoming" autocomplete="off" spellcheck="false" />
-              <button type="button" class="btn secondary refiner-folder-browse" data-refiner-browse-target="refiner-input-watched"{% if refiner_headless_browse_disabled %} disabled title="{{ refiner_headless_browse_message | e }}"{% endif %}>Browse</button>
-            </div>
+            <input id="refiner-input-watched" class="input refiner-path-input" type="text" name="stream_manager_watched_folder" value="{{ settings.stream_manager_watched_folder or '' }}" placeholder="D:\Media\Incoming" autocomplete="off" spellcheck="false" />
+            <div class="small settings-field-hint">Enter the full folder path (e.g. F:\Downloads\Movies)</div>
           </div>
           <div class="field">
             <label>Output folder</label>
-            <div class="refiner-path-field-row">
-              <input id="refiner-input-output" class="input refiner-path-input" type="text" name="stream_manager_output_folder" value="{{ settings.stream_manager_output_folder or '' }}" placeholder="D:\Media\Processed" autocomplete="off" spellcheck="false" />
-              <button type="button" class="btn secondary refiner-folder-browse" data-refiner-browse-target="refiner-input-output"{% if refiner_headless_browse_disabled %} disabled title="{{ refiner_headless_browse_message | e }}"{% endif %}>Browse</button>
-            </div>
+            <input id="refiner-input-output" class="input refiner-path-input" type="text" name="stream_manager_output_folder" value="{{ settings.stream_manager_output_folder or '' }}" placeholder="D:\Media\Processed" autocomplete="off" spellcheck="false" />
+            <div class="small settings-field-hint">Enter the destination folder for processed files</div>
           </div>
         </div>
         <div class="small settings-field-hint refiner-folders-paths-hint">Reads from the watched folder and writes finished files to the output folder.</div>
@@ -143,10 +128,8 @@
           </summary>
           <div class="field section refiner-folders-advanced-body">
             <label>Temp/work folder</label>
-            <div class="refiner-path-field-row">
-              <input id="refiner-input-work" class="input refiner-path-input" type="text" name="stream_manager_work_folder" value="{{ settings.stream_manager_work_folder or '' }}" placeholder="Optional — overrides default below" autocomplete="off" spellcheck="false" />
-              <button type="button" class="btn secondary refiner-folder-browse" data-refiner-browse-target="refiner-input-work"{% if refiner_headless_browse_disabled %} disabled title="{{ refiner_headless_browse_message | e }}"{% endif %}>Browse</button>
-            </div>
+            <input id="refiner-input-work" class="input refiner-path-input" type="text" name="stream_manager_work_folder" value="{{ settings.stream_manager_work_folder or '' }}" placeholder="Optional — overrides default below" autocomplete="off" spellcheck="false" />
+            <div class="small settings-field-hint">Temporary working directory for processing</div>
             <div class="small settings-field-hint">Uses <code class="code-inline">{{ refiner_default_work_folder_path | e }}</code> when left empty.</div>
           </div>
         </details>

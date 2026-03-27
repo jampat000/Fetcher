@@ -89,22 +89,13 @@ Other useful vars (logs, data dir, dev DB) are documented in **[docs/INSTALL-AND
 4. Open **`http://127.0.0.1:8765`** on the machine, or **`http://<host-ip>:8765`** from another device (open **TCP 8765** in Windows Firewall if needed).
 5. Complete **setup** (account, integrations, schedule). After that you’ll use **`/login`** when the session expires.
 
-### Refiner folder Browse (Windows service)
+### Refiner folder paths
 
-While **Fetcher** runs as a **LocalSystem** service (no desktop), **Refiner → Browse** uses a small **Fetcher Companion** process in the **logged-in user’s session** (`FetcherCompanion.exe`, localhost **8767**).
+Refiner folder paths are **manual-entry only**. Enter or paste full paths for watched, output, and optional work folders in **Refiner settings**.
 
-- **Primary path (service-driven):** when Browse is requested and the companion is down, Fetcher attempts to launch `FetcherCompanion.exe` into the **active interactive Windows session** and re-checks `/health` in a short bounded window. If a user is signed in, this normally makes Browse work without manual steps.
-- **No active logged-in session:** Fetcher does not fail hard; Browse returns unavailable and the same inline/preflight recovery guidance remains.
-- **Fallback / resilience paths (kept):**
-  - per-user **Scheduled Task** (**Fetcher\Fetcher Companion**, logon, **Interactive**, **Limited**),
-  - per-user **HKCU …\Run** (`FetcherCompanion`),
-  - Start Menu shortcut **“Register Fetcher Companion (folder picker)”**.
-- Installer companion setup still performs registration/start attempts when safe and logs one-line diagnostics to **`%ProgramData%\Fetcher\logs\companion-setup.log`**, but this is now resilience support rather than the primary startup dependency.
-- **Recovery:** if Browse is still unavailable, run **“Register Fetcher Companion (folder picker)”** from the Start Menu as the logged-in user. You can always **type or paste paths** manually.
-
-### Refiner folder Browse (Docker / headless)
-
-In **Docker** and other **headless** deployments, **native folder Browse is unavailable by design** (no desktop, no companion). Refiner **paths must be typed or pasted** into the folder fields. The UI explains this on **Refiner settings**; **`POST /api/refiner/pick-folder`** returns an immediate **unavailable** response with the same guidance (optional override: set **`FETCHER_HEADLESS_REFINER_PICK=1`** when not using Docker but still headless).
+- There is no folder Browse button or companion process.
+- This behavior is the same for Windows service installs, Docker, and other headless environments.
+- Existing path save behavior is unchanged: Fetcher stores exactly what you enter in settings.
 
 **Where things live (defaults):**
 
@@ -138,7 +129,7 @@ If you use **`FETCHER_DATA_ENCRYPTION_KEY`**, keep it set the same way after upg
 | 401 / “not signed in” on API | Session cookie expired or missing; or use **`POST /api/auth/token`** and send **`Authorization: Bearer <access_token>`**. Don’t send a **refresh** token as the Bearer header for API calls. |
 | UI loops to setup | Wizard visibility follows **saved** config: password missing or an enabled integration missing URL/key. Fix the relevant fields in setup or settings. |
 | Where are logs? | Default **`%ProgramData%\Fetcher\logs\fetcher.log`**. The **Logs** page in the UI lists that directory. |
-| Refiner **Browse** does nothing / companion unreachable | Companion must run in the **logged-in** user session: use **Register Fetcher Companion (folder picker)** from the Start Menu (see **Refiner folder Browse** above), or type/paste paths manually. |
+| Refiner folder selection | Folder Browse was removed. Enter or paste full folder paths manually in Refiner settings. |
 
 ---
 
