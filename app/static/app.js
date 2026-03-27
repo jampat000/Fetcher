@@ -1330,16 +1330,44 @@ function syncRefinerTopBannersFromServerBrief(form) {
     .catch(() => {});
 }
 
-/** Refiner folder Browse → POST /api/refiner/pick-folder (native dialog on supported desktops). */
+/** Refiner folder Browse → POST /api/refiner/pick-folder (companion on Windows; zenity on Linux desktop). */
 function initRefinerFolderBrowse() {
   const pickFolderTimeoutMs = 11000;
   const pickFolderTimeoutToast = "Folder picker unavailable. Type or paste the path.";
 
   document.querySelectorAll("button.refiner-folder-browse[data-refiner-browse-target]").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       const id = btn.getAttribute("data-refiner-browse-target");
       const input = id ? document.getElementById(id) : null;
       if (!(input instanceof HTMLInputElement)) return;
+
+      const form = document.querySelector("form.refiner-settings-form[data-refiner-pick-mode]");
+      const mode = form ? form.getAttribute("data-refiner-pick-mode") || "" : "";
+
+      if (mode === "headless_unavailable") {
+        const msg =
+          (form && form.getAttribute("data-refiner-headless-message")) ||
+          "Folder Browse is unavailable in this environment. Type or paste the path manually.";
+        showToast(msg);
+        return;
+      }
+
+      if (mode === "windows_companion") {
+        try {
+          const capRes = await fetch("/api/refiner/pick-capability", {
+            credentials: "same-origin",
+            headers: { Accept: "application/json" },
+          });
+          const cap = await capRes.json();
+          if (cap && cap.preflight_message) {
+            showToast(String(cap.preflight_message));
+            return;
+          }
+        } catch {
+          showToast(pickFolderTimeoutToast);
+          return;
+        }
+      }
 
       const labelOriginal = btn.textContent;
       btn.disabled = true;

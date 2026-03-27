@@ -40,7 +40,8 @@ Type: files; Name: "{app}\*.err.log"
 [Files]
 ; Built output (PyInstaller one-folder build + companion one-file exe)
 Source: "..\dist\Fetcher\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
-; Post-install: run Register-FetcherCompanionTask.ps1 once per user from the Start Menu (interactive session).
+; Companion: auto-register scheduled task when install runs in a safe interactive user context; manual fallback via Start Menu.
+Source: "..\scripts\Install-FetcherCompanionTask.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "..\scripts\Register-FetcherCompanionTask.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 ; WinSW + config
 Source: "..\service\FetcherService.xml"; DestDir: "{app}"; DestName: "winsw.xml"; Flags: ignoreversion
@@ -50,6 +51,8 @@ Source: "..\service\winsw.exe"; DestDir: "{app}"; DestName: "winsw.exe"; Flags: 
 [Run]
 Filename: "{app}\winsw.exe"; Parameters: "install"; Flags: runhidden waituntilterminated
 Filename: "{app}\winsw.exe"; Parameters: "start"; Flags: runhidden waituntilterminated
+; Run as the user who launched Setup (pre-UAC), not as the elevated installer process, so the logon task + HKCU Run target the correct interactive profile.
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\scripts\Install-FetcherCompanionTask.ps1"" -CompanionExe ""{app}\FetcherCompanion.exe"" -Quiet"; StatusMsg: "Configuring Fetcher Companion..."; Flags: runhidden waituntilterminated runasoriginaluser
 Filename: "http://127.0.0.1:8765"; Description: "Open Fetcher in browser"; Flags: shellexec postinstall nowait skipifsilent
 
 [UninstallRun]
@@ -58,5 +61,5 @@ Filename: "{app}\winsw.exe"; Parameters: "uninstall"; Flags: runhidden waituntil
 
 [Icons]
 Name: "{group}\{#MyAppName} (Web UI)"; Filename: "http://127.0.0.1:8765"
-Name: "{group}\Register Fetcher Companion (folder picker)"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\scripts\Register-FetcherCompanionTask.ps1"" -CompanionExe ""{app}\FetcherCompanion.exe"""; Comment: "Run once after install so the folder picker works while Fetcher runs as a service."
+Name: "{group}\Register Fetcher Companion (folder picker)"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\scripts\Register-FetcherCompanionTask.ps1"" -CompanionExe ""{app}\FetcherCompanion.exe"""; Comment: "Run once per user if Refiner Browse does not open folders (e.g. install was non-interactive or a different account uses the PC)."
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"

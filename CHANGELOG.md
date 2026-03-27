@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.5] - 2026-03-27
+
+### Added
+
+- Windows service can now launch FetcherCompanion into the active logged-in user session automatically
+- Companion startup self-heal on service startup / picker demand
+
+### Changed
+
+- Windows service Browse no longer depends primarily on manual companion startup
+- Docker/headless Browse remains unavailable by design with immediate manual-entry guidance
+
+### Notes
+
+- On Windows service installs, Fetcher now prefers automatic companion startup in the active user session
+- Scheduled task / HKCU / Start Menu registration remain as fallback and resilience paths
+- Docker/headless installs must use manual path entry
+
 ## [3.0.4] - 2026-03-27
 
 ### Added
@@ -1072,7 +1090,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.0.4...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.0.5...HEAD
+[3.0.5]: https://github.com/jampat000/Fetcher/compare/v3.0.4...v3.0.5
 [3.0.4]: https://github.com/jampat000/Fetcher/compare/v3.0.3...v3.0.4
 [3.0.3]: https://github.com/jampat000/Fetcher/compare/v3.0.2...v3.0.3
 [3.0.2]: https://github.com/jampat000/Fetcher/compare/v3.0.1...v3.0.2

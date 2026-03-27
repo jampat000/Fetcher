@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 
 from typing import Annotated
 
@@ -20,7 +21,20 @@ from app.display_helpers import _now_local, _time_select_orphan
 from app.display_helpers import _normalize_hhmm
 from app.schedule import normalize_schedule_days_csv
 from app.schedule import schedule_time_dropdown_choices
-from app.refiner_folder_picker import REFINER_PICK_FOLDER_FAIL_MESSAGE, refiner_pick_folder_subprocess
+from app.refiner_folder_picker import (
+    REFINER_COMPANION_UNAVAILABLE_MESSAGE,
+    REFINER_PICK_FOLDER_FAIL_MESSAGE,
+    refiner_companion_reachable,
+    refiner_pick_folder_subprocess,
+)
+from app.refiner_pick_capability import (
+    HEADLESS_FOLDER_BROWSE_MESSAGE,
+    WINDOWS_SERVICE_COMPANION_GUIDANCE_LINE1,
+    WINDOWS_SERVICE_COMPANION_GUIDANCE_LINE2,
+    WINDOWS_SERVICE_COMPANION_PREFLIGHT_MESSAGE,
+    get_refiner_pick_mode,
+    is_windows_noninteractive_service_session,
+)
 from app.refiner_readiness import (
     get_refiner_state,
     refiner_validate_settings_save_section,
@@ -148,6 +162,15 @@ async def refiner_settings_page(request: Request, session: AsyncSession = Depend
     sm_days = normalize_schedule_days_csv(settings.stream_manager_schedule_days or "")
     sm_s = _normalize_hhmm(settings.stream_manager_schedule_start, "00:00")
     sm_e = _normalize_hhmm(settings.stream_manager_schedule_end, "23:59")
+    mode = get_refiner_pick_mode()
+    companion_ok = await refiner_companion_reachable()
+    show_headless_browse_note = mode == "headless_unavailable"
+    refiner_headless_browse_disabled = show_headless_browse_note
+    show_refiner_companion_service_note = (
+        mode == "windows_companion"
+        and is_windows_noninteractive_service_session()
+        and companion_ok is False
+    )
     return templates.TemplateResponse(
         request,
         "refiner_settings.html",
@@ -176,7 +199,66 @@ async def refiner_settings_page(request: Request, session: AsyncSession = Depend
             "csrf_token": await get_csrf_token_for_template(request, session),
             "show_setup_wizard": show_setup_wizard,
             "refiner_state": get_refiner_state(settings),
+            "refiner_pick_mode": mode,
+            "refiner_headless_browse_message": HEADLESS_FOLDER_BROWSE_MESSAGE,
+            "refiner_headless_browse_disabled": refiner_headless_browse_disabled,
+            "show_headless_browse_note": show_headless_browse_note,
+            "show_refiner_companion_service_note": show_refiner_companion_service_note,
+            "refiner_windows_companion_guidance_line1": WINDOWS_SERVICE_COMPANION_GUIDANCE_LINE1,
+            "refiner_windows_companion_guidance_line2": WINDOWS_SERVICE_COMPANION_GUIDANCE_LINE2,
         },
+    )
+
+
+@router.get("/api/refiner/companion-status", response_model=None)
+async def refiner_companion_status() -> dict[str, object]:
+    """Lightweight reachability probe for FetcherCompanion (Windows companion mode only)."""
+    mode = get_refiner_pick_mode()
+    if mode != "windows_companion":
+        return {"available": True, "companion": "not_applicable", "mode": mode}
+    ok = await refiner_companion_reachable()
+    if ok:
+        return {"available": True, "companion": "reachable", "mode": mode}
+    return {"available": False, "companion": "unreachable", "mode": mode}
+
+
+@router.get("/api/refiner/pick-capability", response_model=None)
+async def refiner_pick_capability_api() -> JSONResponse:
+    """Canonical Browse mode + preflight hints for the Refiner settings UI (no schema change to pick-folder)."""
+    mode = get_refiner_pick_mode()
+    if mode == "headless_unavailable":
+        return JSONResponse(
+            {
+                "mode": mode,
+                "browse_supported": False,
+                "companion_reachable": None,
+                "preflight_message": HEADLESS_FOLDER_BROWSE_MESSAGE,
+            }
+        )
+    if mode == "linux_desktop":
+        return JSONResponse(
+            {
+                "mode": mode,
+                "browse_supported": True,
+                "companion_reachable": None,
+                "preflight_message": None,
+            }
+        )
+    ok = await refiner_companion_reachable()
+    preflight: str | None = None
+    if ok is False:
+        preflight = (
+            WINDOWS_SERVICE_COMPANION_PREFLIGHT_MESSAGE
+            if is_windows_noninteractive_service_session()
+            else REFINER_COMPANION_UNAVAILABLE_MESSAGE
+        )
+    return JSONResponse(
+        {
+            "mode": mode,
+            "browse_supported": True,
+            "companion_reachable": ok,
+            "preflight_message": preflight,
+        }
     )
 
 
@@ -322,7 +404,7 @@ async def refiner_readiness_brief_api(session: AsyncSession = Depends(get_sessio
 
 @router.post("/api/refiner/pick-folder", response_model=None)
 async def refiner_pick_folder_api() -> JSONResponse:
-    """Open a native folder dialog (Windows/Linux desktop). Unavailable in Docker/headless/service."""
+    """Folder Browse: Windows → companion HTTP; Linux desktop → zenity; headless/Docker → immediate unavailable."""
     try:
         body = await refiner_pick_folder_subprocess()
     except Exception:
