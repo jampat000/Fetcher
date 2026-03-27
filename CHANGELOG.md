@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.3] - 2026-03-27
+
+### Fixed
+
+- Folder picker no longer appears frozen when unavailable
+- Added loading state and timeout handling for Browse buttons
+- Improved error message consistency
+- Prevented duplicate toast notifications after timeout
+
 ## [3.0.2] - 2026-03-27
 
 ### Changed
@@ -1046,7 +1055,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.0.2...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.0.3...HEAD
+[3.0.3]: https://github.com/jampat000/Fetcher/compare/v3.0.2...v3.0.3
 [3.0.2]: https://github.com/jampat000/Fetcher/compare/v3.0.1...v3.0.2
 [3.0.1]: https://github.com/jampat000/Fetcher/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/jampat000/Fetcher/compare/v2.5.1...v3.0.0

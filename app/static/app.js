@@ -1332,16 +1332,35 @@ function syncRefinerTopBannersFromServerBrief(form) {
 
 /** Refiner folder Browse → POST /api/refiner/pick-folder (native dialog on supported desktops). */
 function initRefinerFolderBrowse() {
+  const pickFolderTimeoutMs = 11000;
+  const pickFolderTimeoutToast = "Folder picker unavailable. Type or paste the path.";
+
   document.querySelectorAll("button.refiner-folder-browse[data-refiner-browse-target]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const id = btn.getAttribute("data-refiner-browse-target");
       const input = id ? document.getElementById(id) : null;
       if (!(input instanceof HTMLInputElement)) return;
+
+      const labelOriginal = btn.textContent;
       btn.disabled = true;
+      btn.textContent = "Opening folder picker...";
+
+      const ac = new AbortController();
+      const timeoutId = window.setTimeout(() => {
+        ac.abort();
+      }, pickFolderTimeoutMs);
+
+      const restoreUi = () => {
+        window.clearTimeout(timeoutId);
+        btn.disabled = false;
+        btn.textContent = labelOriginal;
+      };
+
       fetch("/api/refiner/pick-folder", {
         method: "POST",
         credentials: "same-origin",
         headers: { Accept: "application/json" },
+        signal: ac.signal,
       })
         .then((res) => {
           if (res.status === 403) {
@@ -1349,16 +1368,17 @@ function initRefinerFolderBrowse() {
           }
           const ct = (res.headers.get("content-type") || "").toLowerCase();
           if (ct.indexOf("application/json") >= 0) {
-            return res.json().then((data) => {
-              if (!res.ok) {
-                const m =
-                  (data && data.message) ||
-                  "Folder picker is not available in this environment. Type or paste the path.";
-                showToast(m);
-                return Promise.reject(new Error("_refinerPickFolderHandled"));
-              }
-              return data;
-            });
+            return res
+              .json()
+              .catch(() => Promise.reject(new Error("Folder picker response was invalid.")))
+              .then((data) => {
+                if (!res.ok) {
+                  const m = (data && data.message) || pickFolderTimeoutToast;
+                  showToast(m);
+                  return Promise.reject(new Error("_refinerPickFolderHandled"));
+                }
+                return data;
+              });
           }
           return res.text().then((text) => Promise.reject(new Error(text || "Folder picker request failed.")));
         })
@@ -1369,18 +1389,19 @@ function initRefinerFolderBrowse() {
             return;
           }
           if (data && data.reason === "cancelled") return;
-          const m =
-            (data && data.message) || "Folder picker is not available in this environment. Type or paste the path.";
+          const m = (data && data.message) || pickFolderTimeoutToast;
           showToast(m);
         })
         .catch((err) => {
+          if (err && err.name === "AbortError") {
+            showToast(pickFolderTimeoutToast);
+            return;
+          }
           if (err && err.message === "_refinerPickFolderHandled") return;
           const m = err && err.message ? err.message : "Could not open folder picker.";
           showToast(m);
         })
-        .finally(() => {
-          btn.disabled = false;
-        });
+        .finally(restoreUi);
     });
   });
 }
