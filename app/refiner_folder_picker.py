@@ -125,22 +125,41 @@ async def ensure_windows_companion_running(timeout_seconds: float = 4.0) -> bool
         return True
 
     # Classify internal outcomes for production diagnostics.
+    final_result = "launch_failed"
+    detail = ""
     if launch is None:
+        final_result = "launch_skipped_throttled"
         logger.info("Refiner companion ensure: final_result=launch_skipped_throttled")
     elif launch.reason.startswith("no_active_session"):
+        final_result = "no_active_session"
+        detail = launch.reason
         logger.info("Refiner companion ensure: final_result=no_active_session")
     elif launch.reason in (
         "wts_token_failed",
         "fallback_token_not_found",
         "fallback_token_open_failed",
         "fallback_no_usable_process_token",
+        "launch_failed_after_fallback_token",
         "launch_failed",
     ):
+        final_result = "launch_failed"
+        detail = launch.reason
         logger.info("Refiner companion ensure: final_result=launch_failed detail=%s", launch.reason)
     elif launch.launched:
-        logger.info("Refiner companion ensure: final_result=launch_succeeded_but_companion_not_healthy")
+        final_result = "launch_succeeded_but_companion_not_healthy"
+        detail = launch.reason
     else:
+        final_result = "launch_failed"
+        detail = launch.reason
         logger.info("Refiner companion ensure: final_result=launch_failed detail=%s", launch.reason)
+
+    logger.warning(
+        "Refiner companion ensure: final_result=%s detail=%s prelaunch_health=%s postlaunch_health=%s",
+        final_result,
+        detail,
+        is_healthy,
+        post_launch_healthy,
+    )
     return False
 
 

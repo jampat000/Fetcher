@@ -282,28 +282,53 @@ def _try_primary_token_from_process(pid: int, name: str, session_id: int, source
 
 
 def _get_primary_token_from_fallback_process_scan(session_id: int) -> tuple[wt.HANDLE | None, str]:
-    logger.info("Companion launch/session: fallback process scan started session_id=%s", int(session_id))
+    logger.warning("Companion launch/session: fallback process scan started session_id=%s", int(session_id))
     procs = _iter_session_process_candidates(session_id)
+    candidates_tried = 0
     if not procs:
+        logger.warning(
+            "Companion launch/session: fallback process scan found no candidates session_id=%s",
+            int(session_id),
+        )
+        logger.warning(
+            "Companion launch/session: generalized fallback exhausted session_id=%s reason=fallback_no_usable_process_token candidates_tried=%s",
+            int(session_id),
+            candidates_tried,
+        )
         return None, "fallback_no_usable_process_token"
 
     explorer = [(pid, name) for pid, name in procs if name.lower() == "explorer.exe"]
     others = [(pid, name) for pid, name in procs if name.lower() != "explorer.exe"]
     if not explorer:
-        logger.info(
+        logger.warning(
             "Companion launch/session: fallback explorer.exe not found in active session session_id=%s",
             int(session_id),
         )
 
     last_status = "fallback_no_usable_process_token"
     for pid, name in explorer + others:
+        candidates_tried += 1
         source = "fallback_explorer" if name.lower() == "explorer.exe" else "fallback_process_scan"
         primary, status = _try_primary_token_from_process(pid, name, session_id, source)
         if primary is not None:
             return primary, "ok"
         last_status = status
     if last_status == "fallback_token_open_failed":
+        logger.warning(
+            "Companion launch/session: no usable token acquired from scanned candidates session_id=%s",
+            int(session_id),
+        )
+        logger.warning(
+            "Companion launch/session: generalized fallback exhausted session_id=%s reason=fallback_no_usable_process_token candidates_tried=%s",
+            int(session_id),
+            candidates_tried,
+        )
         return None, "fallback_token_open_failed"
+    logger.warning(
+        "Companion launch/session: generalized fallback exhausted session_id=%s reason=fallback_no_usable_process_token candidates_tried=%s",
+        int(session_id),
+        candidates_tried,
+    )
     return None, "fallback_no_usable_process_token"
 
 
@@ -325,7 +350,11 @@ def _get_primary_token_for_session(session_id: int) -> tuple[wt.HANDLE | None, s
         int(session_id),
         err,
     )
-    logger.info("Companion launch/session: fallback token lookup started session_id=%s", int(session_id))
+    logger.warning("Companion launch/session: fallback token lookup started session_id=%s", int(session_id))
+    logger.warning(
+        "Companion launch/session: entering generalized fallback process scan session_id=%s",
+        int(session_id),
+    )
     primary, fallback_status = _get_primary_token_from_fallback_process_scan(session_id)
     if primary is not None:
         return primary, "ok", "fallback"
@@ -335,7 +364,16 @@ def _get_primary_token_for_session(session_id: int) -> tuple[wt.HANDLE | None, s
         "fallback_no_usable_process_token",
         "launch_failed",
     ):
+        logger.warning(
+            "Companion launch/session: fallback final_outcome=%s session_id=%s",
+            fallback_status,
+            int(session_id),
+        )
         return None, fallback_status, "fallback"
+    logger.warning(
+        "Companion launch/session: fallback final_outcome=wts_token_failed session_id=%s",
+        int(session_id),
+    )
     return None, "wts_token_failed", "wts"
 
 
@@ -439,17 +477,28 @@ def launch_companion_in_active_session(companion_exe: str) -> LaunchResult:
             ctypes.byref(proc_info),
         ):
             err = _last_winerr()
-            logger.warning(
-                "Companion launch/session: CreateProcessAsUserW failed session_id=%s winerr=%s app=%s cwd=%s",
-                int(sess_id),
-                err,
-                companion_exe,
-                work_dir,
-            )
+            if token_source == "fallback":
+                logger.warning(
+                    "Companion launch/session: CreateProcessAsUserW failed after fallback token session_id=%s winerr=%s app=%s cwd=%s",
+                    int(sess_id),
+                    err,
+                    companion_exe,
+                    work_dir,
+                )
+                reason = "launch_failed_after_fallback_token"
+            else:
+                logger.warning(
+                    "Companion launch/session: CreateProcessAsUserW failed session_id=%s winerr=%s app=%s cwd=%s",
+                    int(sess_id),
+                    err,
+                    companion_exe,
+                    work_dir,
+                )
+                reason = "launch_failed"
             return LaunchResult(
                 True,
                 False,
-                "launch_failed",
+                reason,
                 session_id=int(sess_id),
                 companion_exe=companion_exe,
                 working_dir=work_dir,

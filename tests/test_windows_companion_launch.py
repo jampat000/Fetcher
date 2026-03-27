@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import types
 
@@ -124,6 +125,27 @@ def test_wts_query_user_token_failure_uses_fallback(monkeypatch) -> None:
 
 
 def test_wts_query_user_token_failure_fallback_not_found(monkeypatch) -> None:
+    calls = {"scan": 0}
+
+    def _wts_fail(_sid, _token_ptr):
+        return False
+
+    def _scan(_sid):
+        calls["scan"] += 1
+        return None, "fallback_no_usable_process_token"
+
+    monkeypatch.setattr(wsl, "wtsapi32", types.SimpleNamespace(WTSQueryUserToken=_wts_fail))
+    monkeypatch.setattr(wsl, "_get_primary_token_from_fallback_process_scan", _scan)
+    monkeypatch.setattr(wsl, "_last_winerr", lambda: 1008)
+
+    primary, status, source = wsl._get_primary_token_for_session(3)
+    assert primary is None
+    assert status == "fallback_no_usable_process_token"
+    assert source == "fallback"
+    assert calls["scan"] == 1
+
+
+def test_wts_fail_explorer_miss_enters_generalized_scan_log(monkeypatch, caplog) -> None:
     def _wts_fail(_sid, _token_ptr):
         return False
 
@@ -134,11 +156,12 @@ def test_wts_query_user_token_failure_fallback_not_found(monkeypatch) -> None:
         lambda _sid: (None, "fallback_no_usable_process_token"),
     )
     monkeypatch.setattr(wsl, "_last_winerr", lambda: 1008)
-
-    primary, status, source = wsl._get_primary_token_for_session(3)
+    with caplog.at_level(logging.WARNING):
+        primary, status, source = wsl._get_primary_token_for_session(3)
     assert primary is None
     assert status == "fallback_no_usable_process_token"
     assert source == "fallback"
+    assert "entering generalized fallback process scan session_id=3" in caplog.text
 
 
 def test_fallback_process_scan_uses_non_explorer_when_needed(monkeypatch) -> None:
@@ -180,3 +203,72 @@ def test_fallback_process_scan_empty_candidates(monkeypatch) -> None:
     primary, status = wsl._get_primary_token_from_fallback_process_scan(9)
     assert primary is None
     assert status == "fallback_no_usable_process_token"
+
+
+def test_fallback_process_scan_exhaustion_logs_reason_and_count(monkeypatch, caplog) -> None:
+    monkeypatch.setattr(wsl, "_iter_session_process_candidates", lambda _sid: [(1001, "cmd.exe"), (1002, "pwsh.exe")])
+    monkeypatch.setattr(
+        wsl,
+        "_try_primary_token_from_process",
+        lambda _pid, _name, _sid, _source: (None, "fallback_token_open_failed"),
+    )
+    with caplog.at_level(logging.WARNING):
+        primary, status = wsl._get_primary_token_from_fallback_process_scan(3)
+    assert primary is None
+    assert status == "fallback_token_open_failed"
+    assert "generalized fallback exhausted session_id=3 reason=fallback_no_usable_process_token candidates_tried=2" in caplog.text
+
+
+def test_launch_companion_createprocess_failure_after_fallback(monkeypatch) -> None:
+    monkeypatch.setattr(wsl.os, "name", "nt", raising=False)
+    monkeypatch.setattr(wsl.os.path, "isfile", lambda _p: True)
+    monkeypatch.setattr(
+        wsl,
+        "kernel32",
+        types.SimpleNamespace(
+            WTSGetActiveConsoleSessionId=lambda: 3,
+            CloseHandle=lambda _h: True,
+        ),
+    )
+    monkeypatch.setattr(
+        wsl,
+        "_get_primary_token_for_session",
+        lambda _sid: (wsl.wt.HANDLE(777), "ok", "fallback"),
+    )
+    monkeypatch.setattr(
+        wsl,
+        "userenv",
+        types.SimpleNamespace(
+            CreateEnvironmentBlock=lambda *_a: True,
+            DestroyEnvironmentBlock=lambda *_a: True,
+        ),
+    )
+    monkeypatch.setattr(
+        wsl,
+        "advapi32",
+        types.SimpleNamespace(
+            CreateProcessAsUserW=lambda *_a: False,
+        ),
+    )
+    monkeypatch.setattr(wsl, "_last_winerr", lambda: 5)
+    out = wsl.launch_companion_in_active_session(r"C:\Program Files\Fetcher\FetcherCompanion.exe")
+    assert out.launched is False
+    assert out.reason == "launch_failed_after_fallback_token"
+
+
+def test_ensure_logs_launch_succeeded_but_unhealthy_summary(monkeypatch, caplog) -> None:
+    async def _unhealthy() -> bool:
+        return False
+
+    monkeypatch.setattr("app.refiner_folder_picker.get_refiner_pick_mode", lambda: "windows_companion")
+    monkeypatch.setattr("app.refiner_folder_picker._LAST_COMPANION_ENSURE_ATTEMPT_MONO", 0.0)
+    monkeypatch.setattr("app.refiner_folder_picker.refiner_companion_reachable", _unhealthy)
+    monkeypatch.setattr("app.refiner_folder_picker.resolve_companion_exe_path", lambda: r"C:\x\FetcherCompanion.exe")
+    monkeypatch.setattr(
+        "app.refiner_folder_picker.start_companion_best_effort",
+        lambda _p: LaunchResult(attempted=True, launched=True, reason="launch_succeeded", session_id=3),
+    )
+    with caplog.at_level(logging.WARNING):
+        ok = asyncio.run(ensure_windows_companion_running(timeout_seconds=0.6))
+    assert ok is False
+    assert "final_result=launch_succeeded_but_companion_not_healthy" in caplog.text

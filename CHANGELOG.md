@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.9] - 2026-03-27
+
+### Fixed
+
+- Improved Windows service companion auto-launch diagnostics and terminal failure classification
+- Guaranteed warning-level visibility for generalized fallback scan entry/exhaustion and ensure failure summaries
+
+### Notes
+
+- This release is for decisive production validation of the Windows companion launch path
+- Docker/headless behavior is unchanged and remains manual-entry only
+
 ## [3.0.8] - 2026-03-27
 
 ### Fixed
@@ -1124,7 +1136,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.0.8...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.0.9...HEAD
+[3.0.9]: https://github.com/jampat000/Fetcher/compare/v3.0.8...v3.0.9
 [3.0.8]: https://github.com/jampat000/Fetcher/compare/v3.0.7...v3.0.8
 [3.0.7]: https://github.com/jampat000/Fetcher/compare/v3.0.6...v3.0.7
 [3.0.6]: https://github.com/jampat000/Fetcher/compare/v3.0.5...v3.0.6
