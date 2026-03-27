@@ -26,12 +26,15 @@ else:
 
 INVALID_SESSION_ID = 0xFFFFFFFF
 WTS_CURRENT_SERVER_HANDLE = wt.HANDLE(0)
+INVALID_HANDLE_VALUE = wt.HANDLE(-1).value
 
 TOKEN_ASSIGN_PRIMARY = 0x0001
 TOKEN_DUPLICATE = 0x0002
 TOKEN_QUERY = 0x0008
 TOKEN_ADJUST_DEFAULT = 0x0080
 TOKEN_ADJUST_SESSIONID = 0x0100
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+TH32CS_SNAPPROCESS = 0x00000002
 
 MAXIMUM_ALLOWED = 0x02000000
 SecurityImpersonation = 2
@@ -76,6 +79,21 @@ class PROCESS_INFORMATION(ctypes.Structure):
     ]
 
 
+class PROCESSENTRY32W(ctypes.Structure):
+    _fields_ = [
+        ("dwSize", wt.DWORD),
+        ("cntUsage", wt.DWORD),
+        ("th32ProcessID", wt.DWORD),
+        ("th32DefaultHeapID", ctypes.POINTER(ctypes.c_ulong)),
+        ("th32ModuleID", wt.DWORD),
+        ("cntThreads", wt.DWORD),
+        ("th32ParentProcessID", wt.DWORD),
+        ("pcPriClassBase", ctypes.c_long),
+        ("dwFlags", wt.DWORD),
+        ("szExeFile", wt.WCHAR * 260),
+    ]
+
+
 @dataclass(frozen=True)
 class LaunchResult:
     attempted: bool
@@ -86,6 +104,7 @@ class LaunchResult:
     working_dir: str = ""
     process_id: int | None = None
     environment_block_created: bool = False
+    token_source: str = ""
 
 
 def _close_handle(h: wt.HANDLE | int | None) -> None:
@@ -101,10 +120,22 @@ def _configure_win32_signatures() -> None:
     if os.name != "nt":
         return
     kernel32.WTSGetActiveConsoleSessionId.restype = wt.DWORD
+    kernel32.ProcessIdToSessionId.argtypes = [wt.DWORD, ctypes.POINTER(wt.DWORD)]
+    kernel32.ProcessIdToSessionId.restype = wt.BOOL
+    kernel32.CreateToolhelp32Snapshot.argtypes = [wt.DWORD, wt.DWORD]
+    kernel32.CreateToolhelp32Snapshot.restype = wt.HANDLE
+    kernel32.Process32FirstW.argtypes = [wt.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
+    kernel32.Process32FirstW.restype = wt.BOOL
+    kernel32.Process32NextW.argtypes = [wt.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
+    kernel32.Process32NextW.restype = wt.BOOL
+    kernel32.OpenProcess.argtypes = [wt.DWORD, wt.BOOL, wt.DWORD]
+    kernel32.OpenProcess.restype = wt.HANDLE
 
     wtsapi32.WTSQueryUserToken.argtypes = [wt.ULONG, ctypes.POINTER(wt.HANDLE)]
     wtsapi32.WTSQueryUserToken.restype = wt.BOOL
 
+    advapi32.OpenProcessToken.argtypes = [wt.HANDLE, wt.DWORD, ctypes.POINTER(wt.HANDLE)]
+    advapi32.OpenProcessToken.restype = wt.BOOL
     advapi32.DuplicateTokenEx.argtypes = [
         wt.HANDLE,
         wt.DWORD,
@@ -166,6 +197,137 @@ def resolve_companion_exe_path() -> str:
     return os.path.join(repo_root, "dist", "Fetcher", "FetcherCompanion.exe")
 
 
+def _duplicate_primary_token(token: wt.HANDLE, session_id: int, source: str) -> tuple[wt.HANDLE | None, str]:
+    primary = wt.HANDLE()
+    desired_access = (
+        MAXIMUM_ALLOWED
+        | TOKEN_ASSIGN_PRIMARY
+        | TOKEN_DUPLICATE
+        | TOKEN_QUERY
+        | TOKEN_ADJUST_DEFAULT
+        | TOKEN_ADJUST_SESSIONID
+    )
+    if not advapi32.DuplicateTokenEx(
+        token,
+        desired_access,
+        None,
+        SecurityImpersonation,
+        TokenPrimary,
+        ctypes.byref(primary),
+    ):
+        err = _last_winerr()
+        logger.warning(
+            "Companion launch/session: DuplicateTokenEx failed source=%s session_id=%s winerr=%s",
+            source,
+            int(session_id),
+            err,
+        )
+        return None, "launch_failed"
+    logger.info("Companion launch/session: DuplicateTokenEx ok source=%s session_id=%s", source, int(session_id))
+    return primary, "ok"
+
+
+def _get_primary_token_from_explorer(session_id: int) -> tuple[wt.HANDLE | None, str]:
+    logger.info("Companion launch/session: fallback token lookup started session_id=%s", int(session_id))
+    snap = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    if not snap or int(snap) == int(INVALID_HANDLE_VALUE):
+        return None, "fallback_token_not_found"
+
+    found_explorer = False
+    process_open_failed = False
+    entry = PROCESSENTRY32W()
+    entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+
+    try:
+        ok = kernel32.Process32FirstW(snap, ctypes.byref(entry))
+        while ok:
+            exe = (entry.szExeFile or "").lower()
+            if exe == "explorer.exe":
+                pid = int(entry.th32ProcessID)
+                pid_session = wt.DWORD(0)
+                if kernel32.ProcessIdToSessionId(pid, ctypes.byref(pid_session)) and int(pid_session.value) == int(session_id):
+                    found_explorer = True
+                    logger.info(
+                        "Companion launch/session: fallback explorer.exe found pid=%s session_id=%s",
+                        pid,
+                        int(session_id),
+                    )
+                    ph = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+                    if not ph:
+                        process_open_failed = True
+                        logger.warning(
+                            "Companion launch/session: fallback OpenProcess failed pid=%s winerr=%s",
+                            pid,
+                            _last_winerr(),
+                        )
+                    else:
+                        imp_token = wt.HANDLE()
+                        try:
+                            if not advapi32.OpenProcessToken(ph, TOKEN_QUERY | TOKEN_DUPLICATE, ctypes.byref(imp_token)):
+                                process_open_failed = True
+                                logger.warning(
+                                    "Companion launch/session: fallback OpenProcessToken failed pid=%s winerr=%s",
+                                    pid,
+                                    _last_winerr(),
+                                )
+                            else:
+                                logger.info(
+                                    "Companion launch/session: fallback OpenProcessToken ok pid=%s session_id=%s",
+                                    pid,
+                                    int(session_id),
+                                )
+                                primary, status = _duplicate_primary_token(imp_token, session_id, "fallback_explorer")
+                                if primary is not None:
+                                    logger.info(
+                                        "Companion launch/session: fallback token path selected session_id=%s",
+                                        int(session_id),
+                                    )
+                                    return primary, "ok"
+                                return None, "launch_failed"
+                        finally:
+                            _close_handle(imp_token)
+                            _close_handle(ph)
+            ok = kernel32.Process32NextW(snap, ctypes.byref(entry))
+    finally:
+        _close_handle(snap)
+
+    if not found_explorer:
+        logger.warning(
+            "Companion launch/session: fallback explorer.exe not found in active session session_id=%s",
+            int(session_id),
+        )
+        return None, "fallback_token_not_found"
+    if process_open_failed:
+        return None, "fallback_token_open_failed"
+    return None, "fallback_token_not_found"
+
+
+def _get_primary_token_for_session(session_id: int) -> tuple[wt.HANDLE | None, str, str]:
+    user_token = wt.HANDLE()
+    if wtsapi32.WTSQueryUserToken(session_id, ctypes.byref(user_token)):
+        logger.info("Companion launch/session: WTSQueryUserToken ok session_id=%s", int(session_id))
+        try:
+            primary, status = _duplicate_primary_token(user_token, session_id, "wts")
+            if primary is not None:
+                return primary, "ok", "wts"
+            return None, "launch_failed", "wts"
+        finally:
+            _close_handle(user_token)
+
+    err = _last_winerr()
+    logger.warning(
+        "Companion launch/session: WTSQueryUserToken failed session_id=%s winerr=%s",
+        int(session_id),
+        err,
+    )
+    primary, fallback_status = _get_primary_token_from_explorer(session_id)
+    if primary is not None:
+        return primary, "ok", "fallback_explorer"
+    if fallback_status in ("fallback_token_not_found", "fallback_token_open_failed", "launch_failed"):
+        return None, fallback_status, "fallback_explorer"
+    return None, "wts_token_failed", "wts"
+
+
 def launch_companion_in_active_session(companion_exe: str) -> LaunchResult:
     """
     Launch companion in the active interactive session from a service context.
@@ -202,7 +364,6 @@ def launch_companion_in_active_session(companion_exe: str) -> LaunchResult:
             working_dir=work_dir,
         )
 
-    user_token = wt.HANDLE()
     primary_token = wt.HANDLE()
     env_block = wt.LPVOID()
     proc_info = PROCESS_INFORMATION()
@@ -212,54 +373,23 @@ def launch_companion_in_active_session(companion_exe: str) -> LaunchResult:
     cmdline = ctypes.create_unicode_buffer(f"\"{companion_exe}\"")
 
     try:
-        if not wtsapi32.WTSQueryUserToken(sess_id, ctypes.byref(user_token)):
-            err = _last_winerr()
-            logger.warning(
-                "Companion launch/session: WTSQueryUserToken failed session_id=%s winerr=%s",
-                int(sess_id),
-                err,
-            )
+        primary, token_status, token_source = _get_primary_token_for_session(int(sess_id))
+        if primary is None:
             return LaunchResult(
                 True,
                 False,
-                f"launch_failed:wts_query_user_token:{err}",
+                token_status,
                 session_id=int(sess_id),
                 companion_exe=companion_exe,
                 working_dir=work_dir,
+                token_source=token_source,
             )
-        logger.info("Companion launch/session: WTSQueryUserToken ok session_id=%s", int(sess_id))
-
-        desired_access = (
-            MAXIMUM_ALLOWED
-            | TOKEN_ASSIGN_PRIMARY
-            | TOKEN_DUPLICATE
-            | TOKEN_QUERY
-            | TOKEN_ADJUST_DEFAULT
-            | TOKEN_ADJUST_SESSIONID
+        primary_token = primary
+        logger.info(
+            "Companion launch/session: using token_source=%s for CreateProcessAsUserW session_id=%s",
+            token_source,
+            int(sess_id),
         )
-        if not advapi32.DuplicateTokenEx(
-            user_token,
-            desired_access,
-            None,
-            SecurityImpersonation,
-            TokenPrimary,
-            ctypes.byref(primary_token),
-        ):
-            err = _last_winerr()
-            logger.warning(
-                "Companion launch/session: DuplicateTokenEx failed session_id=%s winerr=%s",
-                int(sess_id),
-                err,
-            )
-            return LaunchResult(
-                True,
-                False,
-                f"launch_failed:duplicate_token:{err}",
-                session_id=int(sess_id),
-                companion_exe=companion_exe,
-                working_dir=work_dir,
-            )
-        logger.info("Companion launch/session: DuplicateTokenEx ok session_id=%s", int(sess_id))
 
         if not userenv.CreateEnvironmentBlock(ctypes.byref(env_block), primary_token, False):
             # Non-fatal: continue with process environment.
@@ -308,11 +438,12 @@ def launch_companion_in_active_session(companion_exe: str) -> LaunchResult:
             return LaunchResult(
                 True,
                 False,
-                f"launch_failed:create_process_as_user:{err}",
+                "launch_failed",
                 session_id=int(sess_id),
                 companion_exe=companion_exe,
                 working_dir=work_dir,
                 environment_block_created=env_created,
+                token_source=token_source,
             )
         proc_pid = int(proc_info.dwProcessId)
         logger.info(
@@ -329,6 +460,7 @@ def launch_companion_in_active_session(companion_exe: str) -> LaunchResult:
             working_dir=work_dir,
             process_id=proc_pid,
             environment_block_created=env_created,
+            token_source=token_source,
         )
     finally:
         _close_handle(proc_info.hThread)
@@ -339,7 +471,6 @@ def launch_companion_in_active_session(companion_exe: str) -> LaunchResult:
             except Exception:
                 pass
         _close_handle(primary_token)
-        _close_handle(user_token)
 
 
 def start_companion_best_effort(companion_exe: str) -> LaunchResult:

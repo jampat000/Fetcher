@@ -99,7 +99,7 @@ async def ensure_windows_companion_running(timeout_seconds: float = 4.0) -> bool
         companion_exe = resolve_companion_exe_path()
         launch = start_companion_best_effort(companion_exe)
         logger.info(
-            "Refiner companion ensure: launch attempted=%s launched=%s reason=%s session_id=%s exe=%s cwd=%s env_block=%s pid=%s",
+            "Refiner companion ensure: launch attempted=%s launched=%s reason=%s session_id=%s exe=%s cwd=%s env_block=%s pid=%s token_source=%s",
             launch.attempted,
             launch.launched,
             launch.reason,
@@ -108,6 +108,7 @@ async def ensure_windows_companion_running(timeout_seconds: float = 4.0) -> bool
             launch.working_dir,
             launch.environment_block_created,
             launch.process_id,
+            launch.token_source,
         )
     else:
         logger.info("Refiner companion ensure: throttled repeated launch attempt.")
@@ -128,7 +129,7 @@ async def ensure_windows_companion_running(timeout_seconds: float = 4.0) -> bool
         logger.info("Refiner companion ensure: final_result=launch_skipped_throttled")
     elif launch.reason.startswith("no_active_session"):
         logger.info("Refiner companion ensure: final_result=no_active_session")
-    elif launch.reason.startswith("launch_failed:"):
+    elif launch.reason in ("wts_token_failed", "fallback_token_not_found", "fallback_token_open_failed", "launch_failed"):
         logger.info("Refiner companion ensure: final_result=launch_failed detail=%s", launch.reason)
     elif launch.launched:
         logger.info("Refiner companion ensure: final_result=launch_succeeded_but_companion_not_healthy")
