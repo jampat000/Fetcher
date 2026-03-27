@@ -38,8 +38,10 @@ Type: files; Name: "{app}\*.out.log"
 Type: files; Name: "{app}\*.err.log"
 
 [Files]
-; Built output (PyInstaller one-folder build)
+; Built output (PyInstaller one-folder build + companion one-file exe)
 Source: "..\dist\Fetcher\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
+; Post-install: run Register-FetcherCompanionTask.ps1 once per user from the Start Menu (interactive session).
+Source: "..\scripts\Register-FetcherCompanionTask.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 ; WinSW + config
 Source: "..\service\FetcherService.xml"; DestDir: "{app}"; DestName: "winsw.xml"; Flags: ignoreversion
 ; WinSW is bundled into the installer (installer/bin/WinSW.exe copied via installer/setup.py)
@@ -56,4 +58,5 @@ Filename: "{app}\winsw.exe"; Parameters: "uninstall"; Flags: runhidden waituntil
 
 [Icons]
 Name: "{group}\{#MyAppName} (Web UI)"; Filename: "http://127.0.0.1:8765"
+Name: "{group}\Register Fetcher Companion (folder picker)"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\scripts\Register-FetcherCompanionTask.ps1"" -CompanionExe ""{app}\FetcherCompanion.exe"""; Comment: "Run once after install so the folder picker works while Fetcher runs as a service."
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"

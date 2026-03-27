@@ -11,7 +11,7 @@ def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "--refiner-pick-folder-worker":
         if sys.argv.count("--refiner-pick-folder-worker") > 1:
             return
-        from app.refiner_folder_picker import run_picker_subprocess
+        from app.refiner_pick_sync import run_picker_subprocess
 
         run_picker_subprocess()
         return

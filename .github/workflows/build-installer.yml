@@ -121,7 +121,10 @@ jobs:
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
-          $root = Join-Path "${{ github.workspace }}" 'dist\Fetcher\_internal'
+          $dist = Join-Path "${{ github.workspace }}" 'dist\Fetcher'
+          $comp = Join-Path $dist 'FetcherCompanion.exe'
+          if (-not (Test-Path -LiteralPath $comp)) { throw "Missing companion: $comp" }
+          $root = Join-Path $dist '_internal'
           @(
             'app\templates\refiner.html',
             'app\templates\refiner_settings.html',

@@ -1,94 +1,102 @@
-"""Native folder picker for Refiner paths (desktop Windows / optional Linux)."""
+"""Refiner folder pick: Windows via user-session HTTP companion; Linux via zenity subprocess."""
 
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
-import subprocess
+import os
 import sys
-from typing import Any, Literal
+from typing import Any
+
+import httpx
+
+from app.refiner_pick_sync import REFINER_PICK_FOLDER_FAIL_MESSAGE, run_picker_subprocess
 
 logger = logging.getLogger(__name__)
 
-# Single user-facing message for all pick-folder failure paths (timeout, parse, subprocess, etc.).
-REFINER_PICK_FOLDER_FAIL_MESSAGE = "Folder picker unavailable. Type or paste the path."
+# Re-export for routers / tests that import from this module.
+__all__ = [
+    "REFINER_PICK_FOLDER_FAIL_MESSAGE",
+    "REFINER_COMPANION_UNAVAILABLE_MESSAGE",
+    "refiner_pick_folder_subprocess",
+    "run_picker_subprocess",
+]
 
-PickerOutcome = Literal["ok", "cancelled", "unavailable"]
-
-
-def pick_folder_sync() -> tuple[str | None, PickerOutcome]:
-    """
-    Block the current thread; open a folder dialog if possible.
-    Returns (path, outcome). path is set only when outcome == \"ok\".
-
-    Any unexpected error (no display session, service account, frozen-app Tcl init,
-    etc.) must return \"unavailable\" — never raise to the HTTP layer.
-    """
-    try:
-        if sys.platform == "win32":
-            try:
-                import tkinter as tk
-                from tkinter import filedialog
-            except Exception:
-                logger.warning("Refiner folder picker: tkinter import failed", exc_info=True)
-                return None, "unavailable"
-            root = tk.Tk()
-            root.withdraw()
-            try:
-                try:
-                    root.attributes("-topmost", True)
-                except Exception:
-                    pass
-                picked = filedialog.askdirectory(mustexist=True)
-            finally:
-                try:
-                    root.destroy()
-                except Exception:
-                    pass
-            if picked and str(picked).strip():
-                return str(picked).strip(), "ok"
-            return None, "cancelled"
-
-        if sys.platform.startswith("linux"):
-            try:
-                r = subprocess.run(
-                    ["zenity", "--file-selection", "--directory"],
-                    capture_output=True,
-                    text=True,
-                    timeout=120,
-                    check=False,
-                )
-                if r.returncode == 0 and (r.stdout or "").strip():
-                    return (r.stdout or "").strip(), "ok"
-                if r.returncode != 0:
-                    return None, "cancelled"
-            except Exception:
-                logger.warning("Refiner folder picker: zenity failed", exc_info=True)
-            return None, "unavailable"
-
-        return None, "unavailable"
-    except Exception:
-        logger.warning("Refiner folder picker: unexpected failure", exc_info=True)
-        return None, "unavailable"
-
-
-def run_picker_subprocess() -> None:
-    """Child-process entry: one JSON line on stdout (picked up by refiner_pick_folder_subprocess)."""
-    path, outcome = pick_folder_sync()
-    line = json.dumps({"folder": path, "outcome": outcome, "error": outcome if outcome != "ok" else None})
-    print(line, flush=True)
+REFINER_COMPANION_URL_DEFAULT = "http://127.0.0.1:8767/pick-folder"
+REFINER_COMPANION_UNAVAILABLE_MESSAGE = (
+    "Folder picker companion is not running. Type or paste the path."
+)
 
 
 def _pick_folder_subprocess_argv() -> list[str]:
-    """Frozen exe cannot run ``python -c``; use a dedicated argv consumed by app.cli.main."""
     if getattr(sys, "frozen", False):
         return [sys.executable, "--refiner-pick-folder-worker"]
-    return [sys.executable, "-m", "app.refiner_folder_picker"]
+    return [sys.executable, "-m", "app.refiner_pick_sync"]
 
 
-async def refiner_pick_folder_subprocess() -> dict[str, Any]:
-    """Run ``pick_folder_sync`` in a subprocess so timeouts can kill the process (no stuck tk thread)."""
+def _companion_pick_url() -> str:
+    return (os.environ.get("FETCHER_REFINER_COMPANION_URL") or REFINER_COMPANION_URL_DEFAULT).strip()
+
+
+def _normalize_companion_response(data: Any) -> dict[str, Any]:
+    if not isinstance(data, dict) or "ok" not in data:
+        return {
+            "ok": False,
+            "reason": "unavailable",
+            "message": REFINER_COMPANION_UNAVAILABLE_MESSAGE,
+        }
+    if data.get("ok") is True and data.get("path"):
+        return {"ok": True, "path": str(data["path"])}
+    if data.get("ok") is False and data.get("reason") == "cancelled":
+        return {"ok": False, "reason": "cancelled"}
+    if data.get("ok") is False:
+        return {
+            "ok": False,
+            "reason": "unavailable",
+            "message": str(data.get("message") or REFINER_COMPANION_UNAVAILABLE_MESSAGE),
+        }
+    return {
+        "ok": False,
+        "reason": "unavailable",
+        "message": REFINER_COMPANION_UNAVAILABLE_MESSAGE,
+    }
+
+
+async def _pick_folder_via_companion_http() -> dict[str, Any]:
+    url = _companion_pick_url()
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(url, timeout=12.0)
+    except httpx.TimeoutException:
+        logger.warning("Refiner folder picker: companion request timed out (%s)", url)
+        return {
+            "ok": False,
+            "reason": "unavailable",
+            "message": REFINER_COMPANION_UNAVAILABLE_MESSAGE,
+        }
+    except httpx.RequestError as exc:
+        logger.warning("Refiner folder picker: companion unreachable: %s", exc)
+        return {
+            "ok": False,
+            "reason": "unavailable",
+            "message": REFINER_COMPANION_UNAVAILABLE_MESSAGE,
+        }
+    try:
+        data = r.json()
+    except Exception:
+        logger.warning("Refiner folder picker: companion returned non-JSON (status %s)", r.status_code)
+        return {
+            "ok": False,
+            "reason": "unavailable",
+            "message": REFINER_COMPANION_UNAVAILABLE_MESSAGE,
+        }
+    if r.status_code >= 400:
+        return _normalize_companion_response(data if isinstance(data, dict) else {})
+    return _normalize_companion_response(data)
+
+
+async def _refiner_pick_folder_subprocess_linux() -> dict[str, Any]:
     try:
         proc = await asyncio.create_subprocess_exec(
             *_pick_folder_subprocess_argv(),
@@ -131,7 +139,7 @@ async def refiner_pick_folder_subprocess() -> dict[str, Any]:
                 "message": REFINER_PICK_FOLDER_FAIL_MESSAGE,
             }
         try:
-            data = json.loads(lines[-1])
+            row = json.loads(lines[-1])
         except Exception:
             logger.warning("Invalid subprocess output: %r", raw_out[:2048])
             return {
@@ -140,8 +148,8 @@ async def refiner_pick_folder_subprocess() -> dict[str, Any]:
                 "message": REFINER_PICK_FOLDER_FAIL_MESSAGE,
             }
 
-        path = data.get("folder")
-        outcome = data.get("outcome")
+        path = row.get("folder")
+        outcome = row.get("outcome")
         if outcome == "ok" and path:
             return {"ok": True, "path": str(path)}
         if outcome == "cancelled":
@@ -158,6 +166,12 @@ async def refiner_pick_folder_subprocess() -> dict[str, Any]:
             "reason": "unavailable",
             "message": REFINER_PICK_FOLDER_FAIL_MESSAGE,
         }
+
+
+async def refiner_pick_folder_subprocess() -> dict[str, Any]:
+    if sys.platform == "win32":
+        return await _pick_folder_via_companion_http()
+    return await _refiner_pick_folder_subprocess_linux()
 
 
 if __name__ == "__main__":

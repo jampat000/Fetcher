@@ -19,6 +19,7 @@ packaging/ffmpeg-download/
 # Ignore stray PyInstaller specs; keep the real one for CI/local builds
 *.spec
 !packaging/fetcher.spec
+!packaging/companion.spec
 
 # IDE / OS
 .idea/

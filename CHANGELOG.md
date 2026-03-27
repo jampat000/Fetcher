@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.4] - 2026-03-27
+
+### Added
+
+- Windows companion app for interactive folder browsing while Fetcher runs as a service
+- Companion packaging in Windows builds
+- Companion registration script for per-user logon startup
+
+### Changed
+
+- Refiner folder Browse now proxies through the companion on Windows service installs
+- Service no longer attempts to launch native folder dialogs directly
+
+### Notes
+
+- To enable Browse in service mode, run **"Register Fetcher Companion (folder picker)"** once from the logged-in Windows user account.
+
 ## [3.0.3] - 2026-03-27
 
 ### Fixed
@@ -1055,7 +1072,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.0.3...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.0.4...HEAD
+[3.0.4]: https://github.com/jampat000/Fetcher/compare/v3.0.3...v3.0.4
 [3.0.3]: https://github.com/jampat000/Fetcher/compare/v3.0.2...v3.0.3
 [3.0.2]: https://github.com/jampat000/Fetcher/compare/v3.0.1...v3.0.2
 [3.0.1]: https://github.com/jampat000/Fetcher/compare/v3.0.0...v3.0.1
