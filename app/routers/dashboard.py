@@ -22,16 +22,16 @@ from app.emby_rules import (
     parse_movie_people_credit_types_csv,
     parse_movie_people_phrases,
 )
-from app.models import ActivityLog, JobRunLog
+from app.models import ActivityLog, JobRunLog, RefinerActivity
 from app.paths import is_safe_path, resolved_logs_dir
 from app.time_util import utc_now_naive
 from app.dashboard_service import build_dashboard_status
 from app.ui_templates import templates
 from app.web_common import (
     ACTIVITY_DETAIL_PREVIEW_LINES,
-    activity_display_row,
     dedupe_job_run_logs_for_display,
     is_setup_complete,
+    merge_activity_feed,
     movie_credit_types_summary,
     user_visible_job_run_message,
 )
@@ -44,13 +44,17 @@ router = APIRouter(dependencies=AUTH_DEPS)
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await _get_or_create_settings(session)
-    # Home only shows five rows; avoid loading rows we never render.
-    activity = (
-        (await session.execute(select(ActivityLog).order_by(desc(ActivityLog.id)).limit(8)))
+    tz = settings.timezone or "UTC"
+    now = utc_now_naive()
+    activity_logs = (
+        (await session.execute(select(ActivityLog).order_by(desc(ActivityLog.id)).limit(200)))
         .scalars().all()
     )
-    tz = settings.timezone or "UTC"
-    activity_display = [activity_display_row(e, tz) for e in activity]
+    refiner_logs = (
+        (await session.execute(select(RefinerActivity).order_by(desc(RefinerActivity.id)).limit(200)))
+        .scalars().all()
+    )
+    activity_display = merge_activity_feed(activity_logs, refiner_logs, tz, now, limit=200)
     show_setup_wizard = not is_setup_complete(settings)
     snapshots = await fetch_latest_app_snapshots(session)
     # Render dashboard quickly (no blocking live Arr totals). Live hero polling happens
@@ -157,7 +161,7 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
                     settings.emby_rule_tv_people_credit_types_csv
                 )
             ),
-            "now": utc_now_naive(),
+            "now": now,
             "now_local": _now_local(tz),
             "timezone": tz,
             "csrf_token": await get_csrf_token_for_template(request, session),
@@ -229,12 +233,17 @@ async def logs_file(name: str, _request: Request) -> PlainTextResponse:
 async def activity_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await _get_or_create_settings(session)
     show_setup_wizard = not is_setup_complete(settings)
-    activity = (
+    tz = settings.timezone or "UTC"
+    now = utc_now_naive()
+    activity_logs = (
         (await session.execute(select(ActivityLog).order_by(desc(ActivityLog.id)).limit(200)))
         .scalars().all()
     )
-    tz = settings.timezone or "UTC"
-    activity_display = [activity_display_row(e, tz) for e in activity]
+    refiner_logs = (
+        (await session.execute(select(RefinerActivity).order_by(desc(RefinerActivity.id)).limit(200)))
+        .scalars().all()
+    )
+    activity_display = merge_activity_feed(activity_logs, refiner_logs, tz, now, limit=200)
     return templates.TemplateResponse(
         request,
         "activity.html",
@@ -245,7 +254,7 @@ async def activity_page(request: Request, session: AsyncSession = Depends(get_se
             "subtitle": "What Fetcher grabbed",
             "activity": activity_display,
             "activity_detail_preview": ACTIVITY_DETAIL_PREVIEW_LINES,
-            "now": utc_now_naive(),
+            "now": now,
             "now_local": _now_local(tz),
             "timezone": tz,
             "csrf_token": await get_csrf_token_for_template(request, session),

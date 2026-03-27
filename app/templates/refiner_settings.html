@@ -3,6 +3,8 @@
 {% from "macros/toggle.html" import toggle_checkbox %}
 {% from "macros/refiner_area.html" import refiner_area_tabs %}
 {% block content %}
+{% set _ref_saved = (request.query_params.get('refiner_saved') or '') %}
+{% set _ref_fail_sec = (request.query_params.get('refiner_section') or '') %}
 <div class="wrap">
   <div class="page-head">
     <div>
@@ -13,113 +15,249 @@
 
   {{ refiner_area_tabs('settings') }}
 
-  {% if request.query_params.get('saved') == '1' %}
-  <div class="banner banner-ok" role="status">Refiner settings saved.</div>
-  {% elif request.query_params.get('save') == 'fail' %}
-  <div class="banner banner-warn" role="alert">Could not save — try again. ({{ request.query_params.get('reason', 'error') | e }})</div>
-  {% endif %}
-  {% if request.query_params.get('refiner_run') == '1' %}
-  <div class="banner banner-ok" role="status">Refiner finished this run. Review logs and Activity for details.</div>
-  {% endif %}
   {% if not settings.stream_manager_enabled %}
-  <div class="banner banner-ok trimmer-mode-banner banner--soft" role="status">
-    <strong>Refiner off</strong> — Turn on <strong>Enable Refiner</strong> below to use dry run or live mode.
+  <div class="banner banner-ok refiner-mode-banner banner--soft" role="status">
+    <strong>Refiner is off.</strong> Enable it under <a href="#refiner-processing">Processing</a>, then choose dry run or live mode.
   </div>
   {% endif %}
 
-  <div class="card gc stripe-amber">
-    <div class="gc-title">Refiner</div>
-    <p class="hint">Refiner cleans audio and subtitle tracks while keeping original quality.</p>
-    <form method="post" action="/refiner/settings/save">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-      {% call toggle_checkbox("stream_manager_enabled", settings.stream_manager_enabled) %}<strong>Enable Refiner</strong>{% endcall %}
-      {% call toggle_checkbox("stream_manager_dry_run", settings.stream_manager_dry_run) %}<strong>Dry run (safe preview)</strong> — no files are moved or deleted{% endcall %}
+  <p class="hint refiner-settings-page-hint">Set processing, folders, audio, subtitles, and schedule in the sections below.</p>
 
-      <div class="row">
-        <div class="field">
-          <label>Watched folder</label>
-          <input class="input" type="text" name="stream_manager_watched_folder" value="{{ settings.stream_manager_watched_folder or '' }}" placeholder="D:\Media\Incoming" autocomplete="off" spellcheck="false" />
-        </div>
-        <div class="field">
-          <label>Output folder</label>
-          <input class="input" type="text" name="stream_manager_output_folder" value="{{ settings.stream_manager_output_folder or '' }}" placeholder="D:\Media\Processed" autocomplete="off" spellcheck="false" />
-        </div>
+  <nav class="settings-tabs trimmer-settings-section-tabs" aria-label="Refiner settings sections">
+    <a href="#refiner-processing" class="settings-tab">
+      <span class="settings-tab-dot gray" aria-hidden="true"></span>Processing
+    </a>
+    <a href="#refiner-folders" class="settings-tab">
+      <span class="settings-tab-dot gray" aria-hidden="true"></span>Folders
+    </a>
+    <a href="#refiner-audio" class="settings-tab">
+      <span class="settings-tab-dot gray" aria-hidden="true"></span>Audio
+    </a>
+    <a href="#refiner-subtitles" class="settings-tab">
+      <span class="settings-tab-dot gray" aria-hidden="true"></span>Subtitles
+    </a>
+    <a href="#refiner-schedule" class="settings-tab">
+      <span class="settings-tab-dot gray" aria-hidden="true"></span>Schedule
+    </a>
+  </nav>
+
+  <form class="refiner-settings-form" method="post" action="/refiner/settings/save" data-fetcher-refiner-async="1">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+
+    <div class="card gc stripe-amber refiner-settings-anchor" id="refiner-processing">
+      <div class="gc-title">Processing</div>
+      <div class="settings-async-feedback" hidden aria-live="polite"></div>
+      {% if request.query_params.get('saved') == '1' and _ref_saved == 'processing' %}
+      <div class="banner banner-ok refiner-section-save-feedback" role="status">Refiner settings saved (Processing).</div>
+      {% elif request.query_params.get('saved') == '1' and not _ref_saved %}
+      <div class="banner banner-ok refiner-section-save-feedback" role="status">Refiner settings saved.</div>
+      {% elif request.query_params.get('saved') == '1' and _ref_saved not in ['folders', 'audio', 'subtitles', 'schedule'] %}
+      <div class="banner banner-ok refiner-section-save-feedback" role="status">Refiner settings saved.</div>
+      {% elif request.query_params.get('save') == 'fail' and _ref_fail_sec == 'processing' %}
+      <div class="banner banner-warn refiner-section-save-feedback" role="alert">Could not save (Processing). Try again. ({{ request.query_params.get('reason', 'error') | e }})</div>
+      {% endif %}
+      <p class="small muted lead-muted">Turns Refiner on or off and sets dry run or live output.</p>
+      <div class="settings-toggle-group">
+        {% call toggle_checkbox("stream_manager_enabled", settings.stream_manager_enabled) %}<strong>Enable Refiner</strong>{% endcall %}
+        {% call toggle_checkbox("stream_manager_dry_run", settings.stream_manager_dry_run) %}<strong>Dry run (safe preview)</strong> — no files are moved or deleted{% endcall %}
       </div>
-      <div class="small">Files are processed from the watched folder and moved to the output folder after completion.</div>
-
-      <details class="section">
-        <summary class="small"><strong>Advanced:</strong> temp/work folder (optional)</summary>
-        <div class="field section">
-          <label>Temp/work folder</label>
-          <input class="input" type="text" name="stream_manager_work_folder" value="{{ settings.stream_manager_work_folder or '' }}" placeholder="Leave empty for managed default work folder" autocomplete="off" spellcheck="false" />
-        </div>
-      </details>
-
-      <div class="row">
-        <div class="field">
-          <label>Primary audio language</label>
-          <select class="input" name="stream_manager_primary_audio_lang">
-            <option value="" {% if (settings.stream_manager_primary_audio_lang or '') == '' %}selected{% endif %}>— required when enabled —</option>
-            {% for code, label in stream_language_options %}
-            <option value="{{ code }}" {% if (settings.stream_manager_primary_audio_lang or '') == code %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="field">
-          <label>Secondary audio (optional)</label>
-          <select class="input" name="stream_manager_secondary_audio_lang">
-            <option value="" {% if (settings.stream_manager_secondary_audio_lang or '') == '' %}selected{% endif %}>— off —</option>
-            {% for code, label in stream_language_options %}
-            <option value="{{ code }}" {% if (settings.stream_manager_secondary_audio_lang or '') == code %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </div>
+      <div class="refiner-settings-processing-deletion" role="note">
+        With dry run off, originals are removed only after output is written successfully.
       </div>
-
-      <div class="field">
-        <label>Default audio language</label>
-        <select class="input" name="stream_manager_default_audio_slot">
-          <option value="primary" {% if (settings.stream_manager_default_audio_slot or 'primary') == 'primary' %}selected{% endif %}>Primary language</option>
-          <option value="secondary" {% if (settings.stream_manager_default_audio_slot or '') == 'secondary' %}selected{% endif %}>Secondary language</option>
-        </select>
+      <div class="btn-row">
+        <button class="btn" type="submit" formaction="/refiner/settings/save?refiner_section=processing">Save processing</button>
       </div>
-      <div class="field">
-        <label>Audio preference mode</label>
-        <select class="input" name="stream_manager_audio_preference_mode">
-          <option value="best_available" {% if (settings.stream_manager_audio_preference_mode or 'best_available') == 'best_available' %}selected{% endif %}>Best available</option>
-          <option value="prefer_surround" {% if (settings.stream_manager_audio_preference_mode or '') == 'prefer_surround' %}selected{% endif %}>Prefer surround</option>
-          <option value="prefer_stereo" {% if (settings.stream_manager_audio_preference_mode or '') == 'prefer_stereo' %}selected{% endif %}>Prefer stereo</option>
-          <option value="prefer_lossless" {% if (settings.stream_manager_audio_preference_mode or '') == 'prefer_lossless' %}selected{% endif %}>Prefer lossless</option>
-        </select>
-      </div>
-      <div class="small">Only selected languages are kept. Preference determines which track is chosen when multiple exist.</div>
+    </div>
 
-      {% call toggle_checkbox("stream_manager_remove_commentary", settings.stream_manager_remove_commentary) %}Remove commentary audio tracks{% endcall %}
-
-      <div class="field">
-        <label>Subtitle mode</label>
-        <select class="input" name="stream_manager_subtitle_mode">
-          <option value="remove_all" {% if (settings.stream_manager_subtitle_mode or '') == 'remove_all' %}selected{% endif %}>Remove all subtitles</option>
-          <option value="keep_selected" {% if (settings.stream_manager_subtitle_mode or '') == 'keep_selected' %}selected{% endif %}>Keep selected languages</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Subtitle languages to keep</label>
-        <select class="input genre-select" name="stream_manager_subtitle_langs" multiple size="8">
-          {% for code, label in stream_language_options %}
-          <option value="{{ code }}" {% if code in selected_stream_subtitle_langs %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      {% call toggle_checkbox("stream_manager_preserve_forced_subs", settings.stream_manager_preserve_forced_subs) %}Preserve forced subtitle disposition on kept tracks{% endcall %}
-      {% call toggle_checkbox("stream_manager_preserve_default_subs", settings.stream_manager_preserve_default_subs) %}Preserve default subtitle disposition on kept tracks{% endcall %}
-
-      <div class="section section--push">
-        <div class="small">Original files are deleted after successful processing.</div>
-        {% call toggle_checkbox("stream_manager_schedule_enabled", settings.stream_manager_schedule_enabled) %}Enable Refiner schedule window{% endcall %}
-        <label>Days</label>
-        {{ schedule_days_checkboxes("stream_manager_schedule", stream_manager_schedule_days_selected) }}
+    <div class="card gc stripe-gray refiner-settings-anchor" id="refiner-folders">
+      <div class="gc-title">Folders</div>
+      <div class="settings-async-feedback" hidden aria-live="polite"></div>
+      {% if request.query_params.get('saved') == '1' and _ref_saved == 'folders' %}
+      <div class="banner banner-ok refiner-section-save-feedback" role="status">Refiner settings saved (Folders).</div>
+      {% elif request.query_params.get('save') == 'fail' and _ref_fail_sec == 'folders' %}
+      <div class="banner banner-warn refiner-section-save-feedback" role="alert">Could not save (Folders). Try again. ({{ request.query_params.get('reason', 'error') | e }})</div>
+      {% endif %}
+      <p class="small muted lead-muted">Sets watched and output folders, check interval, and optional work folder.</p>
+      <div class="settings-stack">
         <div class="row">
+          <div class="field">
+            <label>Watched folder</label>
+            <input class="input" type="text" name="stream_manager_watched_folder" value="{{ settings.stream_manager_watched_folder or '' }}" placeholder="D:\Media\Incoming" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="field">
+            <label>Output folder</label>
+            <input class="input" type="text" name="stream_manager_output_folder" value="{{ settings.stream_manager_output_folder or '' }}" placeholder="D:\Media\Processed" autocomplete="off" spellcheck="false" />
+          </div>
+        </div>
+        <div class="small settings-field-hint refiner-folders-paths-hint">Reads from the watched folder and writes finished files to the output folder.</div>
+        <div class="refiner-folders-interval-wrap">
+          <div class="field refiner-folders-interval-field">
+            <label for="refiner-watched-folder-interval-sec">Watched folder check interval (seconds)</label>
+            <input id="refiner-watched-folder-interval-sec" class="input number" type="number" name="stream_manager_interval_seconds" value="{{ settings.stream_manager_interval_seconds or 60 }}" min="5" max="604800" placeholder="60" autocomplete="off" inputmode="numeric" />
+            <div class="small settings-field-hint">Checks the watched folder on this interval and processes ready files.</div>
+          </div>
+        </div>
+        <details class="section refiner-folders-advanced">
+          <summary class="refiner-folders-advanced-summary">
+            <span class="refiner-folders-advanced-chevron" aria-hidden="true"></span>
+            <span class="refiner-folders-advanced-label">Advanced: temp/work folder (optional)</span>
+          </summary>
+          <div class="field section refiner-folders-advanced-body">
+            <label>Temp/work folder</label>
+            <input class="input" type="text" name="stream_manager_work_folder" value="{{ settings.stream_manager_work_folder or '' }}" placeholder="Optional — overrides default below" autocomplete="off" spellcheck="false" />
+            <div class="small settings-field-hint">Uses <code class="code-inline">{{ refiner_default_work_folder_path | e }}</code> when left empty.</div>
+          </div>
+        </details>
+      </div>
+      <div class="btn-row">
+        <button class="btn" type="submit" formaction="/refiner/settings/save?refiner_section=folders">Save folders</button>
+      </div>
+    </div>
+
+    <div class="card gc stripe-amber refiner-settings-anchor" id="refiner-audio">
+      <div class="gc-title">Audio</div>
+      <div class="settings-async-feedback" hidden aria-live="polite"></div>
+      {% if request.query_params.get('saved') == '1' and _ref_saved == 'audio' %}
+      <div class="banner banner-ok refiner-section-save-feedback" role="status">Refiner settings saved (Audio).</div>
+      {% elif request.query_params.get('save') == 'fail' and _ref_fail_sec == 'audio' %}
+      <div class="banner banner-warn refiner-section-save-feedback" role="alert">Could not save (Audio). Try again. ({{ request.query_params.get('reason', 'error') | e }})</div>
+      {% endif %}
+      <p class="small muted lead-muted">Keeps selected languages and removes unselected audio tracks.</p>
+      <div class="settings-stack refiner-audio-stack">
+        <div class="refiner-audio-lang-grid" role="group" aria-label="Audio language priority">
+          <div class="field refiner-audio-lang-cell">
+            <label>Primary audio language</label>
+            <select class="input" name="stream_manager_primary_audio_lang">
+              <option value="" {% if (settings.stream_manager_primary_audio_lang or '') == '' %}selected{% endif %}>Required when Refiner is on</option>
+              {% for code, label in stream_language_options %}
+              <option value="{{ code }}" {% if (settings.stream_manager_primary_audio_lang or '') == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field refiner-audio-lang-cell">
+            <label>Secondary audio language (optional)</label>
+            <select class="input" name="stream_manager_secondary_audio_lang">
+              <option value="" {% if (settings.stream_manager_secondary_audio_lang or '') == '' %}selected{% endif %}>None</option>
+              {% for code, label in stream_language_options %}
+              <option value="{{ code }}" {% if (settings.stream_manager_secondary_audio_lang or '') == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field refiner-audio-lang-cell">
+            <label>Tertiary audio language (optional)</label>
+            <select class="input" name="stream_manager_tertiary_audio_lang">
+              <option value="" {% if (settings.stream_manager_tertiary_audio_lang or '') == '' %}selected{% endif %}>None</option>
+              {% for code, label in stream_language_options %}
+              <option value="{{ code }}" {% if (settings.stream_manager_tertiary_audio_lang or '') == code %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="field refiner-audio-policy-field">
+          <label>Audio selection policy</label>
+          <div class="small settings-field-hint refiner-audio-policy-explainer" role="note">
+            <p class="refiner-audio-policy-lead">Choose how Refiner selects the final audio track:</p>
+            <ul class="refiner-audio-policy-options">
+              <li>
+                <div class="refiner-audio-policy-option-head">
+                  <span class="refiner-audio-policy-bullet" aria-hidden="true">•</span>
+                  <span class="refiner-audio-policy-option-title">Preferred languages (highest quality)</span>
+                </div>
+                <p class="refiner-audio-policy-option-desc">Picks the best-quality track within your preferred languages, in order.</p>
+              </li>
+              <li>
+                <div class="refiner-audio-policy-option-head">
+                  <span class="refiner-audio-policy-bullet" aria-hidden="true">•</span>
+                  <span class="refiner-audio-policy-option-title">Preferred languages (strict)</span>
+                </div>
+                <p class="refiner-audio-policy-option-desc">Only uses your preferred languages. No fallback if none are available.</p>
+              </li>
+              <li>
+                <div class="refiner-audio-policy-option-head">
+                  <span class="refiner-audio-policy-bullet" aria-hidden="true">•</span>
+                  <span class="refiner-audio-policy-option-title">Quality across all languages</span>
+                </div>
+                <p class="refiner-audio-policy-option-desc">Ignores language priority and selects the best overall track.</p>
+              </li>
+            </ul>
+          </div>
+          {% set _ap0 = (settings.stream_manager_audio_preference_mode or 'preferred_langs_quality') %}
+          {% set _ap_sel = _ap0 if _ap0 in ['preferred_langs_quality', 'preferred_langs_strict', 'quality_all_languages'] else 'preferred_langs_quality' %}
+          <select class="input" name="stream_manager_audio_preference_mode">
+            <option value="preferred_langs_quality" {% if _ap_sel == 'preferred_langs_quality' %}selected{% endif %}>Preferred languages (highest quality)</option>
+            <option value="preferred_langs_strict" {% if _ap_sel == 'preferred_langs_strict' %}selected{% endif %}>Preferred languages (strict)</option>
+            <option value="quality_all_languages" {% if _ap_sel == 'quality_all_languages' %}selected{% endif %}>Quality across all languages</option>
+          </select>
+        </div>
+        <div class="settings-toggle-group refiner-audio-commentary">
+          {% call toggle_checkbox("stream_manager_remove_commentary", settings.stream_manager_remove_commentary) %}Remove commentary tracks{% endcall %}
+          <div class="small settings-field-hint">Ignores commentary tracks during audio selection.</div>
+        </div>
+        <div class="field refiner-audio-default-field">
+          <label>Default audio track</label>
+          <select class="input" name="stream_manager_default_audio_slot">
+            <option value="primary" {% if (settings.stream_manager_default_audio_slot or 'primary') == 'primary' %}selected{% endif %}>Primary language</option>
+            <option value="secondary" {% if (settings.stream_manager_default_audio_slot or '') == 'secondary' %}selected{% endif %}>Secondary language</option>
+          </select>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn" type="submit" formaction="/refiner/settings/save?refiner_section=audio">Save audio</button>
+      </div>
+    </div>
+
+    <div class="card gc stripe-gray refiner-settings-anchor" id="refiner-subtitles">
+      <div class="gc-title">Subtitles</div>
+      <div class="settings-async-feedback" hidden aria-live="polite"></div>
+      {% if request.query_params.get('saved') == '1' and _ref_saved == 'subtitles' %}
+      <div class="banner banner-ok refiner-section-save-feedback" role="status">Refiner settings saved (Subtitles).</div>
+      {% elif request.query_params.get('save') == 'fail' and _ref_fail_sec == 'subtitles' %}
+      <div class="banner banner-warn refiner-section-save-feedback" role="alert">Could not save (Subtitles). Try again. ({{ request.query_params.get('reason', 'error') | e }})</div>
+      {% endif %}
+      <p class="small muted lead-muted">Removes all subtitles or keeps selected subtitle languages.</p>
+      <div class="settings-stack">
+        <div class="field">
+          <label>Subtitle mode</label>
+          <select class="input" name="stream_manager_subtitle_mode">
+            <option value="remove_all" {% if (settings.stream_manager_subtitle_mode or '') == 'remove_all' %}selected{% endif %}>Remove all subtitles</option>
+            <option value="keep_selected" {% if (settings.stream_manager_subtitle_mode or '') == 'keep_selected' %}selected{% endif %}>Keep selected languages</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Subtitle languages to keep</label>
+          <select class="input genre-select" name="stream_manager_subtitle_langs" multiple size="8">
+            {% for code, label in stream_language_options %}
+            <option value="{{ code }}" {% if code in selected_stream_subtitle_langs %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="settings-toggle-group refiner-subtitle-toggles">
+          {% call toggle_checkbox("stream_manager_preserve_forced_subs", settings.stream_manager_preserve_forced_subs) %}Preserve forced flag on kept subtitle tracks{% endcall %}
+          {% call toggle_checkbox("stream_manager_preserve_default_subs", settings.stream_manager_preserve_default_subs) %}Preserve default flag on kept subtitle tracks{% endcall %}
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn" type="submit" formaction="/refiner/settings/save?refiner_section=subtitles">Save subtitles</button>
+      </div>
+    </div>
+
+    <div class="card gc stripe-amber refiner-settings-anchor" id="refiner-schedule">
+      <div class="gc-title">Schedule</div>
+      <div class="settings-async-feedback" hidden aria-live="polite"></div>
+      {% if request.query_params.get('saved') == '1' and _ref_saved == 'schedule' %}
+      <div class="banner banner-ok refiner-section-save-feedback" role="status">Refiner settings saved (Schedule &amp; limits).</div>
+      {% elif request.query_params.get('save') == 'fail' and _ref_fail_sec == 'schedule' %}
+      <div class="banner banner-warn refiner-section-save-feedback" role="alert">Could not save (Schedule &amp; limits). Try again. ({{ request.query_params.get('reason', 'error') | e }})</div>
+      {% endif %}
+      <p class="small muted lead-muted">Limits processing to the selected days and times.</p>
+      <div class="settings-stack">
+        {% call toggle_checkbox("stream_manager_schedule_enabled", settings.stream_manager_schedule_enabled) %}Enable Refiner schedule window{% endcall %}
+        <div class="small settings-field-hint">Limits processing to the selected days and times when enabled.</div>
+        <div>
+          <label>Days</label>
+          {{ schedule_days_checkboxes("stream_manager_schedule", stream_manager_schedule_days_selected) }}
+        </div>
+        <div class="row schedule-time-row">
           <div class="field">
             {{ schedule_time_select("stream_manager_schedule_start", "Start time", stream_manager_schedule_start_hhmm, schedule_time_choices, stream_manager_start_orphan) }}
           </div>
@@ -127,21 +265,12 @@
             {{ schedule_time_select("stream_manager_schedule_end", "End time", stream_manager_schedule_end_hhmm, schedule_time_choices, stream_manager_end_orphan) }}
           </div>
         </div>
-        <div class="field">
-          <label>Minutes between runs (when enabled and watched/output are set)</label>
-          <input class="number" type="number" name="stream_manager_interval_minutes" value="{{ settings.stream_manager_interval_minutes or 60 }}" min="5" max="10080" />
-        </div>
+        <div class="small settings-field-hint">Runs within this time window on selected days.</div>
       </div>
       <div class="btn-row">
-        <button class="btn" type="submit">Save Refiner</button>
+        <button class="btn" type="submit" formaction="/refiner/settings/save?refiner_section=schedule">Save schedule &amp; limits</button>
       </div>
-    </form>
-    <form method="post" action="/refiner/settings/run" class="section">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-      <div class="btn-row">
-        <button class="btn secondary" type="submit">Run Refiner now</button>
-      </div>
-    </form>
-  </div>
+    </div>
+  </form>
 </div>
 {% endblock %}

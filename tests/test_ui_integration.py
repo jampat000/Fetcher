@@ -212,16 +212,27 @@ def test_settings_page_has_forms(monkeypatch: pytest.MonkeyPatch) -> None:
     assert b"name=\"sonarr_remove_failed_imports\"" in r.content
     assert b"name=\"radarr_remove_failed_imports\"" in r.content
     assert (
-        html.count("When enabled, each run removes queue rows that match an explicit") == 2
+        html.count(
+            "Removes failed or rejected imports from the queue and logs each removal in Activity."
+        )
+        == 2
     )
+    assert html.count('id="sonarr-panel-connection"') == 1
+    assert html.count('id="radarr-panel-connection"') == 1
+    assert html.count('id="sonarr-panel-search-cleanup"') == 1
+    assert html.count('id="radarr-panel-search-cleanup"') == 1
+    assert html.count("Search and cleanup</h3>") == 2
+    assert html.count('id="sonarr-panel-limits"') == 1
+    assert html.count('id="radarr-panel-limits"') == 1
+    assert html.count("Limits and schedule</h3>") == 2
+    assert html.count("settings-arr-panels") == 2
+    assert html.count("Search behavior") == 0
+    assert html.count("Failed import cleanup interval (minutes)") == 2
+    assert html.count("Run limits") == 0
     assert "each Sonarr run removes" not in html
     assert "each Radarr run removes" not in html
 
-    expected_interval_helper = (
-        "How often runs are due; the schedule window only limits when runs may start. "
-        "Applies to missing and upgrade searches. Save settings saves only this tab."
-    )
-    assert html.count(expected_interval_helper) == 2
+    assert html.count("Runs searches on this interval.") == 2
     assert "How often Sonarr runs are due" not in html
     assert "How often Radarr runs are due" not in html
 
@@ -264,6 +275,13 @@ def test_settings_saved_message_is_scope_aware(monkeypatch: pytest.MonkeyPatch, 
     assert needle in r.text
 
 
+def test_settings_security_access_control_shows_inline_saved_banner(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        r = client.get("/settings?saved=1&tab=security")
+    assert r.status_code == 200
+    assert "Access control saved." in r.text
+
+
 def test_trimmer_settings_has_content_criteria(monkeypatch: pytest.MonkeyPatch) -> None:
     with _client(monkeypatch) as client:
         r = client.get("/trimmer/settings")
@@ -279,15 +297,15 @@ def test_trimmer_settings_has_content_criteria(monkeypatch: pytest.MonkeyPatch) 
     assert "emby_rule_tv_people" in html
 
 
-def test_refiner_audio_dropdowns_are_two_language_model(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_refiner_audio_dropdowns_include_ordered_languages(monkeypatch: pytest.MonkeyPatch) -> None:
     with _client(monkeypatch) as client:
         r = client.get("/refiner/settings")
     assert r.status_code == 200
     html = r.text
     assert 'name="stream_manager_primary_audio_lang"' in html
     assert 'name="stream_manager_secondary_audio_lang"' in html
+    assert 'name="stream_manager_tertiary_audio_lang"' in html
     assert 'name="stream_manager_default_audio_slot"' in html
-    assert "Tertiary audio" not in html
 
 
 def test_refiner_micro_helper_text_is_present(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -295,9 +313,123 @@ def test_refiner_micro_helper_text_is_present(monkeypatch: pytest.MonkeyPatch) -
         r = client.get("/refiner/settings")
     assert r.status_code == 200
     html = r.text
-    assert "Files are processed from the watched folder and moved to the output folder after completion." in html
-    assert "Original files are deleted after successful processing." in html
-    assert "Only selected languages are kept. Preference determines which track is chosen when multiple exist." in html
+    assert "Reads from the watched folder and writes finished files to the output folder." in html
+    assert "With dry run off, originals are removed only after output is written successfully." in html
+    assert "Keeps selected languages and removes unselected audio tracks." in html
+    assert "Preferred languages (highest quality)" in html
+    assert "Preferred languages (strict)" in html
+    assert "Quality across all languages" in html
+    assert 'trimmer-settings-section-tabs' in html
+    assert "Watched folder check interval (seconds)" in html
+    assert 'id="refiner-watched-folder-interval-sec"' in html
+    assert "refiner-folders-interval-wrap" in html
+    assert 'name="stream_manager_interval_seconds"' in html
+    i_folders = html.index('id="refiner-folders"')
+    i_interval = html.index("refiner-folders-interval-wrap")
+    i_advanced = html.index("refiner-folders-advanced")
+    i_sched = html.index('id="refiner-schedule"')
+    assert i_folders < i_interval < i_advanced < i_sched
+    assert 'href="#refiner-processing"' in html
+    assert 'id="refiner-folders"' in html
+    assert 'id="refiner-schedule"' in html
+    assert "refiner-work" in html
+    assert "refiner_default_work_folder_path" not in html
+    assert "Checks the watched folder on this interval and processes ready files." in html
+    assert "Limits processing to the selected days and times." in html
+    assert 'formaction="/refiner/settings/save?refiner_section=processing"' in html
+    assert 'formaction="/refiner/settings/save?refiner_section=folders"' in html
+    assert 'formaction="/refiner/settings/save?refiner_section=audio"' in html
+    assert 'formaction="/refiner/settings/save?refiner_section=subtitles"' in html
+    assert 'formaction="/refiner/settings/save?refiner_section=schedule"' in html
+
+
+def test_refiner_saved_banner_uses_schedule_and_limits_wording(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        r = client.get("/refiner/settings?saved=1&refiner_saved=schedule")
+    assert r.status_code == 200
+    assert "Refiner settings saved (Schedule &amp; limits)." in r.text
+
+
+def test_refiner_fail_banner_includes_section_query(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        r = client.get("/refiner/settings?save=fail&reason=db_busy&refiner_section=audio")
+    assert r.status_code == 200
+    assert "Could not save (Audio). Try again. (db_busy)" in r.text
+
+
+def test_post_refiner_save_async_header_returns_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Refiner XHR path: JSON instead of 303 (same persistence as normal POST)."""
+    async def seed() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.stream_manager_primary_audio_lang = "eng"
+            await session.commit()
+
+    asyncio.run(seed())
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/refiner/settings/save?refiner_section=folders",
+            data={
+                "stream_manager_enabled": "true",
+                "stream_manager_dry_run": "true",
+                "stream_manager_primary_audio_lang": "eng",
+                "stream_manager_secondary_audio_lang": "",
+                "stream_manager_tertiary_audio_lang": "",
+                "stream_manager_default_audio_slot": "primary",
+                "stream_manager_audio_preference_mode": "preferred_langs_quality",
+                "stream_manager_watched_folder": "D:\\incoming",
+                "stream_manager_output_folder": "D:\\processed-async",
+                "stream_manager_schedule_enabled": "false",
+                "stream_manager_interval_seconds": "120",
+                **{f"stream_manager_schedule_{d}": "0" for d in _WEEKDAYS},
+            },
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "X-Fetcher-Refiner-Settings-Async": "1",
+            },
+        )
+    assert resp.status_code == 200
+    assert "application/json" in (resp.headers.get("content-type") or "").lower()
+    assert resp.json() == {"ok": True, "section": "folders"}
+
+    async def verify() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            assert row.stream_manager_interval_seconds == 120
+
+    asyncio.run(verify())
+
+
+def test_refiner_save_async_validation_returns_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Refiner async path: validation failure returns JSON with reason (no redirect)."""
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/refiner/settings/save?refiner_section=audio",
+            data={
+                "stream_manager_enabled": "true",
+                "stream_manager_dry_run": "true",
+                "stream_manager_primary_audio_lang": "",
+                "stream_manager_secondary_audio_lang": "",
+                "stream_manager_tertiary_audio_lang": "",
+                "stream_manager_default_audio_slot": "primary",
+                "stream_manager_audio_preference_mode": "preferred_langs_quality",
+                "stream_manager_watched_folder": "D:\\incoming",
+                "stream_manager_output_folder": "D:\\processed",
+                "stream_manager_schedule_enabled": "false",
+                "stream_manager_interval_seconds": "60",
+                **{f"stream_manager_schedule_{d}": "0" for d in _WEEKDAYS},
+            },
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "X-Fetcher-Refiner-Settings-Async": "1",
+            },
+        )
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "ok": False,
+        "reason": "primary_audio_required",
+        "section": "audio",
+    }
 
 
 def test_refiner_dry_run_save_does_not_modify_emby_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -311,30 +443,35 @@ def test_refiner_dry_run_save_does_not_modify_emby_dry_run(monkeypatch: pytest.M
     asyncio.run(seed())
     with _client(monkeypatch) as client:
         resp = client.post(
-            "/refiner/settings/save",
+            "/refiner/settings/save?refiner_section=folders",
             data={
                 "stream_manager_enabled": "true",
                 "stream_manager_dry_run": "false",
                 "stream_manager_primary_audio_lang": "eng",
                 "stream_manager_secondary_audio_lang": "",
+                "stream_manager_tertiary_audio_lang": "",
                 "stream_manager_default_audio_slot": "primary",
                 "stream_manager_audio_preference_mode": "best_available",
                 "stream_manager_watched_folder": "D:\\incoming",
                 "stream_manager_output_folder": "D:\\processed",
                 "stream_manager_schedule_enabled": "false",
-                "stream_manager_interval_minutes": "60",
+                "stream_manager_interval_seconds": "60",
                 **{f"stream_manager_schedule_{d}": "0" for d in _WEEKDAYS},
             },
             headers={"Content-Type": "application/x-www-form-urlencoded"},
             follow_redirects=False,
         )
     assert resp.status_code in (302, 303)
+    loc = resp.headers.get("location") or ""
+    assert "refiner/settings" in loc and "saved=1" in loc and "refiner_saved=folders" in loc and "#refiner-folders" in loc
 
     async def verify() -> None:
         async with SessionLocal() as session:
             row = await _get_or_create_settings(session)
             assert row.emby_dry_run is True
             assert row.stream_manager_dry_run is False
+            assert row.stream_manager_audio_preference_mode == "preferred_langs_quality"
+            assert row.stream_manager_interval_seconds == 60
 
     asyncio.run(verify())
 
@@ -394,10 +531,19 @@ def test_refiner_page_is_separate_from_trimmer(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_refiner_overview_page_exists_and_has_tabs(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def seed() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.stream_manager_enabled = True
+            row.stream_manager_interval_seconds = 45
+            await session.commit()
+
+    asyncio.run(seed())
     with _client(monkeypatch) as client:
         r = client.get("/refiner")
     assert r.status_code == 200
     assert "Refiner overview" in r.text
+    assert "45 s" in r.text
     assert 'href="/refiner"' in r.text
     assert 'href="/refiner/settings"' in r.text
 
@@ -622,7 +768,9 @@ def test_post_emby_connection_save(monkeypatch: pytest.MonkeyPatch) -> None:
             follow_redirects=False,
         )
     assert resp.status_code == 303
-    assert "/trimmer/settings" in resp.headers.get("location", "")
+    loc = resp.headers.get("location") or ""
+    assert "/trimmer/settings" in loc
+    assert "trimmer_saved=connection" in loc
 
 
 def test_post_emby_form_async_returns_json_ok(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -672,7 +820,7 @@ def test_post_trimmer_connection_async_header_returns_json(monkeypatch: pytest.M
         )
     assert resp.status_code == 200
     assert "application/json" in (resp.headers.get("content-type") or "").lower()
-    assert resp.json() == {"ok": True, "section": "connection"}
+    assert resp.json() == {"ok": True, "section": "connection", "save_scope": "connection"}
 
 
 def test_post_trimmer_cleaner_async_header_returns_json(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -698,7 +846,7 @@ def test_post_trimmer_cleaner_async_header_returns_json(monkeypatch: pytest.Monk
             },
         )
     assert resp.status_code == 200
-    assert resp.json() == {"ok": True, "section": "schedule"}
+    assert resp.json() == {"ok": True, "section": "schedule", "save_scope": "schedule"}
 
     async def verify_interval() -> None:
         async with SessionLocal() as session:
@@ -733,7 +881,7 @@ def test_post_trimmer_cleaner_save_scope_from_query_when_missing_from_body(
             },
         )
     assert resp.status_code == 200
-    assert resp.json() == {"ok": True, "section": "schedule"}
+    assert resp.json() == {"ok": True, "section": "schedule", "save_scope": "schedule"}
 
     async def verify_interval() -> None:
         async with SessionLocal() as session:
@@ -758,7 +906,7 @@ def test_trimmer_cleaner_validation_async_returns_json(monkeypatch: pytest.Monke
             },
         )
     assert resp.status_code == 200
-    assert resp.json() == {"ok": False, "section": "people", "reason": "invalid"}
+    assert resp.json() == {"ok": False, "section": "people", "reason": "invalid", "save_scope": "tv"}
 
 
 def test_post_trimmer_cleaner_rejects_missing_save_scope(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -810,7 +958,7 @@ def test_post_trimmer_cleaner_async_rejects_invalid_save_scope_json(monkeypatch:
             },
         )
     assert resp.status_code == 200
-    assert resp.json() == {"ok": False, "section": "schedule", "reason": "invalid_scope"}
+    assert resp.json() == {"ok": False, "section": "schedule", "reason": "invalid_scope", "save_scope": "sonarr"}
 
 
 def test_post_trimmer_cleaner_rejects_legacy_global_save_scope(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -860,6 +1008,7 @@ def test_post_trimmer_cleaner_legacy_global_async_json(monkeypatch: pytest.Monke
     assert resp.status_code == 200
     assert resp.json()["ok"] is False
     assert resp.json()["reason"] == "invalid_scope"
+    assert resp.json()["save_scope"] == "global"
 
 
 def test_post_trimmer_cleaner_legacy_global_does_not_mutate_db(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -938,6 +1087,7 @@ def test_post_trimmer_cleaner_save_scope_all_async_json(monkeypatch: pytest.Monk
     assert resp.status_code == 200
     assert resp.json()["ok"] is False
     assert resp.json()["reason"] == "invalid_scope"
+    assert resp.json()["save_scope"] == "all"
 
 
 def test_post_trimmer_cleaner_save_scope_all_does_not_mutate_db(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1360,7 +1510,7 @@ def test_get_settings_save_fail_banner_visible_on_sonarr_tab(monkeypatch: pytest
     assert r.status_code == 200
     html = r.text
     assert "settings-fetcher-save-fail" in html
-    assert "database was busy" in html
+    assert "Could not save (Sonarr). Try again. (db_busy)" in html
 
 
 def test_test_sonarr_post_does_not_mutate_app_settings_url(monkeypatch: pytest.MonkeyPatch) -> None:

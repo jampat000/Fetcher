@@ -74,13 +74,47 @@ async def _run_sonarr_success() -> None:
         await session.commit()
 
 
+class _FakeAmbiguousClient(_FakeSonarrClient):
+    async def queue_page(self, *, page: int, page_size: int) -> dict[str, Any]:
+        return {
+            "records": [
+                {"id": 1, "downloadId": "d1"},
+                {"id": 2, "downloadId": "d1"},
+            ],
+            "totalRecords": 2,
+        }
+
+
+def test_sonarr_cleanup_ambiguous_download_id_removes_all_matches() -> None:
+    asyncio.run(_run_sonarr_ambiguous())
+
+
+async def _run_sonarr_ambiguous() -> None:
+    client = _FakeAmbiguousClient()
+    actions: list[str] = []
+    async with SessionLocal() as session:
+        await run_sonarr_failed_import_queue_cleanup(
+            client,
+            session=session,
+            job_run_id=None,
+            actions=actions,
+        )
+        await session.commit()
+    assert client.delete_calls == [
+        {"queue_id": 1, "blocklist": True},
+        {"queue_id": 2, "blocklist": True},
+    ]
+    assert any("multiple queue ids" in a.lower() for a in actions)
+
+
 class _FakeSonarrDeleteFails(_FakeSonarrClient):
     async def delete_queue_item(self, *, queue_id: int, blocklist: bool = False, **kwargs: Any) -> None:
         self.delete_calls.append({"queue_id": int(queue_id), "blocklist": bool(blocklist)})
-        raise RuntimeError("sonarr delete failed")
+        if blocklist:
+            raise RuntimeError("sonarr delete failed")
 
 
-def test_sonarr_cleanup_delete_failure_reports_without_activity() -> None:
+def test_sonarr_cleanup_delete_failure_retries_without_blocklist() -> None:
     asyncio.run(_run_sonarr_delete_fail())
 
 
@@ -96,8 +130,8 @@ async def _run_sonarr_delete_fail() -> None:
         )
         await session.commit()
 
-    assert client.delete_calls == [{"queue_id": 99, "blocklist": True}]
-    assert any("failed-import queue remove failed" in a.lower() for a in actions)
-    async with SessionLocal() as session:
-        rows = (await session.execute(select(ActivityLog))).scalars().all()
-        assert len(rows) == 0
+    assert client.delete_calls == [
+        {"queue_id": 99, "blocklist": True},
+        {"queue_id": 99, "blocklist": False},
+    ]
+    assert any("without blocklist" in a.lower() for a in actions)

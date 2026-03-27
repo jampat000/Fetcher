@@ -248,7 +248,7 @@ def test_settings_route_smoke(monkeypatch) -> None:
     with _build_client(monkeypatch) as client:
         resp = client.get("/settings")
     assert resp.status_code == 200
-    assert b"Schedule window restricts when runs are allowed" in resp.content
+    assert b"Limits runs to the selected days and times" in resp.content
 
 
 def test_setup_redirect_and_wizard_smoke(monkeypatch) -> None:

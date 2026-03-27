@@ -1,6 +1,47 @@
 {# Shared dashboard + activity list row. ``e``: primary_label, time_local, app, kind, count, detail_lines (list[str]). #}
 {% macro activity_row(e, preview_lines) %}
-        <div class="activity-row{% if e.detail_lines | length > preview_lines %} activity-row--expandable{% endif %}" data-activity-app="{{ e.app }}" data-activity-kind="{{ e.kind }}">
+{% set pl = e.detail_preview if e.detail_preview is defined else preview_lines %}
+        {% if e.activity_type == 'refiner' %}
+        <div class="activity-row activity-row--refiner{% if e.detail_lines | length > pl %} activity-row--expandable{% endif %}" data-activity-app="refiner" data-activity-kind="{{ e.kind }}">
+          <div class="activity-icon icon-refiner" aria-hidden="true">R</div>
+          <div class="activity-body">
+            <div class="activity-title-line activity-title-line--refiner">
+              {% if e.refiner_status == 'success' %}
+              <span class="activity-refiner-mark activity-refiner-mark--ok" title="Success" aria-hidden="true">✔</span>
+              {% elif e.refiner_status == 'skipped' %}
+              <span class="activity-refiner-mark activity-refiner-mark--skip" title="Skipped" aria-hidden="true">○</span>
+              {% else %}
+              <span class="activity-refiner-mark activity-refiner-mark--fail" title="Failed" aria-hidden="true">✗</span>
+              {% endif %}
+              <span class="activity-refiner-filename">{{ e.primary_label }}</span>
+            </div>
+            {% if e.detail_lines %}
+              <div class="activity-detail-sub{% if e.detail_lines | length > pl %} activity-detail-sub--expandable{% endif %}">
+                <div class="activity-detail-stack">
+                  {% for line in e.detail_lines[:pl] %}
+                  <div class="activity-detail-line{% if loop.index == 3 %} activity-detail-line--muted{% endif %}">{{ line }}</div>
+                  {% endfor %}
+                  {% if e.detail_lines | length > pl %}
+                  <div class="activity-detail-rest" hidden>
+                    {% for line in e.detail_lines[pl:] %}
+                    <div class="activity-detail-line">{{ line }}</div>
+                    {% endfor %}
+                  </div>
+                  {% endif %}
+                </div>
+                {% if e.detail_lines | length > pl %}
+                <button type="button" class="activity-detail-toggle" aria-expanded="false" data-more-count="{{ e.detail_lines | length - pl }}">+{{ e.detail_lines | length - pl }} more</button>
+                {% endif %}
+              </div>
+            {% endif %}
+          </div>
+          <div class="activity-meta">
+            <span class="activity-count activity-count--dim">Refiner</span>
+            <span class="activity-time">{{ e.time_local }}</span>
+          </div>
+        </div>
+        {% else %}
+        <div class="activity-row{% if e.detail_lines | length > pl %} activity-row--expandable{% endif %}" data-activity-app="{{ e.app }}" data-activity-kind="{{ e.kind }}">
           {% if e.app == "sonarr" %}
             <div class="activity-icon icon-sonarr" aria-hidden="true">TV</div>
           {% elif e.app == "radarr" %}
@@ -11,21 +52,21 @@
           <div class="activity-body">
             <div class="activity-title-line">{{ e.primary_label }}</div>
             {% if e.detail_lines %}
-              <div class="activity-detail-sub{% if e.detail_lines | length > preview_lines %} activity-detail-sub--expandable{% endif %}">
+              <div class="activity-detail-sub{% if e.detail_lines | length > pl %} activity-detail-sub--expandable{% endif %}">
                 <div class="activity-detail-stack">
-                  {% for line in e.detail_lines[:preview_lines] %}
+                  {% for line in e.detail_lines[:pl] %}
                   <div class="activity-detail-line">{{ line }}</div>
                   {% endfor %}
-                  {% if e.detail_lines | length > preview_lines %}
+                  {% if e.detail_lines | length > pl %}
                   <div class="activity-detail-rest" hidden>
-                    {% for line in e.detail_lines[preview_lines:] %}
+                    {% for line in e.detail_lines[pl:] %}
                     <div class="activity-detail-line">{{ line }}</div>
                     {% endfor %}
                   </div>
                   {% endif %}
                 </div>
-                {% if e.detail_lines | length > preview_lines %}
-                <button type="button" class="activity-detail-toggle" aria-expanded="false" data-more-count="{{ e.detail_lines | length - preview_lines }}">+{{ e.detail_lines | length - preview_lines }} more</button>
+                {% if e.detail_lines | length > pl %}
+                <button type="button" class="activity-detail-toggle" aria-expanded="false" data-more-count="{{ e.detail_lines | length - pl }}">+{{ e.detail_lines | length - pl }} more</button>
                 {% endif %}
               </div>
             {% endif %}
@@ -35,4 +76,5 @@
             <span class="activity-time">{{ e.time_local }}</span>
           </div>
         </div>
+        {% endif %}
 {% endmacro %}

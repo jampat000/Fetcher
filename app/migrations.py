@@ -465,7 +465,7 @@ async def _migrate_027_stream_manager_pipeline_columns(engine: AsyncEngine) -> N
         await _add_column(
             engine,
             table=table,
-            ddl="stream_manager_audio_preference_mode TEXT NOT NULL DEFAULT 'best_available'",
+            ddl="stream_manager_audio_preference_mode TEXT NOT NULL DEFAULT 'preferred_langs_quality'",
         )
     # One-time carry forward from v1 paths model when pipeline folders are blank.
     if await _has_column(engine, table=table, column="stream_manager_paths"):
@@ -500,6 +500,69 @@ async def _migrate_027_stream_manager_pipeline_columns(engine: AsyncEngine) -> N
             )
 
 
+async def _migrate_028_stream_manager_interval_seconds(engine: AsyncEngine) -> None:
+    """Watched-folder cadence is stored in seconds (was minutes); migrate values × 60 then drop old column."""
+    table = "app_settings"
+    if not await _has_column(engine, table=table, column="stream_manager_interval_seconds"):
+        await _add_column(engine, table=table, ddl="stream_manager_interval_seconds INTEGER NOT NULL DEFAULT 60")
+        if await _has_column(engine, table=table, column="stream_manager_interval_minutes"):
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        f"""
+                        UPDATE {table}
+                        SET stream_manager_interval_seconds = CASE
+                          WHEN COALESCE(stream_manager_interval_minutes, 0) < 1 THEN 60
+                          WHEN stream_manager_interval_minutes * 60 < 5 THEN 5
+                          WHEN stream_manager_interval_minutes * 60 > 604800 THEN 604800
+                          ELSE stream_manager_interval_minutes * 60
+                        END
+                        """
+                    )
+                )
+    if await _has_column(engine, table=table, column="stream_manager_interval_minutes"):
+        async with engine.begin() as conn:
+            await conn.execute(text(f"ALTER TABLE {table} DROP COLUMN stream_manager_interval_minutes"))
+
+
+async def _migrate_029_refiner_activity(engine: AsyncEngine) -> None:
+    """Per-file Refiner processing stats for unified Activity feed."""
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS refiner_activity (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    created_at DATETIME NOT NULL,
+                    file_name VARCHAR(512) NOT NULL DEFAULT '',
+                    status VARCHAR(16) NOT NULL DEFAULT 'failed',
+                    size_before_bytes INTEGER NOT NULL DEFAULT 0,
+                    size_after_bytes INTEGER NOT NULL DEFAULT 0,
+                    audio_tracks_before INTEGER NOT NULL DEFAULT 0,
+                    audio_tracks_after INTEGER NOT NULL DEFAULT 0,
+                    subtitle_tracks_before INTEGER NOT NULL DEFAULT 0,
+                    subtitle_tracks_after INTEGER NOT NULL DEFAULT 0,
+                    processing_time_ms INTEGER NULL
+                )
+                """
+            )
+        )
+
+
+async def _migrate_030_failed_import_cleanup_interval(engine: AsyncEngine) -> None:
+    table = "app_settings"
+    if not await _has_column(engine, table=table, column="failed_import_cleanup_interval_minutes"):
+        await _add_column(
+            engine,
+            table=table,
+            ddl="failed_import_cleanup_interval_minutes INTEGER NOT NULL DEFAULT 60",
+        )
+    if not await _has_column(engine, table=table, column="sonarr_failed_import_cleanup_last_run_at"):
+        await _add_column(engine, table=table, ddl="sonarr_failed_import_cleanup_last_run_at DATETIME")
+    if not await _has_column(engine, table=table, column="radarr_failed_import_cleanup_last_run_at"):
+        await _add_column(engine, table=table, ddl="radarr_failed_import_cleanup_last_run_at DATETIME")
+
+
 async def migrate(engine: AsyncEngine) -> None:
     await _migrate_001_sonarr_per_app_columns(engine)
     await _migrate_002_radarr_per_app_columns(engine)
@@ -528,3 +591,6 @@ async def migrate(engine: AsyncEngine) -> None:
     await _migrate_025_sonarr_remove_failed_imports(engine)
     await _migrate_026_stream_manager_columns(engine)
     await _migrate_027_stream_manager_pipeline_columns(engine)
+    await _migrate_028_stream_manager_interval_seconds(engine)
+    await _migrate_029_refiner_activity(engine)
+    await _migrate_030_failed_import_cleanup_interval(engine)

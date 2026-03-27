@@ -42,6 +42,12 @@ class SettingsIn(BaseModel):
         le=365 * 24 * 60,
         description="Min minutes before retrying the same Radarr item search.",
     )
+    failed_import_cleanup_interval_minutes: int = Field(
+        default=60,
+        ge=1,
+        le=7 * 24 * 60,
+        description="How often failed-import cleanup checks run for Sonarr and Radarr.",
+    )
 
     emby_enabled: bool = False
     emby_url: str = Field(default="", description="Base URL, e.g. http://localhost:8096")

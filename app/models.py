@@ -57,6 +57,10 @@ class AppSettings(Base):
     sonarr_retry_delay_minutes: Mapped[int] = mapped_column(Integer, default=1440)
     # Min minutes before Fetcher retries searching the same Radarr movie.
     radarr_retry_delay_minutes: Mapped[int] = mapped_column(Integer, default=1440)
+    # Shared cadence for Sonarr/Radarr failed-import cleanup checks.
+    failed_import_cleanup_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    sonarr_failed_import_cleanup_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    radarr_failed_import_cleanup_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # Activity, job_run_log, app_snapshot pruning window (days); clamped 7–3650 when pruning.
     log_retention_days: Mapped[int] = mapped_column(Integer, default=90)
     timezone: Mapped[str] = mapped_column(String(64), default="UTC")  # IANA e.g. America/New_York
@@ -107,8 +111,9 @@ class AppSettings(Base):
     # Legacy v1 field retained for migration compatibility only.
     stream_manager_paths: Mapped[str] = mapped_column(Text, default="")
     # Small preset for choosing the best kept audio stream within allowed languages.
-    stream_manager_audio_preference_mode: Mapped[str] = mapped_column(String(24), default="best_available")
-    stream_manager_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    stream_manager_audio_preference_mode: Mapped[str] = mapped_column(String(24), default="preferred_langs_quality")
+    # Seconds between watched-folder scans when Refiner is configured (min 5; cap 7 days).
+    stream_manager_interval_seconds: Mapped[int] = mapped_column(Integer, default=60)
     stream_manager_schedule_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     stream_manager_schedule_days: Mapped[str] = mapped_column(Text, default="")
     stream_manager_schedule_start: Mapped[str] = mapped_column(String(5), default="00:00")
@@ -165,6 +170,25 @@ class ActivityLog(Base):
     status: Mapped[str] = mapped_column(String(16), default="ok")  # "ok" | "failed"
     count: Mapped[int] = mapped_column(Integer, default=0)
     detail: Mapped[str] = mapped_column(Text, default="")
+
+
+class RefinerActivity(Base):
+    """Per-file Refiner remux outcome for Activity feed (no JSON blobs)."""
+
+    __tablename__ = "refiner_activity"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
+    file_name: Mapped[str] = mapped_column(String(512), default="")
+    # "success" | "skipped" | "failed"
+    status: Mapped[str] = mapped_column(String(16), default="failed")
+    size_before_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    size_after_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    audio_tracks_before: Mapped[int] = mapped_column(Integer, default=0)
+    audio_tracks_after: Mapped[int] = mapped_column(Integer, default=0)
+    subtitle_tracks_before: Mapped[int] = mapped_column(Integer, default=0)
+    subtitle_tracks_after: Mapped[int] = mapped_column(Integer, default=0)
+    processing_time_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class ArrActionLog(Base):

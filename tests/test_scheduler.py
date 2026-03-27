@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime
 from types import SimpleNamespace
 
-from app.scheduler import ServiceScheduler, compute_job_intervals_minutes
+from app.scheduler import ServiceScheduler, compute_job_intervals_minutes, effective_stream_manager_interval_seconds
 
 
 def _arr_settings(**kwargs: object) -> SimpleNamespace:
@@ -61,60 +61,127 @@ def test_compute_job_intervals_minutes_uses_single_configured_app() -> None:
     assert compute_job_intervals_minutes(s) == {"sonarr": 45}
 
 
-def test_compute_job_intervals_includes_stream_manager_when_configured() -> None:
+def test_compute_job_intervals_minutes_excludes_stream_manager() -> None:
     s = _arr_settings(
         stream_manager_enabled=True,
         stream_manager_watched_folder="D:\\Media\\incoming",
         stream_manager_output_folder="D:\\Media\\processed",
-        stream_manager_interval_minutes=120,
+        stream_manager_interval_seconds=120,
     )
-    assert compute_job_intervals_minutes(s) == {"stream_manager": 120}
+    assert compute_job_intervals_minutes(s) == {}
+
+
+def test_effective_stream_manager_interval_seconds_when_configured() -> None:
+    s = _arr_settings(
+        stream_manager_enabled=True,
+        stream_manager_watched_folder="D:\\Media\\incoming",
+        stream_manager_output_folder="D:\\Media\\processed",
+        stream_manager_interval_seconds=120,
+    )
+    assert effective_stream_manager_interval_seconds(s) == 120
 
 
 def test_start_creates_independent_jobs_for_enabled_apps() -> None:
     s = ServiceScheduler()
-    calls: list[tuple[str, int]] = []
+    calls: list[tuple] = []
 
-    async def _fake_intervals():
-        return {"sonarr": 30, "radarr": 120, "trimmer": 45}
+    async def _fake_payload():
+        return ({"sonarr": 30, "radarr": 120, "trimmer": 45}, None)
 
     class _FakeSched:
         running = False
 
-        def add_job(self, _fn, _trigger, *, minutes, id, replace_existing, next_run_time=None):  # noqa: ANN001
-            calls.append((id, minutes))
+        def add_job(self, _fn, _trigger, *, id, replace_existing, next_run_time=None, minutes=None, seconds=None, **_kw):  # noqa: ANN001
+            if seconds is not None:
+                calls.append((id, "seconds", seconds))
+            else:
+                calls.append((id, "minutes", minutes))
 
         def start(self) -> None:
             self.running = True
 
     s._sched = _FakeSched()
-    s._current_job_intervals_minutes = _fake_intervals
+    s._current_scheduler_intervals = _fake_payload
     asyncio.run(s.start())
-    assert ("fetcher_sonarr", 30) in calls
-    assert ("fetcher_radarr", 120) in calls
-    assert ("fetcher_trimmer", 45) in calls
+    assert ("fetcher_sonarr", "minutes", 30) in calls
+    assert ("fetcher_radarr", "minutes", 120) in calls
+    assert ("fetcher_trimmer", "minutes", 45) in calls
+
+
+def test_start_adds_stream_manager_job_in_seconds() -> None:
+    s = ServiceScheduler()
+    calls: list[tuple] = []
+
+    async def _fake_payload():
+        return ({"sonarr": 30}, 90)
+
+    class _FakeSched:
+        running = False
+
+        def add_job(self, _fn, _trigger, *, id, replace_existing, next_run_time=None, minutes=None, seconds=None, **_kw):  # noqa: ANN001
+            if seconds is not None:
+                calls.append((id, "seconds", seconds))
+            else:
+                calls.append((id, "minutes", minutes))
+
+        def start(self) -> None:
+            self.running = True
+
+    s._sched = _FakeSched()
+    s._current_scheduler_intervals = _fake_payload
+    asyncio.run(s.start())
+    assert ("fetcher_sonarr", "minutes", 30) in calls
+    assert ("fetcher_stream_manager", "seconds", 90) in calls
 
 
 def test_reschedule_updates_only_requested_job() -> None:
     s = ServiceScheduler()
-    calls: list[tuple[str, int]] = []
+    calls: list[tuple] = []
 
-    async def _fake_intervals():
-        return {"sonarr": 30, "radarr": 120, "trimmer": 45}
+    async def _fake_payload():
+        return ({"sonarr": 30, "radarr": 120, "trimmer": 45}, None)
 
     class _FakeSched:
         running = True
 
-        def add_job(self, _fn, _trigger, *, minutes, id, replace_existing, next_run_time=None):  # noqa: ANN001
-            calls.append((id, minutes))
+        def add_job(self, _fn, _trigger, *, id, replace_existing, minutes=None, seconds=None, next_run_time=None, **_kw):  # noqa: ANN001
+            if seconds is not None:
+                calls.append((id, "seconds", seconds))
+            else:
+                calls.append((id, "minutes", minutes))
 
         def get_job(self, _id: str):  # noqa: ANN001
             return None
 
     s._sched = _FakeSched()
-    s._current_job_intervals_minutes = _fake_intervals
+    s._current_scheduler_intervals = _fake_payload
     asyncio.run(s.reschedule(targets={"radarr"}))
-    assert calls == [("fetcher_radarr", 120)]
+    assert calls == [("fetcher_radarr", "minutes", 120)]
+
+
+def test_reschedule_stream_manager_uses_seconds() -> None:
+    s = ServiceScheduler()
+    calls: list[tuple] = []
+
+    async def _fake_payload():
+        return ({}, 42)
+
+    class _FakeSched:
+        running = True
+
+        def add_job(self, _fn, _trigger, *, id, replace_existing, minutes=None, seconds=None, next_run_time=None, **_kw):  # noqa: ANN001
+            if seconds is not None:
+                calls.append((id, "seconds", seconds))
+            else:
+                calls.append((id, "minutes", minutes))
+
+        def get_job(self, _id: str):  # noqa: ANN001
+            return None
+
+    s._sched = _FakeSched()
+    s._current_scheduler_intervals = _fake_payload
+    asyncio.run(s.reschedule(targets={"stream_manager"}))
+    assert calls == [("fetcher_stream_manager", "seconds", 42)]
 
 
 def test_next_runs_by_job_returns_independent_values() -> None:

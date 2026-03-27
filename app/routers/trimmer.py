@@ -34,6 +34,7 @@ from app.web_common import (
     schedule_days_csv_from_named_day_checks,
     schedule_weekdays_selected_dict,
     trimmer_settings_redirect_url,
+    trimmer_settings_test_redirect_url,
     try_commit_and_reschedule,
 )
 
@@ -224,7 +225,7 @@ async def save_emby_connection_settings(
     def respond(*, saved: bool, reason: str | None = None) -> RedirectResponse | JSONResponse:
         sec = "connection"
         if want_json:
-            out: dict[str, str | bool] = {"ok": saved, "section": sec}
+            out: dict[str, str | bool] = {"ok": saved, "section": sec, "save_scope": "connection"}
             if not saved:
                 out["reason"] = reason or "error"
             return JSONResponse(out)
@@ -292,22 +293,29 @@ async def save_trimmer_settings(
     session: AsyncSession = Depends(get_session),
 ) -> RedirectResponse | JSONResponse:
     want_json = _trimmer_want_inplace_json(request)
+    scope = (save_scope or trimmer_save_scope or "").strip().lower()
     ui_sec = _trimmer_cleaner_ui_section(trimmer_section)
 
     def respond(*, saved: bool, reason: str | None = None) -> RedirectResponse | JSONResponse:
         if want_json:
-            out: dict[str, str | bool] = {"ok": saved, "section": ui_sec}
+            out: dict[str, str | bool] = {"ok": saved, "section": ui_sec, "save_scope": scope}
             if not saved:
                 out["reason"] = reason or "error"
             return JSONResponse(out)
         if saved:
-            return RedirectResponse(trimmer_settings_redirect_url(saved=True, section=trimmer_section), status_code=303)
+            return RedirectResponse(
+                trimmer_settings_redirect_url(
+                    saved=True, section=trimmer_section, save_scope=scope
+                ),
+                status_code=303,
+            )
         return RedirectResponse(
-            trimmer_settings_redirect_url(saved=False, reason=reason, section=trimmer_section),
+            trimmer_settings_redirect_url(
+                saved=False, reason=reason, section=trimmer_section, save_scope=scope
+            ),
             status_code=303,
         )
 
-    scope = (save_scope or trimmer_save_scope or "").strip().lower()
     if scope not in _TRIMMER_CLEANER_SAVE_SCOPES:
         logger.warning(
             "Trimmer cleaner save rejected: invalid_scope=%r (save_scope=%r trimmer_save_scope=%r)",
@@ -395,7 +403,7 @@ async def test_emby(request: Request, session: AsyncSession = Depends(get_sessio
     def finish(ok: bool) -> RedirectResponse | JSONResponse:
         if want_json:
             return JSONResponse({"ok": ok, "section": "connection", "test": "emby_ok" if ok else "emby_fail"})
-        return RedirectResponse("/trimmer/settings?test=" + ("emby_ok" if ok else "emby_fail"), status_code=303)
+        return RedirectResponse(trimmer_settings_test_redirect_url(ok=ok), status_code=303)
 
     settings = await _get_or_create_settings(session)
     emby_url = _normalize_base_url(settings.emby_url)
@@ -461,7 +469,7 @@ async def test_emby_from_form(
     def finish(ok: bool) -> RedirectResponse | JSONResponse:
         if want_json:
             return JSONResponse({"ok": ok, "section": "connection", "test": "emby_ok" if ok else "emby_fail"})
-        return RedirectResponse("/trimmer/settings?test=" + ("emby_ok" if ok else "emby_fail"), status_code=303)
+        return RedirectResponse(trimmer_settings_test_redirect_url(ok=ok), status_code=303)
 
     # Test using current form values so users don't need to save first.
     emby_url_n = _normalize_base_url(emby_url)

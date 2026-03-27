@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.arr_intervals import effective_arr_interval_minutes
 from app.db import SessionLocal
 from app.models import AppSettings
+from app.refiner_watch_config import clamp_stream_manager_interval_seconds
 from app.service_logic import run_once
 from app.stream_manager_service import run_scheduled_stream_manager_pass
 from app.resolvers.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
@@ -49,7 +50,7 @@ def _stream_manager_configured(settings: AppSettings) -> bool:
 
 
 def compute_job_intervals_minutes(settings: AppSettings) -> dict[str, int]:
-    """Independent scheduler intervals per configured app job."""
+    """Sonarr / Radarr / Trimmer — interval jobs use minutes. (Refiner uses seconds; see ``effective_stream_manager_interval_seconds``.)"""
     out: dict[str, int] = {}
     if _sonarr_configured(settings):
         out["sonarr"] = effective_arr_interval_minutes(getattr(settings, "sonarr_interval_minutes", None))
@@ -57,11 +58,15 @@ def compute_job_intervals_minutes(settings: AppSettings) -> dict[str, int]:
         out["radarr"] = effective_arr_interval_minutes(getattr(settings, "radarr_interval_minutes", None))
     if _emby_configured(settings):
         out["trimmer"] = max(5, int(settings.emby_interval_minutes or 60))
-    if _stream_manager_configured(settings):
-        out["stream_manager"] = max(
-            5, int(getattr(settings, "stream_manager_interval_minutes", 60) or 60)
-        )
     return out
+
+
+def effective_stream_manager_interval_seconds(settings: AppSettings) -> int | None:
+    if not _stream_manager_configured(settings):
+        return None
+    return clamp_stream_manager_interval_seconds(
+        getattr(settings, "stream_manager_interval_seconds", None),
+    )
 
 
 class ServiceScheduler:
@@ -81,6 +86,13 @@ class ServiceScheduler:
             if not settings:
                 return {}
             return compute_job_intervals_minutes(settings)
+
+    async def _current_scheduler_intervals(self) -> tuple[dict[str, int], int | None]:
+        async with SessionLocal() as session:
+            settings = (await session.execute(select(AppSettings).order_by(AppSettings.id.asc()).limit(1))).scalars().first()
+            if not settings:
+                return {}, None
+            return compute_job_intervals_minutes(settings), effective_stream_manager_interval_seconds(settings)
 
     async def _run_scope(self, scope: str) -> None:
         if self._run_lock.locked():
@@ -112,7 +124,7 @@ class ServiceScheduler:
         return self._job_trimmer
 
     async def start(self) -> None:
-        intervals = await self._current_job_intervals_minutes()
+        intervals, sm_seconds = await self._current_scheduler_intervals()
         for scope, minutes in intervals.items():
             self._sched.add_job(
                 self._job_fn_for_scope(scope),
@@ -122,18 +134,43 @@ class ServiceScheduler:
                 replace_existing=True,
                 next_run_time=utc_now_naive(),
             )
+        if sm_seconds is not None:
+            self._sched.add_job(
+                self._job_stream_manager,
+                "interval",
+                seconds=sm_seconds,
+                id=self._job_ids["stream_manager"],
+                replace_existing=True,
+                next_run_time=utc_now_naive(),
+            )
         self._sched.start()
 
     async def reschedule(self, *, targets: set[str] | None = None) -> None:
         if not self._sched.running:
             return
-        intervals = await self._current_job_intervals_minutes()
-        active_targets = {"sonarr", "radarr", "trimmer"} if targets is None else set(targets)
+        intervals, sm_seconds = await self._current_scheduler_intervals()
+        active_targets = (
+            {"sonarr", "radarr", "trimmer", "stream_manager"} if targets is None else set(targets)
+        )
         for scope in active_targets:
             if scope not in self._job_ids:
                 continue
-            minutes = intervals.get(scope)
             job_id = self._job_ids[scope]
+            if scope == "stream_manager":
+                if sm_seconds is None:
+                    job = self._sched.get_job(job_id)
+                    if job:
+                        self._sched.remove_job(job_id)
+                else:
+                    self._sched.add_job(
+                        self._job_stream_manager,
+                        "interval",
+                        seconds=sm_seconds,
+                        id=job_id,
+                        replace_existing=True,
+                    )
+                continue
+            minutes = intervals.get(scope)
             if minutes is None:
                 job = self._sched.get_job(job_id)
                 if job:

@@ -14,9 +14,10 @@
   {{ trimmer_area_tabs('settings') }}
 
   {% if request.query_params.get('saved') == '1' %}
-  <div class="banner banner-ok" role="status">Trimmer settings saved.</div>
+  {% set _ts = (request.query_params.get('trimmer_saved') or '') %}
+  <div class="banner banner-ok" role="status">{% if _ts == 'connection' %}Trimmer settings saved (Emby connection).{% elif _ts == 'schedule' %}Trimmer settings saved (Schedule &amp; limits).{% elif _ts == 'tv_rules' %}Trimmer settings saved (TV rules).{% elif _ts == 'movie_rules' %}Trimmer settings saved (Movie rules).{% elif _ts == 'tv_people' %}Trimmer settings saved (TV people rules).{% elif _ts == 'movie_people' %}Trimmer settings saved (Movie people rules).{% else %}Trimmer settings saved.{% endif %}</div>
   {% elif request.query_params.get('save') == 'fail' %}
-  <div class="banner banner-warn" role="alert">Could not save — try again. ({{ request.query_params.get('reason', 'error') | e }})</div>
+  <div class="banner banner-warn" role="alert">Could not save (Trimmer settings). Try again. ({{ request.query_params.get('reason', 'error') | e }})</div>
   {% endif %}
 
   {% if settings.emby_enabled %}
@@ -37,16 +38,16 @@
 
   <nav class="settings-tabs trimmer-settings-section-tabs" aria-label="Trimmer settings sections">
     <a href="#trimmer-connection" class="settings-tab">
-      <span class="settings-tab-dot green" aria-hidden="true"></span>Emby connection
+      <span class="settings-tab-dot gray" aria-hidden="true"></span>Emby connection
     </a>
     <a href="#trimmer-schedule" class="settings-tab">
       <span class="settings-tab-dot gray" aria-hidden="true"></span>Schedule &amp; limits
     </a>
     <a href="#trimmer-rules" class="settings-tab">
-      <span class="settings-tab-dot blue" aria-hidden="true"></span>TV &amp; movie rules
+      <span class="settings-tab-dot gray" aria-hidden="true"></span>TV &amp; movie rules
     </a>
     <a href="#trimmer-people" class="settings-tab">
-      <span class="settings-tab-dot purple" aria-hidden="true"></span>People rules
+      <span class="settings-tab-dot gray" aria-hidden="true"></span>People rules
     </a>
   </nav>
 
@@ -56,8 +57,8 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <div class="settings-async-feedback" hidden aria-live="polite"></div>
       {% call toggle_checkbox("emby_enabled", settings.emby_enabled) %}<strong>Enable Trimmer</strong>{% endcall %}
-      <p class="hint hint--after-toggle">Turn on <strong>Dry run</strong> under <a href="#trimmer-schedule">Schedule &amp; limits</a> for safe previews (no deletes). You can change it anytime.</p>
-    <p class="hint">Emby server URL, API key, and optional user ID. Example URL: <code class="code-inline">http://192.168.1.10:8096</code> or <code class="code-inline">http://localhost:8096</code>.</p>
+      <p class="hint hint--after-toggle">Use <strong>Dry run</strong> under <a href="#trimmer-schedule">Schedule &amp; limits</a> to preview matches without deletes.</p>
+    <p class="hint">Enter your Emby URL, API key, and optional user ID.</p>
     {% if emby and emby.status_message
         and not emby.status_message.startswith("Test")
         and not emby.status_message.startswith("Connection test")
@@ -71,7 +72,7 @@
         <div class="field">
           <label>Emby URL</label>
           <input class="input" type="text" name="emby_url" value="{{ settings.emby_url }}" placeholder="http://localhost:8096" inputmode="url" autocomplete="off" spellcheck="false" />
-          <div class="small">Required for Emby API access.</div>
+          <div class="small">Connects Fetcher to Emby.</div>
         </div>
         <div class="field">
           <label>Emby user ID (optional)</label>
@@ -84,7 +85,7 @@
         <input class="password" id="emby_api_key" type="password" name="emby_api_key" value="{{ settings.emby_api_key }}" placeholder="X-Emby-Token" autocomplete="off" />
         <button class="icon-btn" data-reveal="emby_api_key" type="button">Show</button>
       </div>
-      <div class="small">Generate in Emby Dashboard → Advanced → API Keys. Do not paste your Emby URL here.</div>
+      <div class="small">Create this key in Emby Dashboard → Advanced → API keys.</div>
 
       <div class="btn-row">
         <button class="btn" type="submit">Save connection</button>
@@ -99,35 +100,36 @@
     <div class="card gc stripe-gray trimmer-settings-anchor" id="trimmer-schedule">
       <div class="gc-title">Schedule &amp; limits</div>
       <div class="settings-async-feedback" hidden aria-live="polite"></div>
-      <p class="hint"><strong>Dry run</strong> — safe preview with no deletes. Also set scan/delete caps, run interval, and optional schedule window.</p>
-      {% call toggle_checkbox("emby_dry_run", settings.emby_dry_run) %}<strong>Dry run (safe preview)</strong> — no titles are deleted{% endcall %}
-      <div class="small">Use dry run first to confirm matches before turning on live deletes.</div>
-      <div class="row">
-        <div class="field">
-          <label>Max items to scan per run</label>
-          <input class="number" type="number" name="emby_max_items_scan" value="{{ settings.emby_max_items_scan }}" min="0" max="100000" />
-          <div class="small"><strong>0</strong> = scan the <strong>entire</strong> library (newest first; may take a while). <strong>1–100000</strong> = cap titles checked each run.</div>
+      <p class="hint">Set dry run, scan and delete limits, run interval, and schedule window.</p>
+      <div class="settings-stack">
+        {% call toggle_checkbox("emby_dry_run", settings.emby_dry_run) %}<strong>Dry run (safe preview)</strong> — no titles are deleted{% endcall %}
+        <div class="small settings-field-hint">Previews matches without deleting titles.</div>
+        <div class="row">
+          <div class="field">
+            <label>Max items to scan per run</label>
+            <input class="number" type="number" name="emby_max_items_scan" value="{{ settings.emby_max_items_scan }}" min="0" max="100000" />
+            <div class="small">Scans this many items per run. Set 0 to scan the full library.</div>
+          </div>
+          <div class="field">
+            <label>Max deletes per run</label>
+            <input class="number" type="number" name="emby_max_deletes_per_run" value="{{ settings.emby_max_deletes_per_run }}" min="1" max="500" />
+          </div>
         </div>
-        <div class="field">
-          <label>Max deletes per run</label>
-          <input class="number" type="number" name="emby_max_deletes_per_run" value="{{ settings.emby_max_deletes_per_run }}" min="1" max="500" />
-        </div>
-      </div>
-
-      <div class="section section--push">
         {% call toggle_checkbox("emby_schedule_enabled", settings.emby_schedule_enabled) %}Enable Trimmer schedule window{% endcall %}
-        <label>Days</label>
-        {{ schedule_days_checkboxes("emby_schedule", emby_schedule_days_selected) }}
+        <div>
+          <label>Days</label>
+          {{ schedule_days_checkboxes("emby_schedule", emby_schedule_days_selected) }}
+        </div>
         <div class="row schedule-time-row">
           {{ schedule_time_select("emby_schedule_start", "Start time", emby_schedule_start_hhmm, schedule_time_choices, emby_start_orphan) }}
           {{ schedule_time_select("emby_schedule_end", "End time", emby_schedule_end_hhmm, schedule_time_choices, emby_end_orphan) }}
         </div>
-        <div class="small">Schedule window restricts when runs are allowed. With the window off, runs follow the interval normally. 30-minute steps; times outside the list stay available as <strong>(saved)</strong>. If start is later than end, the window crosses midnight.</div>
+        <div class="small settings-field-hint">Limits runs to the selected days and times.</div>
         <div class="row row-schedule-pair">
           <div class="field">
             <label>Run interval (minutes)</label>
             <input class="number" type="number" name="emby_interval_minutes" value="{{ settings.emby_interval_minutes | default(60, true) }}" min="5" max="10080" placeholder="60" />
-            <div class="small">How often Trimmer becomes due. The schedule window only restricts allowed run times.</div>
+            <div class="small">Runs Trimmer on this interval.</div>
           </div>
         </div>
       </div>
@@ -140,7 +142,7 @@
     <div class="card gc stripe-blue trimmer-settings-anchor" id="trimmer-rules">
       <div class="gc-title">TV &amp; movie rules</div>
       <div class="settings-async-feedback" hidden aria-live="polite"></div>
-      <p class="hint">Genre and watch/rating rules. Use the buttons below to save TV or movie criteria independently.</p>
+      <p class="hint">Set TV and movie rules, then save each section.</p>
       <div class="criteria-grid">
         <div class="criteria-panel">
           <div class="gc-title gc-title--sm">
@@ -152,12 +154,12 @@
           <div class="field">
             <label>Delete watched TV shows</label>
             {% call toggle_checkbox("emby_rule_tv_delete_watched", settings.emby_rule_tv_delete_watched) %}Yes, delete watched TV shows{% endcall %}
-            <div class="small">Removes watched episodes. Continuing shows keep future episodes monitored.</div>
+            <div class="small">Deletes watched episodes and keeps future episodes monitored.</div>
           </div>
           <div class="field">
             <label>Delete unwatched TV older than N days</label>
             <input class="number" type="number" name="emby_rule_tv_unwatched_days" value="{{ settings.emby_rule_tv_unwatched_days }}" min="0" max="36500" />
-            <div class="small">Set 0 to disable this rule.</div>
+            <div class="small">Set 0 to turn this rule off.</div>
           </div>
           <div class="field genre-field">
             <label>Delete TV with selected genres</label>
@@ -167,8 +169,8 @@
               {% endfor %}
             </select>
             <div class="small genre-help">
-              <div><strong>Leave blank:</strong> All TV genres are included.</div>
-              <div><strong>Select genres:</strong> Only TV with at least one selected genre can be deleted.</div>
+              <div><strong>Leave blank:</strong> Includes all TV genres.</div>
+              <div><strong>Select genres:</strong> Deletes only TV with at least one selected genre.</div>
             </div>
           </div>
           <div class="btn-row">
@@ -186,12 +188,12 @@
           <div class="field">
             <label>Delete watched movies rated under</label>
             <input class="number" type="number" name="emby_rule_movie_watched_rating_below" value="{{ settings.emby_rule_movie_watched_rating_below }}" min="0" max="10" />
-            <div class="small">Set 0 to disable this rule.</div>
+            <div class="small">Set 0 to turn this rule off.</div>
           </div>
           <div class="field">
             <label>Delete unwatched movies older than N days</label>
             <input class="number" type="number" name="emby_rule_movie_unwatched_days" value="{{ settings.emby_rule_movie_unwatched_days }}" min="0" max="36500" />
-            <div class="small">Set 0 to disable this rule.</div>
+            <div class="small">Set 0 to turn this rule off.</div>
           </div>
           <div class="field genre-field">
             <label>Delete movies with selected genres</label>
@@ -201,8 +203,8 @@
               {% endfor %}
             </select>
             <div class="small genre-help">
-              <div><strong>Leave blank:</strong> All movie genres are included.</div>
-              <div><strong>Select genres:</strong> Only movies with at least one selected genre can be deleted.</div>
+              <div><strong>Leave blank:</strong> Includes all movie genres.</div>
+              <div><strong>Select genres:</strong> Deletes only movies with at least one selected genre.</div>
             </div>
           </div>
           <div class="btn-row">
@@ -215,7 +217,7 @@
     <div class="card gc stripe-purple trimmer-settings-anchor" id="trimmer-people">
       <div class="gc-title">People rules</div>
       <div class="settings-async-feedback" hidden aria-live="polite"></div>
-      <p class="hint">Match titles by credited names (substring, case-insensitive). Save TV and movie people criteria separately.</p>
+      <p class="hint">Matches titles by credited names and saves TV and movie rules separately.</p>
       <div class="criteria-grid criteria-people-row">
         <div class="criteria-panel people-criteria-panel">
           <div class="gc-title gc-title--sm">
@@ -228,8 +230,8 @@
             <label>Delete TV shows when these people are credited</label>
             <textarea class="input people-textarea" name="emby_rule_tv_people" rows="5" placeholder="Example: Alex Carter, Jordan Lee (comma or one per line)">{{ settings.emby_rule_tv_people_csv }}</textarea>
             <div class="small genre-help people-help">
-              <div><strong>Leave blank:</strong> No name filter — other TV rules still apply.</div>
-              <div><strong>Enter names:</strong> Each name must appear in Emby series credits for a selected role. Use Emby spelling.</div>
+              <div><strong>Leave blank:</strong> Uses no name filter.</div>
+              <div><strong>Enter names:</strong> Matches series credits for selected roles.</div>
             </div>
           </div>
           <div class="field people-credits-field">
@@ -237,7 +239,7 @@
             {% for value, role_label in people_credit_options %}
             {% call toggle_checkbox_value("emby_rule_tv_people_credit_types", value, "emby-tv-credit-" ~ loop.index0, value.lower() in selected_tv_people_credit_types) %}{{ role_label }}{% endcall %}
             {% endfor %}
-            <div class="small people-credits-hint"><strong>Default:</strong> Cast (actors) only. If none are checked, Cast is used when you save.</div>
+            <div class="small people-credits-hint">Uses cast when no role is selected.</div>
           </div>
           <div class="btn-row">
             <button class="btn" type="submit" name="save_scope" value="tv" formaction="/trimmer/settings/cleaner?trimmer_section=people&amp;trimmer_save_scope=tv">Save TV people rules</button>
@@ -255,8 +257,8 @@
             <label>Delete movies when these people are credited</label>
             <textarea class="input people-textarea" name="emby_rule_movie_people" rows="5" placeholder="Example: Alex Carter, Jordan Lee (comma or one per line)">{{ settings.emby_rule_movie_people_csv }}</textarea>
             <div class="small genre-help people-help">
-              <div><strong>Leave blank:</strong> No name filter — other movie rules still apply.</div>
-              <div><strong>Enter names:</strong> Each name must appear in Emby movie credits for a selected role. Use Emby spelling.</div>
+              <div><strong>Leave blank:</strong> Uses no name filter.</div>
+              <div><strong>Enter names:</strong> Matches movie credits for selected roles.</div>
             </div>
           </div>
           <div class="field people-credits-field">
@@ -264,7 +266,7 @@
             {% for value, role_label in people_credit_options %}
             {% call toggle_checkbox_value("emby_rule_movie_people_credit_types", value, "emby-movie-credit-" ~ loop.index0, value.lower() in selected_movie_people_credit_types) %}{{ role_label }}{% endcall %}
             {% endfor %}
-            <div class="small people-credits-hint"><strong>Default:</strong> Cast (actors) only. If none are checked, Cast is used when you save.</div>
+            <div class="small people-credits-hint">Uses cast when no role is selected.</div>
           </div>
           <div class="btn-row">
             <button class="btn" type="submit" name="save_scope" value="movies" formaction="/trimmer/settings/cleaner?trimmer_section=people&amp;trimmer_save_scope=movies">Save movie people rules</button>

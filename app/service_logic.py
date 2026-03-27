@@ -24,7 +24,7 @@ from app.arr_client import (
 )
 from app.http_status_hints import format_http_error_detail, hint_for_http_status
 from app.log_sanitize import redact_sensitive_text, redact_url_for_logging
-from app.models import ActivityLog, ArrActionLog, AppSettings, AppSnapshot, JobRunLog
+from app.models import ActivityLog, ArrActionLog, AppSettings, AppSnapshot, JobRunLog, RefinerActivity
 from app.schedule import in_window
 from app.time_util import utc_now_naive
 from app.emby_client import EmbyClient, EmbyConfig
@@ -42,6 +42,20 @@ from app.sonarr_failed_import_cleanup import run_sonarr_failed_import_queue_clea
 from app.resolvers.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
 
 logger = logging.getLogger(__name__)
+
+
+def _failed_import_cleanup_interval_minutes(settings: AppSettings) -> int:
+    try:
+        v = int(settings.failed_import_cleanup_interval_minutes)
+    except (TypeError, ValueError):
+        v = 60
+    return max(1, min(10080, v))
+
+
+def _failed_import_cleanup_due(*, now: datetime, last_run: datetime | None, interval_minutes: int) -> bool:
+    if last_run is None:
+        return True
+    return (now - last_run).total_seconds() >= max(1, interval_minutes) * 60
 
 
 @dataclass(frozen=True)
@@ -586,6 +600,7 @@ async def prune_old_records(session: AsyncSession, settings: AppSettings | None 
         # Batched deletes (SQLite/aiosqlite: one statement per execute; same transaction until commit).
         await session.execute(delete(ArrActionLog).where(ArrActionLog.created_at < arr_cutoff))
         await session.execute(delete(ActivityLog).where(ActivityLog.created_at < ret_cutoff))
+        await session.execute(delete(RefinerActivity).where(RefinerActivity.created_at < ret_cutoff))
         await session.execute(delete(JobRunLog).where(JobRunLog.started_at < ret_cutoff))
         await session.execute(delete(AppSnapshot).where(AppSnapshot.created_at < ret_cutoff))
     except Exception:
@@ -1291,12 +1306,22 @@ async def _execute_sonarr_block(
     try:
         await sonarr.health()
         if settings.sonarr_remove_failed_imports and hasattr(sonarr, "queue_page") and hasattr(sonarr, "history_page"):
-            await run_sonarr_failed_import_queue_cleanup(
-                sonarr,
-                session=session,
-                job_run_id=log.id,
-                actions=actions,
-            )
+            cleanup_interval_m = _failed_import_cleanup_interval_minutes(settings)
+            if _failed_import_cleanup_due(
+                now=ctx.now,
+                last_run=settings.sonarr_failed_import_cleanup_last_run_at,
+                interval_minutes=cleanup_interval_m,
+            ):
+                actions.append(f"Sonarr: failed-import cleanup check started (interval {cleanup_interval_m}m)")
+                await run_sonarr_failed_import_queue_cleanup(
+                    sonarr,
+                    session=session,
+                    job_run_id=log.id,
+                    actions=actions,
+                )
+                settings.sonarr_failed_import_cleanup_last_run_at = ctx.now
+            else:
+                actions.append(f"Sonarr: failed-import cleanup skipped (interval {cleanup_interval_m}m not due)")
         sonarr_series_title_map: dict[int, str] = {}
         try:
             for s in await sonarr.series():
@@ -1529,12 +1554,22 @@ async def _execute_radarr_block(
         await radarr.health()
 
         if settings.radarr_remove_failed_imports and hasattr(radarr, "queue_page") and hasattr(radarr, "history_page"):
-            await run_radarr_failed_import_queue_cleanup(
-                radarr,
-                session=session,
-                job_run_id=log.id,
-                actions=actions,
-            )
+            cleanup_interval_m = _failed_import_cleanup_interval_minutes(settings)
+            if _failed_import_cleanup_due(
+                now=ctx.now,
+                last_run=settings.radarr_failed_import_cleanup_last_run_at,
+                interval_minutes=cleanup_interval_m,
+            ):
+                actions.append(f"Radarr: failed-import cleanup check started (interval {cleanup_interval_m}m)")
+                await run_radarr_failed_import_queue_cleanup(
+                    radarr,
+                    session=session,
+                    job_run_id=log.id,
+                    actions=actions,
+                )
+                settings.radarr_failed_import_cleanup_last_run_at = ctx.now
+            else:
+                actions.append(f"Radarr: failed-import cleanup skipped (interval {cleanup_interval_m}m not due)")
 
         radarr_limit = max(1, int((settings.radarr_max_items_per_run or 0) or default_limit))
         radarr_missing_enabled = bool(settings.radarr_search_missing)

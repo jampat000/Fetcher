@@ -10,6 +10,7 @@ from app.models import ActivityLog, AppSnapshot, JobRunLog
 from app.radarr_failed_import_cleanup import (
     classify_queue_matches_by_download_id,
     is_radarr_import_failed_record,
+    is_radarr_queue_non_quality_upgrade_rejection,
     parse_radarr_import_failed_reason,
     run_radarr_failed_import_queue_cleanup,
 )
@@ -85,6 +86,35 @@ def test_parse_radarr_import_failed_reason_missing_is_empty() -> None:
 
 def test_parse_radarr_import_failed_reason_non_string_values_ignored() -> None:
     assert parse_radarr_import_failed_reason({"reason": 123}) == ""
+
+
+def test_is_radarr_queue_non_quality_upgrade_rejection_detects_not_an_upgrade_message() -> None:
+    q: dict[str, Any] = {
+        "id": 1,
+        "statusMessages": [
+            {
+                "messages": [
+                    "Not an upgrade for existing movie file. Existing quality: Bluray-1080p. New Quality WEBDL-480p"
+                ]
+            }
+        ],
+    }
+    assert is_radarr_queue_non_quality_upgrade_rejection(q) is True
+
+
+def test_is_radarr_queue_non_quality_upgrade_rejection_detects_preferred_word_variant() -> None:
+    q: dict[str, Any] = {
+        "errorMessage": "Not a preferred word upgrade for existing movie file.",
+    }
+    assert is_radarr_queue_non_quality_upgrade_rejection(q) is True
+
+
+def test_is_radarr_queue_non_quality_upgrade_rejection_ignores_parse_errors() -> None:
+    q: dict[str, Any] = {
+        "id": 2,
+        "statusMessages": [{"messages": ["Unable to parse media info from file"]}],
+    }
+    assert is_radarr_queue_non_quality_upgrade_rejection(q) is False
 
 
 class _FakeRadarrClient:
@@ -208,8 +238,11 @@ async def _run_ambiguous() -> None:
             actions=actions,
         )
         await session.commit()
-    assert client.delete_calls == []
-    assert any("ambiguous" in a.lower() for a in actions)
+    assert client.delete_calls == [
+        {"queue_id": 1, "blocklist": True},
+        {"queue_id": 2, "blocklist": True},
+    ]
+    assert any("multiple queue ids" in a.lower() for a in actions)
 
 
 class _FakeDeleteFailsClient(_FakeRadarrClient):
@@ -226,6 +259,8 @@ async def _run_delete_failure() -> None:
     client = _FakeDeleteFailsClient()
     actions: list[str] = []
     async with SessionLocal() as session:
+        await session.execute(delete(ActivityLog))
+        await session.commit()
         await run_radarr_failed_import_queue_cleanup(
             client,
             session=session,
@@ -234,11 +269,114 @@ async def _run_delete_failure() -> None:
         )
         await session.commit()
 
-    assert client.delete_calls == [{"queue_id": 42, "blocklist": True}]
+    assert client.delete_calls == [
+        {"queue_id": 42, "blocklist": True},
+        {"queue_id": 42, "blocklist": False},
+    ]
     assert any("failed-import queue remove failed" in a.lower() for a in actions)
     async with SessionLocal() as session:
         n = (await session.execute(select(ActivityLog))).scalars().all()
         assert len(n) == 0
+
+
+class _FakeNonUpgradeQueueOnlyClient(_FakeRadarrClient):
+    async def history_page(self, *, page: int, page_size: int) -> dict[str, Any]:
+        return {"records": [], "totalRecords": 0}
+
+    async def queue_page(self, *, page: int, page_size: int) -> dict[str, Any]:
+        if page != 1:
+            return {"records": [], "totalRecords": 1}
+        return {
+            "records": [
+                {
+                    "id": 77,
+                    "downloadId": "dl-x",
+                    "title": "Queue Only Film",
+                    "statusMessages": [
+                        {
+                            "messages": [
+                                "Not an upgrade for existing movie file. Existing quality: Bluray-1080p. "
+                                "New Quality WEBDL-480p"
+                            ]
+                        }
+                    ],
+                }
+            ],
+            "totalRecords": 1,
+        }
+
+
+def test_run_cleanup_non_upgrade_queue_without_history_removes_and_logs() -> None:
+    asyncio.run(_run_non_upgrade_queue_only())
+
+
+async def _run_non_upgrade_queue_only() -> None:
+    client = _FakeNonUpgradeQueueOnlyClient()
+    actions: list[str] = []
+    async with SessionLocal() as session:
+        log = JobRunLog(ok=True, message="")
+        session.add(log)
+        await session.commit()
+        await session.refresh(log)
+        await run_radarr_failed_import_queue_cleanup(
+            client,
+            session=session,
+            job_run_id=log.id,
+            actions=actions,
+        )
+        await session.commit()
+
+    assert client.delete_calls == [{"queue_id": 77, "blocklist": True}]
+    assert any("not an upgrade" in a.lower() and "existing file" in a.lower() for a in actions)
+
+    async with SessionLocal() as session:
+        row = (
+            (await session.execute(select(ActivityLog).order_by(desc(ActivityLog.id)).limit(1)))
+            .scalars()
+            .first()
+        )
+        assert row is not None
+        assert row.app == "radarr"
+        assert "not an upgrade" in (row.detail or "").lower()
+        assert "existing file" in (row.detail or "").lower()
+        await session.execute(delete(ActivityLog))
+        await session.execute(delete(JobRunLog))
+        await session.commit()
+
+
+class _FakeParseErrorOnlyQueueClient(_FakeNonUpgradeQueueOnlyClient):
+    async def queue_page(self, *, page: int, page_size: int) -> dict[str, Any]:
+        if page != 1:
+            return {"records": [], "totalRecords": 1}
+        return {
+            "records": [
+                {
+                    "id": 88,
+                    "downloadId": "dl-y",
+                    "statusMessages": [{"messages": ["Unable to parse media info from file"]}],
+                }
+            ],
+            "totalRecords": 1,
+        }
+
+
+def test_run_cleanup_parse_error_queue_only_no_non_upgrade_delete() -> None:
+    asyncio.run(_run_parse_error_only_queue())
+
+
+async def _run_parse_error_only_queue() -> None:
+    client = _FakeParseErrorOnlyQueueClient()
+    actions: list[str] = []
+    async with SessionLocal() as session:
+        await run_radarr_failed_import_queue_cleanup(
+            client,
+            session=session,
+            job_run_id=None,
+            actions=actions,
+        )
+        await session.commit()
+
+    assert client.delete_calls == []
 
 
 def test_run_once_radarr_failed_import_cleanup_disabled_skips_api(monkeypatch: pytest.MonkeyPatch) -> None:

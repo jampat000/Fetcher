@@ -1,6 +1,6 @@
 {# Reusable switch: real checkbox for form POST; visual .toggle from CSS. #}
 {% macro toggle_checkbox(name, checked=false) -%}
-<label class="toggle-field checkline-toggle">
+<label class="toggle-field checkline-toggle ui-toggle">
   <input type="checkbox" name="{{ name }}"{% if checked %} checked{% endif %} class="toggle-input" />
   <span class="toggle" aria-hidden="true"><span class="toggle-knob"></span></span>
   <span class="toggle-label">{{ caller() }}</span>
@@ -9,7 +9,7 @@
 
 {# Same switch with value= for grouped checkboxes (one name, many inputs). input_id must be unique. #}
 {% macro toggle_checkbox_value(name, value, input_id, checked=false) -%}
-<label class="toggle-field checkline-toggle" for="{{ input_id }}">
+<label class="toggle-field checkline-toggle ui-toggle" for="{{ input_id }}">
   <input type="checkbox" name="{{ name }}" value="{{ value }}" id="{{ input_id }}"{% if checked %} checked{% endif %} class="toggle-input" />
   <span class="toggle" aria-hidden="true"><span class="toggle-knob"></span></span>
   <span class="toggle-label">{{ caller() }}</span>

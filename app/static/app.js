@@ -75,6 +75,7 @@ function shouldRestoreAfterRedirect() {
   const path = normPathname(window.location.pathname || "");
   if (path === "/settings" && sp.get("tab")) return false;
   if (path === "/trimmer/settings" && (window.location.hash || "").trim()) return false;
+  if (path === "/refiner/settings" && (window.location.hash || "").trim()) return false;
   return true;
 }
 
@@ -88,6 +89,7 @@ function bindScrollRestoreOnFormSubmit() {
     if (form.getAttribute("data-fetcher-async-test") === "1") return;
     if (form.getAttribute("data-fetcher-trimmer-async-connection") === "1") return;
     if (form.getAttribute("data-fetcher-trimmer-async-cleaner") === "1") return;
+    if (form.getAttribute("data-fetcher-refiner-async") === "1") return;
     form.addEventListener("submit", persistScrollForAfterRedirect, true);
     form
       .querySelectorAll('button[type="submit"], button:not([type]), input[type="submit"]')
@@ -262,7 +264,8 @@ function initActivityFilterPills() {
         const ok =
           (filter === "sonarr" && app === "sonarr") ||
           (filter === "radarr" && app === "radarr") ||
-          (filter === "emby" && app === "emby");
+          (filter === "emby" && app === "emby") ||
+          (filter === "refiner" && app === "refiner");
         row.classList.toggle("hidden-filter", !ok);
       });
     });
@@ -852,12 +855,33 @@ function fetcherScopeLabelFromTab(tabKey) {
 }
 
 const TRIMMER_SETTINGS_INPLACE_JSON_HEADER = "X-Fetcher-Trimmer-Settings-Async";
-const TRIMMER_SETTINGS_SAVE_SUCCESS_BANNER_BY_SECTION = {
-  connection: "Trimmer settings saved (Emby connection).",
-  schedule: "Trimmer settings saved (Schedule & limits).",
-  rules: "Trimmer settings saved (Rules).",
-  people: "Trimmer settings saved (People rules).",
-};
+const REFINER_SETTINGS_INPLACE_JSON_HEADER = "X-Fetcher-Refiner-Settings-Async";
+
+/** Trimmer cleaner + connection: message must match the independently saved scope (never a vague “rules” blob). */
+function trimmerSaveSuccessMessage(section, saveScope) {
+  const sec = String(section || "").toLowerCase();
+  const sc = String(saveScope || "").toLowerCase();
+  if (sec === "connection" || sc === "connection") {
+    return "Trimmer settings saved (Emby connection).";
+  }
+  if (sec === "schedule" && sc === "schedule") {
+    return "Trimmer settings saved (Schedule & limits).";
+  }
+  if (sec === "rules" && sc === "tv") {
+    return "Trimmer settings saved (TV rules).";
+  }
+  if (sec === "rules" && sc === "movies") {
+    return "Trimmer settings saved (Movie rules).";
+  }
+  if (sec === "people" && sc === "tv") {
+    return "Trimmer settings saved (TV people rules).";
+  }
+  if (sec === "people" && sc === "movies") {
+    return "Trimmer settings saved (Movie people rules).";
+  }
+  return "Trimmer settings saved.";
+}
+
 const TRIMMER_EMBY_TEST_RESULT_TEXT = {
   emby_ok: "Emby connection succeeded.",
   emby_fail: "Emby connection failed — check URL, API key, and that the server is reachable.",
@@ -867,7 +891,9 @@ const TRIMMER_EMBY_TEST_RESULT_TEXT = {
 function syncTrimmerSettingsUrlAfterInPlacePost(sectionKey) {
   try {
     const u = new URL(window.location.href);
-    ["saved", "save", "reason", "test"].forEach((k) => u.searchParams.delete(k));
+    ["saved", "save", "reason", "test", "trimmer_saved", "refiner_saved"].forEach((k) =>
+      u.searchParams.delete(k),
+    );
     const sk = (sectionKey || "").trim().toLowerCase();
     const frag =
       sk === "connection"
@@ -883,6 +909,60 @@ function syncTrimmerSettingsUrlAfterInPlacePost(sectionKey) {
     history.replaceState(null, "", u.pathname + (u.search ? u.search : "") + h);
   } catch (_) {
     /* ignore */
+  }
+}
+
+function refinerSaveScopeLabel(section) {
+  const s = String(section || "").toLowerCase();
+  if (s === "processing") return "Processing";
+  if (s === "folders") return "Folders";
+  if (s === "audio") return "Audio";
+  if (s === "subtitles") return "Subtitles";
+  if (s === "schedule") return "Schedule & limits";
+  return "Refiner";
+}
+
+function refinerSaveSuccessMessage(section) {
+  const s = String(section || "").toLowerCase();
+  if (s === "processing") return "Refiner settings saved (Processing).";
+  if (s === "folders") return "Refiner settings saved (Folders).";
+  if (s === "audio") return "Refiner settings saved (Audio).";
+  if (s === "subtitles") return "Refiner settings saved (Subtitles).";
+  if (s === "schedule") return "Refiner settings saved (Schedule & limits).";
+  return "Refiner settings saved.";
+}
+
+function refinerSaveFailMessage(section, reason) {
+  const scope = refinerSaveScopeLabel(section);
+  const r = String(reason || "error");
+  return `Could not save (${scope}) — try again. (${r})`;
+}
+
+function syncRefinerSettingsUrlAfterInPlacePost(sectionKey) {
+  try {
+    const u = new URL(window.location.href);
+    ["saved", "save", "reason", "refiner_saved", "refiner_section"].forEach((k) => u.searchParams.delete(k));
+    const sk = (sectionKey || "").trim().toLowerCase();
+    const fragMap = {
+      processing: "refiner-processing",
+      folders: "refiner-folders",
+      audio: "refiner-audio",
+      subtitles: "refiner-subtitles",
+      schedule: "refiner-schedule",
+    };
+    const fragId = fragMap[sk] || "";
+    const h = fragId ? "#" + fragId : window.location.hash || "";
+    history.replaceState(null, "", u.pathname + (u.search ? u.search : "") + h);
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+function clearRefinerSettingsSaveFeedbackTimer(form) {
+  const t = form._refinerSaveFeedbackTimer;
+  if (t) {
+    window.clearTimeout(t);
+    form._refinerSaveFeedbackTimer = null;
   }
 }
 
@@ -1029,9 +1109,8 @@ function initTrimmerSettingsAsyncConnection() {
           if (data && typeof data.ok === "boolean") {
             if (data.ok) {
               const section = String(data.section || "connection");
-              const okMsg =
-                TRIMMER_SETTINGS_SAVE_SUCCESS_BANNER_BY_SECTION[section] ||
-                "Trimmer settings saved.";
+              const saveScope = String(data.save_scope || "");
+              const okMsg = trimmerSaveSuccessMessage(section, saveScope);
               setFetcherSettingsInPlaceFeedback(feedback, "ok", okMsg);
               syncTrimmerSettingsUrlAfterInPlacePost(section);
               clearTrimmerSettingsSaveFeedbackTimer(form);
@@ -1156,9 +1235,8 @@ function initTrimmerSettingsAsyncCleaner() {
           if (data && typeof data.ok === "boolean") {
             if (data.ok) {
               const section = String(data.section || "connection");
-              const okMsg =
-                TRIMMER_SETTINGS_SAVE_SUCCESS_BANNER_BY_SECTION[section] ||
-                "Trimmer settings saved.";
+              const saveScope = String(data.save_scope || "");
+              const okMsg = trimmerSaveSuccessMessage(section, saveScope);
               setFetcherSettingsInPlaceFeedback(feedback, "ok", okMsg);
               syncTrimmerSettingsUrlAfterInPlacePost(section);
               clearTrimmerSettingsSaveFeedbackTimer(form);
@@ -1178,6 +1256,116 @@ function initTrimmerSettingsAsyncCleaner() {
               r === "invalid_scope"
                 ? baseMsg
                 : `Trimmer save failed — ${baseMsg.replace(/^Save failed —\s*/i, "")}`;
+            setFetcherSettingsInPlaceFeedback(feedback, "err", msg);
+            return;
+          }
+          throw new Error(FETCHER_SETTINGS_SAVE_REASON_TEXT.error);
+        })
+        .catch((err) => {
+          const m = err && err.message ? err.message : FETCHER_SETTINGS_SAVE_REASON_TEXT.error;
+          setFetcherSettingsInPlaceFeedback(feedback, "err", m);
+        })
+        .finally(() => {
+          restoreSaveButtonLabels(saveButtons);
+          setBusy(false);
+        });
+    });
+  });
+}
+
+/** In-place save for Refiner settings (same fetch + JSON contract as Trimmer cleaner). */
+function initRefinerSettingsAsyncSave() {
+  document.querySelectorAll('form[data-fetcher-refiner-async="1"]').forEach((form) => {
+    form.addEventListener("submit", (e) => {
+      if (form.dataset.fetcherRefinerSaving === "1") {
+        e.preventDefault();
+        return;
+      }
+      e.preventDefault();
+      let sub = e.submitter;
+      if (!(sub instanceof HTMLButtonElement) && !(sub instanceof HTMLInputElement)) {
+        const ae = document.activeElement;
+        if (ae instanceof HTMLButtonElement && ae.form === form) {
+          sub = ae;
+        }
+      }
+      let action =
+        sub instanceof HTMLButtonElement && sub.getAttribute("formaction")
+          ? sub.getAttribute("formaction")
+          : form.getAttribute("action") || "/refiner/settings/save";
+      const anchor =
+        (sub && sub.closest && sub.closest(".refiner-settings-anchor")) ||
+        form.querySelector(".refiner-settings-anchor");
+      const feedback = anchor ? anchor.querySelector(".settings-async-feedback") : null;
+      const saveButtons = Array.from(form.querySelectorAll('button[type="submit"]')).filter(
+        (b) => !b.getAttribute("form"),
+      );
+
+      function setBusy(on) {
+        form.dataset.fetcherRefinerSaving = on ? "1" : "";
+        form.setAttribute("aria-busy", on ? "true" : "false");
+        saveButtons.forEach((btn) => {
+          btn.disabled = on;
+        });
+      }
+
+      clearRefinerSettingsSaveFeedbackTimer(form);
+      form._fetcherRefinerSaveGen = (form._fetcherRefinerSaveGen || 0) + 1;
+      const saveGen = form._fetcherRefinerSaveGen;
+
+      stashSaveButtonLabels(saveButtons);
+      setBusy(true);
+      setSaveButtonsPending(saveButtons, true);
+      setFetcherSettingsInPlaceFeedback(feedback, "pending", FETCHER_SETTINGS_SAVE_PENDING_LABEL);
+
+      let fd;
+      if (sub instanceof HTMLButtonElement || sub instanceof HTMLInputElement) {
+        fd = new FormData(form, sub);
+      } else {
+        fd = new FormData(form);
+      }
+      fetch(action, {
+        method: "POST",
+        body: fd,
+        credentials: "same-origin",
+        headers: { [REFINER_SETTINGS_INPLACE_JSON_HEADER]: "1", Accept: "application/json" },
+      })
+        .then((res) => {
+          if (res.status === 403) {
+            return Promise.reject(
+              new Error("Your session may have expired — reload the page and sign in again."),
+            );
+          }
+          const ct = (res.headers.get("content-type") || "").toLowerCase();
+          if (ct.indexOf("application/json") >= 0) {
+            return res.json().then((data) => ({ res, data }));
+          }
+          return res.text().then((text) => ({ res, data: null, text }));
+        })
+        .then((out) => {
+          const { res, data, text } = out;
+          if (!res.ok && !data) {
+            throw new Error(text || "Save failed — try again.");
+          }
+          if (data && typeof data.ok === "boolean") {
+            if (data.ok) {
+              const section = String(data.section || "processing");
+              const okMsg = refinerSaveSuccessMessage(section);
+              setFetcherSettingsInPlaceFeedback(feedback, "ok", okMsg);
+              syncRefinerSettingsUrlAfterInPlacePost(section);
+              clearRefinerSettingsSaveFeedbackTimer(form);
+              form._refinerSaveFeedbackTimer = window.setTimeout(() => {
+                form._refinerSaveFeedbackTimer = null;
+                if (form._fetcherRefinerSaveGen !== saveGen) return;
+                if (feedback && feedback.textContent === okMsg) {
+                  setFetcherSettingsInPlaceFeedback(feedback, "ok", "");
+                }
+              }, 2600);
+              return;
+            }
+            syncRefinerSettingsUrlAfterInPlacePost(data.section || "");
+            const r = data.reason ? String(data.reason) : "error";
+            const msg = refinerSaveFailMessage(data.section, r);
             setFetcherSettingsInPlaceFeedback(feedback, "err", msg);
             return;
           }
@@ -1578,9 +1766,12 @@ function initSettingsTabs() {
 
 function initTrimmerSettingsSectionTabs() {
   const tabButtons = Array.from(
-    document.querySelectorAll(".trimmer-settings-section-tabs .settings-tab[href^='#']"),
+    document.querySelectorAll(
+      ".trimmer-settings-section-tabs .settings-tab[href^='#'], .refiner-settings-section-tabs .settings-tab[href^='#']",
+    ),
   );
-  const anchors = Array.from(document.querySelectorAll(".trimmer-settings-anchor[id]"));
+  const anchorNodes = document.querySelectorAll(".trimmer-settings-anchor[id], .refiner-settings-anchor[id]");
+  const anchors = Array.from(anchorNodes).filter((el, i, arr) => arr.indexOf(el) === i);
   if (!tabButtons.length || !anchors.length) return;
 
   const byId = new Map(anchors.map((el) => [el.id, el]));
@@ -1625,6 +1816,7 @@ window.addEventListener("DOMContentLoaded", () => {
   initFetcherSettingsAsyncTest();
   initTrimmerSettingsAsyncConnection();
   initTrimmerSettingsAsyncCleaner();
+  initRefinerSettingsAsyncSave();
   bindScrollRestoreOnFormSubmit();
   restoreScrollAfterFormRedirect();
   bindRevealButtons();
@@ -1651,19 +1843,7 @@ window.addEventListener("DOMContentLoaded", () => {
   startDashboardStatusPolling();
   startLiveTilePolling();
 
-  if (qs("saved") === "1") {
-    if (window.location.pathname === "/trimmer/settings") {
-      showToast("Trimmer settings saved.");
-    } else {
-      const tab = (qs("tab") || "").toLowerCase();
-      const byTab = {
-        global: "Global settings saved.",
-        sonarr: "Sonarr settings saved.",
-        radarr: "Radarr settings saved.",
-      };
-      showToast(byTab[tab] || "Settings saved.");
-    }
-  }
+  /* Settings saves (Fetcher / Trimmer / Refiner): success uses inline banners only — no duplicate toast. */
   if (qs("ran") === "1") showToast("Run triggered");
   if (qs("test") === "sonarr_ok") showToast("Sonarr connection succeeded");
   if (qs("test") === "sonarr_fail") showToast("Sonarr connection failed");

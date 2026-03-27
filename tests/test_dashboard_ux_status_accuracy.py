@@ -92,6 +92,7 @@ def test_activity_display_row_always_has_labels_and_detail() -> None:
         created_at=datetime(2026, 1, 1, 12, 0, 0),
     )
     row = activity_display_row(e, "UTC")
+    assert row.get("activity_type") == "log"
     assert row["primary_label"].strip()
     assert row["detail_lines"] and all(str(x).strip() for x in row["detail_lines"])
 

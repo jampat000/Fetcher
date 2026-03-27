@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-03-27
+
+### Highlights
+
+- **Refiner** promoted to a first-class system
+- Failed import cleanup reliability (**Sonarr** + **Radarr** parity)
+- Added explicit failed-import cleanup interval
+- **Activity** feed includes **Refiner** before/after detail
+- **Settings** UI consistency and helper standardization
+- Save behavior consistency improvements
+
 ## [2.5.1] - 2026-03-26
 
 ### Changed
@@ -1020,7 +1031,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v2.4.11...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.0.0...HEAD
+[3.0.0]: https://github.com/jampat000/Fetcher/compare/v2.5.1...v3.0.0
+[2.5.1]: https://github.com/jampat000/Fetcher/compare/v2.5.0...v2.5.1
+[2.5.0]: https://github.com/jampat000/Fetcher/compare/v2.4.14...v2.5.0
+[2.4.14]: https://github.com/jampat000/Fetcher/compare/v2.4.13...v2.4.14
+[2.4.13]: https://github.com/jampat000/Fetcher/compare/v2.4.12...v2.4.13
+[2.4.12]: https://github.com/jampat000/Fetcher/compare/v2.4.11...v2.4.12
 [2.4.11]: https://github.com/jampat000/Fetcher/compare/v2.4.10...v2.4.11
 [2.4.10]: https://github.com/jampat000/Fetcher/compare/v2.4.9...v2.4.10
 [2.4.9]: https://github.com/jampat000/Fetcher/compare/v2.4.8...v2.4.9

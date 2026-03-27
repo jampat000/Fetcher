@@ -3,20 +3,22 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Any, Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import db_path
-from app.models import ActivityLog, AppSettings
+from app.db import SessionLocal, db_path
+from app.models import ActivityLog, AppSettings, RefinerActivity
 from app.schedule import in_window
 from app.time_util import utc_now_naive
 from app.stream_manager_mux import ffprobe_json, remux_to_temp_file
 from app.stream_manager_rules import (
     StreamManagerRulesConfig,
     is_remux_required,
+    normalize_audio_preference_mode,
     normalize_lang,
     parse_subtitle_langs_csv,
     plan_remux,
@@ -38,17 +40,11 @@ def _rules_config_from_settings(row: AppSettings) -> StreamManagerRulesConfig | 
     mode = (row.stream_manager_subtitle_mode or "remove_all").strip().lower()
     if mode not in ("remove_all", "keep_selected"):
         mode = "remove_all"
-    pref = (row.stream_manager_audio_preference_mode or "best_available").strip().lower()
-    if pref not in (
-        "best_available",
-        "prefer_surround",
-        "prefer_stereo",
-        "prefer_lossless",
-    ):
-        pref = "best_available"
+    pref = normalize_audio_preference_mode(row.stream_manager_audio_preference_mode)
     return StreamManagerRulesConfig(
         primary_audio_lang=row.stream_manager_primary_audio_lang or "",
         secondary_audio_lang=row.stream_manager_secondary_audio_lang or "",
+        tertiary_audio_lang=row.stream_manager_tertiary_audio_lang or "",
         default_audio_slot=slot,  # type: ignore[arg-type]
         remove_commentary=bool(row.stream_manager_remove_commentary),
         subtitle_mode=mode,  # type: ignore[arg-type]
@@ -96,6 +92,12 @@ def _gather_watched_files(watched_folder: Path) -> list[Path]:
 
 
 def _log_plan_outcome(*, path: Path, plan: Any, dry: bool) -> None:
+    notes = getattr(plan, "audio_selection_notes", None) or []
+    for line in notes:
+        if dry:
+            logger.info("Refiner: dry-run: audio selection (preview): %s", line)
+        else:
+            logger.info("Refiner: audio selection: %s", line)
     kept_a = ",".join(sorted({t.lang_label for t in plan.audio}))
     rem_a = ",".join(sorted({x for x in plan.removed_audio})) if plan.removed_audio else ""
     sub_parts: list[str] = []
@@ -130,6 +132,41 @@ def _output_path_for_source(*, src: Path, watched_root: Path, output_root: Path)
     return output_root / rel
 
 
+def _file_size_bytes(path: Path) -> int:
+    try:
+        return int(path.stat().st_size)
+    except OSError:
+        return 0
+
+
+async def _persist_refiner_activity_safe(meta: dict[str, Any]) -> None:
+    """Fail-safe: never raises; Refiner processing must not depend on this write."""
+    try:
+        fn = str(meta.get("file_name") or "")[:512]
+        st = str(meta.get("status") or "failed").strip().lower()
+        if st not in ("success", "skipped", "failed"):
+            st = "failed"
+        ptm = meta.get("processing_time_ms")
+        ptm_i = int(ptm) if ptm is not None else None
+        async with SessionLocal() as session:
+            session.add(
+                RefinerActivity(
+                    file_name=fn,
+                    status=st,
+                    size_before_bytes=int(meta.get("size_before_bytes") or 0),
+                    size_after_bytes=int(meta.get("size_after_bytes") or 0),
+                    audio_tracks_before=int(meta.get("audio_tracks_before") or 0),
+                    audio_tracks_after=int(meta.get("audio_tracks_after") or 0),
+                    subtitle_tracks_before=int(meta.get("subtitle_tracks_before") or 0),
+                    subtitle_tracks_after=int(meta.get("subtitle_tracks_after") or 0),
+                    processing_time_ms=ptm_i,
+                )
+            )
+            await session.commit()
+    except Exception:
+        logger.warning("Refiner: could not persist refiner_activity row", exc_info=True)
+
+
 def _process_one_sync(
     path: Path,
     cfg: StreamManagerRulesConfig,
@@ -139,31 +176,64 @@ def _process_one_sync(
     work_dir: Path,
 ) -> tuple[str, dict[str, Any]]:
     """Per file: ffprobe analysis → rule planning from probe data → remux/validate/move (source delete only after success)."""
-    meta: dict[str, Any] = {"path": str(path)}
+    t0 = time.perf_counter()
+    fname = path.name
+
+    def pack(
+        act_status: str,
+        sb: int,
+        sa: int,
+        ab: int,
+        aa: int,
+        sbb: int,
+        sba: int,
+    ) -> dict[str, Any]:
+        return {
+            "file_name": fname,
+            "status": act_status,
+            "size_before_bytes": int(sb),
+            "size_after_bytes": int(sa),
+            "audio_tracks_before": int(ab),
+            "audio_tracks_after": int(aa),
+            "subtitle_tracks_before": int(sbb),
+            "subtitle_tracks_after": int(sba),
+            "processing_time_ms": int((time.perf_counter() - t0) * 1000),
+        }
+
+    sb0 = _file_size_bytes(path)
     try:
         ffprobe_report = ffprobe_json(path)
     except Exception as e:
         logger.warning("Refiner: ffprobe failed for %s — %s", path.name, e)
-        return "error", {**meta, "error": str(e)}
+        return "error", pack("failed", sb0, sb0, 0, 0, 0, 0)
+
     video, audio, subs = split_streams(ffprobe_report)
+    sb = _file_size_bytes(path)
+    ab_len = len(audio)
+    sbb_len = len(subs)
     if not audio:
         logger.warning("Refiner: no audio streams in %s", path.name)
-        return "error", {**meta, "error": "no audio in source"}
+        return "error", pack("failed", sb, sb, 0, 0, sbb_len, sbb_len)
+
     plan = plan_remux(video=video, audio=audio, subtitles=subs, config=cfg)
     if plan is None:
         logger.warning("Refiner: no audio would remain for %s — skipping", path.name)
-        return "error", {**meta, "error": "no audio would remain"}
+        return "error", pack("failed", sb, sb, ab_len, 0, sbb_len, sbb_len)
+
     if not is_remux_required(plan, audio, subs):
-        return "noop", meta
+        return "noop", pack("skipped", sb, sb, ab_len, ab_len, sbb_len, sbb_len)
+
     _log_plan_outcome(path=path, plan=plan, dry=dry)
     destination = _output_path_for_source(src=path, watched_root=watched_root, output_root=output_root)
     if dry:
         logger.info("Refiner: dry-run: source preserved, no file changes applied (%s)", path.name)
         logger.info("Refiner: dry-run: would output to %s", destination)
-        return "dry_run", meta
+        return "dry_run", pack("skipped", sb, sb, ab_len, ab_len, sbb_len, sbb_len)
+
     if destination.exists():
         logger.error("Refiner: output already exists, refusing overwrite: %s", destination)
-        return "error", {**meta, "error": "output_exists"}
+        return "error", pack("failed", sb, sb, ab_len, ab_len, sbb_len, sbb_len)
+
     temp_file: Path | None = None
     try:
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -172,6 +242,10 @@ def _process_one_sync(
         path.unlink()
         logger.info("Refiner: processed file to output folder: %s", destination)
         logger.info("Refiner: source deleted after confirmed successful output: %s", path)
+        sa = _file_size_bytes(destination)
+        aa = len(plan.audio)
+        sba = len(plan.subtitles)
+        return "ok", pack("success", sb, sa, ab_len, aa, sbb_len, sba)
     except Exception as e:
         if temp_file is not None:
             try:
@@ -180,8 +254,7 @@ def _process_one_sync(
             except OSError:
                 logger.warning("Refiner: could not clean work artifact %s", temp_file, exc_info=True)
         logger.error("Refiner: processing failed for %s — %s", path.name, e)
-        return "error", {**meta, "error": str(e)}
-    return "ok", meta
+        return "error", pack("failed", sb, sb, ab_len, ab_len, sbb_len, sbb_len)
 
 
 async def run_scheduled_stream_manager_pass(session: AsyncSession) -> dict[str, Any]:
@@ -201,7 +274,7 @@ async def run_scheduled_stream_manager_pass(session: AsyncSession) -> dict[str, 
 
 
 async def run_stream_manager_pass(
-    session: AsyncSession, *, trigger: Literal["manual", "scheduled"]
+    session: AsyncSession, *, trigger: Literal["scheduled"] = "scheduled"
 ) -> dict[str, Any]:
     """Run Refiner over configured paths. Serialised with an internal lock."""
     async with _stream_manager_lock:
@@ -231,9 +304,10 @@ async def run_stream_manager_pass(
         dry = bool(row.stream_manager_dry_run)
         ok_c = noop_c = dry_c = err_c = 0
         for fp in files:
-            status, _meta = await asyncio.to_thread(
+            status, meta = await asyncio.to_thread(
                 _process_one_sync, fp, cfg, dry, watched_root, output_root, work_dir
             )
+            await _persist_refiner_activity_safe(meta)
             if status == "ok":
                 ok_c += 1
             elif status == "noop":

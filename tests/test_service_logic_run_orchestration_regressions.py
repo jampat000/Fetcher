@@ -181,6 +181,12 @@ def test_run_once_sonarr_no_internal_interval_skip_anymore(monkeypatch: pytest.M
         async def wanted_cutoff_unmet(self, **kwargs):
             return {"records": [], "totalRecords": 0}
 
+        async def queue_page(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def history_page(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
         async def aclose(self):
             return None
 
@@ -344,6 +350,12 @@ async def _run_scheduled_window_disabled_case(scope: str) -> None:
         async def wanted_cutoff_unmet(self, **kwargs):
             return {"records": [], "totalRecords": 0}
 
+        async def queue_page(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def history_page(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
     class _FakeEmbyClient:
         def __init__(self, _cfg):
             pass
@@ -420,6 +432,12 @@ def test_sonarr_due_outside_window_skips_then_runs_when_window_opens(monkeypatch
             return {"records": [], "totalRecords": 0}
 
         async def wanted_cutoff_unmet(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def queue_page(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def history_page(self, **kwargs):
             return {"records": [], "totalRecords": 0}
 
         async def aclose(self):
@@ -774,6 +792,136 @@ def test_run_once_manual_radarr_failure_writes_failed_activity(monkeypatch: pyte
     assert act.app == "radarr"
     assert act.kind == "error"
     assert act.status == "failed"
+
+
+def test_sonarr_failed_import_cleanup_interval_skip_when_not_due(monkeypatch: pytest.MonkeyPatch) -> None:
+    fixed_now = datetime(2026, 3, 27, 12, 0, 0)
+    asyncio.run(_clear_run_tables())
+    asyncio.run(
+        _set_settings(
+            sonarr_enabled=True,
+            sonarr_url="http://localhost:8989",
+            sonarr_search_missing=False,
+            sonarr_search_upgrades=False,
+            sonarr_interval_minutes=1,
+            sonarr_last_run_at=fixed_now - timedelta(minutes=10),
+            sonarr_remove_failed_imports=True,
+            failed_import_cleanup_interval_minutes=60,
+            sonarr_failed_import_cleanup_last_run_at=fixed_now - timedelta(minutes=5),
+            radarr_enabled=False,
+            emby_enabled=False,
+        )
+    )
+    seen = {"cleanup_calls": 0}
+
+    class _FakeArrClient:
+        def __init__(self, _cfg):
+            pass
+
+        async def health(self):
+            return None
+
+        async def series(self):
+            return []
+
+        async def wanted_missing(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def wanted_cutoff_unmet(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def queue_page(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def history_page(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def aclose(self):
+            return None
+
+    async def _cleanup(*args, **kwargs):
+        seen["cleanup_calls"] += 1
+
+    async def _wanted_total(*args, **kwargs):
+        return 0
+
+    monkeypatch.setattr("app.service_logic.utc_now_naive", lambda: fixed_now)
+    monkeypatch.setattr("app.service_logic.resolve_sonarr_api_key", lambda _s: "k")
+    monkeypatch.setattr("app.service_logic.resolve_radarr_api_key", lambda _s: "")
+    monkeypatch.setattr("app.service_logic.resolve_emby_api_key", lambda _s: "")
+    monkeypatch.setattr("app.service_logic.in_window", lambda **_kw: True)
+    monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
+    monkeypatch.setattr("app.service_logic._wanted_queue_total", _wanted_total)
+    monkeypatch.setattr("app.service_logic.run_sonarr_failed_import_queue_cleanup", _cleanup)
+    result = asyncio.run(_run_once("sonarr_missing"))
+    assert result.ok is True
+    assert seen["cleanup_calls"] == 0
+    assert asyncio.run(_settings_row()).sonarr_failed_import_cleanup_last_run_at == fixed_now - timedelta(minutes=5)
+
+
+def test_radarr_failed_import_cleanup_interval_runs_when_due(monkeypatch: pytest.MonkeyPatch) -> None:
+    fixed_now = datetime(2026, 3, 27, 12, 0, 0)
+    asyncio.run(_clear_run_tables())
+    asyncio.run(
+        _set_settings(
+            sonarr_enabled=False,
+            radarr_enabled=True,
+            radarr_url="http://localhost:7878",
+            radarr_search_missing=False,
+            radarr_search_upgrades=False,
+            radarr_interval_minutes=1,
+            radarr_last_run_at=fixed_now - timedelta(minutes=10),
+            radarr_remove_failed_imports=True,
+            failed_import_cleanup_interval_minutes=15,
+            radarr_failed_import_cleanup_last_run_at=fixed_now - timedelta(minutes=20),
+            emby_enabled=False,
+        )
+    )
+    seen = {"cleanup_calls": 0}
+
+    class _FakeArrClient:
+        def __init__(self, _cfg):
+            pass
+
+        async def health(self):
+            return None
+
+        async def movies(self):
+            return []
+
+        async def wanted_missing(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def wanted_cutoff_unmet(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def queue_page(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def history_page(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def aclose(self):
+            return None
+
+    async def _cleanup(*args, **kwargs):
+        seen["cleanup_calls"] += 1
+
+    async def _wanted_total(*args, **kwargs):
+        return 0
+
+    monkeypatch.setattr("app.service_logic.utc_now_naive", lambda: fixed_now)
+    monkeypatch.setattr("app.service_logic.resolve_sonarr_api_key", lambda _s: "")
+    monkeypatch.setattr("app.service_logic.resolve_radarr_api_key", lambda _s: "rk")
+    monkeypatch.setattr("app.service_logic.resolve_emby_api_key", lambda _s: "")
+    monkeypatch.setattr("app.service_logic.in_window", lambda **_kw: True)
+    monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
+    monkeypatch.setattr("app.service_logic._wanted_queue_total", _wanted_total)
+    monkeypatch.setattr("app.service_logic.run_radarr_failed_import_queue_cleanup", _cleanup)
+    result = asyncio.run(_run_once("radarr_missing"))
+    assert result.ok is True
+    assert seen["cleanup_calls"] == 1
+    assert asyncio.run(_settings_row()).radarr_failed_import_cleanup_last_run_at == fixed_now
 
 
 def test_run_once_tag_warning_is_nonfatal(monkeypatch: pytest.MonkeyPatch) -> None:

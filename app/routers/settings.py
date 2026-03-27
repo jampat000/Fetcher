@@ -138,35 +138,35 @@ async def settings_auth_credentials(
     row = await _get_or_create_settings(session)
     cp = current_password or ""
     if not verify_password(password=cp, stored_hash=(row.auth_password_hash or "")):
-        return RedirectResponse("/settings?sec=bad_current", status_code=303)
+        return RedirectResponse("/settings?sec=bad_current&tab=security", status_code=303)
 
     form = (auth_form or "").strip().lower()
     if form == "username":
         nu = (new_username or "").strip()
         if not nu:
-            return RedirectResponse("/settings?sec=user_empty", status_code=303)
+            return RedirectResponse("/settings?sec=user_empty&tab=security", status_code=303)
         row.auth_username = nu
         row.updated_at = utc_now_naive()
         if not await try_commit_and_reschedule(session):
-            return RedirectResponse("/settings?sec=save_fail", status_code=303)
-        return RedirectResponse("/settings?sec=user_ok", status_code=303)
+            return RedirectResponse("/settings?sec=save_fail&tab=security", status_code=303)
+        return RedirectResponse("/settings?sec=user_ok&tab=security", status_code=303)
 
     if form == "password":
         np = (new_password or "").strip()
         cf = (confirm_new_password or "").strip()
         if not np or len(np) < 8:
-            return RedirectResponse("/settings?sec=pass_short", status_code=303)
+            return RedirectResponse("/settings?sec=pass_short&tab=security", status_code=303)
         if np != cf:
-            return RedirectResponse("/settings?sec=pass_mismatch", status_code=303)
+            return RedirectResponse("/settings?sec=pass_mismatch&tab=security", status_code=303)
         row.auth_password_hash = hash_password(np)
         row.auth_refresh_token_hash = ""
         row.auth_refresh_expires_at = None
         row.updated_at = utc_now_naive()
         if not await try_commit_and_reschedule(session):
-            return RedirectResponse("/settings?sec=save_fail", status_code=303)
-        return RedirectResponse("/settings?sec=pass_ok", status_code=303)
+            return RedirectResponse("/settings?sec=save_fail&tab=security", status_code=303)
+        return RedirectResponse("/settings?sec=pass_ok&tab=security", status_code=303)
 
-    return RedirectResponse("/settings?sec=invalid", status_code=303)
+    return RedirectResponse("/settings?sec=invalid&tab=security", status_code=303)
 
 
 @router.post("/settings/auth/access_control", dependencies=AUTH_FORM_DEPS)
@@ -193,18 +193,18 @@ async def settings_backup_import(
     confirm: str = Form(""),
 ) -> RedirectResponse:
     if (confirm or "").strip() != "yes":
-        return RedirectResponse("/settings?import=need_confirm", status_code=303)
+        return RedirectResponse("/settings?import=need_confirm&tab=global", status_code=303)
     raw = await file.read()
     if not raw.strip():
-        return RedirectResponse("/settings?import=empty", status_code=303)
+        return RedirectResponse("/settings?import=empty&tab=global", status_code=303)
     try:
         await import_settings_replace(session, raw)
     except ValueError as e:
         r = str(e)
         if len(r) > 180:
             r = r[:177] + "..."
-        return RedirectResponse(f"/settings?import=fail&reason={quote(r, safe='')}", status_code=303)
-    return RedirectResponse("/settings?import=ok", status_code=303)
+        return RedirectResponse(f"/settings?import=fail&reason={quote(r, safe='')}&tab=global", status_code=303)
+    return RedirectResponse("/settings?import=ok&tab=global", status_code=303)
 
 
 @router.post("/settings", dependencies=AUTH_FORM_DEPS, response_model=None)
@@ -248,6 +248,7 @@ async def save_settings(
     radarr_schedule_end: str = Form("23:59"),
     sonarr_retry_delay_minutes: int = Form(1440),
     radarr_retry_delay_minutes: int = Form(1440),
+    failed_import_cleanup_interval_minutes: int = Form(60),
     log_retention_days: int = Form(90),
     timezone: str = Form("UTC"),
     save_scope: str = Form(""),
@@ -311,6 +312,7 @@ async def save_settings(
             radarr_interval_minutes=rad_im,
             sonarr_retry_delay_minutes=sonarr_retry_delay_minutes,
             radarr_retry_delay_minutes=radarr_retry_delay_minutes,
+            failed_import_cleanup_interval_minutes=max(1, min(10080, int(failed_import_cleanup_interval_minutes or 60))),
         )
         if scope == "sonarr":
             row.sonarr_enabled = data.sonarr_enabled
@@ -322,6 +324,7 @@ async def save_settings(
             row.sonarr_max_items_per_run = data.sonarr_max_items_per_run
             row.sonarr_interval_minutes = data.sonarr_interval_minutes
             row.sonarr_retry_delay_minutes = data.sonarr_retry_delay_minutes
+            row.failed_import_cleanup_interval_minutes = data.failed_import_cleanup_interval_minutes
             row.sonarr_schedule_enabled = sonarr_schedule_enabled
             row.sonarr_schedule_days = schedule_days_csv_from_named_day_checks(
                 sonarr_schedule_Mon,
@@ -345,6 +348,7 @@ async def save_settings(
             row.radarr_max_items_per_run = data.radarr_max_items_per_run
             row.radarr_interval_minutes = data.radarr_interval_minutes
             row.radarr_retry_delay_minutes = data.radarr_retry_delay_minutes
+            row.failed_import_cleanup_interval_minutes = data.failed_import_cleanup_interval_minutes
             row.radarr_schedule_enabled = radarr_schedule_enabled
             row.radarr_schedule_days = schedule_days_csv_from_named_day_checks(
                 radarr_schedule_Mon,

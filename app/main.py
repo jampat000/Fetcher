@@ -25,7 +25,7 @@ from app.paths import STATIC_DIR, resolved_logs_dir
 from app.rate_limit import limiter
 from app.scheduler import scheduler
 from app.security_utils import get_jwt_secret_from_env, warn_if_data_encryption_key_missing
-from app.web_common import trimmer_settings_redirect_url
+from app.web_common import refiner_settings_redirect_url, trimmer_settings_redirect_url
 from app import updates as app_updates
 from app.routers import api as api_router
 from app.routers import auth as auth_router
@@ -146,10 +146,34 @@ async def _form_validation_redirect(request: Request, exc: RequestValidationErro
         if sec not in ("connection", "schedule", "rules", "people"):
             sec = None
         ui_sec = sec or "schedule"
+        raw_ss = (request.query_params.get("trimmer_save_scope") or "").strip().lower()
+        if not raw_ss:
+            try:
+                form = await request.form()
+                raw = form.get("save_scope")
+                if isinstance(raw, list):
+                    raw = raw[0] if raw else ""
+                raw_ss = (str(raw) if raw is not None else "").strip().lower()
+            except Exception:
+                raw_ss = ""
         if (request.headers.get("x-fetcher-trimmer-settings-async") or "").strip() == "1":
+            return JSONResponse(
+                {"ok": False, "reason": "invalid", "section": ui_sec, "save_scope": raw_ss}
+            )
+        return RedirectResponse(
+            trimmer_settings_redirect_url(
+                saved=False, reason="invalid", section=sec, save_scope=raw_ss or None
+            ),
+            status_code=303,
+        )
+    if request.method == "POST" and request.url.path == "/refiner/settings/save":
+        rs = (request.query_params.get("refiner_section") or "").strip().lower()
+        rsec = rs if rs in ("processing", "folders", "audio", "subtitles", "schedule") else None
+        ui_sec = rsec or "processing"
+        if (request.headers.get("x-fetcher-refiner-settings-async") or "").strip() == "1":
             return JSONResponse({"ok": False, "reason": "invalid", "section": ui_sec})
         return RedirectResponse(
-            trimmer_settings_redirect_url(saved=False, reason="invalid", section=sec),
+            refiner_settings_redirect_url(saved=False, reason="invalid", section=rsec),
             status_code=303,
         )
     if request.method == "POST" and request.url.path.startswith("/settings/auth"):

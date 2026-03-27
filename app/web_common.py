@@ -13,9 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.display_helpers import (
     _fmt_local,
+    _fmt_size_bytes_si,
+    _relative_phrase_past,
     _truncate_display,
 )
-from app.models import ActivityLog, AppSettings, JobRunLog
+from app.models import ActivityLog, AppSettings, JobRunLog, RefinerActivity
 from app.schedule import DAY_NAMES, normalize_schedule_days_csv
 from app.scheduler import scheduler
 
@@ -151,6 +153,8 @@ def activity_display_row(e: ActivityLog, tz: str) -> dict[str, Any]:
     if not detail_lines:
         detail_lines = [_activity_detail_fallback_line(e)]
     return {
+        "activity_type": "log",
+        "type": "log",
         "id": e.id,
         "time_local": _fmt_local(e.created_at, tz),
         "app": e.app,
@@ -160,6 +164,89 @@ def activity_display_row(e: ActivityLog, tz: str) -> dict[str, Any]:
         "primary_label": _activity_primary_label(e),
         "detail_lines": detail_lines,
     }
+
+
+def _refiner_activity_collapsed_size_line(size_before: int, size_after: int) -> str:
+    sb = int(size_before)
+    sa = int(size_after)
+    b_fmt = _fmt_size_bytes_si(sb)
+    a_fmt = _fmt_size_bytes_si(sa)
+    if sb == sa:
+        return f"{b_fmt} → {a_fmt}  (No size change)"
+    delta = sa - sb
+    pct = (abs(delta) / sb * 100.0) if sb else 0.0
+    sign = "−" if delta < 0 else "+"
+    mag = _fmt_size_bytes_si(abs(delta))
+    return f"{b_fmt} → {a_fmt}  ({sign}{mag}, {pct:.1f}%)"
+
+
+def _refiner_activity_change_size_line(size_before: int, size_after: int) -> str:
+    sb = int(size_before)
+    sa = int(size_after)
+    if sb == sa:
+        return "Size: No size change"
+    delta = sa - sb
+    pct = (abs(delta) / sb * 100.0) if sb else 0.0
+    sign = "−" if delta < 0 else "+"
+    return f"Size: {sign}{_fmt_size_bytes_si(abs(delta))} ({pct:.1f}%)"
+
+
+def refiner_activity_display_row(r: RefinerActivity, tz: str, now: datetime) -> dict[str, Any]:
+    sb = int(r.size_before_bytes or 0)
+    sa = int(r.size_after_bytes or 0)
+    ab = int(r.audio_tracks_before or 0)
+    aa = int(r.audio_tracks_after or 0)
+    sbb = int(r.subtitle_tracks_before or 0)
+    sba = int(r.subtitle_tracks_after or 0)
+    st = (r.status or "failed").strip().lower()
+    detail_lines = [
+        _refiner_activity_collapsed_size_line(sb, sa),
+        f"Audio: {ab} → {aa}   •   Subtitles: {sbb} → {sba}",
+        _relative_phrase_past(r.created_at, now),
+        "Before",
+        f"Size: {_fmt_size_bytes_si(sb)}",
+        f"Audio tracks: {ab}",
+        f"Subtitle tracks: {sbb}",
+        "After",
+        f"Size: {_fmt_size_bytes_si(sa)}",
+        f"Audio tracks: {aa}",
+        f"Subtitle tracks: {sba}",
+        "Change",
+        _refiner_activity_change_size_line(sb, sa),
+        f"Removed: {max(0, ab - aa)} audio, {max(0, sbb - sba)} subtitles",
+    ]
+    return {
+        "activity_type": "refiner",
+        "type": "refiner",
+        "id": r.id,
+        "time_local": _fmt_local(r.created_at, tz),
+        "app": "refiner",
+        "kind": "refiner",
+        "status": st,
+        "count": "",
+        "primary_label": (r.file_name or "").strip() or "—",
+        "detail_lines": detail_lines,
+        "detail_preview": 3,
+        "refiner_status": st,
+    }
+
+
+def merge_activity_feed(
+    logs: list[ActivityLog],
+    refiners: list[RefinerActivity],
+    tz: str,
+    now: datetime,
+    *,
+    limit: int = 200,
+) -> list[dict[str, Any]]:
+    """Interleave Refiner file rows with ``activity_log`` by time (newest first)."""
+    pairs: list[tuple[datetime, str, int, dict[str, Any]]] = []
+    for e in logs:
+        pairs.append((e.created_at, "L", e.id, activity_display_row(e, tz)))
+    for r in refiners:
+        pairs.append((r.created_at, "R", r.id, refiner_activity_display_row(r, tz, now)))
+    pairs.sort(key=lambda p: (p[0], p[2], p[1]), reverse=True)
+    return [p[3] for p in pairs[:limit]]
 
 
 def trimmer_settings_fragment(trimmer_section: str | None) -> str:
@@ -174,12 +261,81 @@ def trimmer_settings_fragment(trimmer_section: str | None) -> str:
     return f"#{fid}" if fid else ""
 
 
-def trimmer_settings_redirect_url(*, saved: bool, reason: str | None = None, section: str | None = None) -> str:
+def trimmer_settings_saved_query_value(section: str | None, save_scope: str | None) -> str | None:
+    """Stable ``trimmer_saved=`` query token for banner/toast copy (independent save scopes)."""
+    panel = (section or "").strip().lower()
+    sc = (save_scope or "").strip().lower()
+    if panel == "connection":
+        return "connection"
+    if panel == "schedule" and sc == "schedule":
+        return "schedule"
+    if panel == "rules" and sc == "tv":
+        return "tv_rules"
+    if panel == "rules" and sc == "movies":
+        return "movie_rules"
+    if panel == "people" and sc == "tv":
+        return "tv_people"
+    if panel == "people" and sc == "movies":
+        return "movie_people"
+    return None
+
+
+def trimmer_settings_redirect_url(
+    *,
+    saved: bool,
+    reason: str | None = None,
+    section: str | None = None,
+    save_scope: str | None = None,
+) -> str:
     frag = trimmer_settings_fragment(section)
     if saved:
-        return f"/trimmer/settings?saved=1{frag}"
+        parts = ["saved=1"]
+        qv = trimmer_settings_saved_query_value(section, save_scope)
+        if qv:
+            parts.append(f"trimmer_saved={quote(qv, safe='')}")
+        return f"/trimmer/settings?{'&'.join(parts)}{frag}"
     err = quote(str(reason or "error").replace("\n", " ").strip()[:240], safe="")
     return f"/trimmer/settings?save=fail&reason={err}{frag}"
+
+
+def trimmer_settings_test_redirect_url(*, ok: bool) -> str:
+    """After Emby test, stay on Trimmer settings on the connection section."""
+    return f"/trimmer/settings?test={'emby_ok' if ok else 'emby_fail'}{trimmer_settings_fragment('connection')}"
+
+
+def refiner_settings_fragment(refiner_section: str | None) -> str:
+    key = (refiner_section or "").strip().lower()
+    ids = {
+        "processing": "refiner-processing",
+        "folders": "refiner-folders",
+        "audio": "refiner-audio",
+        "subtitles": "refiner-subtitles",
+        "schedule": "refiner-schedule",
+    }
+    fid = ids.get(key)
+    return f"#{fid}" if fid else ""
+
+
+def refiner_settings_saved_query_value(section: str | None) -> str | None:
+    key = (section or "").strip().lower()
+    if key in ("processing", "folders", "audio", "subtitles", "schedule"):
+        return key
+    return None
+
+
+def refiner_settings_redirect_url(
+    *, saved: bool, reason: str | None = None, section: str | None = None
+) -> str:
+    frag = refiner_settings_fragment(section)
+    sec_token = refiner_settings_saved_query_value(section)
+    sec_q_fail = f"&refiner_section={quote(sec_token, safe='')}" if sec_token else ""
+    if saved:
+        parts = ["saved=1"]
+        if sec_token:
+            parts.append(f"refiner_saved={quote(sec_token, safe='')}")
+        return f"/refiner/settings?{'&'.join(parts)}{frag}"
+    err = quote(str(reason or "error").replace("\n", " ").strip()[:240], safe="")
+    return f"/refiner/settings?save=fail&reason={err}{sec_q_fail}{frag}"
 
 
 def settings_looks_like_existing_fetcher_install(settings: AppSettings) -> bool:

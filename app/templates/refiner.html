@@ -1,65 +1,83 @@
 {% extends "layout.html" %}
 {% from "macros/refiner_area.html" import refiner_area_tabs %}
+{% from "macros/activity_row.html" import activity_row %}
 {% block content %}
 <div class="wrap">
   <div class="page-head">
     <div>
       <h1 class="ph-title">Refiner</h1>
-      <p>Review Refiner status before running processing. Rules and behavior live under <a href="/refiner/settings">Refiner settings</a>.</p>
+      <p>Refiner checks your watched folder on a schedule, remuxes files with your rules, and writes to the output folder. Paths, timing, and rules are under <a href="/refiner/settings">Refiner settings</a>.</p>
     </div>
   </div>
 
   {{ refiner_area_tabs('overview') }}
 
-  {% if request.query_params.get('run') == 'ok' %}
-  <div class="banner banner-ok" role="status">Refiner run completed. Check Activity and Logs for details.</div>
-  {% elif request.query_params.get('run') == 'fail' %}
-  <div class="banner banner-warn" role="alert">Refiner run did not complete. ({{ request.query_params.get('reason', 'error') | e }})</div>
-  {% endif %}
   {% if not settings.stream_manager_enabled %}
-  <div class="banner banner-ok trimmer-mode-banner banner--soft" role="status">
-    <strong>Refiner off</strong> — Turn on <strong>Enable Refiner</strong> in <a href="/refiner/settings">Settings</a> to use dry run or live mode.
+  <div class="banner banner-ok refiner-mode-banner banner--soft" role="status">
+    <strong>Refiner is off.</strong> Enable it under <a href="/refiner/settings#refiner-processing">Processing</a> in settings, then choose dry run or live mode.
   </div>
   {% endif %}
 
   <div class="card gc">
     <div class="gc-title">Refiner overview</div>
-    <div class="hint">Use this page as a quick pre-flight check before running Refiner.</div>
+    <p class="hint">Saved settings only. Refiner runs in the background; there is no separate run-now action.</p>
 
-    <div class="m-grid">
+    <div class="m-grid refiner-overview-grid">
       <div class="m">
-        <div class="label">Safety</div>
+        <div class="label">Status</div>
+        <div class="value">{% if settings.stream_manager_enabled %}On{% else %}Off{% endif %}</div>
+      </div>
+      <div class="m">
+        <div class="label">Output mode</div>
         <div class="value {% if settings.stream_manager_dry_run %}mode-safe{% else %}mode-live{% endif %}">
-          {{ "Dry run (safe preview)" if settings.stream_manager_dry_run else "Live processing" }}
+          {{ "Dry run (preview only)" if settings.stream_manager_dry_run else "Live (writes and deletes)" }}
         </div>
       </div>
       <div class="m">
+        <div class="label">Watched folder check interval</div>
+        <div class="value {% if not settings.stream_manager_enabled %}refiner-overview-value--muted{% endif %}">{% if settings.stream_manager_enabled %}{{ settings.stream_manager_interval_seconds or 60 }} s{% else %}Not set{% endif %}</div>
+      </div>
+      <div class="m">
+        <div class="label">Schedule window</div>
+        <div class="value {% if not settings.stream_manager_enabled %}refiner-overview-value--muted{% endif %}">{% if not settings.stream_manager_enabled %}Not set{% elif settings.stream_manager_schedule_enabled %}On{% else %}Off{% endif %}</div>
+      </div>
+      <div class="m">
         <div class="label">Watched folder</div>
-        <div class="value">{{ "Configured" if settings.stream_manager_watched_folder else "Not configured" }}</div>
+        <div class="value refiner-overview-path {% if not settings.stream_manager_watched_folder %}refiner-overview-value--muted{% endif %}">{% if settings.stream_manager_watched_folder %}{{ settings.stream_manager_watched_folder[:52] }}{% if settings.stream_manager_watched_folder|length > 52 %}…{% endif %}{% else %}Not set{% endif %}</div>
       </div>
       <div class="m">
         <div class="label">Output folder</div>
-        <div class="value">{{ "Configured" if settings.stream_manager_output_folder else "Not configured" }}</div>
+        <div class="value refiner-overview-path {% if not settings.stream_manager_output_folder %}refiner-overview-value--muted{% endif %}">{% if settings.stream_manager_output_folder %}{{ settings.stream_manager_output_folder[:52] }}{% if settings.stream_manager_output_folder|length > 52 %}…{% endif %}{% else %}Not set{% endif %}</div>
       </div>
     </div>
 
     {% if settings.stream_manager_enabled and not settings.stream_manager_dry_run %}
     <div class="section">
-      <p class="preview-warning">Live processing is enabled in Refiner settings. Source files can be deleted after successful output.</p>
+      <p class="preview-warning">Live mode: originals may be deleted after a successful write to the output folder.</p>
     </div>
     {% endif %}
     <div class="section">
-      <div class="small"><strong>Audio:</strong> Keeps selected languages and applies your preferred track choice.</div>
-      <div class="small"><strong>Subtitles:</strong> Removes all or keeps only selected subtitle languages.</div>
-      <div class="small"><strong>Commentary:</strong> Optionally removes commentary audio tracks.</div>
+      <div class="small"><strong>Audio:</strong> Keeps allowed languages; one track per file by policy.</div>
+      <div class="small"><strong>Subtitles:</strong> Remove all or keep selected languages only.</div>
+      <div class="small"><strong>Commentary:</strong> Optional removal before selection.</div>
     </div>
 
     <div class="btn-row">
-      <form method="post" action="/refiner/settings/run">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-        <button class="btn" type="submit">Run Refiner now</button>
-      </form>
-      <a class="btn secondary" href="/refiner/settings">Open settings</a>
+      <a class="btn" href="/refiner/settings">Open Refiner settings</a>
+    </div>
+
+    <div class="section refiner-overview-recent-activity">
+      <div class="gc-title">Recent activity</div>
+      {% if refiner_recent_activity %}
+      <div class="activity-list">
+        {% for e in refiner_recent_activity %}
+        {{ activity_row(e, activity_detail_preview) }}
+        {% endfor %}
+      </div>
+      <p class="small"><a href="/activity">View all activity</a></p>
+      {% else %}
+      <p class="small muted">No activity yet<br />Refiner will show processed files here once it runs.</p>
+      {% endif %}
     </div>
   </div>
 </div>

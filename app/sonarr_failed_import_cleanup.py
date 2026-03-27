@@ -4,6 +4,9 @@ Sonarr-only opt-in: remove queue items that match explicit import-failed history
 
 from __future__ import annotations
 
+import logging
+from typing import Any
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.arr_client import ArrClient
@@ -11,11 +14,53 @@ from app.http_status_hints import format_http_error_detail
 from app.log_sanitize import redact_sensitive_text
 from app.models import ActivityLog
 from app.radarr_failed_import_cleanup import (
+    _paginate_records,
+    _queue_ids_for_download_id,
+    _queue_row_id,
     classify_queue_matches_by_download_id,
     history_item_title,
     is_radarr_import_failed_record,
     parse_radarr_import_failed_reason,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def _flatten_sonarr_queue_user_messages(q: dict[str, Any]) -> str:
+    parts: list[str] = []
+    em = q.get("errorMessage")
+    if isinstance(em, str) and em.strip():
+        parts.append(em.strip())
+    sm = q.get("statusMessages")
+    if isinstance(sm, list):
+        for item in sm:
+            if isinstance(item, str) and item.strip():
+                parts.append(item.strip())
+            elif isinstance(item, dict):
+                msgs = item.get("messages")
+                if isinstance(msgs, list):
+                    for m in msgs:
+                        if isinstance(m, str) and m.strip():
+                            parts.append(m.strip())
+    return " ".join(parts)
+
+
+def _sonarr_queue_import_failure_signal(q: dict[str, Any]) -> str:
+    low = _flatten_sonarr_queue_user_messages(q).casefold()
+    if not low:
+        return ""
+    signals: list[tuple[str, str]] = [
+        ("import failed", "import failed"),
+        ("failed to import", "failed to import"),
+        ("unable to import", "unable to import"),
+        ("no files found are eligible for import", "no eligible files to import"),
+        ("not a custom format upgrade", "not a custom-format upgrade"),
+        ("not an upgrade for existing episode file", "not an upgrade vs existing file"),
+    ]
+    for needle, label in signals:
+        if needle in low:
+            return label
+    return ""
 
 
 async def run_sonarr_failed_import_queue_cleanup(
@@ -25,14 +70,29 @@ async def run_sonarr_failed_import_queue_cleanup(
     job_run_id: int | None,
     actions: list[str],
 ) -> None:
-    queue = await client.queue_page(page=1, page_size=200)
-    queue_records = queue.get("records") if isinstance(queue, dict) else []
-    queue_records = queue_records if isinstance(queue_records, list) else []
-    history = await client.history_page(page=1, page_size=250)
-    history_records = history.get("records") if isinstance(history, dict) else []
-    history_records = history_records if isinstance(history_records, list) else []
+    logger.info("Sonarr failed-import cleanup: scan started")
+    queue_records = await _paginate_records(
+        client.queue_page,
+        page_size=200,
+        label="sonarr queue (failed-import cleanup)",
+    )
+    history_records = await _paginate_records(
+        client.history_page,
+        page_size=250,
+        label="sonarr history (failed-import cleanup)",
+    )
+    logger.info(
+        "Sonarr failed-import cleanup: inspected queue=%s history=%s",
+        len(queue_records),
+        len(history_records),
+    )
 
     processed_download_ids: set[str] = set()
+    removed_queue_ids: set[int] = set()
+    eligible_from_history = 0
+    eligible_from_queue = 0
+    ineligible = 0
+
     for rec in history_records:
         if not isinstance(rec, dict):
             continue
@@ -48,31 +108,135 @@ async def run_sonarr_failed_import_queue_cleanup(
 
         kind, qid = classify_queue_matches_by_download_id(download_id, queue_records)
         if kind == "none":
-            continue
-        if kind == "many":
-            actions.append(
-                "Sonarr: skipped failed-import queue remove (ambiguous downloadId match; multiple queue ids)"
+            logger.info(
+                "Sonarr failed-import cleanup: ineligible (history has downloadId=%s; queue has no match)",
+                download_id,
             )
             continue
-        assert qid is not None
+        if kind == "many":
+            qids = _queue_ids_for_download_id(download_id, queue_records)
+            actions.append(
+                f"Sonarr: failed-import cleanup found multiple queue ids for one downloadId; removing all matches ({len(qids)})"
+            )
+        else:
+            assert qid is not None
+            qids = [qid]
+
         title = history_item_title(rec)
         reason = parse_radarr_import_failed_reason(rec)
-        try:
-            await client.delete_queue_item(queue_id=qid, blocklist=True)
-        except Exception as exc:  # noqa: BLE001
-            suffix = f" ({title})" if title else ""
-            actions.append(
-                f"Sonarr: failed-import queue remove failed{suffix}: {format_http_error_detail(exc)}"
+        for target_qid in qids:
+            logger.info(
+                "Sonarr failed-import cleanup: eligible queue id=%s via history importFailed (downloadId=%s)",
+                target_qid,
+                download_id,
+            )
+            try:
+                await client.delete_queue_item(queue_id=target_qid, blocklist=True)
+                blocklist_mode = "requested"
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Sonarr failed-import cleanup: delete failed for queue id=%s with blocklist=true: %s",
+                    target_qid,
+                    format_http_error_detail(exc),
+                )
+                try:
+                    await client.delete_queue_item(queue_id=target_qid, blocklist=False)
+                    blocklist_mode = "failed; removed queue without blocklist"
+                except Exception as exc2:  # noqa: BLE001
+                    suffix = f" ({title})" if title else ""
+                    actions.append(
+                        f"Sonarr: failed-import queue remove failed{suffix}: {format_http_error_detail(exc2)}"
+                    )
+                    logger.warning(
+                        "Sonarr failed-import cleanup: delete fallback failed for queue id=%s: %s",
+                        target_qid,
+                        format_http_error_detail(exc2),
+                    )
+                    continue
+
+            removed_queue_ids.add(target_qid)
+            eligible_from_history += 1
+
+            detail_parts: list[str] = []
+            if title:
+                detail_parts.append(title)
+            if reason:
+                detail_parts.append(f"Reason: {reason}")
+            detail_parts.append(f"Action: removed from queue; blocklist {blocklist_mode} via Sonarr API")
+            detail = redact_sensitive_text("\n".join(detail_parts))
+            session.add(
+                ActivityLog(
+                    job_run_id=job_run_id,
+                    app="sonarr",
+                    kind="cleanup",
+                    count=1,
+                    status="ok",
+                    detail=detail,
+                )
+            )
+            label = title if title else f"queue id {target_qid}"
+            actions.append(f"Sonarr: removed failed import from queue; blocklist {blocklist_mode} — {label}")
+
+        queue_records = [
+            q
+            for q in queue_records
+            if not (isinstance(q, dict) and str(q.get("downloadId") or "").strip() == download_id)
+        ]
+
+    for q in list(queue_records):
+        if not isinstance(q, dict):
+            continue
+        qid = _queue_row_id(q)
+        if qid is None or qid in removed_queue_ids:
+            continue
+        q_signal = _sonarr_queue_import_failure_signal(q)
+        if not q_signal:
+            ineligible += 1
+            logger.info(
+                "Sonarr failed-import cleanup: ineligible queue id=%s: no failed-import signal",
+                qid,
             )
             continue
 
-        detail_parts: list[str] = []
-        if title:
-            detail_parts.append(title)
-        if reason:
-            detail_parts.append(f"Reason: {reason}")
-        detail_parts.append("Action: removed from queue; blocklist requested via Sonarr API")
-        detail = redact_sensitive_text("\n".join(detail_parts))
+        label = q.get("title") if isinstance(q.get("title"), str) else ""
+        logger.info(
+            "Sonarr failed-import cleanup: eligible queue id=%s (%s) via queue signal: %s",
+            qid,
+            (label or "unknown"),
+            q_signal,
+        )
+        try:
+            await client.delete_queue_item(queue_id=qid, blocklist=True)
+            blocklist_mode = "requested"
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Sonarr failed-import cleanup: queue-signal delete failed for queue id=%s with blocklist=true: %s",
+                qid,
+                format_http_error_detail(exc),
+            )
+            try:
+                await client.delete_queue_item(queue_id=qid, blocklist=False)
+                blocklist_mode = "failed; removed queue without blocklist"
+            except Exception as exc2:  # noqa: BLE001
+                suffix = f" ({label})" if label else ""
+                actions.append(
+                    f"Sonarr: queue failed-import remove failed{suffix}: {format_http_error_detail(exc2)}"
+                )
+                logger.warning(
+                    "Sonarr failed-import cleanup: queue-signal delete fallback failed for queue id=%s: %s",
+                    qid,
+                    format_http_error_detail(exc2),
+                )
+                continue
+
+        removed_queue_ids.add(qid)
+        eligible_from_queue += 1
+        detail_parts = [
+            label,
+            f"Reason: {q_signal}.",
+            f"Action: removed from queue; blocklist {blocklist_mode} via Sonarr API",
+        ]
+        detail = redact_sensitive_text("\n".join(p for p in detail_parts if p))
         session.add(
             ActivityLog(
                 job_run_id=job_run_id,
@@ -83,5 +247,13 @@ async def run_sonarr_failed_import_queue_cleanup(
                 detail=detail,
             )
         )
-        label = title if title else f"queue id {qid}"
-        actions.append(f"Sonarr: removed failed import from queue; blocklist requested — {label}")
+        lab = label if label else f"queue id {qid}"
+        actions.append(f"Sonarr: removed from queue — {q_signal}; blocklist {blocklist_mode} — {lab}")
+
+    logger.info(
+        "Sonarr failed-import cleanup: scan complete; removed=%s (history=%s queue-signal=%s), ineligible=%s",
+        len(removed_queue_ids),
+        eligible_from_history,
+        eligible_from_queue,
+        ineligible,
+    )

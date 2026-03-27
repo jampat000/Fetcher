@@ -131,3 +131,18 @@ def _relative_phrase_until(dt_future: datetime, now: datetime) -> str:
         return f"in {hours} hour{'s' if hours != 1 else ''}"
     days = secs // 86400
     return f"in {days} day{'s' if days != 1 else ''}"
+
+
+def _fmt_size_bytes_si(n: int) -> str:
+    """Human-readable byte size (decimal GB/MB for display consistency with Refiner activity)."""
+    v = max(0, int(n))
+    gb = v / (1024**3)
+    if gb >= 1.0:
+        return f"{gb:.1f} GB"
+    mb = v / (1024**2)
+    if mb >= 1.0:
+        return f"{mb:.1f} MB"
+    kb = v / 1024.0
+    if kb >= 1.0:
+        return f"{kb:.0f} KB"
+    return f"{v} B"

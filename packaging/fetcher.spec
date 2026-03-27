@@ -32,7 +32,7 @@ hiddenimports += collect_submodules("aiosqlite")
 hiddenimports += collect_submodules("passlib")
 hiddenimports += collect_submodules("slowapi")
 hiddenimports += collect_submodules("limits")
-hiddenimports += ["yaml", "app.resolvers", "app.resolvers.api_keys", "bcrypt", "itsdangerous", "_cffi_backend"]
+hiddenimports += ["yaml", "app.resolvers", "app.resolvers.api_keys", "app.refiner_watch_config", "bcrypt", "itsdangerous", "_cffi_backend"]
 
 # ASGI server + uvicorn[standard] extras — PyInstaller often misses these (dynamic imports),
 # which breaks the frozen exe at `import uvicorn` (see CI smoke test /healthz).

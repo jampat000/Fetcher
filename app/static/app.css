@@ -1164,6 +1164,16 @@ h2.gc-title,
   align-items: center;
   margin-top: var(--btn-row-margin-top);
 }
+/* Save rows sit in the same flex column as fields — parent gap supplies spacing */
+:is(
+    .card.gc > form,
+    form.refiner-settings-form > .card.gc,
+    form[action="/trimmer/settings/cleaner"] > .card.gc
+  )
+  .btn-row,
+.card.gc:has(> form[action="/trimmer/settings/connection"]) form .btn-row {
+  margin-top: 0;
+}
 .btn-row--flush-top {
   margin-top: 0;
 }
@@ -1246,6 +1256,49 @@ h2.gc-title,
 .icon-emby {
   background: linear-gradient(145deg, #065f46, #0e7490);
   box-shadow: 0 0 20px rgba(16, 185, 129, 0.35);
+}
+.icon-refiner {
+  background: linear-gradient(145deg, #92400e, #d97706);
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.35);
+}
+
+.activity-title-line--refiner {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.activity-refiner-mark {
+  flex-shrink: 0;
+  font-size: 13px;
+  line-height: 1;
+}
+.activity-refiner-mark--ok {
+  color: var(--green);
+}
+.activity-refiner-mark--skip {
+  color: var(--text2);
+}
+.activity-refiner-mark--fail {
+  color: var(--red);
+}
+.activity-refiner-filename {
+  min-width: 0;
+  word-break: break-word;
+}
+.activity-detail-line--muted {
+  opacity: 0.88;
+}
+.activity-count--dim {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text2);
+}
+.refiner-overview-recent-activity {
+  margin-top: var(--space-6);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border);
 }
 
 .activity-body {
@@ -1455,17 +1508,202 @@ h2.gc-title,
   font-size: 14px;
 }
 
-/* People rules: stacked role toggles (same control as restore / settings). */
-.people-credits-field .toggle-field.checkline-toggle {
+/* ==========================================================================
+   Product UI standards (toggles, headings, fields, hints) — settings surfaces
+   ========================================================================== */
+:root {
+  --ui-toggle-gap: var(--space-4);
+  --ui-subsection-tracking: 0.08em;
+  /* Settings: stack = medium block rhythm; field = slightly roomier label/control/helper; toggles = tight within a group */
+  --settings-stack-gap: 11px;
+  --settings-field-internal-gap: var(--space-4);
+  --settings-toggle-stack-gap: var(--space-2);
+}
+
+/* ---- Settings surfaces: vertical rhythm via flex + gap on section cards only when visible ----
+   Trimmer/Refiner section tabs set `hidden` on `.refiner-settings-anchor` / `.trimmer-settings-anchor`.
+   A bare `display:flex` on those cards beats the UA `[hidden]` rule and showed every section at once. */
+form.refiner-settings-form > .card.gc:not([hidden]),
+form[action="/trimmer/settings/cleaner"] > .card.gc:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--settings-stack-gap);
+}
+
+.card.gc:has(> form[action="/trimmer/settings/connection"]):not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--settings-stack-gap);
+}
+
+.card.gc:has(> form[action="/trimmer/settings/connection"]):not([hidden])
+  > form[action="/trimmer/settings/connection"] {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--settings-stack-gap);
+}
+
+.card.gc > form.fetcher-settings-save-form,
+.card.gc > form[action="/settings"] {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--settings-stack-gap);
+}
+
+/* Titles and leads participate in the same gap (no extra margin-bottom) */
+form.refiner-settings-form > .card.gc > .gc-title:not(.gc-title--sm),
+form[action="/trimmer/settings/cleaner"] > .card.gc > .gc-title:not(.gc-title--sm),
+.card.gc:has(> form[action="/trimmer/settings/connection"]) > .gc-title:not(.gc-title--sm),
+.card.gc > form[action="/settings"] > .gc-title:not(.gc-title--sm) {
+  margin-bottom: 0;
+}
+
+form.refiner-settings-form > .card.gc > .refiner-section-save-feedback,
+form.refiner-settings-form > .card.gc > .settings-async-feedback {
+  margin: 0 0 var(--settings-stack-gap) 0;
+}
+
+form.refiner-settings-form > .card.gc > .lead-muted,
+.card.gc > form .lead-muted {
+  margin: 0;
+}
+
+.card.gc:has(> form[action="/trimmer/settings/connection"]) form > label {
+  margin: 0;
+}
+
+/* Field blocks: label / control / helper spacing lives inside the field only */
+:is(.card.gc form, form.refiner-settings-form > .card.gc, form[action="/trimmer/settings/cleaner"] .card.gc) .field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--settings-field-internal-gap);
+  margin: 0;
+  min-width: 0;
+}
+:is(.card.gc form, form.refiner-settings-form > .card.gc, form[action="/trimmer/settings/cleaner"] .card.gc) .field > label {
+  display: block;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text2);
+}
+
+/* Primary toggle rows — no vertical margin; parent gap handles separation */
+:is(.card.gc form, form.refiner-settings-form > .card.gc, form[action="/trimmer/settings/cleaner"] .card.gc) .ui-toggle.checkline-toggle:not(.settings-commit-toggle) {
+  display: flex;
   align-items: flex-start;
   width: 100%;
-  max-width: 520px;
-  margin: 0 0 var(--space-2);
+  max-width: 44rem;
+  margin: 0;
+  gap: var(--ui-toggle-gap);
+  box-sizing: border-box;
+  cursor: pointer;
 }
-.people-credits-field .toggle-field.checkline-toggle .toggle {
+:is(.card.gc form, form.refiner-settings-form > .card.gc, form[action="/trimmer/settings/cleaner"] .card.gc) .ui-toggle.checkline-toggle:not(.settings-commit-toggle) .toggle {
   margin-top: 2px;
   flex-shrink: 0;
 }
+:is(.card.gc form, form.refiner-settings-form > .card.gc, form[action="/trimmer/settings/cleaner"] .card.gc) .ui-toggle.checkline-toggle:not(.settings-commit-toggle) .toggle-label {
+  font-size: 14px;
+  line-height: 1.45;
+  font-weight: 500;
+  color: var(--text);
+}
+
+/* In-card section title; subgroup headings use stack gap (no extra margin) */
+.card.gc > .gc-title:not(.gc-title--sm) {
+  margin-bottom: var(--space-5);
+}
+.card.gc .gc-title.gc-title--sm {
+  margin-top: 0;
+  margin-bottom: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: var(--ui-subsection-tracking);
+  text-transform: uppercase;
+  color: rgba(248, 250, 252, 0.88);
+  line-height: 1.35;
+}
+
+/* ---- Shared settings stacks (Refiner / Trimmer / Fetcher) ---- */
+:is(.card.gc form, form.refiner-settings-form > .card.gc, form[action="/trimmer/settings/cleaner"] .card.gc) .settings-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--settings-stack-gap);
+  max-width: 44rem;
+}
+:is(.card.gc form, form.refiner-settings-form > .card.gc, form[action="/trimmer/settings/cleaner"] .card.gc) .settings-stack > .field,
+:is(.card.gc form, form.refiner-settings-form > .card.gc, form[action="/trimmer/settings/cleaner"] .card.gc) .settings-stack > .row {
+  margin-top: 0;
+}
+:is(.card.gc form, form.refiner-settings-form > .card.gc, form[action="/trimmer/settings/cleaner"] .card.gc) .settings-toggle-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--settings-toggle-stack-gap);
+  margin: 0;
+}
+:is(.card.gc form, form.refiner-settings-form > .card.gc, form[action="/trimmer/settings/cleaner"] .card.gc) .settings-toggle-group .ui-toggle.checkline-toggle:not(.settings-commit-toggle) {
+  margin: 0;
+}
+:is(.card.gc form, form.refiner-settings-form > .card.gc, form[action="/trimmer/settings/cleaner"] .card.gc) .settings-field-hint {
+  margin: 0;
+  max-width: 44rem;
+}
+
+/* Stack items that are plain wrappers (e.g. Days label + pills): same internal rhythm as fields */
+:is(.card.gc form, form.refiner-settings-form > .card.gc, form[action="/trimmer/settings/cleaner"] .card.gc)
+  .settings-stack
+  > div:not(.field):not(.row):not(.settings-toggle-group):not(.refiner-folders-interval-wrap):not(
+    .refiner-audio-lang-grid
+  ) {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--settings-field-internal-gap);
+}
+:is(.card.gc form, form.refiner-settings-form > .card.gc, form[action="/trimmer/settings/cleaner"] .card.gc) .settings-stack > div > label {
+  display: block;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text2);
+}
+
+/* Arr / connection: toggles stay flush inside their own column layouts */
+.settings-arr-connection-enable .ui-toggle.checkline-toggle,
+.settings-arr-search-toggles .ui-toggle.checkline-toggle,
+.settings-failed-import-block .ui-toggle.checkline-toggle,
+.settings-arr-schedule-block > .ui-toggle.checkline-toggle {
+  margin-top: 0;
+  margin-bottom: 0;
+  max-width: none;
+}
+.settings-arr-behavior > .settings-failed-import-block {
+  margin-top: var(--space-8);
+}
+
+/* People rules: role toggles share the same field column gap as the parent .field */
+.people-credits-field .toggle-field.checkline-toggle.ui-toggle {
+  align-items: flex-start;
+  width: 100%;
+  max-width: 520px;
+  margin: 0;
+  display: flex;
+}
+.people-credits-field .toggle-field.checkline-toggle.ui-toggle .toggle {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
 
 /* ---- Settings page (Fetcher) ---- */
 .settings-async-feedback.banner {
@@ -1519,6 +1757,7 @@ button.settings-tab.settings-tab-btn:focus-visible {
   border-color: rgba(255, 255, 255, 0.18);
 }
 .trimmer-area-tabs .settings-tab.is-active,
+.refiner-area-tabs .settings-tab.is-active,
 .settings-tab.is-active {
   background: rgba(59, 130, 246, 0.14);
   border-color: rgba(59, 130, 246, 0.35);
@@ -1529,25 +1768,12 @@ button.settings-tab.settings-tab-btn:focus-visible {
   height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
+  background: #475569;
 }
-.settings-tab-dot.blue {
-  background: #3b82f6;
-  box-shadow: 0 0 6px rgba(59, 130, 246, 0.8);
-}
-.settings-tab-dot.green {
+.settings-tab.is-active .settings-tab-dot,
+.settings-tab[aria-selected="true"] .settings-tab-dot {
   background: #10b981;
   box-shadow: 0 0 6px rgba(16, 185, 129, 0.8);
-}
-.settings-tab-dot.purple {
-  background: #8b5cf6;
-  box-shadow: 0 0 6px rgba(139, 92, 246, 0.8);
-}
-.settings-tab-dot.amber {
-  background: #f59e0b;
-  box-shadow: 0 0 6px rgba(245, 158, 11, 0.85);
-}
-.settings-tab-dot.gray {
-  background: #475569;
 }
 
 .settings-collapse {
@@ -1907,13 +2133,29 @@ textarea.input:focus {
   margin: 0 0 var(--space-4);
 }
 .hint--after-toggle {
-  margin-top: 0.15rem;
+  margin-top: 0;
+}
+/* Stack parents (.card > form, .settings-stack) own vertical rhythm */
+:is(.card.gc > form, form.refiner-settings-form > .card.gc, form[action="/trimmer/settings/cleaner"] > .card.gc) .hint,
+.card.gc:has(> form[action="/trimmer/settings/connection"]) form .hint {
+  margin: 0;
 }
 .hint:has(+ .btn-row) {
   margin-bottom: 0;
 }
 .hint + .btn-row {
   margin-top: var(--btn-row-margin-top);
+}
+:is(.card.gc > form, form.refiner-settings-form > .card.gc, form[action="/trimmer/settings/cleaner"] > .card.gc)
+  .hint:has(+ .btn-row),
+.card.gc:has(> form[action="/trimmer/settings/connection"]) form .hint:has(+ .btn-row) {
+  margin-bottom: 0;
+}
+:is(.card.gc > form, form.refiner-settings-form > .card.gc, form[action="/trimmer/settings/cleaner"] > .card.gc)
+  .hint
+  + .btn-row,
+.card.gc:has(> form[action="/trimmer/settings/connection"]) form .hint + .btn-row {
+  margin-top: 0;
 }
 .small {
   font-size: 11px;
@@ -1952,6 +2194,268 @@ textarea.input:focus {
   border: none;
   box-shadow: none;
 }
+
+/* Sonarr/Radarr tab: 3 internal control panels (Connection, Search and cleanup, Limits and schedule) */
+.settings-arr-panels {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-6);
+  margin-top: var(--space-7);
+  margin-bottom: var(--space-2);
+}
+@media (min-width: 960px) {
+  .settings-arr-panels {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-6) var(--space-8);
+    align-items: stretch;
+  }
+  .settings-arr-panel--limits-schedule {
+    grid-column: 1 / -1;
+  }
+}
+.settings-arr-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--glass2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--space-7) var(--space-8);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+}
+.card.gc .settings-arr-panel-title {
+  margin: 0 0 var(--space-7);
+  padding: 0;
+  flex-shrink: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--text);
+  line-height: 1.35;
+}
+.settings-arr-panel-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  min-height: 0;
+}
+.settings-arr-panel-body > .toggle-field.checkline-toggle {
+  margin: 0;
+}
+.settings-arr-panel-body > label {
+  display: block;
+  margin-top: var(--space-6);
+  margin-bottom: var(--space-2);
+  font-weight: 600;
+  color: var(--text);
+  font-size: 13px;
+}
+.settings-arr-panel-body > .toggle-field + label {
+  margin-top: var(--space-6);
+}
+.settings-arr-panel-body > .control + label {
+  margin-top: var(--space-6);
+}
+.settings-arr-panel-control {
+  width: 100%;
+}
+.settings-arr-panel-control .input.settings-arr-panel-input,
+.settings-arr-panel-control .password {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  max-width: none;
+}
+
+/* Connection tile: enable band + field stack + integrated API key row (Sonarr/Radarr) */
+.settings-arr-connection-enable {
+  padding: var(--space-2) 0 var(--space-6);
+  margin: 0 0 var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+.settings-arr-connection-enable .toggle-field.checkline-toggle {
+  margin: 0;
+  width: 100%;
+  align-items: center;
+  padding: var(--space-2) 0;
+}
+.settings-arr-connection-enable .toggle-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+.settings-arr-connection-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+.settings-arr-connection-field label {
+  display: block;
+  margin: 0 0 var(--space-2);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text2);
+}
+.settings-arr-connection-input-row {
+  width: 100%;
+  min-width: 0;
+}
+.settings-arr-connection-input-row .input.settings-arr-panel-input {
+  display: block;
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+.settings-arr-connection-secret-wrap {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  border-radius: var(--r-sm);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  transition:
+    border 0.15s,
+    box-shadow 0.15s;
+}
+.settings-arr-connection-secret-wrap:focus-within {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+.settings-arr-connection-secret-input.password {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  max-width: none !important;
+  margin: 0;
+  border: none !important;
+  border-radius: 0;
+  box-shadow: none !important;
+  background: transparent;
+}
+.settings-arr-connection-secret-input.password:focus {
+  box-shadow: none !important;
+}
+.settings-arr-connection-secret-wrap .settings-arr-connection-reveal.icon-btn {
+  flex: 0 0 auto;
+  margin: 0;
+  align-self: stretch;
+  padding: 0 14px;
+  border: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text2);
+  white-space: nowrap;
+}
+.settings-arr-connection-secret-wrap .settings-arr-connection-reveal.icon-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.1);
+  border-left-color: rgba(255, 255, 255, 0.14);
+}
+
+.settings-arr-behavior {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  width: 100%;
+  min-width: 0;
+}
+/* Behavior: search toggles stacked vertically */
+.settings-arr-search-toggles {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-5);
+  margin: 0;
+}
+.settings-arr-search-toggles .toggle-field.checkline-toggle {
+  margin: 0;
+  width: 100%;
+  max-width: 100%;
+}
+.settings-failed-import-block {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.settings-failed-import-block > .toggle-field.checkline-toggle {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  margin: 0;
+}
+.settings-failed-import-block > .toggle-field.checkline-toggle .toggle {
+  margin-top: 2px;
+}
+.settings-failed-import-hint {
+  margin: 0 0 0 calc(40px + var(--space-4));
+  padding: 0;
+  max-width: 40rem;
+  line-height: 1.45;
+}
+.settings-failed-import-interval-field {
+  margin: 0 0 0 calc(40px + var(--space-4));
+  max-width: 18rem;
+}
+.settings-failed-import-interval-field .number {
+  width: 100%;
+}
+
+.settings-arr-limits-schedule-inner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  width: 100%;
+  min-width: 0;
+}
+.settings-arr-run-limits {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-6) var(--space-8);
+  align-items: start;
+  width: 100%;
+}
+.settings-arr-run-limit-field label {
+  display: block;
+  margin: 0 0 var(--space-2);
+  font-weight: 600;
+  color: var(--text);
+}
+.settings-arr-run-limit-field .number {
+  min-width: 4.5rem;
+}
+.settings-arr-run-limit-field .small {
+  margin-top: var(--space-2);
+}
+.settings-arr-run-limit-field .small + .small {
+  margin-top: var(--space-1);
+}
+.settings-arr-schedule-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--settings-stack-gap);
+  align-items: stretch;
+  padding-top: var(--space-6);
+  margin-top: var(--space-1);
+  border-top: 1px solid var(--border);
+}
+.settings-arr-schedule-block > .toggle-field.checkline-toggle {
+  margin: 0;
+}
+
 .row {
   display: flex;
   flex-wrap: wrap;
@@ -2254,7 +2758,7 @@ th {
 .backup-panels,
 .updates-panels {
   display: grid;
-  gap: 16px;
+  gap: var(--settings-stack-gap);
 }
 .criteria-grid {
   align-items: stretch;
@@ -2262,10 +2766,21 @@ th {
 .criteria-panel {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--settings-stack-gap);
+  padding: var(--space-6) var(--space-7);
+  background: var(--glass2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
 }
 .criteria-panel .btn-row {
   margin-top: auto;
+}
+.criteria-panel .field.genre-field .genre-help {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
 }
 @media (min-width: 768px) {
   .criteria-grid {
@@ -2281,9 +2796,280 @@ th {
   margin-bottom: 14px;
 }
 
+.refiner-mode-banner {
+  margin-bottom: 14px;
+}
+
 /* In-page section jumps (Trimmer Settings tabs → #trimmer-*) */
 .trimmer-settings-anchor {
   scroll-margin-top: 1.25rem;
+}
+
+.refiner-settings-anchor {
+  scroll-margin-top: 1.25rem;
+}
+
+/* Refiner Folders: interval sits with other fields — no separate panel. */
+.refiner-folders-interval-wrap .refiner-folders-interval-field {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.refiner-folders-interval-wrap .input.number {
+  max-width: 9rem;
+}
+
+/* Refiner — Folders: larger disclosure target (summary = full-width control) */
+details.refiner-folders-advanced {
+  margin-top: 0;
+}
+
+.refiner-folders-advanced-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 16px;
+  margin: 0;
+  min-height: 44px;
+  cursor: pointer;
+  list-style: none;
+  border-radius: var(--r-md);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 14px;
+  line-height: 1.45;
+  user-select: none;
+}
+
+.refiner-folders-advanced-summary::-webkit-details-marker {
+  display: none;
+}
+
+.refiner-folders-advanced-summary:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.refiner-folders-advanced-chevron {
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid rgba(255, 255, 255, 0.75);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.75);
+  transform: rotate(-45deg) translateY(-2px);
+  transition: transform 0.15s ease;
+}
+
+details.refiner-folders-advanced[open] .refiner-folders-advanced-chevron {
+  transform: rotate(45deg) translateY(2px);
+}
+
+.refiner-folders-advanced-label {
+  flex: 1;
+  text-align: left;
+}
+
+.refiner-folders-advanced-body {
+  margin-top: var(--settings-field-internal-gap);
+  padding-top: 4px;
+}
+
+/* Refiner Audio: one control strip — equal columns, selects fill cells (override global select max-width). */
+form.refiner-settings-form #refiner-audio .settings-stack.refiner-audio-stack {
+  max-width: 56rem;
+}
+
+form.refiner-settings-form #refiner-audio .refiner-audio-lang-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 14px;
+  width: 100%;
+  align-items: stretch;
+}
+
+form.refiner-settings-form #refiner-audio .refiner-audio-lang-grid .field.refiner-audio-lang-cell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+form.refiner-settings-form #refiner-audio .refiner-audio-lang-cell > label {
+  flex: 0 0 auto;
+  min-height: 2.65em;
+  margin: 0;
+  line-height: 1.35;
+  display: flex;
+  align-items: flex-end;
+}
+
+form.refiner-settings-form #refiner-audio .refiner-audio-lang-grid select.input {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  flex: 1 1 auto;
+  box-sizing: border-box;
+}
+
+form.refiner-settings-form #refiner-audio .field.refiner-audio-policy-field,
+form.refiner-settings-form #refiner-audio .field.refiner-audio-default-field {
+  max-width: 32rem;
+}
+
+form.refiner-settings-form #refiner-audio .field.refiner-audio-policy-field select.input,
+form.refiner-settings-form #refiner-audio .field.refiner-audio-default-field select.input {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+/* Audio policy: scannable option list (grouped with dropdown, not a prose block). */
+form.refiner-settings-form #refiner-audio .refiner-audio-policy-explainer {
+  margin-top: 0.22rem;
+  margin-bottom: calc(var(--settings-field-internal-gap) + 0.45rem);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text2);
+}
+
+form.refiner-settings-form #refiner-audio .refiner-audio-policy-explainer .refiner-audio-policy-lead {
+  margin: 0 0 0.4rem;
+  line-height: 1.45;
+  color: var(--text2);
+}
+
+form.refiner-settings-form #refiner-audio .refiner-audio-policy-options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.38rem;
+}
+
+form.refiner-settings-form #refiner-audio .refiner-audio-policy-options > li {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+form.refiner-settings-form #refiner-audio .refiner-audio-policy-option-head {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.42rem;
+}
+
+/* Dot marker: intentional UI bullet, nudged to align with title cap height */
+form.refiner-settings-form #refiner-audio .refiner-audio-policy-bullet {
+  flex: 0 0 auto;
+  width: 0.3rem;
+  height: 0.3rem;
+  margin: 0.38em 0 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--text2) 65%, var(--text) 35%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--border2) 50%, transparent);
+  font-size: 0;
+  line-height: 0;
+  overflow: hidden;
+  color: transparent;
+}
+
+form.refiner-settings-form #refiner-audio .refiner-audio-policy-option-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+form.refiner-settings-form #refiner-audio .refiner-audio-policy-option-desc {
+  margin: 0;
+  padding: 0 0 0 calc(0.3rem + 0.42rem);
+  line-height: 1.4;
+  font-weight: 400;
+  color: var(--text2);
+  opacity: 0.82;
+}
+
+@media (max-width: 900px) {
+  form.refiner-settings-form #refiner-audio .refiner-audio-lang-grid {
+    grid-template-columns: 1fr;
+  }
+
+  form.refiner-settings-form #refiner-audio .refiner-audio-lang-cell > label {
+    min-height: 0;
+    align-items: flex-start;
+  }
+
+  form.refiner-settings-form #refiner-audio .field.refiner-audio-policy-field,
+  form.refiner-settings-form #refiner-audio .field.refiner-audio-default-field {
+    max-width: none;
+  }
+}
+
+/* Refiner: sentence case for labels and toggle text (scoped to Refiner settings form only). */
+form.refiner-settings-form > .card.gc .field > label,
+form.refiner-settings-form > .card.gc .settings-stack > div > label {
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+form.refiner-settings-form .toggle-label {
+  text-transform: none;
+  letter-spacing: 0.01em;
+}
+
+/* Trimmer settings: same label presentation as Refiner (CSS only; no copy changes). */
+form[action="/trimmer/settings/cleaner"] .card.gc .field > label,
+form[action="/trimmer/settings/cleaner"] .card.gc .settings-stack > div > label,
+.card.gc:has(> form[action="/trimmer/settings/connection"]) form .field > label,
+.card.gc:has(> form[action="/trimmer/settings/connection"]) form > label {
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text2);
+}
+
+.card.gc:has(> form[action="/trimmer/settings/connection"]) form .toggle-label,
+form[action="/trimmer/settings/cleaner"] .card.gc .toggle-label {
+  text-transform: none;
+  letter-spacing: 0.01em;
+}
+
+/* Refiner settings: intro before section tabs (same nav model as Trimmer) */
+.refiner-settings-page-hint {
+  margin-bottom: var(--space-6);
+  max-width: 40rem;
+}
+
+.refiner-overview-path {
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+.refiner-overview-value--muted {
+  color: var(--text2);
+  font-weight: 500;
+}
+.card.gc .refiner-settings-processing-deletion {
+  margin-top: 0;
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.45;
+  max-width: 100%;
 }
 
 .genre-select {

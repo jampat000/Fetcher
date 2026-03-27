@@ -39,7 +39,7 @@ def test_dry_run_no_file_changes(monkeypatch: pytest.MonkeyPatch, tmp_path) -> N
             row.stream_manager_watched_folder = str(watched)
             row.stream_manager_output_folder = str(output)
             await session.commit()
-            r = await run_stream_manager_pass(session, trigger="manual")
+            r = await run_stream_manager_pass(session, trigger="scheduled")
         assert calls == []
         assert int(r.get("dry_run_items") or 0) >= 1
         assert f.exists()
@@ -76,7 +76,7 @@ def test_live_run_moves_to_output_and_deletes_source(monkeypatch: pytest.MonkeyP
             row.stream_manager_watched_folder = str(watched)
             row.stream_manager_output_folder = str(output)
             await session.commit()
-            r = await run_stream_manager_pass(session, trigger="manual")
+            r = await run_stream_manager_pass(session, trigger="scheduled")
         assert len(calls) == 1
         assert r.get("remuxed") == 1
         assert not f.exists()
@@ -107,7 +107,7 @@ def test_source_preserved_on_failure(monkeypatch: pytest.MonkeyPatch, tmp_path) 
             row.stream_manager_watched_folder = str(watched)
             row.stream_manager_output_folder = str(output)
             await session.commit()
-            r = await run_stream_manager_pass(session, trigger="manual")
+            r = await run_stream_manager_pass(session, trigger="scheduled")
         assert r.get("errors") == 1
         assert r.get("ok") is False
         assert f.read_bytes() == b"original"
@@ -144,7 +144,7 @@ def test_custom_work_folder_used(monkeypatch: pytest.MonkeyPatch, tmp_path) -> N
             row.stream_manager_output_folder = str(output)
             row.stream_manager_work_folder = str(work)
             await session.commit()
-            await run_stream_manager_pass(session, trigger="manual")
+            await run_stream_manager_pass(session, trigger="scheduled")
         assert seen and seen[0] == work.resolve()
 
     asyncio.run(_go())
@@ -162,7 +162,7 @@ def test_missing_watched_or_output_folders_rejected(monkeypatch: pytest.MonkeyPa
             row.stream_manager_watched_folder = str(tmp_path / "watched")
             row.stream_manager_output_folder = ""
             await session.commit()
-            result = await run_stream_manager_pass(session, trigger="manual")
+            result = await run_stream_manager_pass(session, trigger="scheduled")
         assert result.get("ok") is False
         assert result.get("error") == "folders_required"
 
@@ -198,7 +198,7 @@ def test_default_work_folder_usage(monkeypatch: pytest.MonkeyPatch, tmp_path) ->
             row.stream_manager_output_folder = str(output)
             row.stream_manager_work_folder = ""
             await session.commit()
-            await run_stream_manager_pass(session, trigger="manual")
+            await run_stream_manager_pass(session, trigger="scheduled")
         assert seen
         assert seen[0].name == "refiner-work"
 
@@ -222,6 +222,7 @@ def test_rules_config_parses_dropdown_values() -> None:
         stream_manager_enabled = True
         stream_manager_primary_audio_lang = "eng"
         stream_manager_secondary_audio_lang = "spa"
+        stream_manager_tertiary_audio_lang = ""
         stream_manager_default_audio_slot = "secondary"
         stream_manager_remove_commentary = True
         stream_manager_subtitle_mode = "remove_all"
@@ -235,4 +236,4 @@ def test_rules_config_parses_dropdown_values() -> None:
     assert cfg.primary_audio_lang == "eng"
     assert cfg.secondary_audio_lang == "spa"
     assert cfg.default_audio_slot == "secondary"
-    assert cfg.audio_preference_mode == "best_available"
+    assert cfg.audio_preference_mode == "preferred_langs_quality"

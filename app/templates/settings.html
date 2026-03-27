@@ -4,13 +4,27 @@
 {% macro settings_fetcher_save_fail_banner() -%}
 {% if request.query_params.get('save') == 'fail' and request.query_params.get('reason') != 'invalid_ip' %}
 {% set _sr = (request.query_params.get('reason') or '') %}
-<div class="banner banner-warn settings-fetcher-save-fail" role="alert">{% if _sr == 'db_busy' %}Save failed — the database was busy. Try again.{% elif _sr == 'invalid' %}Save failed — check this form and try again.{% elif _sr == 'invalid_scope' %}Save failed — reload the page and try again.{% elif _sr == 'sonarr_retry_delay_min' %}Save failed — Sonarr Retry Delay must be at least 1 minute.{% elif _sr == 'radarr_retry_delay_min' %}Save failed — Radarr Retry Delay must be at least 1 minute.{% else %}Save failed — try again.{% endif %}</div>
+{% set _tab = (request.query_params.get('tab') or 'global')|lower %}
+{% if _sr == 'sonarr_retry_delay_min' %}
+{% set _sec = 'Sonarr' %}
+{% elif _sr == 'radarr_retry_delay_min' %}
+{% set _sec = 'Radarr' %}
+{% elif _tab == 'sonarr' %}
+{% set _sec = 'Sonarr' %}
+{% elif _tab == 'radarr' %}
+{% set _sec = 'Radarr' %}
+{% elif _tab == 'security' %}
+{% set _sec = 'Access control' %}
+{% else %}
+{% set _sec = 'Global' %}
+{% endif %}
+<div class="banner banner-warn settings-fetcher-save-fail" role="alert">Could not save ({{ _sec }}). Try again.{% if _sr %} ({{ _sr | e }}){% endif %}</div>
 {% endif %}
 {%- endmacro %}
 {% macro arr_connection_hints() %}
-      <div class="hint">Use <span class="kbd">http://</span> for direct Sonarr/Radarr/Emby connections unless you have HTTPS configured.</div>
+      <div class="hint">Use <span class="kbd">http://</span> for direct Sonarr, Radarr, and Emby connections.</div>
       {% if show_setup_wizard %}
-      <p class="hint">New here? <a href="/setup"><strong>Run the setup wizard</strong></a> to connect Sonarr, Radarr, and Emby step by step (with connection tests).</p>
+      <p class="hint">Run the <a href="/setup"><strong>setup wizard</strong></a> to connect Sonarr, Radarr, and Emby and test each connection.</p>
       {% endif %}
 {% endmacro %}
 {% block content %}
@@ -18,7 +32,7 @@
   <div class="page-head">
     <div>
       <h1 class="ph-title">Fetcher settings</h1>
-      <p>Full Sonarr &amp; Radarr automation: behavior, schedules, backup — not just first-time connection.</p>
+      <p>Configure <strong>Sonarr</strong> and <strong>Radarr</strong> here — connections, schedules, and limits. <strong>Refiner</strong> and <strong>Trimmer</strong> use their own settings pages in the sidebar.</p>
     </div>
   </div>
 
@@ -27,13 +41,13 @@
       <span class="settings-tab-dot gray" aria-hidden="true"></span>Global
     </button>
     <button type="button" class="settings-tab settings-tab-btn" role="tab" aria-selected="false" data-settings-tab="security" id="fetcher-tab-security">
-      <span class="settings-tab-dot purple" aria-hidden="true"></span>Security
+      <span class="settings-tab-dot gray" aria-hidden="true"></span>Security
     </button>
     <button type="button" class="settings-tab settings-tab-btn" role="tab" aria-selected="false" data-settings-tab="sonarr" id="fetcher-tab-sonarr">
-      <span class="settings-tab-dot blue" aria-hidden="true"></span>Sonarr
+      <span class="settings-tab-dot gray" aria-hidden="true"></span>Sonarr
     </button>
     <button type="button" class="settings-tab settings-tab-btn" role="tab" aria-selected="false" data-settings-tab="radarr" id="fetcher-tab-radarr">
-      <span class="settings-tab-dot green" aria-hidden="true"></span>Radarr
+      <span class="settings-tab-dot gray" aria-hidden="true"></span>Radarr
     </button>
   </nav>
 
@@ -60,12 +74,12 @@
       {% elif im == 'fail' %}
       <div class="banner banner-warn" role="alert"><strong>Import</strong> failed: {{ request.query_params.get('reason', 'Unknown error') | e }}</div>
       {% endif %}
-      <p class="small muted lead-muted"><strong>Trimmer</strong> is configured separately: open it from the sidebar → <a href="/trimmer/settings">Trimmer settings</a>. <strong>Sonarr</strong>, <strong>Radarr</strong>, and <strong>Trimmer</strong> each use their own run interval and scheduled job — they are not tied to a shared “minimum wake” cadence.</p>
-      <div class="settings-global-stack">
+      <p class="small muted lead-muted"><strong>Trimmer</strong> is under <a href="/trimmer/settings">Trimmer settings</a> and <strong>Refiner</strong> is under <a href="/refiner/settings">Refiner settings</a>. Each service runs on its own interval and schedule.</p>
+      <div class="settings-stack settings-global-stack">
         <div class="field settings-global-field">
           <label for="log_retention_days">Log retention (days)</label>
           <input class="number settings-global-number" id="log_retention_days" type="number" name="log_retention_days" value="{{ settings.log_retention_days|default(90, true) }}" min="7" max="3650" />
-          <div class="small settings-global-hint">How many days of activity, job logs, and snapshots to keep. Minimum 7, maximum 3650.</div>
+          <div class="small settings-field-hint">Keeps activity, job logs, and snapshots for this many days.</div>
         </div>
         <div class="field settings-global-field">
           <label>Timezone</label>
@@ -74,7 +88,7 @@
             <option value="{{ tz[0] }}" {% if (settings.timezone or "UTC") == tz[0] %}selected{% endif %}>{{ tz[1] }}</option>
             {% endfor %}
           </select>
-          <div class="small settings-global-hint">Used for schedule windows and activity times.</div>
+          <div class="small settings-field-hint">Shows schedule windows and activity times in this timezone.</div>
         </div>
       </div>
 
@@ -82,7 +96,7 @@
         <button class="btn" type="submit">Save global settings</button>
         <a class="btn secondary" href="/">Back to dashboard</a>
       </div>
-      <p class="small muted">Saves <strong>only</strong> this tab: log retention and timezone. Sonarr and Radarr each have their own save button.</p>
+      <p class="small muted">Saves only log retention and timezone on this tab.</p>
     </form>
     </div>
     </div>
@@ -103,58 +117,97 @@
       {% elif tst == 'sonarr_fail' %}
       <div class="banner banner-warn" role="alert">Sonarr connection failed — check URL, API key, and that Sonarr is reachable.</div>
       {% endif %}
-      <p class="hint">Sonarr automation — URL, API key, searches, schedule, and run interval.</p>
+      <p class="small muted lead-muted">Sonarr automation — URL, API key, searches, schedule, and run interval.</p>
       {{ arr_connection_hints() }}
 
-      <div class="field">
-        {% call toggle_checkbox("sonarr_enabled", settings.sonarr_enabled) %}<strong>Sonarr</strong>{% endcall %}
-        <label>Sonarr URL</label>
-        <div class="control">
-          <input class="input" type="text" name="sonarr_url" value="{{ settings.sonarr_url }}" placeholder="http://localhost:8989" />
-        </div>
-        <label>Sonarr API key</label>
-        <div class="control">
-          <input class="password" id="sonarr_api_key" type="password" name="sonarr_api_key" value="{{ settings.sonarr_api_key }}" placeholder="X-Api-Key" />
-          <button class="icon-btn" data-reveal="sonarr_api_key" type="button">Show</button>
-        </div>
-
-        <div class="section">
-          {% call toggle_checkbox("sonarr_search_missing", settings.sonarr_search_missing) %}Search monitored missing items{% endcall %}
-          {% call toggle_checkbox("sonarr_search_upgrades", settings.sonarr_search_upgrades) %}Search cutoff-unmet items (upgrade){% endcall %}
-          {% call toggle_checkbox("sonarr_remove_failed_imports", settings.sonarr_remove_failed_imports | default(false)) %}Remove failed imports (queue + blocklist){% endcall %}
-          <div class="small settings-global-hint">When enabled, each run removes queue rows that match an explicit <strong>import failed</strong> history event by exact <strong>download ID</strong> only (no title matching). Skips when there is no queue match or more than one match. Removal calls the Sonarr API with <strong>blocklist</strong> so the associated release is blocklisted and less likely to re-grab immediately. Logged to <strong>Activity</strong>.</div>
-          <label>Max items per run</label>
-          <input class="number" type="number" name="sonarr_max_items_per_run" value="{{ settings.sonarr_max_items_per_run }}" min="1" max="1000" />
-          <label>Retry Delay (minutes)</label>
-          <input class="number" type="number" name="sonarr_retry_delay_minutes" value="{{ settings.sonarr_retry_delay_minutes }}" min="1" max="525600" />
-          <div class="small settings-global-hint">Minimum time before the same item can be searched again.</div>
-          <div class="small settings-global-hint">Lower values may cause repeated searches for the same items.</div>
-        </div>
-
-        <div class="section">
-          {% call toggle_checkbox("sonarr_schedule_enabled", settings.sonarr_schedule_enabled) %}Enable schedule window{% endcall %}
-          <label>Days</label>
-          {{ schedule_days_checkboxes("sonarr_schedule", sonarr_schedule_days_selected) }}
-          <div class="row schedule-time-row">
-            {{ schedule_time_select("sonarr_schedule_start", "Start time", sonarr_schedule_start_hhmm, schedule_time_choices, sonarr_start_orphan) }}
-            {{ schedule_time_select("sonarr_schedule_end", "End time", sonarr_schedule_end_hhmm, schedule_time_choices, sonarr_end_orphan) }}
-          </div>
-          <div class="small">Schedule window restricts when runs are allowed. With the window off, runs follow the interval normally. 30-minute steps; times outside the list stay available as <strong>(saved)</strong>. If start is later than end, the window crosses midnight.</div>
-          <div class="row">
-            <div class="field">
-              <label>Run interval (minutes)</label>
-              <input class="number" type="number" name="sonarr_interval_minutes" value="{{ settings.sonarr_interval_minutes }}" min="1" max="10080" placeholder="60" />
-              <div class="small">How often runs are due; the schedule window only limits when runs may start. Applies to missing and upgrade searches. Save settings saves only this tab.</div>
+      <div class="settings-arr-panels">
+        <section class="settings-arr-panel settings-arr-panel--connection" aria-labelledby="sonarr-panel-connection">
+          <h3 class="settings-arr-panel-title" id="sonarr-panel-connection">Connection</h3>
+          <div class="settings-arr-panel-body">
+            <div class="settings-arr-connection-enable">
+              {% call toggle_checkbox("sonarr_enabled", settings.sonarr_enabled) %}Enable Sonarr{% endcall %}
+            </div>
+            <div class="settings-arr-connection-fields">
+              <div class="settings-arr-connection-field">
+                <label for="sonarr_settings_url">Sonarr URL</label>
+                <div class="settings-arr-connection-input-row">
+                  <input class="input settings-arr-panel-input" id="sonarr_settings_url" type="text" name="sonarr_url" value="{{ settings.sonarr_url }}" placeholder="http://localhost:8989" />
+                </div>
+              </div>
+              <div class="settings-arr-connection-field">
+                <label for="sonarr_api_key">Sonarr API key</label>
+                <div class="settings-arr-connection-secret-wrap">
+                  <input class="password settings-arr-connection-secret-input" id="sonarr_api_key" type="password" name="sonarr_api_key" value="{{ settings.sonarr_api_key }}" placeholder="X-Api-Key" />
+                  <button class="icon-btn settings-arr-connection-reveal" data-reveal="sonarr_api_key" type="button">Show</button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        </section>
+
+        <section class="settings-arr-panel settings-arr-panel--search-cleanup" aria-labelledby="sonarr-panel-search-cleanup">
+          <h3 class="settings-arr-panel-title" id="sonarr-panel-search-cleanup">Search and cleanup</h3>
+          <div class="settings-arr-panel-body">
+            <div class="settings-arr-behavior" aria-labelledby="sonarr-panel-search-cleanup">
+              <div class="settings-arr-search-toggles">
+                {% call toggle_checkbox("sonarr_search_missing", settings.sonarr_search_missing) %}Search monitored missing items{% endcall %}
+                {% call toggle_checkbox("sonarr_search_upgrades", settings.sonarr_search_upgrades) %}Search cutoff-unmet items (upgrade){% endcall %}
+              </div>
+              <div class="settings-failed-import-block">
+                {% call toggle_checkbox("sonarr_remove_failed_imports", settings.sonarr_remove_failed_imports | default(false)) %}Remove failed imports (queue + blocklist){% endcall %}
+                <div class="small settings-field-hint settings-failed-import-hint">Removes failed or rejected imports from the queue and logs each removal in Activity.</div>
+                <div class="field settings-failed-import-interval-field">
+                  <label for="sonarr_failed_import_cleanup_interval_minutes">Failed import cleanup interval (minutes)</label>
+                  <input id="sonarr_failed_import_cleanup_interval_minutes" class="number" type="number" name="failed_import_cleanup_interval_minutes" value="{{ settings.failed_import_cleanup_interval_minutes|default(60, true) }}" min="1" max="10080" />
+                  <div class="small settings-field-hint">Checks for failed imports on this interval and removes them automatically.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-arr-panel settings-arr-panel--limits-schedule" aria-labelledby="sonarr-panel-limits">
+          <h3 class="settings-arr-panel-title" id="sonarr-panel-limits">Limits and schedule</h3>
+          <div class="settings-arr-panel-body">
+            <div class="settings-arr-limits-schedule-inner" aria-labelledby="sonarr-panel-limits">
+              <div class="settings-arr-run-limits">
+                <div class="settings-arr-run-limit-field">
+                  <label for="sonarr_max_items_per_run">Max items per run</label>
+                  <input class="number" id="sonarr_max_items_per_run" type="number" name="sonarr_max_items_per_run" value="{{ settings.sonarr_max_items_per_run }}" min="1" max="1000" />
+                </div>
+                <div class="settings-arr-run-limit-field">
+                  <label for="sonarr_retry_delay_minutes">Retry delay (minutes)</label>
+                  <input class="number" id="sonarr_retry_delay_minutes" type="number" name="sonarr_retry_delay_minutes" value="{{ settings.sonarr_retry_delay_minutes }}" min="1" max="525600" />
+                  <div class="small settings-field-hint">Retries failed searches after this delay.</div>
+                </div>
+              </div>
+              <div class="settings-arr-schedule-block">
+                {% call toggle_checkbox("sonarr_schedule_enabled", settings.sonarr_schedule_enabled) %}Enable schedule window{% endcall %}
+                <label>Days</label>
+                {{ schedule_days_checkboxes("sonarr_schedule", sonarr_schedule_days_selected) }}
+                <div class="row schedule-time-row">
+                  {{ schedule_time_select("sonarr_schedule_start", "Start time", sonarr_schedule_start_hhmm, schedule_time_choices, sonarr_start_orphan) }}
+                  {{ schedule_time_select("sonarr_schedule_end", "End time", sonarr_schedule_end_hhmm, schedule_time_choices, sonarr_end_orphan) }}
+                </div>
+                <div class="small settings-field-hint">Limits runs to the selected days and times.</div>
+                <div class="row">
+                  <div class="field">
+                    <label>Run interval (minutes)</label>
+                    <input class="number" type="number" name="sonarr_interval_minutes" value="{{ settings.sonarr_interval_minutes }}" min="1" max="10080" placeholder="60" />
+                    <div class="small settings-field-hint">Runs searches on this interval.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
 
       <div class="btn-row">
         <button class="btn" type="submit">Save Sonarr settings</button>
         <button type="submit" class="btn secondary" form="test-sonarr">Test Sonarr</button>
       </div>
-      <p class="small muted">Test uses the <strong>saved</strong> URL and API key — <strong>Save</strong> first if you changed them. Test does not write settings; it records a <strong>connection status</strong> row for the dashboard.</p>
+      <p class="small muted">Tests the saved URL and API key and records the connection result on the dashboard.</p>
     </form>
     </div>
     </div>
@@ -175,58 +228,97 @@
       {% elif tst == 'radarr_fail' %}
       <div class="banner banner-warn" role="alert">Radarr connection failed — check URL, API key, and that Radarr is reachable.</div>
       {% endif %}
-      <p class="hint">Radarr automation — URL, API key, searches, schedule, and run interval.</p>
+      <p class="small muted lead-muted">Radarr automation — URL, API key, searches, schedule, and run interval.</p>
       {{ arr_connection_hints() }}
 
-      <div class="field">
-        {% call toggle_checkbox("radarr_enabled", settings.radarr_enabled) %}<strong>Radarr</strong>{% endcall %}
-        <label>Radarr URL</label>
-        <div class="control">
-          <input class="input" type="text" name="radarr_url" value="{{ settings.radarr_url }}" placeholder="http://localhost:7878" />
-        </div>
-        <label>Radarr API key</label>
-        <div class="control">
-          <input class="password" id="radarr_api_key" type="password" name="radarr_api_key" value="{{ settings.radarr_api_key }}" placeholder="X-Api-Key" />
-          <button class="icon-btn" data-reveal="radarr_api_key" type="button">Show</button>
-        </div>
-
-        <div class="section">
-          {% call toggle_checkbox("radarr_search_missing", settings.radarr_search_missing) %}Search monitored missing items{% endcall %}
-          {% call toggle_checkbox("radarr_search_upgrades", settings.radarr_search_upgrades) %}Search cutoff-unmet items (upgrade){% endcall %}
-          {% call toggle_checkbox("radarr_remove_failed_imports", settings.radarr_remove_failed_imports | default(false)) %}Remove failed imports (queue + blocklist){% endcall %}
-          <div class="small settings-global-hint">When enabled, each run removes queue rows that match an explicit <strong>import failed</strong> history event by exact <strong>download ID</strong> only (no title matching). Skips when there is no queue match or more than one match. Removal calls the Radarr API with <strong>blocklist</strong> so the associated release is blocklisted and less likely to re-grab immediately. Logged to <strong>Activity</strong>.</div>
-          <label>Max items per run</label>
-          <input class="number" type="number" name="radarr_max_items_per_run" value="{{ settings.radarr_max_items_per_run }}" min="1" max="1000" />
-          <label>Retry Delay (minutes)</label>
-          <input class="number" type="number" name="radarr_retry_delay_minutes" value="{{ settings.radarr_retry_delay_minutes }}" min="1" max="525600" />
-          <div class="small settings-global-hint">Minimum time before the same item can be searched again.</div>
-          <div class="small settings-global-hint">Lower values may cause repeated searches for the same items.</div>
-        </div>
-
-        <div class="section">
-          {% call toggle_checkbox("radarr_schedule_enabled", settings.radarr_schedule_enabled) %}Enable schedule window{% endcall %}
-          <label>Days</label>
-          {{ schedule_days_checkboxes("radarr_schedule", radarr_schedule_days_selected) }}
-          <div class="row schedule-time-row">
-            {{ schedule_time_select("radarr_schedule_start", "Start time", radarr_schedule_start_hhmm, schedule_time_choices, radarr_start_orphan) }}
-            {{ schedule_time_select("radarr_schedule_end", "End time", radarr_schedule_end_hhmm, schedule_time_choices, radarr_end_orphan) }}
-          </div>
-          <div class="small">Schedule window restricts when runs are allowed. With the window off, runs follow the interval normally. 30-minute steps; times outside the list stay available as <strong>(saved)</strong>. If start is later than end, the window crosses midnight.</div>
-          <div class="row">
-            <div class="field">
-              <label>Run interval (minutes)</label>
-              <input class="number" type="number" name="radarr_interval_minutes" value="{{ settings.radarr_interval_minutes }}" min="1" max="10080" placeholder="60" />
-              <div class="small">How often runs are due; the schedule window only limits when runs may start. Applies to missing and upgrade searches. Save settings saves only this tab.</div>
+      <div class="settings-arr-panels">
+        <section class="settings-arr-panel settings-arr-panel--connection" aria-labelledby="radarr-panel-connection">
+          <h3 class="settings-arr-panel-title" id="radarr-panel-connection">Connection</h3>
+          <div class="settings-arr-panel-body">
+            <div class="settings-arr-connection-enable">
+              {% call toggle_checkbox("radarr_enabled", settings.radarr_enabled) %}Enable Radarr{% endcall %}
+            </div>
+            <div class="settings-arr-connection-fields">
+              <div class="settings-arr-connection-field">
+                <label for="radarr_settings_url">Radarr URL</label>
+                <div class="settings-arr-connection-input-row">
+                  <input class="input settings-arr-panel-input" id="radarr_settings_url" type="text" name="radarr_url" value="{{ settings.radarr_url }}" placeholder="http://localhost:7878" />
+                </div>
+              </div>
+              <div class="settings-arr-connection-field">
+                <label for="radarr_api_key">Radarr API key</label>
+                <div class="settings-arr-connection-secret-wrap">
+                  <input class="password settings-arr-connection-secret-input" id="radarr_api_key" type="password" name="radarr_api_key" value="{{ settings.radarr_api_key }}" placeholder="X-Api-Key" />
+                  <button class="icon-btn settings-arr-connection-reveal" data-reveal="radarr_api_key" type="button">Show</button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        </section>
+
+        <section class="settings-arr-panel settings-arr-panel--search-cleanup" aria-labelledby="radarr-panel-search-cleanup">
+          <h3 class="settings-arr-panel-title" id="radarr-panel-search-cleanup">Search and cleanup</h3>
+          <div class="settings-arr-panel-body">
+            <div class="settings-arr-behavior" aria-labelledby="radarr-panel-search-cleanup">
+              <div class="settings-arr-search-toggles">
+                {% call toggle_checkbox("radarr_search_missing", settings.radarr_search_missing) %}Search monitored missing items{% endcall %}
+                {% call toggle_checkbox("radarr_search_upgrades", settings.radarr_search_upgrades) %}Search cutoff-unmet items (upgrade){% endcall %}
+              </div>
+              <div class="settings-failed-import-block">
+                {% call toggle_checkbox("radarr_remove_failed_imports", settings.radarr_remove_failed_imports | default(false)) %}Remove failed imports (queue + blocklist){% endcall %}
+                <div class="small settings-field-hint settings-failed-import-hint">Removes failed or rejected imports from the queue and logs each removal in Activity.</div>
+                <div class="field settings-failed-import-interval-field">
+                  <label for="radarr_failed_import_cleanup_interval_minutes">Failed import cleanup interval (minutes)</label>
+                  <input id="radarr_failed_import_cleanup_interval_minutes" class="number" type="number" name="failed_import_cleanup_interval_minutes" value="{{ settings.failed_import_cleanup_interval_minutes|default(60, true) }}" min="1" max="10080" />
+                  <div class="small settings-field-hint">Checks for failed imports on this interval and removes them automatically.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-arr-panel settings-arr-panel--limits-schedule" aria-labelledby="radarr-panel-limits">
+          <h3 class="settings-arr-panel-title" id="radarr-panel-limits">Limits and schedule</h3>
+          <div class="settings-arr-panel-body">
+            <div class="settings-arr-limits-schedule-inner" aria-labelledby="radarr-panel-limits">
+              <div class="settings-arr-run-limits">
+                <div class="settings-arr-run-limit-field">
+                  <label for="radarr_max_items_per_run">Max items per run</label>
+                  <input class="number" id="radarr_max_items_per_run" type="number" name="radarr_max_items_per_run" value="{{ settings.radarr_max_items_per_run }}" min="1" max="1000" />
+                </div>
+                <div class="settings-arr-run-limit-field">
+                  <label for="radarr_retry_delay_minutes">Retry delay (minutes)</label>
+                  <input class="number" id="radarr_retry_delay_minutes" type="number" name="radarr_retry_delay_minutes" value="{{ settings.radarr_retry_delay_minutes }}" min="1" max="525600" />
+                  <div class="small settings-field-hint">Retries failed searches after this delay.</div>
+                </div>
+              </div>
+              <div class="settings-arr-schedule-block">
+                {% call toggle_checkbox("radarr_schedule_enabled", settings.radarr_schedule_enabled) %}Enable schedule window{% endcall %}
+                <label>Days</label>
+                {{ schedule_days_checkboxes("radarr_schedule", radarr_schedule_days_selected) }}
+                <div class="row schedule-time-row">
+                  {{ schedule_time_select("radarr_schedule_start", "Start time", radarr_schedule_start_hhmm, schedule_time_choices, radarr_start_orphan) }}
+                  {{ schedule_time_select("radarr_schedule_end", "End time", radarr_schedule_end_hhmm, schedule_time_choices, radarr_end_orphan) }}
+                </div>
+                <div class="small settings-field-hint">Limits runs to the selected days and times.</div>
+                <div class="row">
+                  <div class="field">
+                    <label>Run interval (minutes)</label>
+                    <input class="number" type="number" name="radarr_interval_minutes" value="{{ settings.radarr_interval_minutes }}" min="1" max="10080" placeholder="60" />
+                    <div class="small settings-field-hint">Runs searches on this interval.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
 
       <div class="btn-row">
         <button class="btn" type="submit">Save Radarr settings</button>
         <button type="submit" class="btn secondary" form="test-radarr">Test Radarr</button>
       </div>
-      <p class="small muted">Test uses the <strong>saved</strong> URL and API key — <strong>Save</strong> first if you changed them. Test does not write settings; it records a <strong>connection status</strong> row for the dashboard.</p>
+      <p class="small muted">Tests the saved URL and API key and records the connection result on the dashboard.</p>
     </form>
     </div>
     </div>
@@ -234,9 +326,12 @@
   <div class="settings-tab-target" data-settings-panel="security" role="tabpanel" aria-labelledby="fetcher-tab-security" hidden>
     <div class="card gc stripe-purple" id="section-security">
       <div class="gc-title">Security</div>
-      <p class="hint">Your account password protects this web UI. The session cookie is <strong>HTTP-only</strong> and lasts <strong>7 days</strong>.</p>
+      <p class="small muted lead-muted">Your account password protects this web UI. The session cookie is <strong>HTTP-only</strong> and lasts <strong>7 days</strong>.</p>
       {% if request.query_params.get('save') == 'fail' and request.query_params.get('reason') == 'invalid_ip' %}
       <div class="banner banner-warn" role="alert">Invalid IP or CIDR in allowlist — nothing was saved.</div>
+      {% endif %}
+      {% if request.query_params.get('saved') == '1' and (request.query_params.get('tab') or '').lower() == 'security' %}
+      <div class="banner banner-ok" role="status">Access control saved.</div>
       {% endif %}
       {% if sec_notice == "user_ok" %}
       <div class="banner banner-ok" role="status">Username updated.</div>
@@ -251,7 +346,7 @@
       {% elif sec_notice == "pass_mismatch" %}
       <div class="banner banner-warn" role="alert">New password and confirmation do not match.</div>
       {% elif sec_notice == "save_fail" %}
-      <div class="banner banner-warn" role="alert">Could not save — database may be busy. Try again.</div>
+      <div class="banner banner-warn" role="alert">Could not save (Access control). Try again.</div>
       {% elif sec_notice == "invalid" %}
       <div class="banner banner-warn" role="alert">Invalid security form submission.</div>
       {% endif %}
@@ -264,12 +359,12 @@
     </nav>
 
       <h3 class="section settings-security-anchor settings-security-h3" id="security-account">Account</h3>
-      <p class="hint">You are signed in as <strong>{{ settings.auth_username|default('admin', true)|e }}</strong>. Below you can <strong>change your sign-in username</strong> and <strong>change your password</strong> independently—each section has its own save button.</p>
+      <p class="hint">You are signed in as <strong>{{ settings.auth_username|default('admin', true)|e }}</strong>. Update your username or password in the sections below.</p>
 
       <div class="settings-security-account-panels">
         <section class="settings-security-panel settings-security-anchor" id="security-username" aria-labelledby="sec-panel-username-title">
-          <h4 id="sec-panel-username-title" class="settings-security-panel-title">Change Username</h4>
-          <p class="settings-security-panel-desc">Set a <strong>new username</strong> for signing in to Fetcher (this replaces your current one). Enter your <strong>current password</strong> to confirm, then save.</p>
+          <h4 id="sec-panel-username-title" class="settings-security-panel-title">Change username</h4>
+          <p class="settings-security-panel-desc">Sets a new username after you confirm with your current password.</p>
           <form method="post" action="/settings/auth/credentials" class="section">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
             <input type="hidden" name="auth_form" value="username" />
@@ -284,8 +379,8 @@
         </section>
 
         <section class="settings-security-panel settings-security-anchor" id="security-password" aria-labelledby="sec-panel-password-title">
-          <h4 id="sec-panel-password-title" class="settings-security-panel-title">Change Password</h4>
-          <p class="settings-security-panel-desc">Set a <strong>new password</strong> for the same account (username stays the same). At least <strong>8 characters</strong>. You’ll stay signed in on this browser until the session expires.</p>
+          <h4 id="sec-panel-password-title" class="settings-security-panel-title">Change password</h4>
+          <p class="settings-security-panel-desc">Sets a new password for this account.</p>
           <form method="post" action="/settings/auth/credentials" class="section">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
             <input type="hidden" name="auth_form" value="password" />
@@ -302,15 +397,15 @@
         </section>
       </div>
 
-      <h3 class="section settings-security-anchor settings-security-h3 settings-security-h3--major">Access Control</h3>
+      <h3 class="section settings-security-anchor settings-security-h3 settings-security-h3--major">Access control</h3>
       <section class="settings-security-panel settings-security-anchor settings-security-access-panel" id="security-access" aria-labelledby="sec-panel-ac-title">
         <h4 id="sec-panel-ac-title" class="settings-security-panel-title">IP allowlist</h4>
-        <p class="settings-security-panel-desc">Optional. Clients matching these IPs or CIDR ranges can use Fetcher <strong>without</strong> a password. Use only on networks you trust.</p>
+        <p class="settings-security-panel-desc">Lets listed IPs and CIDR ranges open Fetcher without a password.</p>
         <form method="post" action="/settings/auth/access_control" class="section">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
           <label for="auth_ip_allowlist">Allowed IPs and ranges</label>
           <textarea class="input input--textarea-mono" id="auth_ip_allowlist" name="auth_ip_allowlist" rows="6" placeholder="One IP or CIDR range per line, e.g.:&#10;192.168.1.50&#10;192.168.1.0/24&#10;10.0.0.0/8">{{ settings.auth_ip_allowlist or '' }}</textarea>
-          <p class="hint hint-tight-after-input">Supports single IPs (192.168.1.50) and CIDR ranges (192.168.1.0/24). Leave empty to require sign-in from every device.</p>
+          <p class="hint hint-tight-after-input">Enter one IP or CIDR range per line. Leave empty to require sign-in on every device.</p>
           <div class="btn-row">
             <button class="btn" type="submit">Save access control</button>
           </div>
@@ -330,7 +425,7 @@
   <div class="gc-title">Global operations</div>
   <div class="card backup-restore-card gc">
     <div class="gc-title">Backup &amp; restore</div>
-    <p class="hint backup-restore-lead">Saves <strong>everything in Settings</strong> to one file: <strong>Fetcher</strong> (Sonarr, Radarr, schedules) and <strong>Trimmer</strong> (Emby connection, rules, schedules). <strong>Activity</strong> history is <em>not</em> included. Treat the file as secret—it contains your API keys.</p>
+    <p class="hint backup-restore-lead">Backs up all Fetcher and Trimmer settings to one file. Keep this file private because it contains API keys.</p>
 
     <div class="backup-panels">
       <div class="backup-panel backup-panel-download">
@@ -338,7 +433,7 @@
           <span class="backup-panel-icon" aria-hidden="true">⬇</span>
           <div class="gc-title">Download backup</div>
         </div>
-        <p class="small backup-panel-desc">Creates <code class="code-inline">fetcher-settings-backup-dd-mm-yyyy.json</code> with your current <strong>Fetcher</strong> and <strong>Trimmer</strong> settings.</p>
+        <p class="small backup-panel-desc">Downloads your current Fetcher and Trimmer settings as <code class="code-inline">fetcher-settings-backup-dd-mm-yyyy.json</code>.</p>
         <a class="btn backup-panel-btn" href="/settings/backup/export" download>Download backup</a>
       </div>
 
@@ -347,7 +442,7 @@
           <span class="backup-panel-icon" aria-hidden="true">⬆</span>
           <div class="gc-title">Restore from backup</div>
         </div>
-        <p class="small backup-panel-desc">Replaces <strong>all</strong> saved <strong>Fetcher</strong> and <strong>Trimmer</strong> settings on this PC. Does not change dashboard <strong>Activity</strong> history.</p>
+        <p class="small backup-panel-desc">Replaces all saved Fetcher and Trimmer settings on this PC.</p>
         <form method="post" action="/settings/backup/import" enctype="multipart/form-data" class="backup-restore-form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
           <div class="settings-step-group" role="group" aria-labelledby="backup-restore-step-file">
@@ -399,7 +494,7 @@
 
   <div class="card updates-card gc" id="updates-card">
     <div class="gc-title">Software updates</div>
-    <p class="hint updates-lead">Compares this PC with the latest <strong>GitHub</strong> release. You can run <code class="code-inline">FetcherSetup.exe</code> silently; the <strong>Fetcher</strong> Windows service stops briefly, then starts again.</p>
+    <p class="hint updates-lead">Checks this PC against the latest GitHub release and runs <code class="code-inline">FetcherSetup.exe</code> for upgrades.</p>
 
     <div class="backup-panels updates-panels">
       <div class="backup-panel backup-panel-updates-status">
@@ -407,7 +502,7 @@
           <span class="backup-panel-icon" aria-hidden="true">◉</span>
           <div class="gc-title">Release status</div>
         </div>
-        <p class="small backup-panel-desc">Installed version, latest published tag, and whether <code class="code-inline">FetcherSetup.exe</code> is attached to that release.</p>
+        <p class="small backup-panel-desc">Shows installed version, latest tag, and installer availability.</p>
         <div class="btn-row">
           <button type="button" class="btn secondary" id="updates-check-btn">Check for updates</button>
         </div>
@@ -421,7 +516,7 @@
           <span class="backup-panel-icon" aria-hidden="true">⬆</span>
           <div class="gc-title">Apply upgrade</div>
         </div>
-        <p class="small backup-panel-desc">When a newer release is available, confirm and run the installer. <strong>Release notes</strong> opens beside <strong>Upgrade now</strong>.</p>
+        <p class="small backup-panel-desc">Confirms and runs the installer when a newer release is available.</p>
         <p class="small muted updates-idle-hint" id="updates-idle-hint">No action needed until a newer release is detected.</p>
         <div class="settings-step-group" id="updates-upgrade-shell" role="group" aria-labelledby="updates-apply-step-confirm" hidden>
           <p class="settings-step-legend" id="updates-apply-step-confirm">Confirm upgrade</p>
@@ -429,7 +524,7 @@
             <label class="toggle-field settings-commit-toggle" id="updates-confirm-wrap" hidden>
               <input type="checkbox" id="updates-confirm" class="toggle-input" />
               <span class="toggle" aria-hidden="true"><span class="toggle-knob"></span></span>
-              <span class="toggle-label">I understand the <strong>Fetcher</strong> service will restart and this page may disconnect until the upgrade finishes.</span>
+              <span class="toggle-label">I understand the <strong>Fetcher</strong> service restarts and this page disconnects until the upgrade finishes.</span>
             </label>
             <p class="small muted updates-upgrade-cta-hint" id="updates-upgrade-cta-hint" hidden>Turn the confirmation on, then use <strong>Upgrade now</strong> or <strong>Release notes</strong>.</p>
             <p class="small muted" id="updates-manual-install-hint" hidden>Automatic upgrade isn’t available for this run. Use <strong>Download FetcherSetup.exe</strong> under <strong>Release status</strong> (left), or install from <strong>Release notes</strong>.</p>
