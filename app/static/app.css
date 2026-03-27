@@ -2876,6 +2876,47 @@ details.refiner-folders-advanced[open] .refiner-folders-advanced-chevron {
   padding-top: 4px;
 }
 
+.refiner-path-field-row {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+}
+
+.refiner-path-field-row .refiner-path-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.refiner-path-field-row .refiner-folder-browse {
+  flex-shrink: 0;
+  align-self: stretch;
+  padding-left: 14px;
+  padding-right: 14px;
+  white-space: nowrap;
+}
+
+.refiner-readiness-banner .refiner-readiness-list {
+  margin: 10px 0 0 1.1rem;
+  padding: 0;
+}
+
+.refiner-readiness-banner .refiner-readiness-list li {
+  margin: 6px 0;
+}
+
+.refiner-readiness-banner .refiner-readiness-hint {
+  margin-top: 10px;
+  margin-bottom: 0;
+}
+
+.refiner-readiness-banner a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* Refiner Audio: one control strip — equal columns, selects fill cells (override global select max-width). */
 form.refiner-settings-form #refiner-audio .settings-stack.refiner-audio-stack {
   max-width: 56rem;

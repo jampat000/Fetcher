@@ -1,0 +1,107 @@
+"""Refiner enable vs readiness: UI messaging and scheduler gating (not form-wide validation)."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from app.models import AppSettings
+from app.stream_manager_rules import normalize_lang
+
+
+def _resolve_folder_path(raw: str) -> Path | None:
+    s = (raw or "").strip()
+    if not s:
+        return None
+    p = Path(s).expanduser()
+    try:
+        return p.resolve()
+    except OSError:
+        return None
+
+
+def refiner_validate_settings_save_section(
+    section: str,
+    *,
+    enabled: bool,
+    primary_lang: str,
+    watched_folder: str,
+    output_folder: str,
+) -> tuple[str | None, str | None]:
+    """Validate only the section being saved. Returns (reason_code, user_message) or (None, None)."""
+    sec = (section or "").strip().lower()
+    if sec == "processing":
+        return None, None
+    if sec == "folders":
+        if enabled and (not watched_folder or not output_folder):
+            return (
+                "watched_output_required",
+                "Watched folder and output folder are both required while Refiner is on. Set them in this section, or turn Refiner off under Processing first.",
+            )
+        return None, None
+    if sec == "audio":
+        if enabled and not normalize_lang(primary_lang):
+            return (
+                "primary_audio_required",
+                "Primary audio language is required while Refiner is on. Choose one in this section.",
+            )
+        return None, None
+    return None, None
+
+
+def refiner_readiness_issues(row: AppSettings) -> list[tuple[str, str]]:
+    """Human-readable issues when Refiner is enabled but not ready to process. (fragment id, message)."""
+    if not getattr(row, "stream_manager_enabled", False):
+        return []
+    issues: list[tuple[str, str]] = []
+    if not normalize_lang(getattr(row, "stream_manager_primary_audio_lang", "") or ""):
+        issues.append(
+            (
+                "refiner-audio",
+                "Primary audio language is not set. Refiner will not process files until you choose one under Audio.",
+            )
+        )
+
+    w_raw = (getattr(row, "stream_manager_watched_folder", "") or "").strip()
+    if not w_raw:
+        issues.append(("refiner-folders", "Watched folder path is missing. Set it under Folders."))
+    else:
+        watched = _resolve_folder_path(w_raw)
+        if watched is None:
+            issues.append(("refiner-folders", "Watched folder path is invalid or could not be resolved."))
+        elif not watched.is_dir():
+            issues.append(
+                (
+                    "refiner-folders",
+                    f"Watched folder must be an existing folder Refiner can read: {watched}",
+                )
+            )
+
+    o_raw = (getattr(row, "stream_manager_output_folder", "") or "").strip()
+    if not o_raw:
+        issues.append(("refiner-folders", "Output folder path is missing. Set it under Folders."))
+    else:
+        output = _resolve_folder_path(o_raw)
+        if output is None:
+            issues.append(("refiner-folders", "Output folder path is invalid or could not be resolved."))
+        elif not output.is_dir():
+            issues.append(
+                (
+                    "refiner-folders",
+                    f"Output folder must be an existing folder: {output}",
+                )
+            )
+
+    return issues
+
+
+def refiner_scheduler_should_run(row: AppSettings) -> bool:
+    """True when Refiner is on and minimum fields are set so the interval job may run (execution still validates paths)."""
+    if not getattr(row, "stream_manager_enabled", False):
+        return False
+    if not normalize_lang(getattr(row, "stream_manager_primary_audio_lang", "") or ""):
+        return False
+    if not (getattr(row, "stream_manager_watched_folder", "") or "").strip():
+        return False
+    if not (getattr(row, "stream_manager_output_folder", "") or "").strip():
+        return False
+    return True

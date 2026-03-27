@@ -425,11 +425,113 @@ def test_refiner_save_async_validation_returns_json(monkeypatch: pytest.MonkeyPa
             },
         )
     assert resp.status_code == 200
-    assert resp.json() == {
-        "ok": False,
-        "reason": "primary_audio_required",
-        "section": "audio",
-    }
+    body = resp.json()
+    assert body["ok"] is False
+    assert body["reason"] == "primary_audio_required"
+    assert body["section"] == "audio"
+    assert isinstance(body.get("message"), str) and len(body["message"]) > 20
+
+
+def test_refiner_processing_save_async_allows_enable_without_audio_or_folders(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Processing section: enable Refiner even when Audio/Folders are still incomplete."""
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/refiner/settings/save?refiner_section=processing",
+            data={
+                "stream_manager_enabled": "true",
+                "stream_manager_dry_run": "true",
+                "stream_manager_primary_audio_lang": "",
+                "stream_manager_secondary_audio_lang": "",
+                "stream_manager_tertiary_audio_lang": "",
+                "stream_manager_default_audio_slot": "primary",
+                "stream_manager_audio_preference_mode": "preferred_langs_quality",
+                "stream_manager_watched_folder": "",
+                "stream_manager_output_folder": "",
+                "stream_manager_schedule_enabled": "false",
+                "stream_manager_interval_seconds": "60",
+                **{f"stream_manager_schedule_{d}": "0" for d in _WEEKDAYS},
+            },
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "X-Fetcher-Refiner-Settings-Async": "1",
+            },
+        )
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "section": "processing"}
+
+
+def test_refiner_folders_save_async_rejects_missing_paths_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/refiner/settings/save?refiner_section=folders",
+            data={
+                "stream_manager_enabled": "true",
+                "stream_manager_dry_run": "true",
+                "stream_manager_primary_audio_lang": "eng",
+                "stream_manager_secondary_audio_lang": "",
+                "stream_manager_tertiary_audio_lang": "",
+                "stream_manager_default_audio_slot": "primary",
+                "stream_manager_audio_preference_mode": "preferred_langs_quality",
+                "stream_manager_watched_folder": "",
+                "stream_manager_output_folder": "",
+                "stream_manager_schedule_enabled": "false",
+                "stream_manager_interval_seconds": "60",
+                **{f"stream_manager_schedule_{d}": "0" for d in _WEEKDAYS},
+            },
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "X-Fetcher-Refiner-Settings-Async": "1",
+            },
+        )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is False
+    assert body["reason"] == "watched_output_required"
+    assert body["section"] == "folders"
+    assert isinstance(body.get("message"), str) and "folder" in body["message"].lower()
+
+
+def test_refiner_settings_shows_folder_browse_buttons(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        r = client.get("/refiner/settings")
+    assert r.status_code == 200
+    html = r.text
+    assert 'data-refiner-browse-target="refiner-input-watched"' in html
+    assert 'data-refiner-browse-target="refiner-input-output"' in html
+    assert 'data-refiner-browse-target="refiner-input-work"' in html
+
+
+def test_refiner_readiness_banner_when_enabled_incomplete(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def seed() -> None:
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.stream_manager_enabled = True
+            row.stream_manager_primary_audio_lang = ""
+            row.stream_manager_watched_folder = ""
+            row.stream_manager_output_folder = ""
+            await session.commit()
+
+    asyncio.run(seed())
+    with _client(monkeypatch) as client:
+        r = client.get("/refiner/settings")
+    assert r.status_code == 200
+    assert "refiner-readiness-banner" in r.text
+    assert "not ready" in r.text.lower()
+
+
+def test_refiner_pick_folder_api_returns_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.routers.stream_manager.pick_folder_sync",
+        lambda: ("D:\\picked-folder", "ok"),
+    )
+    with _client(monkeypatch) as client:
+        resp = client.post("/api/refiner/pick-folder")
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "path": "D:\\picked-folder"}
 
 
 def test_refiner_dry_run_save_does_not_modify_emby_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:

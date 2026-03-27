@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 
@@ -20,6 +21,11 @@ from app.display_helpers import _now_local, _time_select_orphan
 from app.display_helpers import _normalize_hhmm
 from app.schedule import normalize_schedule_days_csv
 from app.schedule import schedule_time_dropdown_choices
+from app.refiner_folder_picker import pick_folder_sync
+from app.refiner_readiness import (
+    refiner_readiness_issues,
+    refiner_validate_settings_save_section,
+)
 from app.refiner_watch_config import (
     STREAM_MANAGER_WATCH_INTERVAL_SEC_DEFAULT,
     clamp_stream_manager_interval_seconds,
@@ -128,6 +134,7 @@ async def refiner_overview_page(request: Request, session: AsyncSession = Depend
             "show_setup_wizard": show_setup_wizard,
             "refiner_recent_activity": refiner_recent_activity,
             "activity_detail_preview": ACTIVITY_DETAIL_PREVIEW_LINES,
+            "refiner_readiness_issues": refiner_readiness_issues(settings),
         },
     )
 
@@ -169,6 +176,7 @@ async def refiner_settings_page(request: Request, session: AsyncSession = Depend
             "refiner_default_work_folder_path": _refiner_default_work_folder_path(),
             "csrf_token": await get_csrf_token_for_template(request, session),
             "show_setup_wizard": show_setup_wizard,
+            "refiner_readiness_issues": refiner_readiness_issues(settings),
         },
     )
 
@@ -208,11 +216,15 @@ async def stream_manager_settings_save(
     want_json = _refiner_want_inplace_json(request)
     ui_sec = _refiner_ui_section(refiner_section)
 
-    def respond(*, saved: bool, reason: str | None = None) -> RedirectResponse | JSONResponse:
+    def respond(
+        *, saved: bool, reason: str | None = None, message: str | None = None
+    ) -> RedirectResponse | JSONResponse:
         if want_json:
-            out: dict[str, str | bool] = {"ok": saved, "section": ui_sec}
+            out: dict[str, object] = {"ok": saved, "section": ui_sec}
             if not saved:
                 out["reason"] = reason or "error"
+                if message:
+                    out["message"] = message
             return JSONResponse(out)
         if saved:
             return RedirectResponse(
@@ -227,8 +239,6 @@ async def stream_manager_settings_save(
 
     try:
         row = await _get_or_create_settings(session)
-        if stream_manager_enabled and not (stream_manager_primary_audio_lang or "").strip():
-            return respond(saved=False, reason="primary_audio_required")
         slot = (stream_manager_default_audio_slot or "primary").strip().lower()
         if slot not in ("primary", "secondary"):
             slot = "primary"
@@ -240,11 +250,19 @@ async def stream_manager_settings_save(
         sim = clamp_stream_manager_interval_seconds(stream_manager_interval_seconds)
         watched_folder = (stream_manager_watched_folder or "").strip()
         output_folder = (stream_manager_output_folder or "").strip()
-        if stream_manager_enabled and (not watched_folder or not output_folder):
-            return respond(saved=False, reason="watched_output_required")
+        primary_stripped = (stream_manager_primary_audio_lang or "").strip()
+        val_reason, val_msg = refiner_validate_settings_save_section(
+            ui_sec,
+            enabled=stream_manager_enabled,
+            primary_lang=primary_stripped,
+            watched_folder=watched_folder,
+            output_folder=output_folder,
+        )
+        if val_reason:
+            return respond(saved=False, reason=val_reason, message=val_msg)
         row.stream_manager_enabled = stream_manager_enabled
         row.stream_manager_dry_run = stream_manager_dry_run
-        row.stream_manager_primary_audio_lang = (stream_manager_primary_audio_lang or "").strip()[:16]
+        row.stream_manager_primary_audio_lang = primary_stripped[:16]
         row.stream_manager_secondary_audio_lang = (stream_manager_secondary_audio_lang or "").strip()[:16]
         row.stream_manager_tertiary_audio_lang = (stream_manager_tertiary_audio_lang or "").strip()[:16]
         row.stream_manager_default_audio_slot = slot
@@ -292,3 +310,20 @@ async def stream_manager_settings_save(
         if (os.environ.get("FETCHER_LOG_LEVEL") or "").upper() == "DEBUG":
             raise
         return respond(saved=False, reason="error")
+
+
+@router.post("/api/refiner/pick-folder", response_model=None)
+async def refiner_pick_folder_api() -> JSONResponse:
+    """Open a native folder dialog (Windows/Linux desktop). Unavailable in Docker/headless."""
+    path, outcome = await asyncio.to_thread(pick_folder_sync)
+    if outcome == "ok" and path:
+        return JSONResponse({"ok": True, "path": path})
+    if outcome == "cancelled":
+        return JSONResponse({"ok": False, "reason": "cancelled"})
+    return JSONResponse(
+        {
+            "ok": False,
+            "reason": "unavailable",
+            "message": "Folder picker is not available in this environment. Type or paste the path.",
+        }
+    )

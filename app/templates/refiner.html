@@ -16,6 +16,16 @@
   <div class="banner banner-ok refiner-mode-banner banner--soft" role="status">
     <strong>Refiner is off.</strong> Enable it under <a href="/refiner/settings#refiner-processing">Processing</a> in settings, then choose dry run or live mode.
   </div>
+  {% elif refiner_readiness_issues %}
+  <div class="banner banner-warn refiner-readiness-banner banner--soft" role="status">
+    <strong>Refiner is on but not ready to process yet.</strong>
+    <ul class="refiner-readiness-list">
+      {% for _frag, msg in refiner_readiness_issues %}
+      <li>{{ msg }}</li>
+      {% endfor %}
+    </ul>
+    <p class="small muted refiner-readiness-hint">Fix each item in <a href="/refiner/settings">Refiner settings</a> (links in the banner there jump to the right section).</p>
+  </div>
   {% endif %}
 
   <div class="card gc">

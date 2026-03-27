@@ -19,6 +19,16 @@
   <div class="banner banner-ok refiner-mode-banner banner--soft" role="status">
     <strong>Refiner is off.</strong> Enable it under <a href="#refiner-processing">Processing</a>, then choose dry run or live mode.
   </div>
+  {% elif refiner_readiness_issues %}
+  <div class="banner banner-warn refiner-readiness-banner banner--soft" role="status">
+    <strong>Refiner is on but not ready to process yet.</strong>
+    <ul class="refiner-readiness-list">
+      {% for frag, msg in refiner_readiness_issues %}
+      <li><a href="#{{ frag }}">{{ msg }}</a></li>
+      {% endfor %}
+    </ul>
+    <p class="small muted refiner-readiness-hint">Refiner will not run until these are resolved. You can enable Processing first and finish Audio and Folders next.</p>
+  </div>
   {% endif %}
 
   <p class="hint refiner-settings-page-hint">Set processing, folders, audio, subtitles, and schedule in the sections below.</p>
@@ -79,14 +89,20 @@
       {% endif %}
       <p class="small muted lead-muted">Sets watched and output folders, check interval, and optional work folder.</p>
       <div class="settings-stack">
-        <div class="row">
+        <div class="row refiner-folder-paths-row">
           <div class="field">
             <label>Watched folder</label>
-            <input class="input" type="text" name="stream_manager_watched_folder" value="{{ settings.stream_manager_watched_folder or '' }}" placeholder="D:\Media\Incoming" autocomplete="off" spellcheck="false" />
+            <div class="refiner-path-field-row">
+              <input id="refiner-input-watched" class="input refiner-path-input" type="text" name="stream_manager_watched_folder" value="{{ settings.stream_manager_watched_folder or '' }}" placeholder="D:\Media\Incoming" autocomplete="off" spellcheck="false" />
+              <button type="button" class="btn secondary refiner-folder-browse" data-refiner-browse-target="refiner-input-watched">Browse</button>
+            </div>
           </div>
           <div class="field">
             <label>Output folder</label>
-            <input class="input" type="text" name="stream_manager_output_folder" value="{{ settings.stream_manager_output_folder or '' }}" placeholder="D:\Media\Processed" autocomplete="off" spellcheck="false" />
+            <div class="refiner-path-field-row">
+              <input id="refiner-input-output" class="input refiner-path-input" type="text" name="stream_manager_output_folder" value="{{ settings.stream_manager_output_folder or '' }}" placeholder="D:\Media\Processed" autocomplete="off" spellcheck="false" />
+              <button type="button" class="btn secondary refiner-folder-browse" data-refiner-browse-target="refiner-input-output">Browse</button>
+            </div>
           </div>
         </div>
         <div class="small settings-field-hint refiner-folders-paths-hint">Reads from the watched folder and writes finished files to the output folder.</div>
@@ -104,7 +120,10 @@
           </summary>
           <div class="field section refiner-folders-advanced-body">
             <label>Temp/work folder</label>
-            <input class="input" type="text" name="stream_manager_work_folder" value="{{ settings.stream_manager_work_folder or '' }}" placeholder="Optional — overrides default below" autocomplete="off" spellcheck="false" />
+            <div class="refiner-path-field-row">
+              <input id="refiner-input-work" class="input refiner-path-input" type="text" name="stream_manager_work_folder" value="{{ settings.stream_manager_work_folder or '' }}" placeholder="Optional — overrides default below" autocomplete="off" spellcheck="false" />
+              <button type="button" class="btn secondary refiner-folder-browse" data-refiner-browse-target="refiner-input-work">Browse</button>
+            </div>
             <div class="small settings-field-hint">Uses <code class="code-inline">{{ refiner_default_work_folder_path | e }}</code> when left empty.</div>
           </div>
         </details>

@@ -932,8 +932,10 @@ function refinerSaveSuccessMessage(section) {
   return "Refiner settings saved.";
 }
 
-function refinerSaveFailMessage(section, reason) {
+function refinerSaveFailMessage(section, reason, message) {
   const scope = refinerSaveScopeLabel(section);
+  const msg = message && String(message).trim();
+  if (msg) return `Could not save (${scope}) — ${msg}`;
   const r = String(reason || "error");
   return `Could not save (${scope}) — try again. (${r})`;
 }
@@ -1273,6 +1275,49 @@ function initTrimmerSettingsAsyncCleaner() {
   });
 }
 
+/** Refiner folder Browse → POST /api/refiner/pick-folder (native dialog on supported desktops). */
+function initRefinerFolderBrowse() {
+  document.querySelectorAll("button.refiner-folder-browse[data-refiner-browse-target]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-refiner-browse-target");
+      const input = id ? document.getElementById(id) : null;
+      if (!(input instanceof HTMLInputElement)) return;
+      btn.disabled = true;
+      fetch("/api/refiner/pick-folder", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+      })
+        .then((res) => {
+          if (res.status === 403) {
+            return Promise.reject(new Error("Your session may have expired — reload the page and sign in again."));
+          }
+          const ct = (res.headers.get("content-type") || "").toLowerCase();
+          if (ct.indexOf("application/json") >= 0) return res.json();
+          return res.text().then((text) => Promise.reject(new Error(text || "Folder picker request failed.")));
+        })
+        .then((data) => {
+          if (data && data.ok && data.path) {
+            input.value = String(data.path);
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+            return;
+          }
+          if (data && data.reason === "cancelled") return;
+          const m =
+            (data && data.message) || "Folder picker is not available in this environment. Type or paste the path.";
+          showToast(m);
+        })
+        .catch((err) => {
+          const m = err && err.message ? err.message : "Could not open folder picker.";
+          showToast(m);
+        })
+        .finally(() => {
+          btn.disabled = false;
+        });
+    });
+  });
+}
+
 /** In-place save for Refiner settings (same fetch + JSON contract as Trimmer cleaner). */
 function initRefinerSettingsAsyncSave() {
   document.querySelectorAll('form[data-fetcher-refiner-async="1"]').forEach((form) => {
@@ -1365,7 +1410,7 @@ function initRefinerSettingsAsyncSave() {
             }
             syncRefinerSettingsUrlAfterInPlacePost(data.section || "");
             const r = data.reason ? String(data.reason) : "error";
-            const msg = refinerSaveFailMessage(data.section, r);
+            const msg = refinerSaveFailMessage(data.section, r, data.message);
             setFetcherSettingsInPlaceFeedback(feedback, "err", msg);
             return;
           }
@@ -1817,6 +1862,7 @@ window.addEventListener("DOMContentLoaded", () => {
   initTrimmerSettingsAsyncConnection();
   initTrimmerSettingsAsyncCleaner();
   initRefinerSettingsAsyncSave();
+  initRefinerFolderBrowse();
   bindScrollRestoreOnFormSubmit();
   restoreScrollAfterFormRedirect();
   bindRevealButtons();

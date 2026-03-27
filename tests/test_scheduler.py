@@ -74,11 +74,23 @@ def test_compute_job_intervals_minutes_excludes_stream_manager() -> None:
 def test_effective_stream_manager_interval_seconds_when_configured() -> None:
     s = _arr_settings(
         stream_manager_enabled=True,
+        stream_manager_primary_audio_lang="eng",
         stream_manager_watched_folder="D:\\Media\\incoming",
         stream_manager_output_folder="D:\\Media\\processed",
         stream_manager_interval_seconds=120,
     )
     assert effective_stream_manager_interval_seconds(s) == 120
+
+
+def test_effective_stream_manager_interval_seconds_none_without_primary_lang() -> None:
+    s = _arr_settings(
+        stream_manager_enabled=True,
+        stream_manager_primary_audio_lang="",
+        stream_manager_watched_folder="D:\\Media\\incoming",
+        stream_manager_output_folder="D:\\Media\\processed",
+        stream_manager_interval_seconds=120,
+    )
+    assert effective_stream_manager_interval_seconds(s) is None
 
 
 def test_start_creates_independent_jobs_for_enabled_apps() -> None:

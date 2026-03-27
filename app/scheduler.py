@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.arr_intervals import effective_arr_interval_minutes
 from app.db import SessionLocal
 from app.models import AppSettings
+from app.refiner_readiness import refiner_scheduler_should_run
 from app.refiner_watch_config import clamp_stream_manager_interval_seconds
 from app.service_logic import run_once
 from app.stream_manager_service import run_scheduled_stream_manager_pass
@@ -42,11 +43,7 @@ def _emby_configured(settings: AppSettings) -> bool:
 
 
 def _stream_manager_configured(settings: AppSettings) -> bool:
-    return bool(
-        getattr(settings, "stream_manager_enabled", False)
-        and (getattr(settings, "stream_manager_watched_folder", "") or "").strip()
-        and (getattr(settings, "stream_manager_output_folder", "") or "").strip()
-    )
+    return refiner_scheduler_should_run(settings)
 
 
 def compute_job_intervals_minutes(settings: AppSettings) -> dict[str, int]:

@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-03-27
+
+### Changed
+
+- **Refiner setup UX:** enabling Refiner under Processing no longer fails saves because Audio or Folders are incomplete; readiness is enforced when Refiner actually runs and is summarized in clear banners on the Refiner overview and settings pages.
+- **Refiner folders:** added themed **Browse** buttons for watched, output, and temp/work paths (native folder dialog on Windows where available; manual entry still supported).
+
 ## [3.0.0] - 2026-03-27
 
 ### Highlights
@@ -1031,7 +1038,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.0.0...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.0.1...HEAD
+[3.0.1]: https://github.com/jampat000/Fetcher/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/jampat000/Fetcher/compare/v2.5.1...v3.0.0
 [2.5.1]: https://github.com/jampat000/Fetcher/compare/v2.5.0...v2.5.1
 [2.5.0]: https://github.com/jampat000/Fetcher/compare/v2.4.14...v2.5.0
