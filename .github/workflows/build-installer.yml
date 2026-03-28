@@ -1,18 +1,19 @@
-# Build Fetcher PyInstaller bundle (ffmpeg/ffprobe via FETCHER_FFMPEG_BIN_DIR) + Inno Setup installer.
-# Artifacts: FetcherSetup.exe (workflow run + GitHub Release on tag).
+# Canonical release — Windows (part 2 of 3): PyInstaller + Inno → FetcherSetup.exe + GitHub Release on tag.
+# Orchestrator: tag-release.yml. Linux image: docker-publish.yml. CI: ci.yml.
+#
+# Local parity: `installer\build.ps1 -Clean` with FFmpeg staged. Default branch is `master`.
 
 name: Build installer
 
 on:
   push:
     branches:
-      - main
       - master
     tags:
       - "v*"
   workflow_dispatch:
 
-# Group by ref so a `workflow_dispatch` from `master` does not cancel an in-flight tag build for the same SHA.
+# Group by ref so concurrent runs for different refs (e.g. branch vs tag) do not cancel each other.
 concurrency:
   group: build-installer-${{ github.ref }}
   cancel-in-progress: true
@@ -121,7 +122,8 @@ jobs:
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
-          $root = Join-Path "${{ github.workspace }}" 'dist\Fetcher\_internal'
+          $dist = Join-Path "${{ github.workspace }}" 'dist\Fetcher'
+          $root = Join-Path $dist '_internal'
           @(
             'app\templates\refiner.html',
             'app\templates\refiner_settings.html',
