@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.1.1] - 2026-03-28
+
+### Changed
+
+- **CI:** consolidated **`test`**, **`security`**, and **`docker-build`** into **`.github/workflows/ci.yml`** (Actions name **Test**; jobs **pytest**, **pip-audit**, **docker-build**). Release workflows unchanged (**tag-release**, **build-installer**, **docker-publish**).
+
+### Notes
+
+- If **`master`** branch protection still requires **`Security / pip-audit`**, update it to **`Test / pip-audit`** (see **`.github/BRANCH_PROTECTION.md`**).
+
+## [3.1.0] - 2026-03-27
+
+### Changed
+
+- Refiner folder paths are entered **manually** (Browse feature removed).
+- Windows installer and service stack simplified accordingly.
+
+### Removed
+
+- **FetcherCompanion** and related browse/proxy flow, picker API routes, and installer integration.
+
+### Notes
+
+- **Upgrade:** installers **3.1.0+** drop companion binaries/scripts from **`{app}`** via **`[InstallDelete]`**; optional per-user task/Start Menu items from the old flow may remain until removed manually (see README / **docs/INSTALL-AND-OPERATIONS.md**).
+
 ## [3.0.0] - 2026-03-27
 
 ### Highlights
@@ -1031,7 +1056,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.1.0...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.1.1...HEAD
+[3.1.1]: https://github.com/jampat000/Fetcher/compare/v3.1.0...v3.1.1
+[3.1.0]: https://github.com/jampat000/Fetcher/compare/v3.0.9...v3.1.0
 [3.0.0]: https://github.com/jampat000/Fetcher/compare/v2.5.1...v3.0.0
 [2.5.1]: https://github.com/jampat000/Fetcher/compare/v2.5.0...v2.5.1
 [2.5.0]: https://github.com/jampat000/Fetcher/compare/v2.4.14...v2.5.0
