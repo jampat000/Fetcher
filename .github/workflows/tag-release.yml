@@ -1,16 +1,15 @@
-# Auto-tags v{X.Y.Z} from VERSION when VERSION changes on master or main.
-# Manual: Actions → this workflow → Run workflow, or .\scripts\ship-release.ps1 (pushes current branch + dispatch).
+# Canonical release orchestrator (part 1 of 3): VERSION → git tag vX.Y.Z → dispatch Windows + Docker builds.
+# Parts 2–3: build-installer.yml (FetcherSetup.exe + GitHub Release), docker-publish.yml (GHCR).
+# CI (tests/audit/docker verify) is ci.yml only — not duplicated here.
 #
-# IMPORTANT: `git push` of the tag uses `GITHUB_TOKEN`, which does NOT fire other `on: push: tags`
-# workflows (GitHub security). So we explicitly dispatch "Build installer" and "Docker publish" for that tag ref.
-# Manual run: Actions → "Tag release (from VERSION)" → Run workflow (retry / if auto was skipped).
+# Auto-tags when VERSION changes on `master`. Manual: Actions → Run workflow, or .\scripts\ship-release.ps1.
+# `GITHUB_TOKEN` tag push does NOT trigger other `on.push.tags` workflows — we must dispatch build-installer + docker-publish.
 name: Tag release (from VERSION)
 
 on:
   push:
     branches:
       - master
-      - main
     paths:
       - "VERSION"
   workflow_dispatch:
