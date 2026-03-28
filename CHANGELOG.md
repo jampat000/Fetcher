@@ -1031,7 +1031,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.0.0...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.1.0...HEAD
 [3.0.0]: https://github.com/jampat000/Fetcher/compare/v2.5.1...v3.0.0
 [2.5.1]: https://github.com/jampat000/Fetcher/compare/v2.5.0...v2.5.1
 [2.5.0]: https://github.com/jampat000/Fetcher/compare/v2.4.14...v2.5.0
