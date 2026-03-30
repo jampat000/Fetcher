@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 
 from app.db import SessionLocal, _get_or_create_settings
 from app.models import ActivityLog, JobRunLog, RefinerActivity
@@ -1292,3 +1292,216 @@ def test_refiner_parent_summary_never_exposes_raw_exception_blob() -> None:
     )
     assert msg == "1 processed · 1 blocked"
     assert "Traceback" not in msg
+
+
+def test_refiner_pass_no_meaningful_work_skips_activity_log(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Duplicate-suppressed failures yield zero processed/blocked/failed counts — no parent ActivityLog row."""
+
+    def _fake_process(path: Path, *args: Any, **kwargs: Any) -> tuple[str, dict[str, Any]]:
+        sp = str(path.resolve())
+        return (
+            "error",
+            {
+                "file_name": path.name,
+                "media_title": "D",
+                "status": "failed",
+                "size_before_bytes": 1,
+                "size_after_bytes": 1,
+                "audio_tracks_before": 1,
+                "audio_tracks_after": 1,
+                "subtitle_tracks_before": 0,
+                "subtitle_tracks_after": 0,
+                "processing_time_ms": 1,
+                "failure_hint": "dup",
+                "reason_code": "failed_dup_test",
+                "source_path": sp,
+                "activity_context": json.dumps(
+                    {"v": 1, "source_path": sp, "reason_code": "failed_dup_test"}
+                ),
+            },
+        )
+
+    monkeypatch.setattr("app.refiner_service._process_one_refiner_file_sync", _fake_process)
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        d = watched / "d.mkv"
+        d.write_bytes(b"x")
+        sp = str(d.resolve())
+        async with SessionLocal() as s:
+            await s.execute(delete(ActivityLog).where(ActivityLog.app == "refiner"))
+            await s.execute(delete(RefinerActivity))
+            s.add(
+                RefinerActivity(
+                    file_name="d.mkv",
+                    media_title="D",
+                    status="failed",
+                    size_before_bytes=1,
+                    size_after_bytes=1,
+                    audio_tracks_before=1,
+                    audio_tracks_after=1,
+                    subtitle_tracks_before=0,
+                    subtitle_tracks_after=0,
+                    activity_context=json.dumps(
+                        {"v": 1, "source_path": sp, "reason_code": "failed_dup_test"}
+                    ),
+                )
+            )
+            await s.commit()
+
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = False
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            await run_refiner_pass(session, trigger="scheduled")
+
+        async with SessionLocal() as s:
+            n_act = (
+                await s.execute(select(func.count()).select_from(ActivityLog).where(ActivityLog.app == "refiner"))
+            ).scalar_one()
+            assert int(n_act) == 0
+            jl = (
+                (await s.execute(select(JobRunLog).order_by(JobRunLog.id.desc()).limit(1))).scalars().first()
+            )
+            assert jl is not None
+            assert "no new actions" in (jl.message or "").lower()
+
+    asyncio.run(_go())
+
+
+def test_refiner_pass_blocked_import_still_writes_activity_log(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def _fake_blocked(path: Path, *args: Any, **kwargs: Any) -> tuple[str, dict[str, Any]]:
+        sp = str(path.resolve())
+        ctx = json.dumps(
+            {
+                "v": 1,
+                "source_path": sp,
+                "reason_code": "skipped_terminal_failed",
+                "import_promotion_block": {
+                    "subtitle": "Not promoted — item classified as a failed import",
+                    "reason_code": "skipped_terminal_failed",
+                },
+            }
+        )
+        return (
+            "blocked_import",
+            {
+                "file_name": path.name,
+                "media_title": "B",
+                "status": "skipped_terminal_failed",
+                "size_before_bytes": 2,
+                "size_after_bytes": 2,
+                "audio_tracks_before": 1,
+                "audio_tracks_after": 1,
+                "subtitle_tracks_before": 0,
+                "subtitle_tracks_after": 0,
+                "processing_time_ms": 1,
+                "activity_context": ctx,
+            },
+        )
+
+    monkeypatch.setattr("app.refiner_service._process_one_refiner_file_sync", _fake_blocked)
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        (watched / "b.mkv").write_bytes(b"bb")
+        async with SessionLocal() as s:
+            await s.execute(delete(ActivityLog).where(ActivityLog.app == "refiner"))
+            await s.commit()
+
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = False
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            await run_refiner_pass(session, trigger="scheduled")
+
+        async with SessionLocal() as s:
+            n_act = (
+                await s.execute(select(func.count()).select_from(ActivityLog).where(ActivityLog.app == "refiner"))
+            ).scalar_one()
+            assert int(n_act) >= 1
+            parent = (
+                (
+                    await s.execute(
+                        select(ActivityLog)
+                        .where(ActivityLog.app == "refiner", ActivityLog.kind == "refiner")
+                        .order_by(ActivityLog.id.desc())
+                        .limit(1)
+                    )
+                )
+                .scalars()
+                .first()
+            )
+            assert parent is not None
+            assert "needs attention" in (parent.detail or "").lower()
+
+    asyncio.run(_go())
+
+
+def test_refiner_pass_failure_still_writes_activity_log(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def _boom(*_a: Any, **_k: Any) -> None:
+        raise RuntimeError("ffmpeg failed")
+
+    monkeypatch.setattr("app.refiner_service.remux_to_temp_file", _boom)
+    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        (watched / "m.mkv").write_bytes(b"original")
+        async with SessionLocal() as s:
+            await s.execute(delete(ActivityLog).where(ActivityLog.app == "refiner"))
+            await s.commit()
+
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = False
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            await run_refiner_pass(session, trigger="scheduled")
+
+        async with SessionLocal() as s:
+            n_act = (
+                await s.execute(select(func.count()).select_from(ActivityLog).where(ActivityLog.app == "refiner"))
+            ).scalar_one()
+            assert int(n_act) >= 1
+            parent = (
+                (
+                    await s.execute(
+                        select(ActivityLog)
+                        .where(ActivityLog.app == "refiner", ActivityLog.kind == "refiner")
+                        .order_by(ActivityLog.id.desc())
+                        .limit(1)
+                    )
+                )
+                .scalars()
+                .first()
+            )
+            assert parent is not None
+            assert parent.status == "failed"
+            assert "needs attention" in (parent.detail or "").lower()
+
+    asyncio.run(_go())

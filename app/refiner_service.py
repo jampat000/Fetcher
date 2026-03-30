@@ -1707,15 +1707,20 @@ async def run_refiner_pass(
                 message=_refiner_job_log_text("\n".join(job_lines)),
             )
         )
-        session.add(
-            ActivityLog(
-                app="refiner",
-                kind="refiner",
-                status="ok" if err_c == 0 else "failed",
-                count=ok_c,
-                detail=detail,
-            )
+        # Activity feed: skip parent row when this pass did nothing observable (no processed, blocked, or failed).
+        refiner_meaningful_activity = (
+            (ok_c + dry_c) > 0 or import_blocked_c > 0 or err_c > 0
         )
+        if refiner_meaningful_activity:
+            session.add(
+                ActivityLog(
+                    app="refiner",
+                    kind="refiner",
+                    status="ok" if err_c == 0 else "failed",
+                    count=ok_c,
+                    detail=detail,
+                )
+            )
         await session.commit()
         return {
             "ok": err_c == 0,
