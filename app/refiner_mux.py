@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from app.stream_manager_rules import RemuxPlan
+from app.refiner_rules import RemuxPlan
 from app.paths import BASE_DIR
 
 logger = logging.getLogger(__name__)
@@ -17,19 +17,25 @@ logger = logging.getLogger(__name__)
 
 def resolve_ffprobe_ffmpeg() -> tuple[str, str]:
     # Prefer bundled tools for packaged builds, then PATH.
-    bundled = [
+    bundled_win = [
         BASE_DIR / "bin" / "ffmpeg" / "ffprobe.exe",
         BASE_DIR / "bin" / "ffmpeg" / "ffmpeg.exe",
     ]
-    if bundled[0].is_file() and bundled[1].is_file():
-        return str(bundled[0]), str(bundled[1])
+    if bundled_win[0].is_file() and bundled_win[1].is_file():
+        return str(bundled_win[0]), str(bundled_win[1])
+    bundled_unix = [
+        BASE_DIR / "bin" / "ffmpeg" / "ffprobe",
+        BASE_DIR / "bin" / "ffmpeg" / "ffmpeg",
+    ]
+    if bundled_unix[0].is_file() and bundled_unix[1].is_file():
+        return str(bundled_unix[0]), str(bundled_unix[1])
 
     ffprobe = shutil.which("ffprobe")
     ffmpeg = shutil.which("ffmpeg")
     if not ffprobe or not ffmpeg:
         raise RuntimeError(
-            "Refiner requires ffprobe/ffmpeg. In packaged Windows builds, place them under "
-            "'bin/ffmpeg' (or package with build); in non-packaged environments ensure both are on PATH."
+            "Refiner needs ffprobe and ffmpeg. Use a packaged build with bin/ffmpeg/, mount them in Docker, "
+            "or install both on the host PATH (Linux/macOS/Windows)."
         )
     return ffprobe, ffmpeg
 
@@ -104,7 +110,7 @@ def remux_to_temp_file(*, src: Path, work_dir: Path, plan: RemuxPlan) -> Path:
     work_dir.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(
         suffix=src.suffix or ".mkv",
-        prefix=f"{src.stem}.streammgr.",
+        prefix=f"{src.stem}.refiner.",
         dir=str(work_dir),
     )
     os.close(fd)

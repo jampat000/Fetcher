@@ -49,6 +49,6 @@ If GitHub returns **422** (unknown context), run CI once on `master` or open a P
 Must match the **Checks** tab on a PR exactly. Defaults for this repo:
 
 - `Test / pytest`
-- `Security / pip-audit`
+- `Test / pip-audit`
 
 

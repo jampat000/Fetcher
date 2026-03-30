@@ -23,6 +23,7 @@ async def _seed_snapshot_state() -> None:
         row.radarr_interval_minutes = 45
         row.emby_enabled = True
         row.emby_url = "http://localhost:8096"
+        row.emby_api_key = "test-emby-key"
         row.emby_interval_minutes = 60
         row.sonarr_last_run_at = datetime(2026, 3, 24, 10, 0, 0)
         row.radarr_last_run_at = datetime(2026, 3, 24, 10, 15, 0)
@@ -70,6 +71,8 @@ def test_build_dashboard_status_has_per_app_last_run_status(monkeypatch) -> None
             assert data["next_sonarr_relative"] != ""
             assert data["fetcher_phase"] in ("processing", "idle", "active")
             assert "No line for this app" not in (data["sonarr_automation_sub"] or "")
+            assert data["trimmer_connection_type"] == "Emby"
+            assert data["trimmer_connection_status"] == "Connected"
 
     asyncio.run(_go())
 

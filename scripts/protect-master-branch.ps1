@@ -67,7 +67,7 @@ $headers = @{
 # Check names must match the "Checks" tab on a PR exactly.
 $checks = @(
     @{ context = "Test / pytest" },
-    @{ context = "Security / pip-audit" }
+    @{ context = "Test / pip-audit" }
 )
 
 # GitHub REST requires `restrictions` on PUT (use null = no push allowlist; user repos cannot use user/team lists).

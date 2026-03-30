@@ -12,7 +12,7 @@
   2. **gh workflow run "Tag release (from VERSION)" --ref &lt;current-branch&gt;** — reads **VERSION** on
      that ref, creates **vX.Y.Z** if missing, dispatches **Build installer** and **Docker publish** (tag ref)
 
-  Auto-tag on push only runs when **VERSION** changes on **master** or **main** (see workflow).
+  Auto-tag on push only runs when **VERSION** changes on **master** (see **Tag release** workflow).
   This dispatch works for **any** branch name you push — typical pattern: **release/vX.Y.Z** → script → tag + build.
 
   Prerequisites: **git**, **GitHub CLI** (**gh auth login**).

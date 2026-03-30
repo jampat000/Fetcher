@@ -3,6 +3,11 @@ import os
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 # PyInstaller spec for Windows single-folder build.
+#
+# Always run from a clean tree: remove repo-root dist/ and build/ first
+# (see docs/BUILD-AND-RELEASE.md or packaging/build.ps1 -Clean).
+# Templates/static are read only from app/templates and app/static below — not from an old dist/.
+#
 # Usage:
 #   py -m pip install pyinstaller
 #   py -m PyInstaller packaging/fetcher.spec
@@ -27,9 +32,18 @@ if os.path.isfile(_ffmpeg_exe) and os.path.isfile(_ffprobe_exe):
 
 hiddenimports = []
 hiddenimports += collect_submodules("apscheduler")
-hiddenimports += collect_submodules("sqlalchemy")
-hiddenimports += collect_submodules("aiosqlite")
-hiddenimports += collect_submodules("passlib")
+# Do not use collect_submodules("sqlalchemy") — it lists sqlalchemy.testing.*, which we exclude and
+# spams "hidden import not found". The std hook hook-sqlalchemy.py + import graph covers runtime.
+# Do not use collect_submodules("aiosqlite") or ("passlib") — they drag in upstream test trees.
+hiddenimports += [
+    "aiosqlite",
+    "passlib.context",
+    "passlib.handlers",
+    "passlib.handlers.argon2",
+    "passlib.handlers.bcrypt",
+    "passlib.crypto",
+    "passlib.utils",
+]
 hiddenimports += collect_submodules("slowapi")
 hiddenimports += collect_submodules("limits")
 hiddenimports += ["yaml", "app.resolvers", "app.resolvers.api_keys", "app.refiner_watch_config", "bcrypt", "itsdangerous", "_cffi_backend"]
@@ -42,6 +56,17 @@ hiddenimports += _uvicorn_hidden
 hiddenimports += collect_submodules("httptools")
 hiddenimports += collect_submodules("websockets")
 hiddenimports += collect_submodules("watchfiles")
+
+# Omit upstream test suites and test runners from the frozen app (still pulled by broad collect_submodules).
+_RUNTIME_EXCLUDES = [
+    "pytest",
+    "_pytest",
+    "unittest",
+    "doctest",
+    "passlib.tests",
+    "aiosqlite.tests",
+    "sqlalchemy.testing",
+]
 
 a = Analysis(
     [os.path.join(ROOT, "app", "cli.py")],
@@ -57,7 +82,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=_RUNTIME_EXCLUDES,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,

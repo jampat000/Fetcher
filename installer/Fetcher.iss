@@ -3,8 +3,8 @@
 ;
 ; Install / upgrade / uninstall policy (support):
 ; - Binaries and WinSW live under {app} (Program Files\Fetcher\Fetcher by default).
-; - Live data: SQLite DB, rotating app logs, and migration marker live under
-;   %ProgramData%\Fetcher\ (override with machine env FETCHER_DATA_DIR).
+; - Live data: SQLite DB and rotating app logs under %ProgramData%\Fetcher\
+;   (override with machine env FETCHER_DATA_DIR).
 ; - Upgrade: replaces files under {app}; does NOT remove ProgramData (your DB and logs stay).
 ; - Uninstall: removes {app} files installed by this script; ProgramData is intentionally NOT
 ;   deleted here so settings and fetcher.db survive (see README — Logs + install notes).
@@ -32,10 +32,20 @@ SolidCompression=yes
 PrivilegesRequired=admin
 WizardStyle=modern
 
+[InstallDelete]
+; Browse/companion-era files from pre-3.1.0 installs — removed before new files copy (upgrade path).
+Type: files; Name: "{app}\FetcherCompanion.exe"
+Type: files; Name: "{app}\Install-FetcherCompanionTask.ps1"
+Type: files; Name: "{app}\Register-FetcherCompanionTask.ps1"
+
 [UninstallDelete]
 ; Service wrapper console logs only (not application fetcher.log — that stays under ProgramData\Fetcher\logs).
 Type: files; Name: "{app}\*.out.log"
 Type: files; Name: "{app}\*.err.log"
+; Same companion-era filenames if still present at uninstall (e.g. upgraded from 3.0.x).
+Type: files; Name: "{app}\FetcherCompanion.exe"
+Type: files; Name: "{app}\Install-FetcherCompanionTask.ps1"
+Type: files; Name: "{app}\Register-FetcherCompanionTask.ps1"
 
 [Files]
 ; Built output (PyInstaller one-folder build)

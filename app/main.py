@@ -21,8 +21,13 @@ from app.httpx_shared import aclose_shared_httpx_client, init_shared_httpx_clien
 from app.log_sanitize import configure_fetcher_logging
 from app.migrations import migrate
 from app.models import Base
+from app.schema_validation import (
+    validate_app_settings_schema_version,
+    validate_refiner_app_settings_schema,
+)
 from app.paths import STATIC_DIR, resolved_logs_dir
 from app.rate_limit import limiter
+from app.refiner_service import reconcile_refiner_processing_rows_on_worker_boot
 from app.scheduler import scheduler
 from app.security_utils import get_jwt_secret_from_env, warn_if_data_encryption_key_missing
 from app.web_common import refiner_settings_redirect_url, trimmer_settings_redirect_url
@@ -32,7 +37,7 @@ from app.routers import auth as auth_router
 from app.routers import dashboard as dashboard_router
 from app.routers import settings as settings_router
 from app.routers import setup as setup_router
-from app.routers import stream_manager as stream_manager_router
+from app.routers import refiner as refiner_router
 from app.routers import trimmer as trimmer_router
 
 configure_fetcher_logging()
@@ -68,6 +73,8 @@ async def _lifespan(_app: FastAPI):
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
             await migrate(engine)
+            await reconcile_refiner_processing_rows_on_worker_boot()
+            await validate_refiner_app_settings_schema(engine)
             last_err = None
             break
         except SQLAlchemyError as e:
@@ -88,6 +95,7 @@ async def _lifespan(_app: FastAPI):
         raise last_err
 
     await bootstrap_auth_on_startup()
+    await validate_app_settings_schema_version(engine)
     await init_shared_httpx_client()
     # Packaged-build CI smoke test: skip background scheduler so /healthz is reachable quickly
     # (first scheduler tick can otherwise block startup on Arr/Emby HTTP before the server listens).
@@ -190,5 +198,5 @@ app.include_router(auth_router.router)
 app.include_router(setup_router.router)
 app.include_router(dashboard_router.router)
 app.include_router(settings_router.router)
-app.include_router(stream_manager_router.router)
+app.include_router(refiner_router.router)
 app.include_router(trimmer_router.router)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 import logging
 import re
 from typing import Any, Literal
@@ -754,6 +754,56 @@ def _sonarr_series_is_ended(series: dict[str, Any] | None) -> bool:
     return str(series.get("status") or "").strip().lower() == "ended"
 
 
+def _parse_sonarr_datetime_utc_naive(raw: str | None) -> datetime | None:
+    """Parse Sonarr ``airDateUtc`` (ISO, often ``…Z``) to UTC as naive datetime."""
+    if not isinstance(raw, str):
+        return None
+    s = raw.strip()
+    if not s:
+        return None
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
+def _parse_sonarr_air_date_calendar(raw: str | None) -> date | None:
+    """Parse Sonarr ``airDate`` (``YYYY-MM-DD``) when ``airDateUtc`` is absent."""
+    if not isinstance(raw, str):
+        return None
+    s = raw.strip()[:10]
+    if len(s) < 10:
+        return None
+    try:
+        return date.fromisoformat(s)
+    except ValueError:
+        return None
+
+
+def _sonarr_episode_is_unaired_future(ep: dict[str, Any], *, now_utc_naive: datetime) -> bool:
+    """True only when Sonarr metadata proves the episode is still upcoming (UTC).
+
+    Missing or unparseable air metadata is treated as **not** future so trimmed aired
+    episodes are not re-monitored.
+    """
+    utc_raw = ep.get("airDateUtc")
+    if isinstance(utc_raw, str) and utc_raw.strip():
+        instant = _parse_sonarr_datetime_utc_naive(utc_raw)
+        if instant is not None:
+            return instant > now_utc_naive
+    cal = _parse_sonarr_air_date_calendar(ep.get("airDate"))
+    if cal is not None:
+        today = now_utc_naive.date()
+        # Date-only: same calendar day may still air later — treat as upcoming.
+        return cal >= today
+    return False
+
+
 def _sonarr_episode_file_id(episode: dict[str, Any]) -> int | None:
     fid = _safe_int(episode.get("episodeFileId"))
     if fid:
@@ -1190,64 +1240,50 @@ async def apply_emby_trimmer_live_deletes(
                 )
 
             if to_keep_monitored:
-                await sonarr2.set_episodes_monitored(episode_ids=to_keep_monitored, monitored=True)
+                now_tv = utc_now_naive()
+                future_monitor_ids: list[int] = []
+                past_or_unknown_ids: list[int] = []
+                for eid in to_keep_monitored:
+                    ep_meta = episode_by_id.get(eid) or {}
+                    if _sonarr_episode_is_unaired_future(ep_meta, now_utc_naive=now_tv):
+                        future_monitor_ids.append(eid)
+                    else:
+                        past_or_unknown_ids.append(eid)
+
+                future_monitor_ids = list(dict.fromkeys(future_monitor_ids))
+                past_or_unknown_ids = list(dict.fromkeys(past_or_unknown_ids))
+
+                if future_monitor_ids:
+                    await sonarr2.set_episodes_monitored(
+                        episode_ids=future_monitor_ids, monitored=True
+                    )
+                if past_or_unknown_ids:
+                    await sonarr2.set_episodes_monitored(
+                        episode_ids=past_or_unknown_ids, monitored=False
+                    )
+
                 actions.append(
-                    f"Sonarr: left {len(to_keep_monitored)} episode(s) monitored "
-                    f"(series still airing)"
+                    "Sonarr: continuing series — "
+                    f"{len(future_monitor_ids)} future episode(s) monitored, "
+                    f"{len(past_or_unknown_ids)} aired/unknown episode(s) left unmonitored "
+                    f"(no season-wide re-monitor)"
                 )
 
-                # Sonarr can effectively unmonitor a season after episode-file deletes (e.g. when
-                # Unmonitor Deleted Episodes is enabled), which can strand future unaired episodes.
-                # For continuing series we touched, preserve monitoring for the affected season(s)
-                # only (no broad remonitor of unrelated seasons/series).
-                preserved_series = 0
-                preserved_seasons = 0
+                # Keep the series itself monitored so Sonarr continues to track new seasons/episodes,
+                # without flipping whole seasons on (which re-enables trimmed past episodes).
+                series_monitored_fixes = 0
                 for sid in sorted(continuing_series_ids_touched):
                     series_rec = series_by_id.get(sid) or {}
-                    seasons = series_rec.get("seasons")
-                    if not isinstance(seasons, list) or not seasons:
+                    if series_rec.get("monitored") is not False:
                         continue
-
-                    eps = episodes_cache.get(sid) or []
-                    keep_ids = set(to_keep_monitored)
-                    season_numbers: set[int] = set()
-                    for ep in eps:
-                        eid = _safe_int(ep.get("id"))
-                        if not eid or eid not in keep_ids:
-                            continue
-                        sn = _safe_int(ep.get("seasonNumber"))
-                        if sn is not None:
-                            season_numbers.add(int(sn))
-                    if not season_numbers:
-                        continue
-
-                    changed = False
-                    new_seasons: list[dict[str, Any]] = []
-                    for s in seasons:
-                        if not isinstance(s, dict):
-                            new_seasons.append(s)
-                            continue
-                        sn = _safe_int(s.get("seasonNumber"))
-                        if sn is not None and int(sn) in season_numbers and s.get("monitored") is False:
-                            ss = dict(s)
-                            ss["monitored"] = True
-                            new_seasons.append(ss)
-                            preserved_seasons += 1
-                            changed = True
-                        else:
-                            new_seasons.append(s)
-                    if not changed:
-                        continue
-
                     payload = dict(series_rec)
-                    payload["seasons"] = new_seasons
+                    payload["monitored"] = True
                     await sonarr2.update_series(payload)
-                    preserved_series += 1
-
-                if preserved_series:
+                    series_monitored_fixes += 1
+                if series_monitored_fixes:
                     actions.append(
-                        f"Sonarr: preserved season monitoring for {preserved_seasons} season(s) "
-                        f"across {preserved_series} continuing series after watched-episode cleanup"
+                        f"Sonarr: set {series_monitored_fixes} continuing series to monitored "
+                        f"(series-level only; episode flags applied above)"
                     )
 
             if to_unmonitor:
@@ -1844,7 +1880,7 @@ async def _execute_emby_block(
             session.add(
                 ActivityLog(
                     job_run_id=log.id,
-                    app="emby",
+                    app="trimmer",
                     kind="trimmed",
                     count=len(candidates),
                     detail=_detail_from_labels([name for _, name, _, _ in candidates]),
@@ -1970,13 +2006,16 @@ async def _run_once_inner(
         log.finished_at = utc_now_naive()
         # Snapshot failure if it’s clearly Sonarr/Radarr/Emby
         url = safe_url
-        app = "sonarr" if ":8989" in url else ("radarr" if ":7878" in url else ("emby" if (":8096" in url or ":8920" in url) else ""))
-        if app:
-            session.add(AppSnapshot(app=app, ok=False, status_message=log.message, missing_total=0, cutoff_unmet_total=0))
+        snap_app = "sonarr" if ":8989" in url else ("radarr" if ":7878" in url else ("emby" if (":8096" in url or ":8920" in url) else ""))
+        activity_app = "trimmer" if snap_app == "emby" else snap_app
+        if snap_app:
+            session.add(
+                AppSnapshot(app=snap_app, ok=False, status_message=log.message, missing_total=0, cutoff_unmet_total=0)
+            )
             session.add(
                 ActivityLog(
                     job_run_id=log.id,
-                    app=app,
+                    app=activity_app,
                     kind="error",
                     status="failed",
                     count=0,

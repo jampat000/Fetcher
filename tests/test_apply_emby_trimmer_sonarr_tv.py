@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 from typing import Any
 
 import pytest
@@ -10,6 +11,7 @@ import pytest
 from app.models import AppSettings
 from app.service_logic import (
     _delete_sonarr_episode_files_bounded,
+    _sonarr_episode_is_unaired_future,
     apply_emby_trimmer_live_deletes,
 )
 
@@ -130,6 +132,7 @@ async def _run_apply(
     *,
     fake_sonarr: _RecordingSonarrArrClient,
     candidates: list[tuple[str, str, str, dict[str, Any]]],
+    frozen_now: datetime | None = None,
 ) -> tuple[list[str], _FakeEmby]:
     emby = _FakeEmby()
 
@@ -137,6 +140,8 @@ async def _run_apply(
         return fake_sonarr
 
     monkeypatch.setattr("app.service_logic.ArrClient", _arr_factory)
+    if frozen_now is not None:
+        monkeypatch.setattr("app.service_logic.utc_now_naive", lambda: frozen_now)
     actions = await apply_emby_trimmer_live_deletes(
         _settings_tv_only(),
         emby,  # type: ignore[arg-type]
@@ -145,6 +150,10 @@ async def _run_apply(
         rad_key=None,
     )
     return actions, emby
+
+
+def _fixed_now() -> datetime:
+    return datetime(2026, 6, 15, 12, 0, 0)
 
 
 def test_sonarr_deletes_all_episode_file_ids_ended_series(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -178,6 +187,7 @@ def test_sonarr_deletes_all_episode_file_ids_ended_series(monkeypatch: pytest.Mo
 
 
 def test_sonarr_deletes_airing_then_monitor(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Continuing show: no air metadata → conservative unmonitor only; no season PUT."""
     eps = _episodes_three_files()
     fake = _RecordingSonarrArrClient(
         _cfg=None,
@@ -189,24 +199,109 @@ def test_sonarr_deletes_airing_then_monitor(monkeypatch: pytest.MonkeyPatch) -> 
             monkeypatch,
             fake_sonarr=fake,
             candidates=[("e1", "Show A", "Series", _emby_series())],
+            frozen_now=_fixed_now(),
         )
     )
     assert set(fake.attempted_episode_file_ids) == {501, 502, 503}
     assert set(fake.delete_episode_file_ids) == {501, 502, 503}
-    assert fake.set_episodes_monitored_calls == [([201, 202, 203], True)]
+    assert fake.set_episodes_monitored_calls == [([201, 202, 203], False)]
     assert fake.unmonitor_episodes_calls == []
-    assert len(fake.update_series_calls) == 1
-    updated = fake.update_series_calls[0]
-    seasons = updated.get("seasons")
-    assert isinstance(seasons, list)
-    assert any(isinstance(s, dict) and s.get("seasonNumber") == 1 and s.get("monitored") is True for s in seasons)
+    assert fake.update_series_calls == []
     assert any(
         a == "Sonarr: deleted 3 on-disk episode file(s) for 3 episode(s)" for a in actions
     )
     assert any(
-        a == "Sonarr: left 3 episode(s) monitored (series still airing)" for a in actions
+        "0 future episode(s) monitored" in a and "3 aired/unknown episode(s)" in a for a in actions
     )
-    assert any(a.startswith("Sonarr: preserved season monitoring for ") for a in actions)
+
+
+def test_sonarr_continuing_mixed_air_dates_future_monitored_past_unmonitored(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = _fixed_now()
+    eps = [
+        {
+            "id": 201,
+            "seasonNumber": 1,
+            "episodeNumber": 1,
+            "episodeFileId": 501,
+            "airDateUtc": "2026-01-01T12:00:00Z",
+        },
+        {
+            "id": 202,
+            "seasonNumber": 1,
+            "episodeNumber": 2,
+            "episodeFileId": 502,
+            "airDateUtc": "2026-12-01T12:00:00Z",
+        },
+        {
+            "id": 203,
+            "seasonNumber": 1,
+            "episodeNumber": 3,
+            "episodeFileId": 503,
+            "airDate": "2026-12-15",
+        },
+    ]
+    fake = _RecordingSonarrArrClient(
+        _cfg=None,
+        catalog=_series_catalog(status="continuing"),
+        episodes_by_series={10: eps},
+    )
+    asyncio.run(
+        _run_apply(
+            monkeypatch,
+            fake_sonarr=fake,
+            candidates=[("e1", "Show A", "Series", _emby_series())],
+            frozen_now=now,
+        )
+    )
+    assert fake.set_episodes_monitored_calls == [([202, 203], True), ([201], False)]
+    assert fake.update_series_calls == []
+
+
+def test_sonarr_continuing_series_level_monitored_when_catalog_false(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cat = _series_catalog(status="continuing")
+    cat[0]["monitored"] = False
+    eps = [
+        {
+            "id": 201,
+            "seasonNumber": 1,
+            "episodeNumber": 1,
+            "episodeFileId": 501,
+            "airDateUtc": "2027-01-01T12:00:00Z",
+        },
+    ]
+    fake = _RecordingSonarrArrClient(
+        _cfg=None,
+        catalog=cat,
+        episodes_by_series={10: eps},
+    )
+    asyncio.run(
+        _run_apply(
+            monkeypatch,
+            fake_sonarr=fake,
+            candidates=[("e1", "Show A", "Series", _emby_series())],
+            frozen_now=_fixed_now(),
+        )
+    )
+    assert fake.set_episodes_monitored_calls == [([201], True)]
+    assert len(fake.update_series_calls) == 1
+    assert fake.update_series_calls[0].get("monitored") is True
+
+
+def test_sonarr_episode_unaired_future_classification() -> None:
+    now = datetime(2026, 6, 15, 12, 0, 0)
+    assert not _sonarr_episode_is_unaired_future(
+        {"airDateUtc": "2026-06-10T12:00:00Z"}, now_utc_naive=now
+    )
+    assert _sonarr_episode_is_unaired_future(
+        {"airDateUtc": "2026-06-20T12:00:00Z"}, now_utc_naive=now
+    )
+    assert _sonarr_episode_is_unaired_future({"airDate": "2026-06-15"}, now_utc_naive=now)
+    assert not _sonarr_episode_is_unaired_future({"airDate": "2026-06-14"}, now_utc_naive=now)
+    assert not _sonarr_episode_is_unaired_future({}, now_utc_naive=now)
 
 
 def test_no_duplicate_episode_file_deletes_overlapping_candidates(
@@ -248,6 +343,7 @@ def test_deleted_files_count_zero_one_many(monkeypatch: pytest.MonkeyPatch) -> N
             monkeypatch,
             fake_sonarr=many,
             candidates=[("e1", "Show A", "Series", _emby_series())],
+            frozen_now=_fixed_now(),
         )
     )
     assert "Sonarr: deleted 3 on-disk episode file(s) for 3 episode(s)" in actions_many
@@ -263,6 +359,7 @@ def test_deleted_files_count_zero_one_many(monkeypatch: pytest.MonkeyPatch) -> N
             monkeypatch,
             fake_sonarr=one,
             candidates=[("e1", "Pilot", "Episode", _emby_episode_s01e01())],
+            frozen_now=_fixed_now(),
         )
     )
     assert "Sonarr: deleted 1 on-disk episode file(s) for 1 episode(s)" in actions_one
@@ -277,6 +374,7 @@ def test_deleted_files_count_zero_one_many(monkeypatch: pytest.MonkeyPatch) -> N
             monkeypatch,
             fake_sonarr=zero,
             candidates=[("e1", "Show A", "Series", _emby_series())],
+            frozen_now=_fixed_now(),
         )
     )
     assert "Sonarr: deleted 0 on-disk episode file(s) for 2 episode(s)" in actions_zero

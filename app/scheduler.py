@@ -10,9 +10,10 @@ from sqlalchemy import select
 from app.arr_intervals import effective_arr_interval_minutes
 from app.db import SessionLocal
 from app.models import AppSettings
-from app.refiner_watch_config import clamp_stream_manager_interval_seconds
+from app.refiner_readiness import refiner_scheduler_should_run
+from app.refiner_watch_config import clamp_refiner_interval_seconds
+from app.refiner_service import run_scheduled_refiner_pass
 from app.service_logic import run_once
-from app.stream_manager_service import run_scheduled_stream_manager_pass
 from app.resolvers.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
 from app.time_util import utc_now_naive
 
@@ -41,16 +42,12 @@ def _emby_configured(settings: AppSettings) -> bool:
     )
 
 
-def _stream_manager_configured(settings: AppSettings) -> bool:
-    return bool(
-        getattr(settings, "stream_manager_enabled", False)
-        and (getattr(settings, "stream_manager_watched_folder", "") or "").strip()
-        and (getattr(settings, "stream_manager_output_folder", "") or "").strip()
-    )
+def _refiner_configured(settings: AppSettings) -> bool:
+    return refiner_scheduler_should_run(settings)
 
 
 def compute_job_intervals_minutes(settings: AppSettings) -> dict[str, int]:
-    """Sonarr / Radarr / Trimmer — interval jobs use minutes. (Refiner uses seconds; see ``effective_stream_manager_interval_seconds``.)"""
+    """Sonarr / Radarr / Trimmer — interval jobs use minutes. (Refiner uses seconds; see ``effective_refiner_interval_seconds``.)"""
     out: dict[str, int] = {}
     if _sonarr_configured(settings):
         out["sonarr"] = effective_arr_interval_minutes(getattr(settings, "sonarr_interval_minutes", None))
@@ -61,11 +58,11 @@ def compute_job_intervals_minutes(settings: AppSettings) -> dict[str, int]:
     return out
 
 
-def effective_stream_manager_interval_seconds(settings: AppSettings) -> int | None:
-    if not _stream_manager_configured(settings):
+def effective_refiner_interval_seconds(settings: AppSettings) -> int | None:
+    if not _refiner_configured(settings):
         return None
-    return clamp_stream_manager_interval_seconds(
-        getattr(settings, "stream_manager_interval_seconds", None),
+    return clamp_refiner_interval_seconds(
+        getattr(settings, "refiner_interval_seconds", None),
     )
 
 
@@ -77,7 +74,7 @@ class ServiceScheduler:
             "sonarr": "fetcher_sonarr",
             "radarr": "fetcher_radarr",
             "trimmer": "fetcher_trimmer",
-            "stream_manager": "fetcher_stream_manager",
+            "refiner": "fetcher_refiner",
         }
 
     async def _current_job_intervals_minutes(self) -> dict[str, int]:
@@ -92,7 +89,7 @@ class ServiceScheduler:
             settings = (await session.execute(select(AppSettings).order_by(AppSettings.id.asc()).limit(1))).scalars().first()
             if not settings:
                 return {}, None
-            return compute_job_intervals_minutes(settings), effective_stream_manager_interval_seconds(settings)
+            return compute_job_intervals_minutes(settings), effective_refiner_interval_seconds(settings)
 
     async def _run_scope(self, scope: str) -> None:
         if self._run_lock.locked():
@@ -110,21 +107,21 @@ class ServiceScheduler:
     async def _job_trimmer(self) -> None:
         await self._run_scope("trimmer")
 
-    async def _job_stream_manager(self) -> None:
+    async def _job_refiner(self) -> None:
         async with SessionLocal() as session:
-            await run_scheduled_stream_manager_pass(session)
+            await run_scheduled_refiner_pass(session)
 
     def _job_fn_for_scope(self, scope: str):
         if scope == "sonarr":
             return self._job_sonarr
         if scope == "radarr":
             return self._job_radarr
-        if scope == "stream_manager":
-            return self._job_stream_manager
+        if scope == "refiner":
+            return self._job_refiner
         return self._job_trimmer
 
     async def start(self) -> None:
-        intervals, sm_seconds = await self._current_scheduler_intervals()
+        intervals, refiner_interval_seconds = await self._current_scheduler_intervals()
         for scope, minutes in intervals.items():
             self._sched.add_job(
                 self._job_fn_for_scope(scope),
@@ -134,12 +131,12 @@ class ServiceScheduler:
                 replace_existing=True,
                 next_run_time=utc_now_naive(),
             )
-        if sm_seconds is not None:
+        if refiner_interval_seconds is not None:
             self._sched.add_job(
-                self._job_stream_manager,
+                self._job_refiner,
                 "interval",
-                seconds=sm_seconds,
-                id=self._job_ids["stream_manager"],
+                seconds=refiner_interval_seconds,
+                id=self._job_ids["refiner"],
                 replace_existing=True,
                 next_run_time=utc_now_naive(),
             )
@@ -148,24 +145,24 @@ class ServiceScheduler:
     async def reschedule(self, *, targets: set[str] | None = None) -> None:
         if not self._sched.running:
             return
-        intervals, sm_seconds = await self._current_scheduler_intervals()
+        intervals, refiner_interval_seconds = await self._current_scheduler_intervals()
         active_targets = (
-            {"sonarr", "radarr", "trimmer", "stream_manager"} if targets is None else set(targets)
+            {"sonarr", "radarr", "trimmer", "refiner"} if targets is None else set(targets)
         )
         for scope in active_targets:
             if scope not in self._job_ids:
                 continue
             job_id = self._job_ids[scope]
-            if scope == "stream_manager":
-                if sm_seconds is None:
+            if scope == "refiner":
+                if refiner_interval_seconds is None:
                     job = self._sched.get_job(job_id)
                     if job:
                         self._sched.remove_job(job_id)
                 else:
                     self._sched.add_job(
-                        self._job_stream_manager,
+                        self._job_refiner,
                         "interval",
-                        seconds=sm_seconds,
+                        seconds=refiner_interval_seconds,
                         id=job_id,
                         replace_existing=True,
                     )
@@ -202,7 +199,7 @@ class ServiceScheduler:
             "sonarr": self._job_next_run_at("sonarr"),
             "radarr": self._job_next_run_at("radarr"),
             "trimmer": self._job_next_run_at("trimmer"),
-            "stream_manager": self._job_next_run_at("stream_manager"),
+            "refiner": self._job_next_run_at("refiner"),
         }
 
     def is_run_in_progress(self) -> bool:

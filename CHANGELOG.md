@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-03-30
+
+### Documentation
+
+- **Failed-import cleanup (Sonarr / Radarr):** CHANGELOG, README, and settings helper text now match runtime behavior. Cleanup uses each app’s **download queue** API (`DELETE /api/v3/queue/{id}`): **blocklist** is requested on the first delete; if that fails, Fetcher retries with **queue-only** removal. **removeFromClient** is not enabled. **Activity** records a row only when a delete succeeds, with titles **Failed import cleaned up** (queue removed and blocklist applied on that call) or **Failed import removed** (queue removed without blocklist). Waiting-to-import, unknown, and no-match paths do **not** add cleanup activity rows. Job-run summaries use the same outcome wording (no API-style phrasing).
+
+### Changed
+
+- **Breaking:** Removed **Windows SQLite path migration** (no copy/rename from service profile **`AppData\Local\Fetcher`**, no **`fetcher.db.migrated_from_legacy`** marker, no archive suffix flow). Packaged builds use **`%ProgramData%\Fetcher\fetcher.db`** or **`FETCHER_DATA_DIR`** only—move **`fetcher.db`** manually when needed (service stopped).
+- **Breaking:** Startup requires a SQLite **`app_settings`** row with full **Refiner** columns (**`refiner_*`**) and **`schema_version`** equal to the build. **`POST /refiner/settings/save`** accepts **`refiner_*`** form fields only. Settings JSON backup/restore accepts **current** format and column names only (see README / **HOWTO-RESTORE.md**).
+- **Dashboard:** Automation section uses four tiles (Sonarr, Radarr, Refiner, Trimmer) with aligned layout, footer notes/actions, and client-side status polling refinements.
+
+### Internal
+
+- Refiner rules and settings routes live under `app/refiner_rules.py` and `app/routers/refiner.py`; poll-interval helpers in `refiner_watch_config` use `REFINER_WATCH_*` / `clamp_refiner_interval_seconds`.
+
+### Repository / installer hygiene
+
+- **GitHub Actions:** **`test.yml`**, **`security.yml`**, and **`docker-build.yml`** merged into one **`.github/workflows/ci.yml`** (workflow name still **Test** — jobs **`pytest`**, **`pip-audit`**, **`docker-build`**). Release remains **three intentional workflows** (**`tag-release.yml`**, **`build-installer.yml`**, **`docker-publish.yml`**) because GitHub does not fire tag-push workflows from `GITHUB_TOKEN` tag creation; orchestration + ref semantics require that split. If **`master`** required checks still list **`Security / pip-audit`**, update them to **`Test / pip-audit`** (see **`.github/BRANCH_PROTECTION.md`**).
+- Root-level `release-notes-v3.0.*.md` snapshots moved to `docs/archive/release-notes/` (canonical history remains this file).
+- `.gitignore` now excludes local `Fetcher-v*-windows-dist.zip` (+ `.sha256`) patterns so Windows distro bundles are not committed by mistake.
+- Installer uses `[InstallDelete]` before file copy on upgrade and `[UninstallDelete]` on uninstall to remove obsolete `FetcherCompanion.exe` and companion `.ps1` scripts from `{app}` when present (per-user tasks/shortcuts may still need manual removal—see README / **INSTALL-AND-OPERATIONS**).
+
 ## [3.1.1] - 2026-03-28
 
 ### Changed
@@ -31,13 +54,118 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Upgrade:** installers **3.1.0+** drop companion binaries/scripts from **`{app}`** via **`[InstallDelete]`**; optional per-user task/Start Menu items from the old flow may remain until removed manually (see README / **docs/INSTALL-AND-OPERATIONS.md**).
 
+## [3.0.9] - 2026-03-27
+
+### Fixed
+
+- Improved Windows service companion auto-launch diagnostics and terminal failure classification
+- Guaranteed warning-level visibility for generalized fallback scan entry/exhaustion and ensure failure summaries
+
+### Notes
+
+- This release is for decisive production validation of the Windows companion launch path
+- Docker/headless behavior is unchanged and remains manual-entry only
+
+## [3.0.8] - 2026-03-27
+
+### Fixed
+
+- Windows service companion auto-launch now falls back to any usable active-session process token when WTSQueryUserToken and explorer.exe paths fail
+- Improved diagnostics for Windows session token acquisition and companion launch
+
+### Notes
+
+- Docker/headless behavior is unchanged and remains manual-entry only
+
+## [3.0.7] - 2026-03-27
+
+### Fixed
+
+- Windows service companion auto-launch now falls back to active-session explorer.exe token when WTSQueryUserToken fails
+- Improved diagnostics for Windows session launch path
+
+### Notes
+
+- Docker/headless behavior unchanged; manual path entry remains the correct flow there
+
+## [3.0.6] - 2026-03-27
+
+### Fixed
+
+- Windows service companion auto-launch reliability
+- Deterministic CreateProcessAsUserW launch for FetcherCompanion
+- Improved diagnostics for companion ensure/start path
+
+### Notes
+
+- Docker/headless Browse behavior is unchanged and remains manual-entry only
+
+## [3.0.5] - 2026-03-27
+
+### Added
+
+- Windows service can now launch FetcherCompanion into the active logged-in user session automatically
+- Companion startup self-heal on service startup / picker demand
+
+### Changed
+
+- Windows service Browse no longer depends primarily on manual companion startup
+- Docker/headless Browse remains unavailable by design with immediate manual-entry guidance
+
+### Notes
+
+- On Windows service installs, Fetcher now prefers automatic companion startup in the active user session
+- Scheduled task / HKCU / Start Menu registration remain as fallback and resilience paths
+- Docker/headless installs must use manual path entry
+
+## [3.0.4] - 2026-03-27
+
+### Added
+
+- Windows companion app for interactive folder browsing while Fetcher runs as a service
+- Companion packaging in Windows builds
+- Companion registration script for per-user logon startup
+
+### Changed
+
+- Refiner folder Browse now proxies through the companion on Windows service installs
+- Service no longer attempts to launch native folder dialogs directly
+
+### Notes
+
+- To enable Browse in service mode, run **"Register Fetcher Companion (folder picker)"** once from the logged-in Windows user account.
+
+## [3.0.3] - 2026-03-27
+
+### Fixed
+
+- Folder picker no longer appears frozen when unavailable
+- Added loading state and timeout handling for Browse buttons
+- Improved error message consistency
+- Prevented duplicate toast notifications after timeout
+
+## [3.0.2] - 2026-03-27
+
+### Changed
+
+- **Refiner:** accurate off / enabled / ready state via `get_refiner_state`; async saves refresh top banners from `/api/refiner/readiness-brief` with overlap guard.
+- **Refiner folder picker:** runs in an isolated subprocess (hard timeout + process kill); stdout JSON parsed from the last line only; duplicate `--refiner-pick-folder-worker` argv ignored in CLI.
+- **Refiner folder picker:** single user-facing failure message (`Folder picker unavailable. Type or paste the path.`) for timeout, subprocess errors, and invalid output.
+
+## [3.0.1] - 2026-03-27
+
+### Changed
+
+- **Refiner setup UX:** enabling Refiner under Processing no longer fails saves because Audio or Folders are incomplete; readiness is enforced when Refiner actually runs and is summarized in clear banners on the Refiner overview and settings pages.
+- **Refiner folders:** added themed **Browse** buttons for watched, output, and temp/work paths (native folder dialog on Windows where available; manual entry still supported).
+
 ## [3.0.0] - 2026-03-27
 
 ### Highlights
 
 - **Refiner** promoted to a first-class system
-- Failed import cleanup reliability (**Sonarr** + **Radarr** parity)
-- Added explicit failed-import cleanup interval
+- **Sonarr / Radarr failed-import cleanup:** shared interval setting; terminal failed imports removed from each app’s **download queue** via queue delete (blocklist attempted first, remove-only fallback); **Activity** when a removal succeeds
+- Added explicit failed-import cleanup interval (minutes), shared by Sonarr and Radarr when cleanup is enabled
 - **Activity** feed includes **Refiner** before/after detail
 - **Settings** UI consistency and helper standardization
 - Save behavior consistency improvements
@@ -81,13 +209,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **Sonarr/Radarr failed-import cleanup:** Queue removal now calls the native API with **`blocklist=true`** on the same delete, so the associated release is blocklisted per Sonarr/Radarr (reduces immediate re-grab). Activity and run summaries use explicit wording: removed from queue; blocklist requested via Sonarr/Radarr API (no claim of independent verification).
-- **Sonarr failed-import cleanup:** Delete failures are caught and reported like Radarr (**`failed-import queue remove failed`** + HTTP detail), with no misleading success Activity row.
-- **Settings (Sonarr & Radarr):** Checkbox labels clarified for **search missing**, **cutoff-unmet upgrade search**, and **remove failed imports (queue + blocklist)**; helper text notes API blocklist on removal.
+- **Sonarr/Radarr failed-import cleanup:** Terminal cases are removed from each app’s **download queue** using **`DELETE /api/v3/queue/{id}`**. The first attempt uses **`blocklist=true`**; if that fails, Fetcher retries with **`blocklist=false`** so the queue row can still be cleared. **`removeFromClient`** is not used. When a delete succeeds, **Activity** and job-run lines describe the outcome (removed with blocklist vs queue-only), not raw API parameters.
+- **Sonarr failed-import cleanup:** Failed deletes are reported like Radarr (**removal failed** + HTTP detail), with **no** success Activity row when nothing was removed.
+- **Settings (Sonarr & Radarr):** Checkbox labels clarified for **search missing**, **cutoff-unmet upgrade search**, and **remove failed imports from queue**; helper text states queue removal, blocklist attempted on delete, and remove-only fallback.
 
 ### Maintenance
 
-- **Tests:** Radarr cleanup asserts **`blocklist=True`** on delete; added focused Sonarr failed-import cleanup tests. Default pytest suite and screenshot-regeneration opt-in behavior unchanged.
+- **Tests:** Radarr cleanup asserts **`blocklist=True`** on the first successful delete path; added focused Sonarr failed-import cleanup tests. Default pytest suite and screenshot-regeneration opt-in behavior unchanged.
 
 ## [2.4.11] - 2026-03-26
 
@@ -366,7 +494,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **Radarr (opt-in):** **Remove failed imports from queue** — when enabled under Radarr settings, each automation run scans Radarr history for explicit **import failed** events, matches the **download queue** by exact **download ID** only, and removes the queue item when there is exactly one match (no title/fuzzy matching, no blocklist, no re-search). Successful removals are recorded in **Activity** with title and reason when available. No-match and ambiguous multi-match cases skip safely without deleting.
+- **Radarr (opt-in):** **Remove failed imports from queue** — scans Radarr history for **import failed**, matches the download **queue** by **download ID**, and deletes matching queue rows via the Radarr queue API (this version: queue delete without requesting blocklist or remove-from-client). Successful removals appear in **Activity** with title and reason when available; no-match cases skip without deleting. **Newer builds** use blocklist on the first delete attempt with a remove-only fallback, and add Sonarr parity (**see 2.4.12**).
 
 ## [2.1.1] - 2026-03-24
 
@@ -606,7 +734,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **Docs:** **[`docs/WORKSPACE-FOLDER.md`](docs/WORKSPACE-FOLDER.md)** — use local folder **`Fetcher`** (not legacy **`grabby`**), **`fetcher.code-workspace`** for Cursor/VS Code, and **`scripts/rename-local-repo-folder.ps1`** to rename an existing clone.
+- **Docs:** **[`docs/WORKSPACE-FOLDER.md`](docs/WORKSPACE-FOLDER.md)** — use local folder **`Fetcher`**, **`fetcher.code-workspace`** for Cursor/VS Code, and **`scripts/rename-local-repo-folder.ps1`** to rename an existing clone.
 
 ## [2.0.0] - 2026-03-22
 
@@ -1051,14 +1179,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 3. **Merge-first (recommended):** Commit on **`release/vX.Y.Z`** from **`origin/master`**, open **PR → `master`**, merge when checks pass. A push to **`master`** that changes **`VERSION`** runs **Tag release (from VERSION)** — creates **`vX.Y.Z`** if missing, then dispatches **Build installer** and **Docker publish** (see **`.github/workflows/tag-release.yml`**). After merge: **`git switch master && git pull --ff-only`**, delete the remote release branch if you like.
 4. **Shortcut:** **`.\scripts\ship-release.ps1`** on your release branch pushes **`origin`** and dispatches **Tag release** on that ref (useful before merge; still merge to **`master`** so **`VERSION`** matches the default branch).
 5. After **`git fetch origin master --tags`**, you may run **`gh workflow run build-installer.yml --repo jampat000/Fetcher --ref vX.Y.Z`** — **only** if **`vX.Y.Z`** points to the commit you intend to ship (**ref trap:** workflow YAML comes from that tag’s commit). Prefer **Tag release** so **Docker publish** uses **`checkout_ref`** correctly. See **`.cursor/rules/github-installer-workflow-ref-trap.mdc`**.
-6. If tagging did not run, use **Actions → Tag release (from VERSION) → Run workflow** on **`master`** (or your release branch). Avoid hand-creating tags only from the **Releases** UI unless you know the commit matches **`VERSION`**.
+6. If tagging did not run, use **Actions → Tag release (from VERSION) → Run workflow** with ref **`master`** (after merge), or run it on **`release/v…`** only when using **`.\scripts\ship-release.ps1`** before merge. Avoid hand-creating tags from the **Releases** UI unless the commit matches **`VERSION`**.
 7. If a **tag** exists but **Releases → Latest** never updated (no **`FetcherSetup.exe`**), compare **`git rev-parse vX.Y.Z`** vs **`git rev-parse origin/master`**. An **old** tag SHA can **build** but **skip** the **release** job. **Fix:** move the tag, **or** bump **`VERSION`** and release again, **or** **`gh release create`** + attach **`FetcherSetup.exe`** from a green artifact.
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.1.1...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.2.0...HEAD
+[3.2.0]: https://github.com/jampat000/Fetcher/compare/v3.1.1...v3.2.0
 [3.1.1]: https://github.com/jampat000/Fetcher/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/jampat000/Fetcher/compare/v3.0.9...v3.1.0
+[3.0.9]: https://github.com/jampat000/Fetcher/compare/v3.0.8...v3.0.9
+[3.0.8]: https://github.com/jampat000/Fetcher/compare/v3.0.7...v3.0.8
+[3.0.7]: https://github.com/jampat000/Fetcher/compare/v3.0.6...v3.0.7
+[3.0.6]: https://github.com/jampat000/Fetcher/compare/v3.0.5...v3.0.6
+[3.0.5]: https://github.com/jampat000/Fetcher/compare/v3.0.4...v3.0.5
+[3.0.4]: https://github.com/jampat000/Fetcher/compare/v3.0.3...v3.0.4
+[3.0.3]: https://github.com/jampat000/Fetcher/compare/v3.0.2...v3.0.3
+[3.0.2]: https://github.com/jampat000/Fetcher/compare/v3.0.1...v3.0.2
+[3.0.1]: https://github.com/jampat000/Fetcher/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/jampat000/Fetcher/compare/v2.5.1...v3.0.0
 [2.5.1]: https://github.com/jampat000/Fetcher/compare/v2.5.0...v2.5.1
 [2.5.0]: https://github.com/jampat000/Fetcher/compare/v2.4.14...v2.5.0

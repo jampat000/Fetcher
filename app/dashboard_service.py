@@ -20,7 +20,7 @@ from app.display_helpers import (
     _relative_phrase_until,
 )
 from app.models import ActivityLog, AppSettings, AppSnapshot, JobRunLog
-from app.resolvers.api_keys import resolve_radarr_api_key, resolve_sonarr_api_key
+from app.resolvers.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
 from app.scheduler import compute_job_intervals_minutes, scheduler
 from app.service_logic import _radarr_missing_total_including_unreleased, _sonarr_missing_total_including_unreleased
 from app.time_util import utc_now_naive
@@ -32,6 +32,22 @@ logger = logging.getLogger(__name__)
 _DASHBOARD_LIVE_ARR_HTTP_TIMEOUT_S = 12.0
 _DASHBOARD_SONARR_MISSING_WALL_S = 25.0
 _DASHBOARD_RADARR_MOVIES_WALL_S = 20.0
+
+def trimmer_connection_status_display(
+    settings: AppSettings,
+    emby_snap: AppSnapshot | None,
+) -> tuple[str, str]:
+    """System row: media server backend type label and read-only connection status (Trimmer slot)."""
+    key = resolve_emby_api_key(settings)
+    url = (settings.emby_url or "").strip()
+    configured = bool(url and key)
+    backend_type = "Emby"
+    if not configured:
+        return (backend_type, "Not configured")
+    if emby_snap is None:
+        return (backend_type, "Configured")
+    return (backend_type, "Connected" if emby_snap.ok else "Not connected")
+
 
 _JOB_RETRY_HINT_MARKERS = (
     "within retry delay",
@@ -260,7 +276,7 @@ async def build_dashboard_status(
             app_name = "Sonarr"
         elif app_raw == "radarr":
             app_name = "Radarr"
-        elif app_raw == "emby":
+        elif app_raw == "trimmer":
             app_name = "Trimmer"
         kind = (latest_activity.kind or "").strip().lower()
         event_name_map = {
@@ -336,6 +352,7 @@ async def build_dashboard_status(
     sonarr_snap = snaps.get("sonarr")
     radarr_snap = snaps.get("radarr")
     emby_snap = snaps.get("emby")
+    conn_type, conn_status = trimmer_connection_status_display(settings, emby_snap)
     sonarr_missing = int(sonarr_snap.missing_total) if sonarr_snap else 0
     sonarr_upgrades = int(sonarr_snap.cutoff_unmet_total) if sonarr_snap else 0
     radarr_missing = int(radarr_snap.missing_total) if radarr_snap else 0
@@ -373,6 +390,8 @@ async def build_dashboard_status(
         "radarr_missing": radarr_missing,
         "radarr_upgrades": radarr_upgrades,
         "emby_matched": int(emby_snap.missing_total) if emby_snap else 0,
+        "trimmer_connection_type": conn_type,
+        "trimmer_connection_status": conn_status,
     }
 
 
@@ -381,5 +400,6 @@ __all__ = [
     "automation_card_subtext",
     "build_dashboard_status",
     "fetch_live_dashboard_queue_totals",
+    "trimmer_connection_status_display",
     "_fetcher_phase_for_dashboard",
 ]

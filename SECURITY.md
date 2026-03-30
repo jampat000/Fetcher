@@ -60,13 +60,13 @@ Fetcher’s **`get_client_ip()`** only substitutes the **`X-Forwarded-For`** hea
 
 ## Default branch (`master`) on GitHub
 
-Do not rely on local git habits alone: protect **`master`** (and **`main`** if you use it) with **required PRs**, **required passing checks** (`Test / pytest`, `Security / pip-audit` — copy exact names from a PR), **no force-push**, and rules that match how you work (**classic branch protection** or **repository rulesets**).
+Do not rely on local git habits alone: protect **`master`** with **required PRs**, **required passing checks** (`Test / pytest`, `Test / pip-audit` — copy exact names from a PR), **no force-push**, and rules that match how you work (**classic branch protection** or **repository rulesets**). Fetcher’s release workflows and docs assume **`master`** is the default branch.
 
 Step-by-step checklist: **[`.github/BRANCH_PROTECTION.md`](.github/BRANCH_PROTECTION.md)** · ruleset JSON: **[`.github/IMPORT-BRANCH-PROTECTION.md`](.github/IMPORT-BRANCH-PROTECTION.md)**. Solo maintainers may use **0** required approvals with **restrict updates** so merges still go through PRs without a second human.
 
 ## CI security checks
 
-- **pip-audit** runs against `requirements.txt` on pushes and PRs to `master` / `main`.  
+- **pip-audit** (job **`pip-audit`** in **`.github/workflows/ci.yml`**, workflow name **Test**) runs against `requirements.txt` on pushes and PRs targeting **`master`**.  
 
 ## Lockout recovery
 

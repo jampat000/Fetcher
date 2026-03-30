@@ -66,11 +66,12 @@ def test_dashboard_route_smoke(monkeypatch) -> None:
         resp = client.get("/")
     assert resp.status_code == 200
     assert b"Sonarr" in resp.content
-    assert b"Latest event" in resp.content
+    assert b"data-automation-card=\"refiner\"" in resp.content
     assert b"automation-cards" in resp.content
     assert b"Sonarr" in resp.content
     assert b"Radarr" in resp.content
     assert b"Trimmer" in resp.content
+    assert b"Refiner" in resp.content
 
 
 def test_dashboard_hero_does_not_fetch_live_totals_before_render(monkeypatch) -> None:
@@ -136,6 +137,8 @@ def test_dashboard_route_renders_per_app_success_failure_badges(monkeypatch) -> 
             "radarr_missing": 0,
             "radarr_upgrades": 0,
             "emby_matched": 0,
+            "trimmer_connection_type": "Emby",
+            "trimmer_connection_status": "Connected",
         }
 
     monkeypatch.setattr("app.routers.dashboard.build_dashboard_status", _fake_status)
@@ -144,12 +147,21 @@ def test_dashboard_route_renders_per_app_success_failure_badges(monkeypatch) -> 
     assert resp.status_code == 200
     assert b"Sonarr" in resp.content
     assert b"Radarr" in resp.content
-    assert b"Upgrade search" in resp.content
+    assert b"dash-last-refiner-run" in resp.content
     assert b"Succeeded" in resp.content
     assert b"Failed" in resp.content
 
 
 def test_dashboard_route_empty_states_are_intentional(monkeypatch) -> None:
+    import app.routers.dashboard as dash_mod
+
+    real_get = dash_mod._get_or_create_settings
+
+    async def _settings_sonarr_on(session):
+        row = await real_get(session)
+        row.sonarr_enabled = True
+        return row
+
     async def _fake_status(_session, _tz, *, snapshots=None, include_live: bool | None = None):  # noqa: ARG001
         return {
             "last_run": None,
@@ -174,9 +186,16 @@ def test_dashboard_route_empty_states_are_intentional(monkeypatch) -> None:
             "radarr_missing": 0,
             "radarr_upgrades": 0,
             "emby_matched": 0,
+            "trimmer_connection_type": "Emby",
+            "trimmer_connection_status": "Not configured",
         }
 
     monkeypatch.setattr("app.routers.dashboard.build_dashboard_status", _fake_status)
+    monkeypatch.setattr(dash_mod, "_get_or_create_settings", _settings_sonarr_on)
+    monkeypatch.setattr(
+        "app.routers.dashboard.merge_activity_feed",
+        lambda *_a, **_kw: [],
+    )
     with _build_client(monkeypatch) as client:
         resp = client.get("/")
     assert resp.status_code == 200
@@ -203,8 +222,8 @@ def test_cleaner_default_skips_emby_client_when_ready(monkeypatch) -> None:
     with _build_client(monkeypatch) as client:
         resp = client.get("/trimmer")
     assert resp.status_code == 200
-    assert b"No scan yet" in resp.content
-    assert b"Scan Emby for matches" in resp.content
+    assert b"No scan loaded" in resp.content
+    assert b"Scan for matches" in resp.content
     assert b"trimmer-area-tabs" in resp.content
 
 

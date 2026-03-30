@@ -7,7 +7,7 @@
   <div class="page-head">
     <div>
       <h1 class="ph-title">Trimmer settings</h1>
-      <p>Configure <strong>Trimmer</strong> here. <strong>Fetcher</strong> (Sonarr/Radarr) lives under <a href="/settings">Fetcher settings</a>.</p>
+      <p>Configure <strong>Trimmer</strong> here. <strong>Fetcher</strong> (Sonarr/Radarr) lives under <a class="ink-link" href="/settings">Fetcher settings</a>.</p>
     </div>
   </div>
 
@@ -23,7 +23,7 @@
   {% if settings.emby_enabled %}
   {% if settings.emby_dry_run %}
   <div class="banner banner-ok trimmer-mode-banner" role="status">
-    <strong>Dry run (safe)</strong> — Fetcher will <em>not</em> delete anything in Emby. Review matches under <a href="/logs">Logs</a> or <a href="/trimmer?scan=1">Trimmer</a>; uncheck dry run only when you intend real deletes.
+    <strong>Dry run (safe)</strong> — Fetcher will <em>not</em> delete anything in Emby. Review matches under <a class="ink-link" href="/logs">Logs</a> or <a class="ink-link" href="/trimmer?scan=1">Trimmer</a>; uncheck dry run only when you intend real deletes.
   </div>
   {% else %}
   <div class="banner banner-warn trimmer-mode-banner" role="alert">
@@ -57,7 +57,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <div class="settings-async-feedback" hidden aria-live="polite"></div>
       {% call toggle_checkbox("emby_enabled", settings.emby_enabled) %}<strong>Enable Trimmer</strong>{% endcall %}
-      <p class="hint hint--after-toggle">Use <strong>Dry run</strong> under <a href="#trimmer-schedule">Schedule &amp; limits</a> to preview matches without deletes.</p>
+      <p class="hint hint--after-toggle">Use <strong>Dry run</strong> under <a class="ink-link" href="#trimmer-schedule">Schedule &amp; limits</a> to preview matches without deletes.</p>
     <p class="hint">Enter your Emby URL, API key, and optional user ID.</p>
     {% if emby and emby.status_message
         and not emby.status_message.startswith("Test")

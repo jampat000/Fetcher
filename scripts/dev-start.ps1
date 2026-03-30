@@ -26,6 +26,7 @@ if ($SharedAppDb) {
   $devDb = Join-Path ([System.IO.Path]::GetTempPath()) "fetcher-dev.sqlite3"
   $env:FETCHER_DEV_DB_PATH = $devDb
   Write-Host "Dev DB: $devDb  (FETCHER_DEV_DB_PATH)  `[use -SharedAppDb for installed app database`]" -ForegroundColor DarkGray
+  Write-Host "Forgot dev login? Run: .\scripts\dev-set-login.ps1  (username admin, password dev)" -ForegroundColor DarkGray
 }
 Write-Host ""
 

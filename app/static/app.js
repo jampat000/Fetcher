@@ -249,27 +249,39 @@ function initActivityDetailExpand() {
   });
 }
 
+function applyActivityPillFilter(filter) {
+  const f = filter || "all";
+  document.querySelectorAll("[data-pill-filter]").forEach((p) => p.classList.remove("active"));
+  const pill = document.querySelector(`[data-pill-filter="${f}"]`);
+  if (pill) pill.classList.add("active");
+  document.querySelectorAll(".activity-row[data-activity-app]").forEach((row) => {
+    if (f === "all") {
+      row.classList.remove("hidden-filter");
+      return;
+    }
+    const app = row.getAttribute("data-activity-app") || "";
+    const ok =
+      (f === "sonarr" && app === "sonarr") ||
+      (f === "radarr" && app === "radarr") ||
+      (f === "trimmer" && app === "trimmer") ||
+      (f === "refiner" && app === "refiner");
+    row.classList.toggle("hidden-filter", !ok);
+  });
+}
+
 function initActivityFilterPills() {
   document.querySelectorAll("[data-pill-filter]").forEach((pill) => {
     pill.addEventListener("click", () => {
       const filter = pill.getAttribute("data-pill-filter") || "all";
-      document.querySelectorAll("[data-pill-filter]").forEach((p) => p.classList.remove("active"));
-      pill.classList.add("active");
-      document.querySelectorAll(".activity-row[data-activity-app]").forEach((row) => {
-        if (filter === "all") {
-          row.classList.remove("hidden-filter");
-          return;
-        }
-        const app = row.getAttribute("data-activity-app") || "";
-        const ok =
-          (filter === "sonarr" && app === "sonarr") ||
-          (filter === "radarr" && app === "radarr") ||
-          (filter === "emby" && app === "emby") ||
-          (filter === "refiner" && app === "refiner");
-        row.classList.toggle("hidden-filter", !ok);
-      });
+      applyActivityPillFilter(filter);
     });
   });
+  const sp = new URLSearchParams(window.location.search);
+  const raw = (sp.get("app") || "").trim().toLowerCase();
+  let filterKey = null;
+  if (raw === "refiner") filterKey = "refiner";
+  else if (raw === "trimmer") filterKey = "trimmer";
+  if (filterKey) applyActivityPillFilter(filterKey);
 }
 
 function initSettingsPageCollapses() {
@@ -444,6 +456,15 @@ function applyDashboardAutomationStatus(data) {
   applyDashboardFetcherPhase(data);
   applyDashboardAutomationHints(data);
 
+  const connType = document.getElementById("dash-trimmer-connection-type");
+  const connStat = document.getElementById("dash-trimmer-connection-status");
+  if (connType && data.trimmer_connection_type != null) {
+    connType.textContent = String(data.trimmer_connection_type);
+  }
+  if (connStat && data.trimmer_connection_status != null) {
+    connStat.textContent = String(data.trimmer_connection_status);
+  }
+
   function setNextTick(tickId, relId, localVal, relVal) {
     const tick = document.getElementById(tickId);
     const rel = relId ? document.getElementById(relId) : null;
@@ -466,24 +487,6 @@ function applyDashboardAutomationStatus(data) {
   setNextTick("dash-next-radarr-tick", "dash-next-radarr-rel", data.next_radarr_tick_local, data.next_radarr_relative);
   setNextTick("dash-next-trimmer-tick", "dash-next-trimmer-rel", data.next_trimmer_tick_local, data.next_trimmer_relative);
 
-  const lastContext = document.getElementById("dash-last-context");
-  const lastHost = document.getElementById("dash-automation-last");
-  if (lastHost && data.latest_system_event) {
-    lastHost.className = "automation-card-subline";
-    const ev = data.latest_system_event;
-    const ok = ev.ok
-      ? '<span class="status-pill status-pill-ok">Succeeded</span>'
-      : '<span class="status-pill status-pill-fail">Failed</span>';
-    if (lastContext) lastContext.innerHTML = escapeHtml(ev.context || "System • Event");
-    const rel = escapeHtml(ev.relative || "");
-    const clock = escapeHtml(ev.time_local || "");
-    lastHost.innerHTML = `<span class="muted" id="dash-last-started-rel">${rel}</span> <span class="small muted">· <span id="dash-last-started">${clock}</span></span> ${ok}`;
-  } else if (lastHost && !data.latest_system_event) {
-    if (lastContext) lastContext.innerHTML = '<span class="muted">No activity yet</span>';
-    lastHost.className = "automation-card-subline muted";
-    lastHost.textContent = "No activity yet";
-  }
-
   const lastSonarr = document.getElementById("dash-last-sonarr-run");
   if (lastSonarr) {
     const r = data.last_sonarr_run || {};
@@ -495,8 +498,8 @@ function applyDashboardAutomationStatus(data) {
           : r.ok === false
             ? ' <span class="status-pill status-pill-fail">Failed</span>'
             : "";
-      lastSonarr.innerHTML = `<span class="muted">Last run:</span> <strong id="dash-last-sonarr-rel">${rel}</strong> <span class="small muted">· ${escapeHtml(r.time_local)}</span>${ok}`;
-    } else lastSonarr.innerHTML = '<span class="muted">Not yet run</span>';
+      lastSonarr.innerHTML = `<span class="dash-summary-run-line"><strong class="dash-summary-time-emphasis" id="dash-last-sonarr-rel">${rel}</strong><span class="small muted dash-summary-run-clock"> · ${escapeHtml(r.time_local)}</span></span>${ok}`;
+    } else lastSonarr.innerHTML = '<span class="dash-summary-empty-state">Not yet run</span>';
   }
   const lastRadarr = document.getElementById("dash-last-radarr-run");
   if (lastRadarr) {
@@ -509,8 +512,8 @@ function applyDashboardAutomationStatus(data) {
           : r.ok === false
             ? ' <span class="status-pill status-pill-fail">Failed</span>'
             : "";
-      lastRadarr.innerHTML = `<span class="muted">Last run:</span> <strong id="dash-last-radarr-rel">${rel}</strong> <span class="small muted">· ${escapeHtml(r.time_local)}</span>${ok}`;
-    } else lastRadarr.innerHTML = '<span class="muted">Not yet run</span>';
+      lastRadarr.innerHTML = `<span class="dash-summary-run-line"><strong class="dash-summary-time-emphasis" id="dash-last-radarr-rel">${rel}</strong><span class="small muted dash-summary-run-clock"> · ${escapeHtml(r.time_local)}</span></span>${ok}`;
+    } else lastRadarr.innerHTML = '<span class="dash-summary-empty-state">Not yet run</span>';
   }
   const lastTrimmer = document.getElementById("dash-last-trimmer-run");
   if (lastTrimmer) {
@@ -523,8 +526,8 @@ function applyDashboardAutomationStatus(data) {
           : r.ok === false
             ? ' <span class="status-pill status-pill-fail">Failed</span>'
             : "";
-      lastTrimmer.innerHTML = `<span class="muted">Last run:</span> <strong id="dash-last-trimmer-rel">${rel}</strong> <span class="small muted">· ${escapeHtml(r.time_local)}</span>${ok}`;
-    } else lastTrimmer.innerHTML = '<span class="muted">Not yet run</span>';
+      lastTrimmer.innerHTML = `<span class="dash-summary-run-line"><strong class="dash-summary-time-emphasis" id="dash-last-trimmer-rel">${rel}</strong><span class="small muted dash-summary-run-clock"> · ${escapeHtml(r.time_local)}</span></span>${ok}`;
+    } else lastTrimmer.innerHTML = '<span class="dash-summary-empty-state">Not yet run</span>';
   }
 }
 
@@ -598,7 +601,7 @@ function startHeroMetricsPolling() {
 
 function startDashboardStatusPolling() {
   if (!document.getElementById("dashboard-hero-stats")) return;
-  const intervalMs = 60000;
+  const intervalMs = 15000;
   let timerId = null;
   const pollAutomation = () => {
     if (document.visibilityState === "hidden") return;
@@ -639,9 +642,8 @@ function startDashboardStatusPolling() {
   });
 }
 
-function replaceLiveRegionFromUrl(targetSelector, sourceSelector, url, afterSwap) {
-  const target = document.querySelector(targetSelector);
-  if (!target) return Promise.resolve();
+function replaceLiveRegionFromUrl(targetSelector, sourceSelector, url, afterSwap, beforeSwap) {
+  if (!document.querySelector(targetSelector)) return Promise.resolve();
   return fetch(url, {
     method: "GET",
     headers: { Accept: "text/html" },
@@ -654,75 +656,286 @@ function replaceLiveRegionFromUrl(targetSelector, sourceSelector, url, afterSwap
       const doc = new DOMParser().parseFromString(html, "text/html");
       const src = doc.querySelector(sourceSelector);
       if (!src) return;
-      target.outerHTML = src.outerHTML;
+      const liveTarget = document.querySelector(targetSelector);
+      if (!liveTarget) return;
+      if (typeof beforeSwap === "function") beforeSwap(liveTarget);
+      liveTarget.outerHTML = src.outerHTML;
       if (typeof afterSwap === "function") afterSwap();
     })
     .catch(() => {});
 }
 
+/** Match ``activity_relative_time`` in ``display_helpers`` (UTC calendar tail). */
+function formatActivityRelativeFromIso(iso) {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  let secs = Math.floor((Date.now() - t) / 1000);
+  if (secs < 0) secs = 0;
+  if (secs < 10) return "just now";
+  if (secs < 60) return `${secs}s ago`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(secs / 3600);
+  if (hrs < 48) return `${hrs}h ago`;
+  const days = Math.floor(secs / 86400);
+  if (days < 14) return `${days}d ago`;
+  const d = new Date(t);
+  const mon = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const pad = (n) => (n < 10 ? `0${n}` : `${n}`);
+  return `${pad(d.getUTCDate())} ${mon[d.getUTCMonth()]} ${d.getUTCFullYear()} · ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+}
+
+function refreshActivityRelativeTimes(root) {
+  if (!root) return;
+  root.querySelectorAll(".activity-time[data-activity-ts]").forEach((el) => {
+    const iso = el.getAttribute("data-activity-ts");
+    const next = formatActivityRelativeFromIso(iso);
+    if (next) el.textContent = next;
+  });
+}
+
+function snapshotActivityRowKeys(root) {
+  const keys = new Set();
+  if (!root) return keys;
+  root.querySelectorAll(".activity-row[data-activity-row-key]").forEach((el) => {
+    const k = el.getAttribute("data-activity-row-key");
+    if (k) keys.add(k);
+  });
+  return keys;
+}
+
+function snapshotRefinerRows(root) {
+  const m = new Map();
+  if (!root) return m;
+  root.querySelectorAll('.activity-row[data-activity-row-key^="refiner-"]').forEach((el) => {
+    const key = el.getAttribute("data-activity-row-key");
+    if (!key) return;
+    const live = el.getAttribute("data-refiner-live") === "1";
+    const outcome = (el.getAttribute("data-refiner-outcome") || "").toLowerCase();
+    m.set(key, { live, outcome });
+  });
+  return m;
+}
+
+function refreshActivityLucideIcons(root) {
+  const L = typeof window !== "undefined" ? window.lucide : undefined;
+  if (!L || typeof L.createIcons !== "function") return;
+  try {
+    if (root && root.querySelector) {
+      L.createIcons({ root });
+    } else {
+      L.createIcons();
+    }
+  } catch (_e) {
+    /* ignore */
+  }
+}
+
+function polishActivityRowsAfterLiveSwap(root, prevKeys) {
+  if (!root) return;
+  root.querySelectorAll(".activity-row[data-activity-row-key]").forEach((el) => {
+    el.classList.add("activity-row--from-live");
+    const key = el.getAttribute("data-activity-row-key") || "";
+    if (prevKeys.has(key)) {
+      el.classList.add("activity-row--live-refresh");
+    } else {
+      el.classList.add("anim-in-soft");
+    }
+  });
+  refreshActivityLucideIcons(root);
+}
+
+function applyRefinerOutcomePolish(prevMap, root) {
+  if (!root || !prevMap || prevMap.size === 0) return;
+  root.querySelectorAll('.activity-row[data-activity-row-key^="refiner-"]').forEach((el) => {
+    const key = el.getAttribute("data-activity-row-key");
+    if (!key) return;
+    const prev = prevMap.get(key);
+    const outcome = (el.getAttribute("data-refiner-outcome") || "").toLowerCase();
+    const wasProc = prev && (prev.live || prev.outcome === "processing");
+    if (!wasProc) return;
+    if (outcome === "success") {
+      el.classList.add("activity-refiner-just-finished");
+      window.setTimeout(() => {
+        if (el.isConnected) el.classList.remove("activity-refiner-just-finished");
+      }, 1200);
+    } else if (outcome === "skipped") {
+      el.classList.add("activity-refiner-just-skipped");
+      window.setTimeout(() => {
+        if (el.isConnected) el.classList.remove("activity-refiner-just-skipped");
+      }, 900);
+    } else if (outcome === "failed") {
+      el.classList.add("activity-refiner-just-failed");
+      window.setTimeout(() => {
+        if (el.isConnected) el.classList.remove("activity-refiner-just-failed");
+      }, 900);
+    }
+  });
+}
+
+/**
+ * Legacy hook: Refiner save and similar flows used to schedule multi-poll “bursts”.
+ * Adaptive live polling + ``fetcherLiveTilesPollNow`` makes that redundant — one immediate
+ * cycle is enough (coalesces while a fetch is already in flight).
+ */
+function fetcherScheduleLiveActivityBurst(_extraPolls, _gapMs) {
+  if (typeof window.fetcherLiveTilesPollNow === "function") {
+    window.fetcherLiveTilesPollNow();
+  }
+}
+window.fetcherScheduleLiveActivityBurst = fetcherScheduleLiveActivityBurst;
+
 function startLiveTilePolling() {
-  const intervalMs = 60000;
-  let timerId = null;
   const isDashboard = Boolean(document.getElementById("dashboard-hero-stats"));
   const isActivityPage = Boolean(document.getElementById("activity-live-root"));
   const isLogsPage = Boolean(document.getElementById("logs-live-root"));
   if (!isDashboard && !isActivityPage && !isLogsPage) return;
 
-  const poll = () => {
-    if (document.visibilityState === "hidden") return;
+  let chainTimer = null;
+  let pollInFlight = false;
+  let pollWantSoon = false;
+  let dashPrevKeys = new Set();
+  let dashPrevRefiner = new Map();
+  let actPrevKeys = new Set();
+  let actPrevRefiner = new Map();
+  let relativeTimeTimer = null;
+
+  const refinerLiveInDom = () => {
+    const sels = [];
+    if (isDashboard) sels.push("#dashboard-activity-live-root");
+    if (isActivityPage) sels.push("#activity-live-root");
+    for (let i = 0; i < sels.length; i += 1) {
+      const root = document.querySelector(sels[i]);
+      if (root && root.querySelector("[data-refiner-live='1']")) return true;
+    }
+    return false;
+  };
+
+  const delayAfterCycleMs = () => {
+    if (pollWantSoon) return 450;
+    return refinerLiveInDom() ? 1400 : 12000;
+  };
+
+  const clearChain = () => {
+    if (chainTimer !== null) {
+      window.clearTimeout(chainTimer);
+      chainTimer = null;
+    }
+  };
+
+  const armNextCycle = () => {
+    clearChain();
+    const ms = delayAfterCycleMs();
+    pollWantSoon = false;
+    chainTimer = window.setTimeout(() => {
+      chainTimer = null;
+      runLiveTilePollCycle();
+    }, ms);
+  };
+
+  const runLiveTilePollCycle = () => {
+    if (document.visibilityState === "hidden") {
+      pollInFlight = false;
+      return;
+    }
+    if (pollInFlight) {
+      pollWantSoon = true;
+      return;
+    }
+    pollInFlight = true;
+    const tasks = [];
     if (isDashboard) {
-      replaceLiveRegionFromUrl(
-        "#dashboard-activity-live-root",
-        "#dashboard-activity-live-root",
-        "/",
-        () => {
-          initActivityDetailExpand();
-          document.querySelectorAll("#dashboard-activity-live-root .activity-row").forEach((el) => {
-            el.classList.add("anim-in");
-          });
-        }
+      tasks.push(
+        replaceLiveRegionFromUrl(
+          "#dashboard-activity-live-root",
+          "#dashboard-activity-live-root",
+          "/",
+          () => {
+            const dashRoot = document.querySelector("#dashboard-activity-live-root");
+            initActivityDetailExpand();
+            polishActivityRowsAfterLiveSwap(dashRoot, dashPrevKeys);
+            applyRefinerOutcomePolish(dashPrevRefiner, dashRoot);
+            refreshActivityRelativeTimes(dashRoot);
+            if (dashRoot && dashRoot.querySelector("[data-refiner-live='1']")) pollWantSoon = true;
+          },
+          (el) => {
+            dashPrevKeys = snapshotActivityRowKeys(el);
+            dashPrevRefiner = snapshotRefinerRows(el);
+          }
+        )
       );
     }
     if (isActivityPage) {
-      replaceLiveRegionFromUrl("#activity-live-root", "#activity-live-root", "/activity", () => {
-        initActivityFilterPills();
-        initActivityDetailExpand();
-        document.querySelectorAll("#activity-live-root .activity-row").forEach((el) => {
-          el.classList.add("anim-in");
-        });
-      });
+      tasks.push(
+        replaceLiveRegionFromUrl(
+          "#activity-live-root",
+          "#activity-live-root",
+          "/activity",
+          () => {
+            const actRoot = document.querySelector("#activity-live-root");
+            initActivityFilterPills();
+            initActivityDetailExpand();
+            polishActivityRowsAfterLiveSwap(actRoot, actPrevKeys);
+            applyRefinerOutcomePolish(actPrevRefiner, actRoot);
+            refreshActivityRelativeTimes(actRoot);
+            if (actRoot && actRoot.querySelector("[data-refiner-live='1']")) pollWantSoon = true;
+          },
+          (el) => {
+            actPrevKeys = snapshotActivityRowKeys(el);
+            actPrevRefiner = snapshotRefinerRows(el);
+          }
+        )
+      );
     }
     if (isLogsPage) {
-      replaceLiveRegionFromUrl("#logs-live-root", "#logs-live-root", "/logs", () => {
-        document.querySelectorAll("#logs-live-root .log-entry").forEach((el) => {
-          el.classList.add("anim-in");
-        });
-      });
+      tasks.push(
+        replaceLiveRegionFromUrl("#logs-live-root", "#logs-live-root", "/logs", () => {
+          document.querySelectorAll("#logs-live-root .log-entry").forEach((el) => {
+            el.classList.add("anim-in");
+          });
+        })
+      );
+    }
+    Promise.all(tasks).finally(() => {
+      pollInFlight = false;
+      if (document.visibilityState === "hidden") return;
+      if (pollWantSoon) {
+        pollWantSoon = false;
+        window.setTimeout(runLiveTilePollCycle, 40);
+        return;
+      }
+      armNextCycle();
+    });
+  };
+
+  window.fetcherLiveTilesPollNow = () => {
+    pollWantSoon = true;
+    if (!pollInFlight) {
+      clearChain();
+      runLiveTilePollCycle();
     }
   };
-  window.fetcherLiveTilesPollNow = poll;
 
-  const arm = () => {
-    if (timerId !== null) {
-      clearInterval(timerId);
-      timerId = null;
-    }
-    timerId = window.setInterval(poll, intervalMs);
-  };
-
-  poll();
-  arm();
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
-      if (timerId !== null) {
-        clearInterval(timerId);
-        timerId = null;
-      }
+      clearChain();
+      pollInFlight = false;
     } else {
-      poll();
-      arm();
+      pollWantSoon = true;
+      if (!pollInFlight) runLiveTilePollCycle();
     }
   });
+
+  const tickRelativeTimes = () => {
+    if (document.visibilityState === "hidden") return;
+    if (isDashboard) refreshActivityRelativeTimes(document.querySelector("#dashboard-activity-live-root"));
+    if (isActivityPage) refreshActivityRelativeTimes(document.querySelector("#activity-live-root"));
+  };
+  if (relativeTimeTimer !== null) window.clearInterval(relativeTimeTimer);
+  relativeTimeTimer = window.setInterval(tickRelativeTimes, 20000);
+  tickRelativeTimes();
+
+  runLiveTilePollCycle();
 }
 
 /** Section Save + Arr Test POSTs: ask server for JSON instead of 303 (transport only; same routes as full form POST). */
@@ -932,8 +1145,10 @@ function refinerSaveSuccessMessage(section) {
   return "Refiner settings saved.";
 }
 
-function refinerSaveFailMessage(section, reason) {
+function refinerSaveFailMessage(section, reason, message) {
   const scope = refinerSaveScopeLabel(section);
+  const msg = message && String(message).trim();
+  if (msg) return `Could not save (${scope}) — ${msg}`;
   const r = String(reason || "error");
   return `Could not save (${scope}) — try again. (${r})`;
 }
@@ -1273,6 +1488,61 @@ function initTrimmerSettingsAsyncCleaner() {
   });
 }
 
+/**
+ * Sync top Refiner banners from GET /api/refiner/readiness-brief only.
+ * Phase: !enabled → off; enabled && issues.length → not_ready; else → ready.
+ * Optional form + generation counter drops stale responses when saves overlap.
+ */
+function syncRefinerTopBannersFromServerBrief(form) {
+  let gen = null;
+  if (form) {
+    form._refinerBriefGen = (form._refinerBriefGen || 0) + 1;
+    gen = form._refinerBriefGen;
+  }
+  return fetch("/api/refiner/readiness-brief", {
+    method: "GET",
+    credentials: "same-origin",
+    headers: { Accept: "application/json" },
+  })
+    .then((res) => {
+      if (!res.ok) return null;
+      return res.json();
+    })
+    .then((data) => {
+      if (form && gen !== null && form._refinerBriefGen !== gen) return;
+      if (!data || typeof data.enabled !== "boolean") return;
+      const off = document.getElementById("refiner-banner-off");
+      const readyBanner = document.getElementById("refiner-banner-readiness");
+      const list = document.getElementById("refiner-readiness-list");
+      if (!off || !readyBanner) return;
+      const issues = Array.isArray(data.issues) ? data.issues : [];
+      let phase;
+      if (!data.enabled) phase = "off";
+      else if (issues.length > 0) phase = "not_ready";
+      else phase = "ready";
+      off.hidden = phase !== "off";
+      readyBanner.hidden = phase !== "not_ready";
+      if (list) {
+        if (phase === "not_ready") {
+          const onSettings = (window.location.pathname || "").indexOf("/refiner/settings") >= 0;
+          list.innerHTML = issues
+            .map((it) => {
+              const msg = escapeHtml(String((it && it.message) || ""));
+              const a = String((it && it.anchor) || "");
+              if (onSettings && a) {
+                return `<li><a href="#${escapeHtml(a)}">${msg}</a></li>`;
+              }
+              return `<li>${msg}</li>`;
+            })
+            .join("");
+        } else {
+          list.innerHTML = "";
+        }
+      }
+    })
+    .catch(() => {});
+}
+
 /** In-place save for Refiner settings (same fetch + JSON contract as Trimmer cleaner). */
 function initRefinerSettingsAsyncSave() {
   document.querySelectorAll('form[data-fetcher-refiner-async="1"]').forEach((form) => {
@@ -1353,6 +1623,7 @@ function initRefinerSettingsAsyncSave() {
               const okMsg = refinerSaveSuccessMessage(section);
               setFetcherSettingsInPlaceFeedback(feedback, "ok", okMsg);
               syncRefinerSettingsUrlAfterInPlacePost(section);
+              syncRefinerTopBannersFromServerBrief(form);
               clearRefinerSettingsSaveFeedbackTimer(form);
               form._refinerSaveFeedbackTimer = window.setTimeout(() => {
                 form._refinerSaveFeedbackTimer = null;
@@ -1361,11 +1632,17 @@ function initRefinerSettingsAsyncSave() {
                   setFetcherSettingsInPlaceFeedback(feedback, "ok", "");
                 }
               }, 2600);
+              if (typeof window.fetcherLiveTilesPollNow === "function") {
+                window.fetcherLiveTilesPollNow();
+              }
+              if (typeof window.fetcherScheduleLiveActivityBurst === "function") {
+                window.fetcherScheduleLiveActivityBurst(8, 1800);
+              }
               return;
             }
             syncRefinerSettingsUrlAfterInPlacePost(data.section || "");
             const r = data.reason ? String(data.reason) : "error";
-            const msg = refinerSaveFailMessage(data.section, r);
+            const msg = refinerSaveFailMessage(data.section, r, data.message);
             setFetcherSettingsInPlaceFeedback(feedback, "err", msg);
             return;
           }
@@ -1823,6 +2100,7 @@ window.addEventListener("DOMContentLoaded", () => {
   bindDashboardDismissibles();
   initActivityFilterPills();
   initActivityDetailExpand();
+  refreshActivityLucideIcons(document.body);
   initSettingsTabs();
   initTrimmerSettingsSectionTabs();
   initSettingsPageCollapses();

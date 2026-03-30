@@ -11,11 +11,11 @@ The default branch **`master`** is protected: changes land via **pull request**,
 1. **Branch** from `master` (examples: `fix/thing`, `chore/docs`, `feat/whatever`), or use a **`release/vX.Y.Z`** branch for version bumps (maintainers).
 2. **Commit** with clear messages.
 3. Open a **pull request** into `master`.
-4. Wait for **required checks** (e.g. **`Test / pytest`**, **`Security / pip-audit`** — use the exact names shown on a green PR).
+4. Wait for **required checks** (e.g. **`Test / pytest`**, **`Test / pip-audit`** — use the exact names shown on a green PR).
 5. If your rules require **approvals**, add one; **solo** setups often use **0** required approvals so you can merge your own PR without a second person.
 6. **Merge** when green. If GitHub reports the base branch policy blocks merge (e.g. review rules), maintainers may use **`gh pr merge <n> --admin`** when appropriate.
 
-**After merge:** a push to **`master`** that updates **`VERSION`** runs **Tag release (from VERSION)**, which creates tag **`vX.Y.Z`** (if missing) and dispatches **Build installer** (Windows **`FetcherSetup.exe`**) and **Docker publish** (**`ghcr.io/jampat000/fetcher`**). See **Releasing** in **[`CHANGELOG.md`](CHANGELOG.md)**.
+**After merge:** a push to **`master`** that updates **`VERSION`** runs **Tag release (from VERSION)**, which creates tag **`vX.Y.Z`** (if missing) and dispatches **Build installer** (Windows **`FetcherSetup.exe`**) and **Docker publish** (**`ghcr.io/jampat000/fetcher`**). GitHub Actions release triggers are **`master`**-only for that path (there is no parallel **`main`** pipeline). See **Releasing** in **[`CHANGELOG.md`](CHANGELOG.md)** and **`docs/BUILD-AND-RELEASE.md`**.
 
 ## Local checks
 

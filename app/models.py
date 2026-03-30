@@ -4,6 +4,7 @@ from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Integer, String, Text
 
+from app.schema_version import CURRENT_SCHEMA_VERSION
 from app.time_util import utc_now_naive
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -92,33 +93,33 @@ class AppSettings(Base):
     emby_rule_tv_unwatched_days: Mapped[int] = mapped_column(Integer, default=0)  # 0 -> fallback/global or disabled
 
     # Refiner (remux-only audio/subtitle cleanup; isolated from Trimmer orchestration)
-    stream_manager_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    stream_manager_dry_run: Mapped[bool] = mapped_column(Boolean, default=True)
-    stream_manager_primary_audio_lang: Mapped[str] = mapped_column(String(16), default="")
-    stream_manager_secondary_audio_lang: Mapped[str] = mapped_column(String(16), default="")
-    stream_manager_tertiary_audio_lang: Mapped[str] = mapped_column(String(16), default="")
+    refiner_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    refiner_dry_run: Mapped[bool] = mapped_column(Boolean, default=True)
+    refiner_primary_audio_lang: Mapped[str] = mapped_column(String(16), default="")
+    refiner_secondary_audio_lang: Mapped[str] = mapped_column(String(16), default="")
+    refiner_tertiary_audio_lang: Mapped[str] = mapped_column(String(16), default="")
     # Which language slot gets the default audio disposition: primary | secondary
-    stream_manager_default_audio_slot: Mapped[str] = mapped_column(String(16), default="primary")
-    stream_manager_remove_commentary: Mapped[bool] = mapped_column(Boolean, default=False)
-    stream_manager_subtitle_mode: Mapped[str] = mapped_column(String(24), default="remove_all")
-    stream_manager_subtitle_langs_csv: Mapped[str] = mapped_column(Text, default="")
-    stream_manager_preserve_forced_subs: Mapped[bool] = mapped_column(Boolean, default=True)
-    stream_manager_preserve_default_subs: Mapped[bool] = mapped_column(Boolean, default=True)
-    stream_manager_watched_folder: Mapped[str] = mapped_column(Text, default="")
-    stream_manager_output_folder: Mapped[str] = mapped_column(Text, default="")
+    refiner_default_audio_slot: Mapped[str] = mapped_column(String(16), default="primary")
+    refiner_remove_commentary: Mapped[bool] = mapped_column(Boolean, default=False)
+    refiner_subtitle_mode: Mapped[str] = mapped_column(String(24), default="remove_all")
+    refiner_subtitle_langs_csv: Mapped[str] = mapped_column(Text, default="")
+    refiner_preserve_forced_subs: Mapped[bool] = mapped_column(Boolean, default=True)
+    refiner_preserve_default_subs: Mapped[bool] = mapped_column(Boolean, default=True)
+    refiner_watched_folder: Mapped[str] = mapped_column(Text, default="")
+    refiner_output_folder: Mapped[str] = mapped_column(Text, default="")
     # Optional advanced override. Empty uses managed internal work folder.
-    stream_manager_work_folder: Mapped[str] = mapped_column(Text, default="")
-    # Legacy v1 field retained for migration compatibility only.
-    stream_manager_paths: Mapped[str] = mapped_column(Text, default="")
+    refiner_work_folder: Mapped[str] = mapped_column(Text, default="")
+    # Unused by current Refiner UI; column retained for existing SQLite rows.
+    refiner_paths: Mapped[str] = mapped_column(Text, default="")
     # Small preset for choosing the best kept audio stream within allowed languages.
-    stream_manager_audio_preference_mode: Mapped[str] = mapped_column(String(24), default="preferred_langs_quality")
+    refiner_audio_preference_mode: Mapped[str] = mapped_column(String(24), default="preferred_langs_quality")
     # Seconds between watched-folder scans when Refiner is configured (min 5; cap 7 days).
-    stream_manager_interval_seconds: Mapped[int] = mapped_column(Integer, default=60)
-    stream_manager_schedule_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    stream_manager_schedule_days: Mapped[str] = mapped_column(Text, default="")
-    stream_manager_schedule_start: Mapped[str] = mapped_column(String(5), default="00:00")
-    stream_manager_schedule_end: Mapped[str] = mapped_column(String(5), default="23:59")
-    stream_manager_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    refiner_interval_seconds: Mapped[int] = mapped_column(Integer, default=60)
+    refiner_schedule_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    refiner_schedule_days: Mapped[str] = mapped_column(Text, default="")
+    refiner_schedule_start: Mapped[str] = mapped_column(String(5), default="00:00")
+    refiner_schedule_end: Mapped[str] = mapped_column(String(5), default="23:59")
+    refiner_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Web UI authentication (bcrypt password hash; TimestampSigner session secret)
     auth_username: Mapped[str] = mapped_column(Text, default="admin")
@@ -129,6 +130,9 @@ class AppSettings(Base):
     auth_session_secret: Mapped[str] = mapped_column(Text, default="")
     auth_refresh_token_hash: Mapped[str] = mapped_column(Text, default="")
     auth_refresh_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # Must equal app.schema_version.CURRENT_SCHEMA_VERSION for this build (enforced at startup).
+    schema_version: Mapped[int] = mapped_column(Integer, default=CURRENT_SCHEMA_VERSION)
 
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
 
@@ -165,7 +169,7 @@ class ActivityLog(Base):
     job_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # FK to job_run_log.id
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
 
-    app: Mapped[str] = mapped_column(String(16))   # "sonarr" | "radarr"
+    app: Mapped[str] = mapped_column(String(16))   # "sonarr" | "radarr" | "trimmer" | "refiner" | "service"
     kind: Mapped[str] = mapped_column(String(16))  # "missing" | "upgrade" | "cleanup" | ...
     status: Mapped[str] = mapped_column(String(16), default="ok")  # "ok" | "failed"
     count: Mapped[int] = mapped_column(Integer, default=0)
@@ -180,7 +184,7 @@ class RefinerActivity(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
     file_name: Mapped[str] = mapped_column(String(512), default="")
-    # "success" | "skipped" | "failed"
+    # "processing" | "success" | "skipped" | "failed"
     status: Mapped[str] = mapped_column(String(16), default="failed")
     size_before_bytes: Mapped[int] = mapped_column(Integer, default=0)
     size_after_bytes: Mapped[int] = mapped_column(Integer, default=0)
@@ -189,6 +193,8 @@ class RefinerActivity(Base):
     subtitle_tracks_before: Mapped[int] = mapped_column(Integer, default=0)
     subtitle_tracks_after: Mapped[int] = mapped_column(Integer, default=0)
     processing_time_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # JSON v1 snapshot for Refiner activity UI (audio · subtitle display lines, failure reason).
+    activity_context: Mapped[str] = mapped_column(Text, default="")
 
 
 class ArrActionLog(Base):

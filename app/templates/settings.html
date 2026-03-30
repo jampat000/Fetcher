@@ -24,7 +24,7 @@
 {% macro arr_connection_hints() %}
       <div class="hint">Use <span class="kbd">http://</span> for direct Sonarr, Radarr, and Emby connections.</div>
       {% if show_setup_wizard %}
-      <p class="hint">Run the <a href="/setup"><strong>setup wizard</strong></a> to connect Sonarr, Radarr, and Emby and test each connection.</p>
+      <p class="hint">Run the <a class="ink-link" href="/setup"><strong>setup wizard</strong></a> to connect Sonarr, Radarr, and Emby and test each connection.</p>
       {% endif %}
 {% endmacro %}
 {% block content %}
@@ -74,7 +74,7 @@
       {% elif im == 'fail' %}
       <div class="banner banner-warn" role="alert"><strong>Import</strong> failed: {{ request.query_params.get('reason', 'Unknown error') | e }}</div>
       {% endif %}
-      <p class="small muted lead-muted"><strong>Trimmer</strong> is under <a href="/trimmer/settings">Trimmer settings</a> and <strong>Refiner</strong> is under <a href="/refiner/settings">Refiner settings</a>. Each service runs on its own interval and schedule.</p>
+      <p class="small muted lead-muted"><strong>Trimmer</strong> is under <a class="ink-link" href="/trimmer/settings">Trimmer settings</a> and <strong>Refiner</strong> is under <a class="ink-link" href="/refiner/settings">Refiner settings</a>. Each service runs on its own interval and schedule.</p>
       <div class="settings-stack settings-global-stack">
         <div class="field settings-global-field">
           <label for="log_retention_days">Log retention (days)</label>
@@ -154,12 +154,12 @@
                 {% call toggle_checkbox("sonarr_search_upgrades", settings.sonarr_search_upgrades) %}Search cutoff-unmet items (upgrade){% endcall %}
               </div>
               <div class="settings-failed-import-block">
-                {% call toggle_checkbox("sonarr_remove_failed_imports", settings.sonarr_remove_failed_imports | default(false)) %}Remove failed imports (queue + blocklist){% endcall %}
-                <div class="small settings-field-hint settings-failed-import-hint">Removes failed or rejected imports from the queue and logs each removal in Activity.</div>
+                {% call toggle_checkbox("sonarr_remove_failed_imports", settings.sonarr_remove_failed_imports | default(false)) %}Remove terminal failed imports from queue{% endcall %}
+                <div class="small settings-field-hint settings-failed-import-hint">Removes terminal failed imports from Sonarr’s <strong>download queue</strong> (delete with blocklist attempted first; falls back to queue-only removal). Does not remove downloads from your download client. Successful removals appear in Activity.</div>
                 <div class="field settings-failed-import-interval-field">
                   <label for="sonarr_failed_import_cleanup_interval_minutes">Failed import cleanup interval (minutes)</label>
                   <input id="sonarr_failed_import_cleanup_interval_minutes" class="number" type="number" name="failed_import_cleanup_interval_minutes" value="{{ settings.failed_import_cleanup_interval_minutes|default(60, true) }}" min="1" max="10080" />
-                  <div class="small settings-field-hint">Checks for failed imports on this interval and removes them automatically.</div>
+                  <div class="small settings-field-hint">How often to run the cleanup check when this option is on.</div>
                 </div>
               </div>
             </div>
@@ -265,12 +265,12 @@
                 {% call toggle_checkbox("radarr_search_upgrades", settings.radarr_search_upgrades) %}Search cutoff-unmet items (upgrade){% endcall %}
               </div>
               <div class="settings-failed-import-block">
-                {% call toggle_checkbox("radarr_remove_failed_imports", settings.radarr_remove_failed_imports | default(false)) %}Remove failed imports (queue + blocklist){% endcall %}
-                <div class="small settings-field-hint settings-failed-import-hint">Removes failed or rejected imports from the queue and logs each removal in Activity.</div>
+                {% call toggle_checkbox("radarr_remove_failed_imports", settings.radarr_remove_failed_imports | default(false)) %}Remove terminal failed imports from queue{% endcall %}
+                <div class="small settings-field-hint settings-failed-import-hint">Removes terminal failed imports from Radarr’s <strong>download queue</strong> (delete with blocklist attempted first; falls back to queue-only removal). Does not remove downloads from your download client. Successful removals appear in Activity.</div>
                 <div class="field settings-failed-import-interval-field">
                   <label for="radarr_failed_import_cleanup_interval_minutes">Failed import cleanup interval (minutes)</label>
                   <input id="radarr_failed_import_cleanup_interval_minutes" class="number" type="number" name="failed_import_cleanup_interval_minutes" value="{{ settings.failed_import_cleanup_interval_minutes|default(60, true) }}" min="1" max="10080" />
-                  <div class="small settings-field-hint">Checks for failed imports on this interval and removes them automatically.</div>
+                  <div class="small settings-field-hint">How often to run the cleanup check when this option is on.</div>
                 </div>
               </div>
             </div>

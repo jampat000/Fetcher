@@ -210,7 +210,12 @@ class ArrClient:
         remove_from_client: bool = False,
         blocklist: bool = False,
     ) -> None:
-        """Remove one queue row by id (Radarr/Sonarr *arr queue API)."""
+        """Delete one row from the *arr download queue (``DELETE /api/v3/queue/{id}``).
+
+        Query params: ``removeFromClient`` (default false here), ``blocklist``. Failed-import
+        cleanup uses ``blocklist=true`` first, then ``false`` on retry; it does not enable
+        ``removeFromClient``.
+        """
         r = await self._req(
             "DELETE",
             f"/api/v3/queue/{int(queue_id)}",

@@ -45,7 +45,7 @@
   <div class="banner banner-ok setup-complete-banner dashboard-dismissible gc card" role="status" data-dismiss-storage="fetcher_v1_dismiss_setup_complete_banner">
     <div class="dashboard-dismissible-inner">
       <div>
-        <strong>Setup complete.</strong> You can fine-tune Sonarr, Radarr, Emby, and schedules anytime in <a href="/settings">settings</a>.
+        <strong>Setup complete.</strong> You can fine-tune Sonarr, Radarr, your media server connection, and schedules anytime in <a class="ink-link" href="/settings">settings</a>.
       </div>
       <button type="button" class="dashboard-dismiss-btn" data-dismiss-btn aria-label="Dismiss">×</button>
     </div>
@@ -57,7 +57,7 @@
     <div class="dashboard-dismissible-inner setup-cta-inner">
       <div>
         <div class="gc-title">Connect your stack</div>
-        <p class="hint">Sonarr, Radarr, and Emby are not configured yet. Run the guided wizard to add URLs, API keys, and test each connection.</p>
+        <p class="hint">Sonarr, Radarr, and your media server are not configured yet. Run the guided wizard to add URLs, API keys, and test each connection.</p>
         <p class="dashboard-cta"><a class="btn" href="/setup">Run setup wizard</a></p>
       </div>
       <button type="button" class="dashboard-dismiss-btn" data-dismiss-btn aria-label="Dismiss suggestion">×</button>
@@ -66,75 +66,108 @@
   {% endif %}
 
   <div class="card gc card-stripe-purple">
+    {% set av = automation_view %}
     <div class="gc-title" role="heading" aria-level="2">Automation</div>
-    {% if fetcher_phase == 'processing' %}
+    {% if av.fetcher_phase == 'processing' %}
     {% set phase_pill_class = 'status-pill-active' %}
-    {% elif fetcher_phase == 'idle' %}
+    {% elif av.fetcher_phase == 'idle' %}
     {% set phase_pill_class = 'status-pill-idle' %}
     {% else %}
     {% set phase_pill_class = 'status-pill-ok' %}
     {% endif %}
     <div class="dashboard-fetcher-state" id="dash-fetcher-state">
-      <span class="status-pill {{ phase_pill_class }}" id="dash-fetcher-phase-pill">{{ fetcher_phase_label }}</span>
-      <p class="dashboard-fetcher-state-detail" id="dash-fetcher-phase-detail">{{ fetcher_phase_detail }}</p>
+      <span class="status-pill {{ phase_pill_class }}" id="dash-fetcher-phase-pill">{{ av.fetcher_phase_label }}</span>
+      <p class="dashboard-fetcher-state-detail" id="dash-fetcher-phase-detail">{{ av.fetcher_phase_detail }}</p>
     </div>
     <div class="automation-cards">
-      <div class="automation-card" data-automation-card="sonarr">
-        <div class="automation-card-title">Sonarr</div>
-        <div class="automation-card-main" id="dash-last-sonarr-run">
-          {% if last_sonarr_run.time_local %}
-            <span class="muted">Last run:</span> <strong id="dash-last-sonarr-rel">{{ last_sonarr_run.relative }}</strong>
-            <span class="small muted">· {{ last_sonarr_run.time_local }}</span>
-            {% if last_sonarr_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif last_sonarr_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
-          {% else %}<span class="muted">Not yet run</span>{% endif %}
+      <div class="automation-card dash-summary-tile" data-automation-card="sonarr">
+        <div class="dash-summary-tile-head"><span class="dash-summary-tile-title">Sonarr</span></div>
+        <dl class="dash-summary-meta">
+          <div class="dash-summary-meta-row">
+            <dt>Last run</dt>
+            <dd class="dash-summary-meta-dd" id="dash-last-sonarr-run">
+              {% if av.last_sonarr_run.time_local %}
+                <span class="dash-summary-run-line"><strong class="dash-summary-time-emphasis" id="dash-last-sonarr-rel">{{ av.last_sonarr_run.relative }}</strong><span class="small muted dash-summary-run-clock"> · {{ av.last_sonarr_run.time_local }}</span></span>
+                {% if av.last_sonarr_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif av.last_sonarr_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
+              {% else %}<span class="dash-summary-empty-state">Not yet run</span>{% endif %}
+            </dd>
+          </div>
+          <div class="dash-summary-meta-row">
+            <dt>Next run</dt>
+            <dd class="dash-summary-meta-dd automation-card-subline">{% if av.sonarr_enabled %}<span id="dash-next-sonarr-tick">{% if av.next_sonarr_tick_local %}{{ av.next_sonarr_tick_local }}{% else %}<span class="muted automation-value-pending">Scheduled</span>{% endif %}</span>{% if av.next_sonarr_relative %} <span class="small muted" id="dash-next-sonarr-rel">({{ av.next_sonarr_relative }})</span>{% endif %}{% else %}<span class="automation-off-state"><span class="automation-off-state__primary">Automation off</span><span class="automation-off-state__hint">Enable in settings</span></span>{% endif %}</dd>
+          </div>
+        </dl>
+        <div class="dash-summary-tile-footer automation-tile-footer">
+          <div class="automation-footer-note dash-summary-tile-hint small muted automation-app-hint" id="dash-sonarr-hint"{% if not av.sonarr_automation_sub %} hidden{% endif %}>{{ av.sonarr_automation_sub }}</div>
         </div>
-        <div class="automation-card-subline">{% if settings.sonarr_enabled %}<span class="muted">Next run:</span> <span id="dash-next-sonarr-tick">{% if next_sonarr_tick_local %}{{ next_sonarr_tick_local }}{% else %}<span class="muted automation-value-pending">Scheduled</span>{% endif %}</span>{% if next_sonarr_relative %} <span class="small muted" id="dash-next-sonarr-rel">({{ next_sonarr_relative }})</span>{% endif %}{% else %}<span class="muted">Automation off — enable Sonarr in Fetcher settings to schedule runs.</span>{% endif %}</div>
-        <div class="small muted automation-app-hint" id="dash-sonarr-hint"{% if not sonarr_automation_sub %} hidden{% endif %}>{{ sonarr_automation_sub }}</div>
       </div>
 
-      <div class="automation-card" data-automation-card="radarr">
-        <div class="automation-card-title">Radarr</div>
-        <div class="automation-card-main" id="dash-last-radarr-run">
-          {% if last_radarr_run.time_local %}
-            <span class="muted">Last run:</span> <strong id="dash-last-radarr-rel">{{ last_radarr_run.relative }}</strong>
-            <span class="small muted">· {{ last_radarr_run.time_local }}</span>
-            {% if last_radarr_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif last_radarr_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
-          {% else %}<span class="muted">Not yet run</span>{% endif %}
+      <div class="automation-card dash-summary-tile" data-automation-card="radarr">
+        <div class="dash-summary-tile-head"><span class="dash-summary-tile-title">Radarr</span></div>
+        <dl class="dash-summary-meta">
+          <div class="dash-summary-meta-row">
+            <dt>Last run</dt>
+            <dd class="dash-summary-meta-dd" id="dash-last-radarr-run">
+              {% if av.last_radarr_run.time_local %}
+                <span class="dash-summary-run-line"><strong class="dash-summary-time-emphasis" id="dash-last-radarr-rel">{{ av.last_radarr_run.relative }}</strong><span class="small muted dash-summary-run-clock"> · {{ av.last_radarr_run.time_local }}</span></span>
+                {% if av.last_radarr_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif av.last_radarr_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
+              {% else %}<span class="dash-summary-empty-state">Not yet run</span>{% endif %}
+            </dd>
+          </div>
+          <div class="dash-summary-meta-row">
+            <dt>Next run</dt>
+            <dd class="dash-summary-meta-dd automation-card-subline">{% if av.radarr_enabled %}<span id="dash-next-radarr-tick">{% if av.next_radarr_tick_local %}{{ av.next_radarr_tick_local }}{% else %}<span class="muted automation-value-pending">Scheduled</span>{% endif %}</span>{% if av.next_radarr_relative %} <span class="small muted" id="dash-next-radarr-rel">({{ av.next_radarr_relative }})</span>{% endif %}{% else %}<span class="automation-off-state"><span class="automation-off-state__primary">Automation off</span><span class="automation-off-state__hint">Enable in settings</span></span>{% endif %}</dd>
+          </div>
+        </dl>
+        <div class="dash-summary-tile-footer automation-tile-footer">
+          <div class="automation-footer-note dash-summary-tile-hint small muted automation-app-hint" id="dash-radarr-hint"{% if not av.radarr_automation_sub %} hidden{% endif %}>{{ av.radarr_automation_sub }}</div>
         </div>
-        <div class="automation-card-subline">{% if settings.radarr_enabled %}<span class="muted">Next run:</span> <span id="dash-next-radarr-tick">{% if next_radarr_tick_local %}{{ next_radarr_tick_local }}{% else %}<span class="muted automation-value-pending">Scheduled</span>{% endif %}</span>{% if next_radarr_relative %} <span class="small muted" id="dash-next-radarr-rel">({{ next_radarr_relative }})</span>{% endif %}{% else %}<span class="muted">Automation off — enable Radarr in Fetcher settings to schedule runs.</span>{% endif %}</div>
-        <div class="small muted automation-app-hint" id="dash-radarr-hint"{% if not radarr_automation_sub %} hidden{% endif %}>{{ radarr_automation_sub }}</div>
       </div>
 
-      <div class="automation-card" data-automation-card="trimmer">
-        <div class="automation-card-title">Trimmer</div>
-        <div class="automation-card-main" id="dash-last-trimmer-run">
-          {% if last_trimmer_run.time_local %}
-            <span class="muted">Last run:</span> <strong id="dash-last-trimmer-rel">{{ last_trimmer_run.relative }}</strong>
-            <span class="small muted">· {{ last_trimmer_run.time_local }}</span>
-            {% if last_trimmer_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif last_trimmer_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
-          {% else %}<span class="muted">Not yet run</span>{% endif %}
+      <div class="automation-card dash-summary-tile" data-automation-card="refiner">
+        <div class="dash-summary-tile-head"><span class="dash-summary-tile-title">Refiner</span></div>
+        <dl class="dash-summary-meta">
+          <div class="dash-summary-meta-row">
+            <dt>Last run</dt>
+            <dd class="dash-summary-meta-dd" id="dash-last-refiner-run">
+              {% if av.refiner_last_run_at %}
+                <span class="dash-summary-run-line"><strong class="dash-summary-time-emphasis">{{ av.refiner_last_run_at.strftime('%d-%m-%Y %I:%M %p') }}</strong></span>
+              {% else %}
+                <span class="dash-summary-empty-state">Not yet run</span>
+              {% endif %}
+            </dd>
+          </div>
+          <div class="dash-summary-meta-row">
+            <dt>Next run</dt>
+            <dd class="dash-summary-meta-dd automation-card-subline">{% if av.refiner_enabled %}<span id="dash-next-refiner-tick"><span class="muted automation-value-pending">Scheduled</span></span>{% else %}<span class="automation-off-state"><span class="automation-off-state__primary">Automation off</span><span class="automation-off-state__hint">Enable in settings</span></span>{% endif %}</dd>
+          </div>
+        </dl>
+        <div class="dash-summary-tile-footer automation-tile-footer">
+          <div class="automation-footer-note dash-summary-tile-hint small muted automation-app-hint" id="dash-refiner-hint" hidden></div>
+          {%- if not av.refiner_enabled -%}<a class="ink-link automation-footer-action" href="/refiner/settings">Refiner settings</a>{%- endif -%}
         </div>
-        <div class="automation-card-subline">{% if settings.emby_enabled %}<span class="muted">Next run:</span> <span id="dash-next-trimmer-tick">{% if next_trimmer_tick_local %}{{ next_trimmer_tick_local }}{% else %}<span class="muted automation-value-pending">Scheduled</span>{% endif %}</span>{% if next_trimmer_relative %} <span class="small muted" id="dash-next-trimmer-rel">({{ next_trimmer_relative }})</span>{% endif %}{% else %}<span class="muted">Trimmer off — Turn on Enable Trimmer in <a href="/trimmer/settings">Settings</a> to use dry run or live mode.</span>{% endif %}</div>
-        <div class="small muted automation-app-hint" id="dash-trimmer-hint"{% if not trimmer_automation_sub %} hidden{% endif %}>{{ trimmer_automation_sub }}</div>
       </div>
 
-      <div class="automation-card automation-card-event" data-automation-card="latest-event">
-        <div class="automation-card-title">Latest event</div>
-        <div class="automation-card-main" id="dash-last-context">
-          {% if latest_system_event %}
-            {{ latest_system_event.context }}
-          {% else %}
-            <span class="muted">No activity yet</span>
-          {% endif %}
-        </div>
-        <div class="automation-card-subline" id="dash-automation-last">
-          {% if latest_system_event %}
-            <span class="muted" id="dash-last-started-rel">{{ latest_system_event.relative }}</span>
-            <span class="small muted">· <span id="dash-last-started">{{ latest_system_event.time_local }}</span></span>
-            {% if latest_system_event.ok %}<span class="status-pill status-pill-ok">Succeeded</span>{% else %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
-          {% else %}
-            <span class="muted">No activity yet</span>
-          {% endif %}
+      <div class="automation-card dash-summary-tile" data-automation-card="trimmer">
+        <div class="dash-summary-tile-head"><span class="dash-summary-tile-title">Trimmer</span></div>
+        <dl class="dash-summary-meta">
+          <div class="dash-summary-meta-row">
+            <dt>Last run</dt>
+            <dd class="dash-summary-meta-dd" id="dash-last-trimmer-run">
+              {% if av.last_trimmer_run.time_local %}
+                <span class="dash-summary-run-line"><strong class="dash-summary-time-emphasis" id="dash-last-trimmer-rel">{{ av.last_trimmer_run.relative }}</strong><span class="small muted dash-summary-run-clock"> · {{ av.last_trimmer_run.time_local }}</span></span>
+                {% if av.last_trimmer_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif av.last_trimmer_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
+              {% else %}<span class="dash-summary-empty-state">Not yet run</span>{% endif %}
+            </dd>
+          </div>
+          <div class="dash-summary-meta-row">
+            <dt>Next run</dt>
+            <dd class="dash-summary-meta-dd automation-card-subline">{% if av.emby_enabled %}<span id="dash-next-trimmer-tick">{% if av.next_trimmer_tick_local %}{{ av.next_trimmer_tick_local }}{% else %}<span class="muted automation-value-pending">Scheduled</span>{% endif %}</span>{% if av.next_trimmer_relative %} <span class="small muted" id="dash-next-trimmer-rel">({{ av.next_trimmer_relative }})</span>{% endif %}{% else %}<span class="automation-off-state"><span class="automation-off-state__primary">Automation off</span><span class="automation-off-state__hint">Enable in settings</span></span>{% endif %}</dd>
+          </div>
+        </dl>
+        <div class="dash-summary-tile-footer automation-tile-footer">
+          <div class="automation-footer-note dash-summary-tile-hint small muted automation-app-hint" id="dash-trimmer-hint"{% if not av.trimmer_automation_sub %} hidden{% endif %}>{{ av.trimmer_automation_sub }}</div>
+          {%- if not av.emby_enabled -%}<a class="ink-link automation-footer-action" href="/trimmer/settings">Trimmer settings</a>{%- endif -%}
         </div>
       </div>
     </div>
@@ -143,7 +176,7 @@
   <div class="card gc" id="dashboard-overview">
     <div class="gc-title" role="heading" aria-level="2">Overview</div>
 
-    <div class="g2">
+    <div class="g2 dashboard-overview-arr-row">
       {{ arr_panel(
         "Sonarr",
         "sonarr",
@@ -174,44 +207,98 @@
       ) }}
     </div>
 
-    <div class="section dashboard-emby-section">
-      <div class="card gc card-stripe-green">
-        <div class="gc-title">
-          {% if emby and emby.ok %}
-            <span class="status-dot dot-green"></span>
-          {% elif emby %}
-            <span class="status-dot dot-amber"></span>
-          {% else %}
-            <span class="status-dot dot-blue"></span>
-          {% endif %}
-          Trimmer
-        </div>
-        {% if not settings.emby_enabled %}
-          {% set emby_matched_n = (emby.missing_total if emby else 0) %}
-          <div class="small muted trimmer-disabled-summary">
-            <span class="badge {% if settings.emby_dry_run %}b-off{% else %}b-live{% endif %}">{{ "Dry run" if settings.emby_dry_run else "Live delete" }}</span>
-            <span class="badge {% if emby_matched_n > 0 %}b-warn{% else %}b-off{% endif %}">{{ emby_matched_n }} matched</span>
-          </div>
-        {% else %}
-          <div class="m-grid dashboard-emby-summary-grid">
-            <div class="m" data-metric="emby-matched">
-              <div class="m-lbl">Matched</div>
-              <div class="m-val" id="dash-emby-matched">{{ emby.missing_total if emby else 0 }}</div>
-            </div>
-            <div class="m">
-              <div class="m-lbl">Mode</div>
-              <div class="m-val {% if settings.emby_dry_run %}mode-safe{% else %}mode-live{% endif %}">
-                {{ "Dry run" if settings.emby_dry_run else "Live delete" }}
+    <div class="g2 dashboard-overview-tools-row">
+      <div class="card gc card-stripe-purple dashboard-tool-card dashboard-refiner-tool-card">
+        <h3 class="dashboard-tool-card-title">Refiner</h3>
+        <div class="dashboard-tool-card-core">
+          {% if not settings.refiner_enabled %}
+            <dl class="dashboard-tool-meta">
+              <div class="dashboard-tool-meta-row">
+                <dt>Status</dt>
+                <dd><span class="dashboard-tool-value">Off</span></dd>
               </div>
+            </dl>
+            <p class="dashboard-tool-note">Refiner is off. Enable it in settings to use dry run or live processing.</p>
+            <div class="dashboard-tool-card-actions">
+              <a class="ink-link" href="/refiner/settings">Refiner settings</a>
             </div>
-          </div>
-        {% endif %}
+          {% else %}
+            <dl class="dashboard-tool-meta">
+              <div class="dashboard-tool-meta-row">
+                <dt>Status</dt>
+                <dd><span class="dashboard-tool-value">On</span></dd>
+              </div>
+              <div class="dashboard-tool-meta-row">
+                <dt>Mode</dt>
+                <dd><span class="dashboard-tool-value dashboard-tool-value--mode {% if settings.refiner_dry_run %}mode-safe{% else %}mode-live{% endif %}">{{ "Dry run" if settings.refiner_dry_run else "Live" }}</span></dd>
+              </div>
+            </dl>
+            <div class="dashboard-tool-card-actions">
+              <a class="ink-link" href="/refiner">Open Refiner</a>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card gc card-stripe-green dashboard-tool-card dashboard-trimmer-tool-card">
+        <h3 class="dashboard-tool-card-title">Trimmer</h3>
+        <div class="dashboard-tool-card-core">
+          {% if trimmer_connection_status == 'Not configured' %}
+            <dl class="dashboard-tool-meta">
+              <div class="dashboard-tool-meta-row">
+                <dt>Status</dt>
+                <dd><span class="dashboard-tool-value">Not ready</span></dd>
+              </div>
+            </dl>
+            <p class="dashboard-tool-note">Requires a configured media server connection</p>
+            <div class="dashboard-tool-card-actions">
+              <a class="ink-link" href="/trimmer/settings">Trimmer settings</a>
+            </div>
+          {% elif not settings.emby_enabled %}
+            {% set emby_matched_n = (emby.missing_total if emby else 0) %}
+            <dl class="dashboard-tool-meta">
+              <div class="dashboard-tool-meta-row">
+                <dt>Status</dt>
+                <dd><span class="dashboard-tool-value">Off</span></dd>
+              </div>
+              <div class="dashboard-tool-meta-row">
+                <dt>Mode</dt>
+                <dd><span class="dashboard-tool-value dashboard-tool-value--mode {% if settings.emby_dry_run %}mode-safe{% else %}mode-live{% endif %}">{{ "Dry run" if settings.emby_dry_run else "Live delete" }}</span></dd>
+              </div>
+              <div class="dashboard-tool-meta-row">
+                <dt>Matches</dt>
+                <dd><span class="dashboard-tool-value" id="dash-emby-matched">{{ emby_matched_n }}</span></dd>
+              </div>
+            </dl>
+            <div class="dashboard-tool-card-actions">
+              <a class="ink-link" href="/trimmer/settings">Trimmer settings</a>
+            </div>
+          {% else %}
+            <dl class="dashboard-tool-meta">
+              <div class="dashboard-tool-meta-row">
+                <dt>Status</dt>
+                <dd><span class="dashboard-tool-value">On</span></dd>
+              </div>
+              <div class="dashboard-tool-meta-row">
+                <dt>Mode</dt>
+                <dd><span class="dashboard-tool-value dashboard-tool-value--mode {% if settings.emby_dry_run %}mode-safe{% else %}mode-live{% endif %}">{{ "Dry run" if settings.emby_dry_run else "Live delete" }}</span></dd>
+              </div>
+              <div class="dashboard-tool-meta-row">
+                <dt>Matches</dt>
+                <dd><span class="dashboard-tool-value" id="dash-emby-matched">{{ emby.missing_total if emby else 0 }}</span></dd>
+              </div>
+            </dl>
+            <div class="dashboard-tool-card-actions">
+              <a class="ink-link" href="/trimmer">Open Trimmer</a>
+            </div>
+          {% endif %}
+        </div>
       </div>
     </div>
 
     <div class="section dashboard-activity-section" id="dashboard-activity-live-root">
       <div class="gc-title" role="heading" aria-level="2">Recent activity</div>
-      <p class="hint">Fetcher, Trimmer, and Refiner. Click a row with <strong>+N more</strong> for full detail. Open <a href="/activity">Activity</a> for the full list.</p>
+      <p class="hint">Fetcher, Trimmer, and Refiner. Click a row with <strong>+N more</strong> for full detail. Open <a class="ink-link" href="/activity">Activity</a> for the full list.</p>
       {% if activity %}
       <div class="activity-list">
         {% for e in activity[:5] %}

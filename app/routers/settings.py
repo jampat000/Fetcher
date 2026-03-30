@@ -47,7 +47,7 @@ router = APIRouter(dependencies=AUTH_DEPS)
 # In-place POSTs (section Save + Arr connection Test) send this header for JSON instead of a 303 redirect.
 SETTINGS_INPLACE_JSON_HEADER = "x-fetcher-settings-async"
 
-# ``POST /settings`` (Fetcher settings forms only): exactly one of these scopes per request — no legacy "all".
+# ``POST /settings`` (Fetcher settings forms only): exactly one of these scopes per request.
 _SETTINGS_POST_SAVE_SCOPES = frozenset({"global", "sonarr", "radarr"})
 
 

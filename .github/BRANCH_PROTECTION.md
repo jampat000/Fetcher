@@ -21,7 +21,7 @@ Use **classic branch protection**, not rulesets (rulesets often don’t enforce 
    |---------|----------|
    | **Require a pull request before merging** | ✅ Yes — set **1** approval (*solo:* you **Approve** your own PRs). |
    | **Require status checks to pass** | ✅ Yes — enable **Require branches to be up to date before merging**. |
-   | **Status checks** (search & add both checks) | `Test / pytest`, `Security / pip-audit` |
+   | **Status checks** (search & add; CI is one workflow file: `ci.yml`) | `Test / pytest`, `Test / pip-audit` (optional: `Test / docker-build`) |
    | **Block force pushes** | ✅ Yes |
    | **Allow deletions** | ❌ Leave **off** / unchecked |
 
@@ -55,7 +55,7 @@ $env:GITHUB_TOKEN = 'paste_token_here'
 
 Use **single quotes** around the token. If you omit quotes, PowerShell tries to run the token as a command. Run from the **repo root** (folder that contains `scripts\`).
 
-If GitHub returns **422** because a required check has never run on the repo, either open any PR so **Test / Security** run once and retry, **or**:
+If GitHub returns **422** because a required check has never run on the repo, either open any PR so **Test** workflow jobs run once and retry, **or**:
 
 ```powershell
 .\scripts\protect-master-branch.ps1 -SkipRequiredStatusChecks
@@ -91,7 +91,7 @@ If GitHub returns **422** because a required check has never run on the repo, ei
    Add every check that must be green before merge. Names must match what GitHub shows on a PR (**Checks** tab). For this repository they are usually:
 
    - `Test / pytest`
-   - `Security / pip-audit`
+   - `Test / pip-audit`
 
    > **Tip:** Open any PR → **Checks** → copy the **exact** names from the list (GitHub is picky about spelling/spaces).
 
@@ -103,7 +103,7 @@ If GitHub returns **422** because a required check has never run on the repo, ei
 
 If you prefer rulesets (fine-grained, multiple targets):
 
-- **Target branches:** `master` (and `main` if used).
+- **Target branches:** `master` (Fetcher’s release workflows assume this default branch).
 - **Rules:** restrict updates, require PR, required checks (same two checks as above), block force-push, optional block deletions.
 - **Bypass list:** empty for strongest posture, or emergency break-glass role only.
 

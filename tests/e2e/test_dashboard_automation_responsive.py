@@ -48,7 +48,7 @@ def test_automation_cards_layout_at_viewports(e2e_server: str) -> None:
                     page.goto(f"{e2e_server}/")
                     page.wait_for_selector(".automation-cards", timeout=15000)
                     assert page.locator(".automation-card").count() == 4
-                    assert page.get_by_text("Latest event", exact=True).first.is_visible()
+                    assert page.locator("[data-automation-card=\"refiner\"]").first.is_visible()
                     got = _first_row_card_count(page)
                     assert got == expected_first_row, (
                         f"viewport {width}x{height}: expected {expected_first_row} cards in first row, got {got}"

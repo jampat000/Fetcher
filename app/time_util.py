@@ -1,4 +1,4 @@
-"""Timezone helpers — avoid deprecated datetime.utcnow()."""
+"""Timezone-aware datetime helpers for SQLite and logs."""
 
 from __future__ import annotations
 

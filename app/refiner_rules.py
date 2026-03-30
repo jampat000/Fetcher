@@ -8,24 +8,12 @@ from typing import Any, Literal
 SubtitleMode = Literal["remove_all", "keep_selected"]
 DefaultAudioSlot = Literal["primary", "secondary"]
 
-# Stored in stream_manager_audio_preference_mode (max 24 chars).
+# Stored in refiner_audio_preference_mode (max 24 chars).
 AudioSelectionPolicy = Literal[
     "preferred_langs_quality",
     "preferred_langs_strict",
     "quality_all_languages",
 ]
-
-_LEGACY_AUDIO_PREF = frozenset(
-    {
-        "best_available",
-        "prefer_surround",
-        "prefer_stereo",
-        "prefer_lossless",
-        "highest_quality",
-        "track_order",
-        "prefer_default",
-    }
-)
 
 # Best (index 0) → worst. Unknown / unlisted codecs sort after all of these.
 _AUDIO_CODEC_QUALITY_ORDER: tuple[str, ...] = (
@@ -67,10 +55,8 @@ def _audio_codec_quality_rank(codec_name: str | None) -> int:
 
 
 def normalize_audio_preference_mode(raw: str | None) -> AudioSelectionPolicy:
-    """Canonical selection policy; legacy presets map to tiered + quality + fallback."""
+    """Return canonical ``refiner_audio_preference_mode``; unknown stored values use the default policy."""
     m = (raw or "").strip().lower()
-    if m in _LEGACY_AUDIO_PREF:
-        return "preferred_langs_quality"
     if m in ("preferred_langs_quality", "preferred_langs_strict", "quality_all_languages"):
         return m  # type: ignore[return-value]
     return "preferred_langs_quality"
@@ -133,7 +119,7 @@ def is_commentary_audio(stream: dict[str, Any]) -> bool:
 
 
 @dataclass(frozen=True)
-class StreamManagerRulesConfig:
+class RefinerRulesConfig:
     primary_audio_lang: str
     secondary_audio_lang: str
     tertiary_audio_lang: str
@@ -146,7 +132,7 @@ class StreamManagerRulesConfig:
     audio_preference_mode: AudioSelectionPolicy
 
 
-def _ordered_preference_langs(config: StreamManagerRulesConfig) -> list[str]:
+def _ordered_preference_langs(config: RefinerRulesConfig) -> list[str]:
     out: list[str] = []
     for raw in (config.primary_audio_lang, config.secondary_audio_lang, config.tertiary_audio_lang):
         lg = normalize_lang(raw)
@@ -308,7 +294,7 @@ def _describe_candidate(c: _AudioCandidate) -> str:
 
 def _select_audio_winner(
     *,
-    config: StreamManagerRulesConfig,
+    config: RefinerRulesConfig,
     candidates: list[_AudioCandidate],
     removed_by_commentary: list[str],
 ) -> tuple[_AudioCandidate | None, list[str], list[str]]:
@@ -378,7 +364,7 @@ def plan_remux(
     video: list[dict[str, Any]],
     audio: list[dict[str, Any]],
     subtitles: list[dict[str, Any]],
-    config: StreamManagerRulesConfig,
+    config: RefinerRulesConfig,
 ) -> RemuxPlan | None:
     """
     Single winning audio track + retention policy: all other audio streams removed from output.

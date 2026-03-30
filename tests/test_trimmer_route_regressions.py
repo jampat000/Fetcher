@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.db import SessionLocal, _get_or_create_settings
 from app.main import app
+from app.trimmer_service import TRIMMER_REVIEW_ERROR_MISSING_CONNECTION
 
 
 def _client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
@@ -108,7 +109,7 @@ def test_trimmer_page_missing_emby_url_or_key_error(monkeypatch: pytest.MonkeyPa
         resp = client.get("/trimmer")
     assert resp.status_code == 200
     ctx = captured["context"]
-    assert ctx["error"] == "Emby URL and API key are required."
+    assert ctx["error"] == TRIMMER_REVIEW_ERROR_MISSING_CONNECTION
     assert ctx["scan_loaded"] is False
     assert ctx["scan_prompt"] is False
 

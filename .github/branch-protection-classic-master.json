@@ -3,7 +3,7 @@
     "strict": true,
     "checks": [
       { "context": "Test / pytest" },
-      { "context": "Security / pip-audit" }
+      { "context": "Test / pip-audit" }
     ]
   },
   "enforce_admins": true,

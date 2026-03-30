@@ -46,7 +46,7 @@ Add `<env name="FETCHER_DATA_ENCRYPTION_KEY" value="..."/>` next to the JWT entr
 
 ## SQLite data directory (settings, activity, etc.)
 
-By default, **packaged** Fetcher on Windows uses **`%ProgramData%\Fetcher\fetcher.db`**. On first start, if that file is **missing** but a legacy file exists under the service profile’s **`AppData\Local\Fetcher\fetcher.db`** (e.g. Local System under **`…\systemprofile\…`**), Fetcher **copies** it there **once**, writes **`fetcher.db.migrated_from_legacy`** (JSON audit record), then **renames** the legacy **`fetcher.db`** / **`-wal`** / **`-shm`** files with suffix **`.fetcher-programdata-migration-archive`** only when the marker and file metadata all match (recoverable backup; not deleted). If ProgramData **`fetcher.db` already existed**, migration and rename are **skipped**—legacy files stay as-is. If **`FETCHER_DATA_DIR`** is set, migration and rename are **disabled**; the process uses your folder only.
+By default, **packaged** Fetcher on Windows uses **`%ProgramData%\Fetcher\fetcher.db`**. Set machine env **`FETCHER_DATA_DIR`** to a folder if you want the database elsewhere (that folder must contain **`fetcher.db`**). There is **no** automatic copy from other profile locations—copy **`fetcher.db`** (and **`-wal`** / **`-shm`** if present) manually while Fetcher is **stopped** when moving data.
 
 To use a different folder explicitly, set a **machine** environment variable and restart the service:
 

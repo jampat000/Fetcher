@@ -15,7 +15,7 @@ Fetcher is a production-ready automation service for Sonarr, Radarr, and Emby, f
 - **Missing & upgrade automation** — scheduled (and manual) searches for monitored items without files and for cutoff-unmet queues, with **per-app Retry Delay** so you’re not hammering the same items every tick.
 - **Dashboard** — per-app last/next run, live-style queue counts when Arr is reachable, and short hints from the last service run (including retry-delay context where it applies).
 - **Activity & job logs** — human-readable summaries; logs page reads the same log directory the service writes to.
-- **Failed import cleanup** — optional Radarr/Sonarr queue cleanup where supported.
+- **Failed import cleanup** — optional Sonarr/Radarr: removes **terminal** failed imports from each app’s **download queue** (queue API delete with **blocklist** attempted on the same request, then **queue-only** removal if that fails). Fetcher does **not** enable **remove-from-client**. Successful removals appear in **Activity** as **Failed import cleaned up** or **Failed import removed**; waiting/unknown/no-op paths do not add cleanup rows.
 - **Setup wizard** — shown until real configuration is in place (password + at least one integration configured the way the app checks it). No separate “I’m done” flag; it’s driven by saved state.
 - **Auth** — password (bcrypt), session cookie, optional IP allowlist; JSON API can use **Bearer access tokens** from the auth endpoints.
 - **Backup / restore** — settings JSON from the UI (treat it as secret).
@@ -89,6 +89,14 @@ Other useful vars (logs, data dir, dev DB) are documented in **[docs/INSTALL-AND
 4. Open **`http://127.0.0.1:8765`** on the machine, or **`http://<host-ip>:8765`** from another device (open **TCP 8765** in Windows Firewall if needed).
 5. Complete **setup** (account, integrations, schedule). After that you’ll use **`/login`** when the session expires.
 
+### Refiner folder paths
+
+Refiner folder paths are **manual-entry only**. Enter or paste full paths for watched, output, and optional work folders in **Refiner settings**.
+
+- There is no folder Browse button or companion process.
+- This behavior is the same for Windows service installs, Docker, and other headless environments.
+- Existing path save behavior is unchanged: Fetcher stores exactly what you enter in settings.
+
 **Where things live (defaults):**
 
 | What | Where |
@@ -107,6 +115,8 @@ WinSW may drop small **wrapper** `*.out.log` / `*.err.log` next to the service u
 - **Manual:** download the new **`FetcherSetup.exe`**, run it over the existing install. **ProgramData** (database, logs) is kept; migrations run on next startup.
 - **After update:** confirm the **Fetcher** service is **Running**, open the UI, check **Settings → Software updates** or **`GET /api/version`** for the version you expect.
 
+Installs **3.1.0+** remove **`FetcherCompanion.exe`** and companion **`.ps1`** scripts from the **application folder** (`{app}`) on upgrade via the installer’s delete-before-copy step. That is the only place Fetcher can safely auto-clean: **Scheduled Tasks**, **Start Menu** shortcuts, or other **per-user** items you created for the old Browse flow live under each Windows user profile and are **not** touched by the installer. They are **harmless** if left in place (the companion binary is gone); remove them manually in **Task Scheduler** or the Start Menu if you want a tidy machine. Details: **[docs/INSTALL-AND-OPERATIONS.md](docs/INSTALL-AND-OPERATIONS.md)** → *Updates and migrations*.
+
 If you use **`FETCHER_DATA_ENCRYPTION_KEY`**, keep it set the same way after upgrades.
 
 ---
@@ -121,6 +131,7 @@ If you use **`FETCHER_DATA_ENCRYPTION_KEY`**, keep it set the same way after upg
 | 401 / “not signed in” on API | Session cookie expired or missing; or use **`POST /api/auth/token`** and send **`Authorization: Bearer <access_token>`**. Don’t send a **refresh** token as the Bearer header for API calls. |
 | UI loops to setup | Wizard visibility follows **saved** config: password missing or an enabled integration missing URL/key. Fix the relevant fields in setup or settings. |
 | Where are logs? | Default **`%ProgramData%\Fetcher\logs\fetcher.log`**. The **Logs** page in the UI lists that directory. |
+| Refiner folder selection | Folder Browse was removed. Enter or paste full folder paths manually in Refiner settings. |
 
 ---
 
@@ -173,7 +184,10 @@ Not the Windows installer path. See **[docs/DOCKER.md](docs/DOCKER.md)** and pul
 | `service/` | WinSW service notes |
 | `installer/` | Inno → **`FetcherSetup.exe`** |
 | `docs/` | Docker, CLI, **INSTALL-AND-OPERATIONS**, etc. |
+| `docs/archive/release-notes/` | Historical 3.0.x release blurbs (Browse/companion era); see **`CHANGELOG.md`** for the canonical record |
 | `VERSION` | Release semver |
+
+Release builds may produce **`Fetcher-v*-windows-dist.zip`** (and checksum files) in the repo root locally; those patterns are **gitignored** and are **not** source files.
 
 Optional **`config.yaml`** next to **`Fetcher.exe`** can supply API keys—see **`config.example.yaml`** (gitignored when copied to **`config.yaml`**).
 
@@ -182,6 +196,8 @@ Optional **`config.yaml`** next to **`Fetcher.exe`** can supply API keys—see *
 ## Backup and restore
 
 **Settings → Backup & Restore** exports JSON including secrets—store it safely. Details: **[HOWTO-RESTORE.md](HOWTO-RESTORE.md)**.
+
+The JSON is the **full `app_settings` row** (Sonarr, Radarr, Emby/Trimmer, Refiner, web auth, schedules)—not activity or history tables. Each export uses **`format_version`: `2`**, **`fetcher_backup`**, **`supported_schema_version`**, and **`settings.schema_version`**. **Restore requires the same supported schema version** as the running build (`CURRENT_SCHEMA_VERSION`), the **current backup format only**, and **current field names**. Unsupported headers, older `format_version`, obsolete global Arr keys, and cross-version files are **rejected**; use a backup exported from the same build.
 
 ---
 
@@ -194,6 +210,8 @@ Optional **`config.yaml`** next to **`Fetcher.exe`** can supply API keys—see *
 ## More documentation
 
 **[docs/README.md](docs/README.md)** — index of guides.
+
+**[docs/BUILD-AND-RELEASE.md](docs/BUILD-AND-RELEASE.md)** — **clean** Windows (`FetcherSetup.exe`) and Docker builds; what not to commit.
 
 ---
 

@@ -2,10 +2,28 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+import json
+from datetime import datetime
 
 from app.models import ActivityLog, RefinerActivity
 from app.web_common import activity_display_row, merge_activity_feed, refiner_activity_display_row
+
+
+def _ctx(**kwargs: object) -> str:
+    base = {
+        "v": 1,
+        "audio_before": "",
+        "audio_after": "",
+        "subs_before": "",
+        "subs_after": "",
+        "commentary_removed": False,
+        "failure_reason": "",
+        "dry_run": False,
+        "finalized": False,
+        "source_removed": False,
+    }
+    base.update(kwargs)
+    return json.dumps(base)
 
 
 def test_activity_display_row_marks_log_type() -> None:
@@ -22,7 +40,7 @@ def test_activity_display_row_marks_log_type() -> None:
     assert row["type"] == "log"
 
 
-def test_refiner_activity_display_row_type_and_detail() -> None:
+def test_refiner_activity_display_row_success_with_context() -> None:
     r = RefinerActivity(
         file_name="Movie.Name.2023.mkv",
         status="success",
@@ -34,19 +52,49 @@ def test_refiner_activity_display_row_type_and_detail() -> None:
         subtitle_tracks_after=2,
         processing_time_ms=120_000,
         created_at=datetime(2026, 1, 1, 12, 0, 0),
+        activity_context=_ctx(
+            audio_before="English 2.0 AAC · Japanese 2.0 AAC",
+            audio_after="English 5.1 TrueHD",
+            subs_before="English · French · German · Italian · Spanish · Dutch · Polish",
+            subs_after="English · French",
+            commentary_removed=True,
+            finalized=True,
+            source_removed=True,
+        ),
     )
     now = datetime(2026, 1, 1, 12, 3, 0)
     row = refiner_activity_display_row(r, "UTC", now)
+    assert row["activity_time_iso"].endswith("Z")
     assert row["activity_type"] == "refiner"
-    assert row["type"] == "refiner"
-    assert row["app"] == "refiner"
-    assert "Movie.Name.2023.mkv" == row["primary_label"]
-    assert "GB" in row["detail_lines"][0]
-    assert "No size change" not in row["detail_lines"][0]
-    assert "Audio: 4 → 1" in row["detail_lines"][1]
-    assert "Subtitles: 7 → 2" in row["detail_lines"][1]
-    assert row["detail_lines"][3] == "Before"
-    assert row["detail_lines"][-1].startswith("Removed:")
+    assert row["refiner_primary_line"] == "Refiner completed"
+    assert "Audio refined" in row["refiner_summary_line"]
+    assert "Subtitles removed" in row["refiner_summary_line"]
+    blocks = row["refiner_detail_blocks"]
+    assert any("Audio:" in b and "Before:" in b for b in blocks)
+    assert any("File size:" in b and "Saved:" in b for b in blocks)
+    assert any("Output:" in b and "Finalized" in b for b in blocks)
+    assert any("Commentary:" in b for b in blocks)
+
+
+def test_refiner_activity_display_row_processing_state() -> None:
+    r = RefinerActivity(
+        file_name="in-progress.mkv",
+        status="processing",
+        size_before_bytes=0,
+        size_after_bytes=0,
+        audio_tracks_before=0,
+        audio_tracks_after=0,
+        subtitle_tracks_before=0,
+        subtitle_tracks_after=0,
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+        activity_context="",
+    )
+    row = refiner_activity_display_row(r, "UTC", datetime(2026, 1, 1, 12, 0, 5))
+    assert row["refiner_primary_line"] == "Processing file"
+    assert row["refiner_summary_line"] == "—"
+    assert row["refiner_status_tone"] == "progress"
+    assert any("Title:" in b and "in-progress.mkv" in b for b in row["refiner_detail_blocks"])
+    assert any("Step:" in b and "Refining" in b for b in row["refiner_detail_blocks"])
 
 
 def test_merge_activity_feed_newest_first() -> None:
@@ -72,13 +120,19 @@ def test_merge_activity_feed_newest_first() -> None:
         audio_tracks_after=2,
         subtitle_tracks_before=0,
         subtitle_tracks_after=0,
+        activity_context=_ctx(
+            audio_before="English 2.0 AAC",
+            audio_after="English 2.0 AAC",
+            subs_before="—",
+            subs_after="None",
+        ),
     )
     merged = merge_activity_feed([log], [ref], "UTC", t_new, limit=10)
     assert merged[0]["type"] == "refiner"
     assert merged[1]["type"] == "log"
 
 
-def test_refiner_collapsed_line_no_size_change() -> None:
+def test_refiner_skipped_no_size_change_saved_zero() -> None:
     r = RefinerActivity(
         file_name="x.mkv",
         status="skipped",
@@ -89,6 +143,40 @@ def test_refiner_collapsed_line_no_size_change() -> None:
         subtitle_tracks_before=1,
         subtitle_tracks_after=1,
         created_at=datetime(2026, 1, 1, 12, 0, 0),
+        activity_context=_ctx(
+            audio_before="English 2.0 AAC",
+            audio_after="English 2.0 AAC",
+            subs_before="English",
+            subs_after="English",
+        ),
     )
     row = refiner_activity_display_row(r, "UTC", datetime(2026, 1, 1, 12, 0, 1))
-    assert "No size change" in row["detail_lines"][0]
+    assert row["refiner_primary_line"] == "Refiner skipped"
+    assert row["refiner_summary_line"] == "No changes required"
+    assert any("Saved: 0 GB (0%)" in b for b in row["refiner_detail_blocks"])
+
+
+def test_refiner_failed_includes_reason_block() -> None:
+    r = RefinerActivity(
+        file_name="bad.mkv",
+        status="failed",
+        size_before_bytes=1000,
+        size_after_bytes=1000,
+        audio_tracks_before=1,
+        audio_tracks_after=1,
+        subtitle_tracks_before=0,
+        subtitle_tracks_after=0,
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+        activity_context=_ctx(
+            audio_before="English 2.0 AAC",
+            audio_after="English 2.0 AAC",
+            subs_before="—",
+            subs_after="None",
+            failure_reason="Output file already exists — remove or rename it in the output folder, then retry.",
+        ),
+    )
+    row = refiner_activity_display_row(r, "UTC", datetime(2026, 1, 1, 12, 0, 1))
+    assert row["refiner_primary_line"] == "Refiner failed"
+    assert "Output file already exists" in row["refiner_summary_line"]
+    assert any("Reason:" in b for b in row["refiner_detail_blocks"])
+    assert any("After: —" in b and "Saved: —" in b for b in row["refiner_detail_blocks"])

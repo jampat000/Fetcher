@@ -12,24 +12,31 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.display_helpers import (
+    _as_utc_naive,
     _fmt_local,
-    _fmt_size_bytes_si,
     _relative_phrase_past,
     _truncate_display,
+    activity_relative_time,
 )
+from app.failed_import_activity import parse_failed_import_cleanup_activity_detail
 from app.models import ActivityLog, AppSettings, JobRunLog, RefinerActivity
 from app.schedule import DAY_NAMES, normalize_schedule_days_csv
 from app.scheduler import scheduler
+from app.time_util import utc_now_naive
 
 logger = logging.getLogger(__name__)
 
 # Activity list shows 5 title lines + “+N more”; full list is stored in ``ActivityLog.detail``.
 ACTIVITY_DETAIL_PREVIEW_LINES = 5
 _ACTIVITY_LOG_LEGACY_MORE = re.compile(r"^\+\d+ more$")
+_REFINER_BATCH_LOG = re.compile(
+    r"Refiner\s*\(([^)]*)\):\s*processed=(\d+)\s+unchanged=(\d+)\s+dry_run_items=(\d+)\s+errors=(\d+)",
+    re.I | re.DOTALL,
+)
 
 
 def activity_log_title_lines(detail: str) -> list[str]:
-    """Split stored detail into display lines; drop legacy synthetic ``+N more`` rows."""
+    """Split stored detail into display lines; drop obsolete synthetic ``+N more`` rows."""
     lines: list[str] = []
     for raw in (detail or "").splitlines():
         s = raw.strip()
@@ -119,116 +126,172 @@ def dedupe_job_run_logs_for_display(rows: Sequence[JobRunLog]) -> list[JobRunLog
     return [r for r in seq if not placeholder_has_nearby_terminal(r)]
 
 
-def _activity_primary_label(e: ActivityLog) -> str:
+def _activity_log_domain_and_icon(e: ActivityLog) -> tuple[str, str]:
+    """Return (``activity_domain`` CSS token, Lucide icon name) for ActivityLog rows."""
+    app = (getattr(e, "app", "") or "").strip().lower()
+    kind = (getattr(e, "kind", "") or "").strip().lower()
+    if app == "sonarr":
+        return ("sonarr", "tv")
+    if app == "radarr":
+        return ("radarr", "clapperboard")
+    if app == "trimmer" and kind == "trimmed":
+        return ("trimmer", "scissors")
+    if app == "trimmer":
+        return ("trimmer", "server")
+    if app == "service":
+        return ("service", "server")
+    if app == "refiner" and kind == "refiner":
+        return ("refiner", "sliders-horizontal")
+    return ("service", "server")
+
+
+def _activity_log_outcome_class(e: ActivityLog) -> str:
+    """Map log row to outcome styling: success | processing | skipped | failed."""
     app = (getattr(e, "app", "") or "").strip().lower()
     kind = (getattr(e, "kind", "") or "").strip().lower()
     status = (getattr(e, "status", "") or "ok").strip().lower()
     count = int(getattr(e, "count", 0) or 0)
     if kind == "error" or status == "failed":
-        return "Run error" if kind == "error" else "Run failed"
-    if kind == "cleanup":
-        return f"Radarr queue cleanup ({count} item{'s' if count != 1 else ''})"
+        return "failed"
     if kind == "trimmed":
-        return f"{count} item{'s' if count != 1 else ''} matched Trimmer rules"
+        return "success" if count > 0 else "skipped"
+    if kind in ("missing", "upgrade"):
+        return "success" if count > 0 else "skipped"
+    if kind == "cleanup":
+        return "success" if count > 0 else "skipped"
+    if kind == "refiner" and app == "refiner":
+        return "failed" if status == "failed" else ("success" if count > 0 else "skipped")
+    if status == "failed":
+        return "failed"
+    return "success"
+
+
+def _activity_primary_label(e: ActivityLog) -> str:
+    app = (getattr(e, "app", "") or "").strip().lower()
+    kind = (getattr(e, "kind", "") or "").strip().lower()
+    status = (getattr(e, "status", "") or "ok").strip().lower()
+    count = int(getattr(e, "count", 0) or 0)
+    if kind == "error":
+        return "Run error"
+    if kind == "refiner" and app == "refiner":
+        if status == "failed":
+            return "Refiner failed"
+        m = _REFINER_BATCH_LOG.search((getattr(e, "detail", "") or "").replace("\n", " ").strip())
+        if not m:
+            if count > 0:
+                return "Refiner completed"
+            return "Refiner skipped"
+        proc, noop, dry, err = (int(m.group(2)), int(m.group(3)), int(m.group(4)), int(m.group(5)))
+        if err:
+            return "Refiner failed"
+        if proc:
+            return "Refiner completed"
+        return "Refiner skipped"
+    if status == "failed":
+        return "Run failed"
+    if kind == "cleanup":
+        app_l = (app or "").strip().lower()
+        if app_l in ("sonarr", "radarr"):
+            parsed = parse_failed_import_cleanup_activity_detail(getattr(e, "detail", "") or "")
+            if parsed:
+                return parsed[0]
+        return f"Queue cleanup · {count} item{'s' if count != 1 else ''}"
+    if kind == "trimmed":
+        return f"Trimmer · {count} item{'s' if count != 1 else ''} matched rules"
     if kind == "missing":
         unit = "episode" if app == "sonarr" else "movie"
-        return f"Missing search for {count} {unit}{'s' if count != 1 else ''}"
+        return f"Missing search · {count} {unit}{'s' if count != 1 else ''}"
     if kind == "upgrade":
         unit = "episode" if app == "sonarr" else "movie"
-        return f"Upgrade search for {count} {unit}{'s' if count != 1 else ''}"
+        return f"Upgrade search · {count} {unit}{'s' if count != 1 else ''}"
     return f"Activity ({kind or 'event'})"
 
 
 def _activity_detail_fallback_line(e: ActivityLog) -> str:
     if (getattr(e, "status", "") or "").strip().lower() == "failed":
-        return "Operation failed with no additional details."
+        return "Didn’t finish — check the service log or try again."
     if int(getattr(e, "count", 0) or 0) > 0:
-        return "No per-title detail was stored for this entry."
-    return "No items were dispatched for this activity entry."
+        return "No extra detail was stored for this entry."
+    return "Nothing was queued for this run."
 
 
-def activity_display_row(e: ActivityLog, tz: str) -> dict[str, Any]:
-    raw_detail = (getattr(e, "detail", "") or "").strip()
-    detail_lines = activity_log_title_lines(raw_detail)
-    if not detail_lines:
-        detail_lines = [_activity_detail_fallback_line(e)]
+def _humanize_refiner_batch_log_detail(detail: str) -> list[str] | None:
+    """Turn canonical Refiner batch log text into one summary line (display-only)."""
+    m = _REFINER_BATCH_LOG.search((detail or "").replace("\n", " ").strip())
+    if not m:
+        return None
+    trigger = (m.group(1) or "scheduled").strip()
+    proc, noop, dry, err = (int(m.group(i)) for i in range(2, 6))
+    bits: list[str] = []
+    if proc:
+        bits.append(f"{proc} refined")
+    if noop:
+        bits.append(f"{noop} unchanged")
+    if dry:
+        bits.append(f"{dry} dry run")
+    if err:
+        bits.append(f"{err} failed")
+    head = " · ".join(bits) if bits else "No file actions"
+    return [f"{head} · {trigger}"]
+
+
+def _activity_timestamp_fields(created_at: datetime, tz: str, now: datetime) -> dict[str, str]:
+    t_utc = _as_utc_naive(created_at).replace(microsecond=0)
     return {
+        "time_local": _fmt_local(created_at, tz),
+        "time_relative": activity_relative_time(created_at, now),
+        "activity_time_iso": f"{t_utc.isoformat()}Z",
+    }
+
+
+def activity_display_row(e: ActivityLog, tz: str, *, now: datetime | None = None) -> dict[str, Any]:
+    raw_detail = (getattr(e, "detail", "") or "").strip()
+    app = (getattr(e, "app", "") or "").strip().lower()
+    kind = (getattr(e, "kind", "") or "").strip().lower()
+    human = None
+    if app == "refiner" and kind == "refiner":
+        human = _humanize_refiner_batch_log_detail(raw_detail)
+    if human is None and kind == "cleanup" and app in ("sonarr", "radarr"):
+        fi = parse_failed_import_cleanup_activity_detail(raw_detail)
+        if fi is not None:
+            _head, summary, remainder = fi
+            human = [summary]
+            extra = activity_log_title_lines(remainder)
+            if extra:
+                human.extend(extra)
+    if human is not None:
+        detail_lines = human
+    else:
+        detail_lines = activity_log_title_lines(raw_detail)
+        if not detail_lines:
+            detail_lines = [_activity_detail_fallback_line(e)]
+    tnow = now if now is not None else utc_now_naive()
+    domain, lucide_name = _activity_log_domain_and_icon(e)
+    row: dict[str, Any] = {
         "activity_type": "log",
         "type": "log",
         "id": e.id,
-        "time_local": _fmt_local(e.created_at, tz),
         "app": e.app,
         "kind": e.kind,
         "status": (getattr(e, "status", "") or "ok").strip().lower(),
         "count": e.count,
         "primary_label": _activity_primary_label(e),
         "detail_lines": detail_lines,
+        "detail_preview": 2,
+        "activity_domain": domain,
+        "activity_lucide": lucide_name,
+        "activity_outcome": _activity_log_outcome_class(e),
     }
-
-
-def _refiner_activity_collapsed_size_line(size_before: int, size_after: int) -> str:
-    sb = int(size_before)
-    sa = int(size_after)
-    b_fmt = _fmt_size_bytes_si(sb)
-    a_fmt = _fmt_size_bytes_si(sa)
-    if sb == sa:
-        return f"{b_fmt} → {a_fmt}  (No size change)"
-    delta = sa - sb
-    pct = (abs(delta) / sb * 100.0) if sb else 0.0
-    sign = "−" if delta < 0 else "+"
-    mag = _fmt_size_bytes_si(abs(delta))
-    return f"{b_fmt} → {a_fmt}  ({sign}{mag}, {pct:.1f}%)"
-
-
-def _refiner_activity_change_size_line(size_before: int, size_after: int) -> str:
-    sb = int(size_before)
-    sa = int(size_after)
-    if sb == sa:
-        return "Size: No size change"
-    delta = sa - sb
-    pct = (abs(delta) / sb * 100.0) if sb else 0.0
-    sign = "−" if delta < 0 else "+"
-    return f"Size: {sign}{_fmt_size_bytes_si(abs(delta))} ({pct:.1f}%)"
+    row.update(_activity_timestamp_fields(e.created_at, tz, tnow))
+    return row
 
 
 def refiner_activity_display_row(r: RefinerActivity, tz: str, now: datetime) -> dict[str, Any]:
-    sb = int(r.size_before_bytes or 0)
-    sa = int(r.size_after_bytes or 0)
-    ab = int(r.audio_tracks_before or 0)
-    aa = int(r.audio_tracks_after or 0)
-    sbb = int(r.subtitle_tracks_before or 0)
-    sba = int(r.subtitle_tracks_after or 0)
-    st = (r.status or "failed").strip().lower()
-    detail_lines = [
-        _refiner_activity_collapsed_size_line(sb, sa),
-        f"Audio: {ab} → {aa}   •   Subtitles: {sbb} → {sba}",
-        _relative_phrase_past(r.created_at, now),
-        "Before",
-        f"Size: {_fmt_size_bytes_si(sb)}",
-        f"Audio tracks: {ab}",
-        f"Subtitle tracks: {sbb}",
-        "After",
-        f"Size: {_fmt_size_bytes_si(sa)}",
-        f"Audio tracks: {aa}",
-        f"Subtitle tracks: {sba}",
-        "Change",
-        _refiner_activity_change_size_line(sb, sa),
-        f"Removed: {max(0, ab - aa)} audio, {max(0, sbb - sba)} subtitles",
-    ]
-    return {
-        "activity_type": "refiner",
-        "type": "refiner",
-        "id": r.id,
-        "time_local": _fmt_local(r.created_at, tz),
-        "app": "refiner",
-        "kind": "refiner",
-        "status": st,
-        "count": "",
-        "primary_label": (r.file_name or "").strip() or "—",
-        "detail_lines": detail_lines,
-        "detail_preview": 3,
-        "refiner_status": st,
-    }
+    from app.refiner_activity_row import build_refiner_activity_row_dict
+
+    row = build_refiner_activity_row_dict(r, tz, now)
+    row.update(_activity_timestamp_fields(r.created_at, tz, now))
+    return row
 
 
 def merge_activity_feed(
@@ -242,7 +305,7 @@ def merge_activity_feed(
     """Interleave Refiner file rows with ``activity_log`` by time (newest first)."""
     pairs: list[tuple[datetime, str, int, dict[str, Any]]] = []
     for e in logs:
-        pairs.append((e.created_at, "L", e.id, activity_display_row(e, tz)))
+        pairs.append((e.created_at, "L", e.id, activity_display_row(e, tz, now=now)))
     for r in refiners:
         pairs.append((r.created_at, "R", r.id, refiner_activity_display_row(r, tz, now)))
     pairs.sort(key=lambda p: (p[0], p[2], p[1]), reverse=True)

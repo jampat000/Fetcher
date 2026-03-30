@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from app.stream_manager_rules import (
-    StreamManagerRulesConfig,
+from app.refiner_rules import (
+    RefinerRulesConfig,
     _CODEC_UNKNOWN_RANK,
     _audio_codec_quality_rank,
     is_commentary_audio,
@@ -14,7 +14,7 @@ from app.stream_manager_rules import (
 )
 
 
-def _cfg(**over: object) -> StreamManagerRulesConfig:
+def _cfg(**over: object) -> RefinerRulesConfig:
     base: dict[str, object] = dict(
         primary_audio_lang="eng",
         secondary_audio_lang="",
@@ -28,7 +28,7 @@ def _cfg(**over: object) -> StreamManagerRulesConfig:
         audio_preference_mode="preferred_langs_quality",
     )
     base.update(over)
-    return StreamManagerRulesConfig(**base)  # type: ignore[arg-type]
+    return RefinerRulesConfig(**base)  # type: ignore[arg-type]
 
 
 def test_normalize_lang_trims_and_lower() -> None:
@@ -36,7 +36,7 @@ def test_normalize_lang_trims_and_lower() -> None:
     assert normalize_lang("eng-us") == "eng"
 
 
-def test_normalize_audio_preference_mode_legacy_and_canonical() -> None:
+def test_normalize_audio_preference_mode_unknown_and_canonical() -> None:
     assert normalize_audio_preference_mode("best_available") == "preferred_langs_quality"
     assert normalize_audio_preference_mode("prefer_surround") == "preferred_langs_quality"
     assert normalize_audio_preference_mode("highest_quality") == "preferred_langs_quality"
@@ -412,7 +412,7 @@ def test_deterministic_repeated_plan() -> None:
     assert p1.audio[0].input_index == p2.audio[0].input_index
 
 
-def test_legacy_lossless_string_maps_to_tiered_policy() -> None:
+def test_unknown_audio_preference_mode_string_uses_default_tiered_policy() -> None:
     video = [{"index": 0, "codec_type": "video"}]
     audio = [
         {"index": 1, "codec_type": "audio", "codec_name": "mp3", "channels": 2, "tags": {"language": "eng"}, "disposition": {}},
