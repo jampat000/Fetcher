@@ -202,7 +202,9 @@ async def refiner_overview_page(request: Request, session: AsyncSession = Depend
     rs = get_refiner_state(settings)
     n_proc = (
         await session.execute(
-            select(func.count()).select_from(RefinerActivity).where(RefinerActivity.status == "processing")
+            select(func.count())
+            .select_from(RefinerActivity)
+            .where(RefinerActivity.status.in_(("processing", "queued")))
         )
     ).scalar_one()
     if int(n_proc or 0) > 0:

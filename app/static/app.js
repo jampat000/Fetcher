@@ -224,28 +224,76 @@ function runHeroCountUp() {
   });
 }
 
-function initActivityDetailExpand() {
-  document.querySelectorAll(".activity-detail-toggle").forEach((btn) => {
-    btn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      const sub = btn.closest(".activity-detail-sub--expandable");
-      if (!sub) return;
-      const rest = sub.querySelector(".activity-detail-rest");
-      const expanded = btn.getAttribute("aria-expanded") === "true";
-      const next = !expanded;
-      btn.setAttribute("aria-expanded", next ? "true" : "false");
-      const more = btn.getAttribute("data-more-count") || "0";
-      if (rest) rest.hidden = !next;
-      btn.textContent = next ? "Show less" : `+${more} more`;
-    });
-  });
+let _activityFeedClickDelegationInstalled = false;
 
-  document.querySelectorAll(".activity-row--expandable").forEach((row) => {
-    row.addEventListener("click", (ev) => {
-      if (ev.target.closest(".activity-detail-toggle") || ev.target.closest(".activity-meta")) return;
+/**
+ * Single document click handler for Sonarr/Radarr/Trimmer activity rows that use ``+N more`` toggles.
+ * Live polling replaces the activity subtree HTML but does not re-call this — no duplicate handlers.
+ * Refiner before/after uses native ``<details>``; when those panels are open, polling restores ``open``
+ * via ``restoreRefinerCompareDetailsOpen`` so completed Refiner cards stay expandable during a live job.
+ */
+function installActivityFeedClickDelegationOnce() {
+  if (_activityFeedClickDelegationInstalled) return;
+  _activityFeedClickDelegationInstalled = true;
+  document.addEventListener(
+    "click",
+    (ev) => {
+      const t = ev.target;
+      if (!(t instanceof Element)) return;
+      const inLive = t.closest("#activity-live-root, #dashboard-activity-live-root");
+      if (!inLive) return;
+
+      const toggle = t.closest(".activity-detail-toggle");
+      if (toggle && inLive.contains(toggle)) {
+        ev.stopPropagation();
+        const sub = toggle.closest(".activity-detail-sub--expandable");
+        if (!sub) return;
+        const rest = sub.querySelector(".activity-detail-rest");
+        const expanded = toggle.getAttribute("aria-expanded") === "true";
+        const next = !expanded;
+        toggle.setAttribute("aria-expanded", next ? "true" : "false");
+        const more = toggle.getAttribute("data-more-count") || "0";
+        if (rest) rest.hidden = !next;
+        toggle.textContent = next ? "Show less" : `+${more} more`;
+        return;
+      }
+
+      const row = t.closest(".activity-row--expandable");
+      if (!row || !inLive.contains(row)) return;
+      if (t.closest(".activity-detail-toggle") || t.closest(".activity-meta")) return;
       const btn = row.querySelector(".activity-detail-toggle");
       if (btn) btn.click();
-    });
+    },
+    false
+  );
+}
+
+function snapshotRefinerCompareDetailsOpen(root) {
+  const m = new Map();
+  if (!root || !root.querySelectorAll) return m;
+  root.querySelectorAll("details.activity-refiner-compare-details[open]").forEach((det) => {
+    const row = det.closest(".activity-row[data-activity-row-key]");
+    const k = row && row.getAttribute("data-activity-row-key");
+    if (k) m.set(k, true);
+  });
+  return m;
+}
+
+function restoreRefinerCompareDetailsOpen(root, openKeys) {
+  if (!root || !openKeys || openKeys.size === 0) return;
+  openKeys.forEach((_v, k) => {
+    try {
+      const esc =
+        typeof CSS !== "undefined" && typeof CSS.escape === "function"
+          ? CSS.escape(k)
+          : String(k).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+      const row = root.querySelector(`[data-activity-row-key="${esc}"]`);
+      if (!row) return;
+      const det = row.querySelector("details.activity-refiner-compare-details");
+      if (det) det.open = true;
+    } catch (_e) {
+      /* ignore */
+    }
   });
 }
 
@@ -269,19 +317,30 @@ function applyActivityPillFilter(filter) {
   });
 }
 
-function initActivityFilterPills() {
-  document.querySelectorAll("[data-pill-filter]").forEach((pill) => {
-    pill.addEventListener("click", () => {
-      const filter = pill.getAttribute("data-pill-filter") || "all";
-      applyActivityPillFilter(filter);
-    });
-  });
+function applyActivityPillFilterFromUrl() {
   const sp = new URLSearchParams(window.location.search);
   const raw = (sp.get("app") || "").trim().toLowerCase();
   let filterKey = null;
   if (raw === "refiner") filterKey = "refiner";
   else if (raw === "trimmer") filterKey = "trimmer";
   if (filterKey) applyActivityPillFilter(filterKey);
+}
+
+function initActivityFilterPills() {
+  const hub = document.getElementById("activity-feed-pills");
+  if (!hub) return;
+  if (hub.dataset.fetcherPillDelegation === "1") {
+    applyActivityPillFilterFromUrl();
+    return;
+  }
+  hub.dataset.fetcherPillDelegation = "1";
+  hub.addEventListener("click", (ev) => {
+    const pill = ev.target.closest("[data-pill-filter]");
+    if (!pill || !hub.contains(pill)) return;
+    const filter = pill.getAttribute("data-pill-filter") || "all";
+    applyActivityPillFilter(filter);
+  });
+  applyActivityPillFilterFromUrl();
 }
 
 function initSettingsPageCollapses() {
@@ -846,45 +905,55 @@ function startLiveTilePolling() {
     const tasks = [];
     if (isDashboard) {
       tasks.push(
-        replaceLiveRegionFromUrl(
-          "#dashboard-activity-live-root",
-          "#dashboard-activity-live-root",
-          "/",
-          () => {
-            const dashRoot = document.querySelector("#dashboard-activity-live-root");
-            initActivityDetailExpand();
-            polishActivityRowsAfterLiveSwap(dashRoot, dashPrevKeys);
-            applyRefinerOutcomePolish(dashPrevRefiner, dashRoot);
-            refreshActivityRelativeTimes(dashRoot);
-            if (dashRoot && dashRoot.querySelector("[data-refiner-live='1']")) pollWantSoon = true;
-          },
-          (el) => {
-            dashPrevKeys = snapshotActivityRowKeys(el);
-            dashPrevRefiner = snapshotRefinerRows(el);
-          }
-        )
+        (() => {
+          let capturedRefinerCompareOpen = null;
+          return replaceLiveRegionFromUrl(
+            "#dashboard-activity-live-root",
+            "#dashboard-activity-live-root",
+            "/",
+            () => {
+              const dashRoot = document.querySelector("#dashboard-activity-live-root");
+              restoreRefinerCompareDetailsOpen(dashRoot, capturedRefinerCompareOpen);
+              capturedRefinerCompareOpen = null;
+              polishActivityRowsAfterLiveSwap(dashRoot, dashPrevKeys);
+              applyRefinerOutcomePolish(dashPrevRefiner, dashRoot);
+              refreshActivityRelativeTimes(dashRoot);
+              if (dashRoot && dashRoot.querySelector("[data-refiner-live='1']")) pollWantSoon = true;
+            },
+            (el) => {
+              capturedRefinerCompareOpen = snapshotRefinerCompareDetailsOpen(el);
+              dashPrevKeys = snapshotActivityRowKeys(el);
+              dashPrevRefiner = snapshotRefinerRows(el);
+            }
+          );
+        })()
       );
     }
     if (isActivityPage) {
       tasks.push(
-        replaceLiveRegionFromUrl(
-          "#activity-live-root",
-          "#activity-live-root",
-          "/activity",
-          () => {
-            const actRoot = document.querySelector("#activity-live-root");
-            initActivityFilterPills();
-            initActivityDetailExpand();
-            polishActivityRowsAfterLiveSwap(actRoot, actPrevKeys);
-            applyRefinerOutcomePolish(actPrevRefiner, actRoot);
-            refreshActivityRelativeTimes(actRoot);
-            if (actRoot && actRoot.querySelector("[data-refiner-live='1']")) pollWantSoon = true;
-          },
-          (el) => {
-            actPrevKeys = snapshotActivityRowKeys(el);
-            actPrevRefiner = snapshotRefinerRows(el);
-          }
-        )
+        (() => {
+          let capturedRefinerCompareOpen = null;
+          return replaceLiveRegionFromUrl(
+            "#activity-live-root",
+            "#activity-live-root",
+            "/activity",
+            () => {
+              const actRoot = document.querySelector("#activity-live-root");
+              restoreRefinerCompareDetailsOpen(actRoot, capturedRefinerCompareOpen);
+              capturedRefinerCompareOpen = null;
+              initActivityFilterPills();
+              polishActivityRowsAfterLiveSwap(actRoot, actPrevKeys);
+              applyRefinerOutcomePolish(actPrevRefiner, actRoot);
+              refreshActivityRelativeTimes(actRoot);
+              if (actRoot && actRoot.querySelector("[data-refiner-live='1']")) pollWantSoon = true;
+            },
+            (el) => {
+              capturedRefinerCompareOpen = snapshotRefinerCompareDetailsOpen(el);
+              actPrevKeys = snapshotActivityRowKeys(el);
+              actPrevRefiner = snapshotRefinerRows(el);
+            }
+          );
+        })()
       );
     }
     if (isLogsPage) {
@@ -2099,7 +2168,7 @@ window.addEventListener("DOMContentLoaded", () => {
   bindRevealButtons();
   bindDashboardDismissibles();
   initActivityFilterPills();
-  initActivityDetailExpand();
+  installActivityFeedClickDelegationOnce();
   refreshActivityLucideIcons(document.body);
   initSettingsTabs();
   initTrimmerSettingsSectionTabs();

@@ -11,7 +11,7 @@
         {% set _rows = e.refiner_compare_rows if e.refiner_compare_rows is defined else [] %}
         {% set _bullets = e.refiner_summary_bullets if e.refiner_summary_bullets is defined else [] %}
         {% set _notes = e.refiner_technical_notes if e.refiner_technical_notes is defined else [] %}
-        <div class="activity-row activity-row--refiner activity-row--outcome-{{ _outcome }}{% if _am == 'preview' %} activity-row--refiner-preview{% endif %}{% if e.refiner_status == 'processing' %} activity-row--refiner-processing{% endif %}" data-activity-app="refiner" data-activity-kind="{{ e.kind }}" data-activity-row-key="refiner-{{ e.id }}" data-refiner-outcome="{{ e.refiner_status }}" data-activity-outcome="{{ _outcome }}" data-refiner-apply-mode="{{ _am }}" {% if e.refiner_is_dry_run is defined and e.refiner_is_dry_run %}data-refiner-dry-run="1"{% endif %} {% if e.refiner_status == 'processing' %}data-refiner-live="1"{% endif %}>
+        <div class="activity-row activity-row--refiner activity-row--outcome-{{ _outcome }}{% if _am == 'preview' %} activity-row--refiner-preview{% endif %}{% if e.refiner_status == 'processing' %} activity-row--refiner-processing{% endif %}{% if e.refiner_status == 'queued' %} activity-row--refiner-queued{% endif %}" data-activity-app="refiner" data-activity-kind="{{ e.kind }}" data-activity-row-key="refiner-{{ e.id }}" data-refiner-outcome="{{ e.refiner_status }}" data-activity-outcome="{{ _outcome }}" data-refiner-apply-mode="{{ _am }}" {% if e.refiner_is_dry_run is defined and e.refiner_is_dry_run %}data-refiner-dry-run="1"{% endif %} {% if e.refiner_status == 'processing' %}data-refiner-live="1"{% endif %} {% if e.refiner_status == 'queued' %}data-refiner-queued="1"{% endif %}>
           <div class="activity-icon icon-refiner" aria-hidden="true"><i data-lucide="sliders-horizontal"></i></div>
           <div class="activity-body activity-body--refiner-spec">
             <div class="activity-refiner-media-title">{{ _mt }}</div>
@@ -22,6 +22,8 @@
               <div class="activity-refiner-status-icon" aria-hidden="true">
                 {% if e.refiner_status == 'processing' %}
                 <i data-lucide="loader" class="activity-refiner-status-svg activity-refiner-status-svg--spin"></i>
+                {% elif e.refiner_status == 'queued' %}
+                <i data-lucide="clock" class="activity-refiner-status-svg activity-refiner-status-svg--queued"></i>
                 {% elif e.refiner_status == 'success' %}
                 <i data-lucide="check" class="activity-refiner-status-svg activity-refiner-status-svg--ok"></i>
                 {% elif e.refiner_status == 'skipped' %}
@@ -54,20 +56,17 @@
             {% if _show_cmp and _rows | length > 0 %}
             <details class="activity-refiner-compare-details">
               <summary class="activity-refiner-compare-summary">Before / after detail</summary>
-              <div class="activity-refiner-compare activity-refiner-compare--nested" role="group" aria-label="Before and after">
-                <div class="activity-refiner-compare-head">
-                  <span class="activity-refiner-compare-h activity-refiner-compare-h--before">Before</span>
-                  <span class="activity-refiner-compare-h activity-refiner-compare-h--after">After</span>
+              <div class="activity-refiner-compare-panel" role="group" aria-label="Before and after comparison">
+                <div class="activity-refiner-compare-grid">
+                  <div class="activity-refiner-compare-gcell activity-refiner-compare-gcell--corner" aria-hidden="true"></div>
+                  <div class="activity-refiner-compare-gcell activity-refiner-compare-colhead activity-refiner-compare-colhead--before">Before</div>
+                  <div class="activity-refiner-compare-gcell activity-refiner-compare-colhead activity-refiner-compare-colhead--after">After</div>
+                  {% for row in _rows %}
+                  <div class="activity-refiner-compare-gcell activity-refiner-compare-field">{{ row.label }}</div>
+                  <div class="activity-refiner-compare-gcell activity-refiner-compare-val activity-refiner-compare-val--before">{{ row.before }}</div>
+                  <div class="activity-refiner-compare-gcell activity-refiner-compare-val activity-refiner-compare-val--after">{{ row.after }}</div>
+                  {% endfor %}
                 </div>
-                {% for row in _rows %}
-                <div class="activity-refiner-compare-row">
-                  <div class="activity-refiner-compare-label">{{ row.label }}</div>
-                  <div class="activity-refiner-compare-cells">
-                    <div class="activity-refiner-compare-cell activity-refiner-compare-cell--before">{{ row.before }}</div>
-                    <div class="activity-refiner-compare-cell activity-refiner-compare-cell--after">{{ row.after }}</div>
-                  </div>
-                </div>
-                {% endfor %}
               </div>
             </details>
             {% endif %}

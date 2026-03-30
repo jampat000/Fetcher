@@ -112,6 +112,30 @@ def test_refiner_activity_display_row_processing_state() -> None:
     assert row["refiner_summary_bullets"]
 
 
+def test_refiner_activity_display_row_queued_state() -> None:
+    """Queued rows show FIFO backlog; no before/after affordance until the file is active."""
+    fn = "waiting.mkv"
+    prov = provisional_media_title_before_probe(fn)
+    r = RefinerActivity(
+        file_name=fn,
+        media_title=prov,
+        status="queued",
+        size_before_bytes=0,
+        size_after_bytes=0,
+        audio_tracks_before=0,
+        audio_tracks_after=0,
+        subtitle_tracks_before=0,
+        subtitle_tracks_after=0,
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+        activity_context="",
+    )
+    row = refiner_activity_display_row(r, "UTC", datetime(2026, 1, 1, 12, 0, 6))
+    assert row["refiner_outcome_label"] == "Queued"
+    assert row["refiner_show_comparison"] is False
+    assert row["refiner_compare_rows"] == []
+    assert row["activity_outcome"] == "queued"
+
+
 def test_refiner_processing_empty_orm_still_resolves_display_title() -> None:
     """Legacy processing rows with empty media_title still get filename-based title (never blank)."""
     r = RefinerActivity(

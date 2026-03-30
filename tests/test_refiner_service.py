@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -497,6 +498,26 @@ def test_reconcile_before_pass_closes_all_processing_rows() -> None:
     asyncio.run(_go())
 
 
+def test_reconcile_before_pass_closes_queued_rows() -> None:
+    """Queued rows from an interrupted pass are closed like processing rows."""
+
+    async def _go() -> None:
+        async with SessionLocal() as s:
+            rq = RefinerActivity(file_name="q.mkv", status="queued")
+            s.add(rq)
+            await s.commit()
+            rid = rq.id
+        await _reconcile_interrupted_refiner_processing_rows_before_pass()
+        async with SessionLocal() as s:
+            row = (await s.execute(select(RefinerActivity).where(RefinerActivity.id == rid))).scalars().first()
+            assert row is not None
+            assert row.status == "failed"
+            await s.execute(delete(RefinerActivity).where(RefinerActivity.id == rid))
+            await s.commit()
+
+    asyncio.run(_go())
+
+
 def test_worker_boot_reconcile_closes_processing_rows() -> None:
     async def _go() -> None:
         async with SessionLocal() as s:
@@ -546,14 +567,18 @@ def test_source_missing_skips_as_failed(monkeypatch: pytest.MonkeyPatch, tmp_pat
 def test_refiner_pass_calls_insert_then_update_per_file(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     calls: list[tuple[str, Any]] = []
 
-    async def _fake_insert(name: str) -> int:
-        calls.append(("insert", name))
+    async def _fake_insert(name: str, *, initial_status: str) -> int:
+        calls.append(("insert", name, initial_status))
         return 901
+
+    async def _fake_status(rid: int, status: str) -> None:
+        calls.append(("status", rid, status))
 
     async def _fake_update(rid: int, meta: dict) -> None:
         calls.append(("update", rid, meta.get("status")))
 
-    monkeypatch.setattr("app.refiner_service._insert_refiner_processing_row", _fake_insert)
+    monkeypatch.setattr("app.refiner_service._insert_refiner_pass_job_row", _fake_insert)
+    monkeypatch.setattr("app.refiner_service._set_refiner_pass_job_status", _fake_status)
     monkeypatch.setattr("app.refiner_service._update_refiner_activity_row", _fake_update)
     monkeypatch.setattr("app.refiner_service.remux_to_temp_file", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError()))
     monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_multi_audio())
@@ -575,8 +600,56 @@ def test_refiner_pass_calls_insert_then_update_per_file(monkeypatch: pytest.Monk
             await run_refiner_pass(session, trigger="scheduled")
 
     asyncio.run(_go())
-    assert ("insert", "m.mkv") in calls
+    assert ("insert", "m.mkv", "queued") in calls
+    assert ("status", 901, "processing") in calls
     assert ("update", 901, "skipped") in calls
+
+
+def test_refiner_pass_processes_files_strict_fifo_order(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """Second file is not processed until the first sync handler returns (serial pipeline)."""
+    order: list[str] = []
+
+    def _fake_sync(path, *_args, **_kwargs):
+        order.append(path.name)
+        return (
+            "dry_run",
+            {
+                "file_name": path.name,
+                "media_title": path.name,
+                "status": "skipped",
+                "size_before_bytes": 1,
+                "size_after_bytes": 1,
+                "audio_tracks_before": 1,
+                "audio_tracks_after": 1,
+                "subtitle_tracks_before": 0,
+                "subtitle_tracks_after": 0,
+                "processing_time_ms": 1,
+                "activity_context": json.dumps({"v": 1, "dry_run": True}),
+            },
+        )
+
+    monkeypatch.setattr("app.refiner_service._process_one_refiner_file_sync", _fake_sync)
+    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        (watched / "b.mkv").write_bytes(b"x")
+        (watched / "a.mkv").write_bytes(b"y")
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = True
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            await run_refiner_pass(session, trigger="scheduled")
+
+    asyncio.run(_go())
+    assert order == ["a.mkv", "b.mkv"]
 
 
 def test_refiner_pass_persists_job_run_log_with_failure_hints(

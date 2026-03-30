@@ -120,7 +120,12 @@ def test_refiner_card_shows_before_after_when_comparison_enabled() -> None:
     )
     html = _render_refiner_card(r)
     assert html.find("activity-refiner-summary-list") < html.find("activity-refiner-compare-details")
-    assert "activity-refiner-compare" in html
+    assert "activity-refiner-compare-panel" in html
+    assert "activity-refiner-compare-grid" in html
+    pos_b = html.find("activity-refiner-compare-colhead--before")
+    pos_a = html.find("activity-refiner-compare-colhead--after")
+    assert pos_b != -1 and pos_a != -1 and pos_b < pos_a
+    assert "Before" in html and "After" in html
     assert "Audio" in html
     assert "Subtitles" in html
     assert "File size" in html
@@ -176,6 +181,31 @@ def test_refiner_card_dry_run_projected_changes_not_no_changes_required() -> Non
     assert "No changes required" not in html
     assert "activity-refiner-compare" in html
     assert "Before" in html and "After" in html
+
+
+def test_refiner_card_hides_compare_toggle_when_no_rows() -> None:
+    """No detail affordance when there is nothing to compare (spec: no empty toggle)."""
+    r = RefinerActivity(
+        file_name="noop.mkv",
+        status="skipped",
+        size_before_bytes=100,
+        size_after_bytes=100,
+        audio_tracks_before=1,
+        audio_tracks_after=1,
+        subtitle_tracks_before=0,
+        subtitle_tracks_after=0,
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+        activity_context=_ctx(
+            audio_before="A",
+            audio_after="A",
+            subs_before="",
+            subs_after="",
+        ),
+    )
+    row = refiner_activity_display_row(r, "UTC", datetime(2026, 1, 1, 12, 0, 1))
+    assert row["refiner_show_comparison"] is False
+    html = _render_refiner_card(r)
+    assert "activity-refiner-compare-details" not in html
 
 
 def test_refiner_row_dict_true_no_change_consistent_no_comparison() -> None:

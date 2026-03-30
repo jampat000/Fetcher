@@ -227,7 +227,7 @@ def test_activity_js_supports_app_query_deep_link() -> None:
     from pathlib import Path
 
     js = Path("app/static/app.js").read_text(encoding="utf-8")
-    i0 = js.index("function initActivityFilterPills")
+    i0 = js.index("function applyActivityPillFilterFromUrl")
     i1 = js.index("function initSettingsPageCollapses", i0)
     block = js[i0:i1]
     assert "applyActivityPillFilter" in block
@@ -235,6 +235,7 @@ def test_activity_js_supports_app_query_deep_link() -> None:
     assert 'else if (raw === "trimmer")' in block
     assert 'filterKey = "trimmer"' in block
     assert 'raw === "emby"' not in block
+    assert "activity-feed-pills" in block
 
 
 def test_activity_page_accepts_app_query(monkeypatch: pytest.MonkeyPatch) -> None:

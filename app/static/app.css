@@ -1544,6 +1544,19 @@ h2.gc-title,
     transparent 100%
   );
 }
+.activity-row--refiner-queued {
+  border-left: 3px solid rgba(148, 163, 184, 0.45);
+  padding-left: calc(var(--space-3) - 3px);
+  background: linear-gradient(
+    90deg,
+    rgba(148, 163, 184, 0.07) 0%,
+    rgba(148, 163, 184, 0.02) 55%,
+    transparent 100%
+  );
+}
+.activity-row--outcome-queued .activity-refiner-outcome-label {
+  color: var(--text2);
+}
 .activity-refiner-mark--progress {
   color: var(--accent, #d97706);
   animation: refiner-pulse 1.2s ease-in-out infinite;
@@ -1598,6 +1611,7 @@ h2.gc-title,
   display: flex;
   flex-direction: column;
   gap: 12px;
+  pointer-events: auto;
 }
 .activity-row--refiner-preview {
   border-color: rgba(180, 160, 90, 0.22);
@@ -1662,6 +1676,9 @@ h2.gc-title,
 .activity-refiner-compare-details {
   margin-top: 2px;
   border-radius: var(--r-sm);
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
 }
 .activity-refiner-compare-summary {
   cursor: pointer;
@@ -1671,6 +1688,9 @@ h2.gc-title,
   color: var(--text2);
   padding: 6px 0;
   user-select: none;
+  pointer-events: auto;
+  position: relative;
+  z-index: 1;
 }
 .activity-refiner-compare-summary::-webkit-details-marker {
   display: none;
@@ -1691,72 +1711,66 @@ h2.gc-title,
   transform: rotate(45deg);
   vertical-align: 0.05em;
 }
-.activity-refiner-compare {
+/* Two-column comparison: field | Before | After (compact grid, not a heavy table). */
+.activity-refiner-compare-panel {
+  margin-top: 6px;
+  padding: 10px 12px;
   border-radius: var(--r-sm);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.2);
-  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.22);
+  pointer-events: auto;
 }
-.activity-refiner-compare--nested {
-  margin-top: 4px;
-  padding: 8px 10px;
-  border-color: rgba(255, 255, 255, 0.05);
-  background: rgba(0, 0, 0, 0.12);
-}
-.activity-refiner-compare--nested .activity-refiner-compare-cell {
-  font-size: 12px;
-  color: var(--text2);
-}
-.activity-refiner-compare--nested .activity-refiner-compare-label {
-  font-size: 11px;
-  color: var(--text2);
-  opacity: 0.92;
-}
-.activity-refiner-compare-head {
+.activity-refiner-compare-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-bottom: 8px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-}
-.activity-refiner-compare-h {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text2);
-}
-.activity-refiner-compare-h--after {
-  text-align: right;
-}
-.activity-refiner-compare-row {
-  margin-top: 8px;
-}
-.activity-refiner-compare-row:first-of-type {
-  margin-top: 0;
-}
-.activity-refiner-compare-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text2);
-  margin-bottom: 4px;
-}
-.activity-refiner-compare-cells {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  grid-template-columns: minmax(5.5rem, auto) minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 12px;
+  row-gap: 8px;
   align-items: start;
 }
-.activity-refiner-compare-cell {
+.activity-refiner-compare-gcell--corner {
+  min-height: 0;
+}
+.activity-refiner-compare-colhead {
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text2);
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.activity-refiner-compare-colhead--after {
+  text-align: right;
+}
+.activity-refiner-compare-field {
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--text2);
+  padding-top: 2px;
+  line-height: 1.4;
+}
+.activity-refiner-compare-val {
   font-size: 12px;
   line-height: 1.45;
   color: var(--text2);
   word-break: break-word;
+  padding-top: 1px;
 }
-.activity-refiner-compare-cell--after {
+.activity-refiner-compare-val--before {
+  border-left: 2px solid rgba(148, 163, 184, 0.25);
+  padding-left: 8px;
+  margin-left: 2px;
+}
+.activity-refiner-compare-val--after {
   text-align: right;
   color: var(--text);
+  border-right: 2px solid rgba(96, 165, 250, 0.28);
+  padding-right: 8px;
+  margin-right: 2px;
+}
+.activity-refiner-status-svg--queued {
+  color: var(--text2);
+  opacity: 0.9;
 }
 .activity-refiner-summary-list {
   margin: 4px 0 0;

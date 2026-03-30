@@ -187,12 +187,20 @@ def build_refiner_activity_row_dict(r: RefinerActivity, tz: str, now: datetime) 
     tone = "fail"
     show_comparison = False
 
-    if st == "processing":
+    if st == "queued":
+        outcome_label = "Queued"
+        outcome_sub = "Waiting — Refiner runs one file at a time (FIFO)."
+        outcome_ui = "queued"
+        tone = "queued"
+        summary_bullets = ["This file will start after earlier items in this pass finish."]
+    elif st == "processing":
         outcome_label = "Processing"
-        outcome_sub = "Refining in progress…"
+        outcome_sub = "Inspecting, remuxing or copying, then finalizing to the output folder…"
         outcome_ui = "processing"
         tone = "progress"
-        summary_bullets = ["This file is being remuxed; refresh to see the final result."]
+        summary_bullets = [
+            "This file is active — remux, move, delete, and folder cleanup are part of the same job."
+        ]
     elif st == "success":
         outcome_label = "Completed"
         apply_mode = "applied"

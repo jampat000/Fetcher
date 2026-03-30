@@ -74,6 +74,14 @@ def test_healthz_json(monkeypatch: pytest.MonkeyPatch) -> None:
     assert data["app"] == "Fetcher"
 
 
+def test_activity_page_has_stable_pill_hub_for_event_delegation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``#activity-feed-pills`` stays outside the live-swapped region so filter clicks are not duplicated."""
+    with _client(monkeypatch) as client:
+        r = client.get("/activity")
+    assert r.status_code == 200
+    assert 'id="activity-feed-pills"' in r.text
+
+
 def test_dashboard_renders_main_sections(monkeypatch: pytest.MonkeyPatch) -> None:
     with _client(monkeypatch) as client:
         r = client.get("/")

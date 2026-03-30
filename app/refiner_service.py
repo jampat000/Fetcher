@@ -46,6 +46,11 @@ logger = logging.getLogger(__name__)
 
 _refiner_lock = asyncio.Lock()
 
+# One in-flight pipeline per pass (FIFO). The inner loop awaits ``asyncio.to_thread(_process_one_refiner_file_sync)``
+# for the full sync function — including finalize, source delete, and folder prune — before starting the next file.
+# ``_refiner_lock`` serializes overlapping scheduler ticks so two passes never run concurrently.
+REFINER_PASS_MAX_CONCURRENT_FILES = 1
+
 
 def _activity_snapshot(
     *,
@@ -346,8 +351,12 @@ def _no_change_explanation_bullets(plan: Any, *, sbb_len: int, sba_len: int) -> 
     return bullets[:6]
 
 
-async def _insert_refiner_processing_row(file_name: str) -> int | None:
-    """Create a single activity row in ``processing`` state (updated when the file finishes)."""
+async def _insert_refiner_pass_job_row(
+    file_name: str, *, initial_status: Literal["queued", "processing"]
+) -> int | None:
+    """Insert one ``refiner_activity`` row. Passes use ``queued`` first; ``processing`` is for narrow call sites."""
+    if initial_status not in ("queued", "processing"):
+        initial_status = "queued"
     try:
         fn = str(file_name or "")[:512]
         prov = provisional_media_title_before_probe(fn)[:512]
@@ -355,7 +364,7 @@ async def _insert_refiner_processing_row(file_name: str) -> int | None:
             row = RefinerActivity(
                 file_name=fn,
                 media_title=prov,
-                status="processing",
+                status=initial_status,
                 size_before_bytes=0,
                 size_after_bytes=0,
                 audio_tracks_before=0,
@@ -370,12 +379,35 @@ async def _insert_refiner_processing_row(file_name: str) -> int | None:
             await session.refresh(row)
             return int(row.id)
     except Exception:
-        logger.warning("Refiner: could not insert refiner_activity processing row", exc_info=True)
+        logger.warning("Refiner: could not insert refiner_activity job row", exc_info=True)
         return None
 
 
+async def _insert_refiner_processing_row(file_name: str) -> int | None:
+    """Backward-compatible name: new passes insert ``queued`` rows first."""
+    return await _insert_refiner_pass_job_row(file_name, initial_status="queued")
+
+
+async def _set_refiner_pass_job_status(row_id: int | None, status: Literal["queued", "processing"]) -> None:
+    """Move a pass job row between queued and active processing (no-op if ``row_id`` is None)."""
+    if row_id is None:
+        return
+    if status not in ("queued", "processing"):
+        return
+    try:
+        async with SessionLocal() as session:
+            await session.execute(
+                update(RefinerActivity)
+                .where(RefinerActivity.id == int(row_id))
+                .values(status=status)
+            )
+            await session.commit()
+    except Exception:
+        logger.warning("Refiner: could not set refiner_activity id=%s to %s", row_id, status, exc_info=True)
+
+
 async def _update_refiner_activity_row(row_id: int, meta: dict[str, Any]) -> None:
-    """Finalize a row created by ``_insert_refiner_processing_row`` (same logical job, no second row)."""
+    """Write terminal fields for a row created by ``_insert_refiner_pass_job_row`` (same job, no second row)."""
     try:
         fn = str(meta.get("file_name") or "")[:512]
         mt = str(meta.get("media_title") or "")[:512]
@@ -439,12 +471,12 @@ async def _persist_refiner_activity_safe(meta: dict[str, Any]) -> None:
 
 
 async def _close_all_processing_refiner_activity_rows(*, context: str) -> None:
-    """Set every ``processing`` row to ``failed`` (no new DB columns; see callers for semantics)."""
+    """Set every in-flight pass row (``processing`` or ``queued``) to ``failed``."""
     try:
         async with SessionLocal() as session:
             res = await session.execute(
                 update(RefinerActivity)
-                .where(RefinerActivity.status == "processing")
+                .where(RefinerActivity.status.in_(("processing", "queued")))
                 .values(status="failed", processing_time_ms=None)
             )
             await session.commit()
@@ -469,11 +501,9 @@ async def reconcile_refiner_processing_rows_on_worker_boot() -> None:
 
 async def _reconcile_interrupted_refiner_processing_rows_before_pass() -> None:
     """
-    Start of each Refiner pass, under ``_refiner_lock``, **before** inserting new processing rows:
-
-    No row can be “current pass” yet, so anything still Processing is leftover from an interrupted
-    earlier pass. Long remuxes in the pass we are about to start are not affected (no rows exist
-    for them until we insert below).
+    Start of each pass (under ``_refiner_lock``), before enqueueing new rows: mark any ``processing``
+    or ``queued`` rows as ``failed``. Those states only belong to an interrupted prior pass — nothing
+    in the new pass is enqueued yet.
     """
     await _close_all_processing_refiner_activity_rows(
         context="new pass — closing rows left processing before this run inserts new ones",
@@ -511,7 +541,7 @@ def _process_one_refiner_file_sync(
     output_root: Path,
     work_dir: Path,
 ) -> tuple[str, dict[str, Any]]:
-    """Per file: ffprobe analysis → rule planning from probe data → remux/validate/move (source delete only after success)."""
+    """One file end-to-end in the calling thread: probe → plan → remux or copy → finalize → delete/prune when applicable."""
     t0 = time.perf_counter()
     fname = path.name
     _provisional_mt = provisional_media_title_before_probe(fname)[:512]
@@ -959,7 +989,7 @@ async def run_scheduled_refiner_pass(session: AsyncSession) -> dict[str, Any]:
 async def run_refiner_pass(
     session: AsyncSession, *, trigger: Literal["scheduled"] = "scheduled"
 ) -> dict[str, Any]:
-    """Run Refiner over configured paths. Serialised with an internal lock."""
+    """Run Refiner over the watch folder. Entire pass holds ``_refiner_lock``; files run strictly in order."""
     async with _refiner_lock:
         t_start = utc_now_naive()
         row = (await session.execute(select(AppSettings).order_by(AppSettings.id.asc()).limit(1))).scalars().first()
@@ -1043,9 +1073,13 @@ async def run_refiner_pass(
         ok_c = dry_c = err_c = 0
         noop_c = 0  # log field unchanged=0 (no in-place “skipped” live passes without pipeline finalize)
         failure_notes: list[str] = []
+        job_rows: list[tuple[Path, int | None]] = []
         for fp in files:
+            act_id = await _insert_refiner_pass_job_row(fp.name, initial_status="queued")
+            job_rows.append((fp, act_id))
+        for fp, act_id in job_rows:
             t_job = time.perf_counter()
-            act_id = await _insert_refiner_processing_row(fp.name)
+            await _set_refiner_pass_job_status(act_id, "processing")
             status: str = "error"
             meta: dict[str, Any] | None = None
             try:
