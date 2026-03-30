@@ -25,6 +25,8 @@ from app.resolvers.api_keys import resolve_radarr_api_key, resolve_sonarr_api_ke
 from app.schemas import ArrSearchNowIn, SetupConnTestIn, SetupEmbyTestIn
 from app.service_logic import (
     ArrManualScope,
+    _arr_search_no_dispatch_messages,
+    _arr_search_partial_dispatch_extra,
     _build_run_context,
     _paginate_wanted_for_search,
     _radarr_select_monitored_missing_with_cooldown,
@@ -113,12 +115,13 @@ async def trigger_manual_arr_search_now(scope: str, session: AsyncSession) -> No
         client = ArrClient(ArrConfig(settings.sonarr_url, son_key))
         ids: list[int] = []
         selected_records: list[dict] = []
+        pool_total = 0
         try:
             await client.health()
             ctx = _build_run_context(settings, arr_manual_scope=manual_scope)
             sonarr_limit = max(1, int((settings.sonarr_max_items_per_run or 0) or 50))
             if scope == "sonarr_missing":
-                ids, selected_records, _pool = await _sonarr_select_monitored_missing_with_cooldown(
+                ids, selected_records, pool_total = await _sonarr_select_monitored_missing_with_cooldown(
                     client,
                     session,
                     limit=sonarr_limit,
@@ -126,7 +129,7 @@ async def trigger_manual_arr_search_now(scope: str, session: AsyncSession) -> No
                     now=ctx.now,
                 )
             else:
-                ids, selected_records, _ = await _paginate_wanted_for_search(
+                ids, selected_records, pool_total = await _paginate_wanted_for_search(
                     client,
                     session,
                     kind="cutoff",
@@ -145,13 +148,40 @@ async def trigger_manual_arr_search_now(scope: str, session: AsyncSession) -> No
                     await trigger_sonarr_cutoff_search(client, episode_ids=ids)
         finally:
             await client.aclose()
+        if ids:
+            base_detail = _manual_detail_text(scope, selected_records) or (
+                f"Manual {kind} search: command triggered immediately."
+            )
+            mode_partial = "missing" if scope == "sonarr_missing" else "upgrade"
+            partial = _arr_search_partial_dispatch_extra(
+                app_label="Sonarr",
+                mode=mode_partial,
+                started=len(ids),
+                pool_total=pool_total,
+                per_run_limit=sonarr_limit,
+                item_label="episode(s)",
+                manual_context=True,
+            )
+            detail = f"{partial[0]}\n\n{base_detail}" if partial else base_detail
+        else:
+            mode = "missing" if scope == "sonarr_missing" else "upgrade"
+            reason = "retry_delay_all" if pool_total > 0 else "empty_pool"
+            detail, _ = _arr_search_no_dispatch_messages(
+                app_label="Sonarr",
+                mode=mode,
+                item_singular="episode",
+                item_plural="episodes",
+                pool_total=int(pool_total or 0),
+                per_run_limit=sonarr_limit,
+                reason=reason,
+                manual_context=True,
+            )
         session.add(
             ActivityLog(
                 app="sonarr",
                 kind=kind,
                 count=len(ids),
-                detail=_manual_detail_text(scope, selected_records)
-                or f"Manual {kind} search: command triggered immediately.",
+                detail=detail,
             )
         )
         await session.commit()
@@ -163,12 +193,13 @@ async def trigger_manual_arr_search_now(scope: str, session: AsyncSession) -> No
     client = ArrClient(ArrConfig(settings.radarr_url, rad_key))
     ids_r: list[int] = []
     selected_records_r: list[dict] = []
+    pool_total_r = 0
     try:
         await client.health()
         ctx = _build_run_context(settings, arr_manual_scope=manual_scope)
         radarr_limit = max(1, int((settings.radarr_max_items_per_run or 0) or 50))
         if scope == "radarr_missing":
-            ids_r, selected_records_r, _pool = await _radarr_select_monitored_missing_with_cooldown(
+            ids_r, selected_records_r, pool_total_r = await _radarr_select_monitored_missing_with_cooldown(
                 client,
                 session,
                 limit=radarr_limit,
@@ -176,7 +207,7 @@ async def trigger_manual_arr_search_now(scope: str, session: AsyncSession) -> No
                 now=ctx.now,
             )
         else:
-            ids_r, selected_records_r, _ = await _paginate_wanted_for_search(
+            ids_r, selected_records_r, pool_total_r = await _paginate_wanted_for_search(
                 client,
                 session,
                 kind="cutoff",
@@ -195,13 +226,40 @@ async def trigger_manual_arr_search_now(scope: str, session: AsyncSession) -> No
                 await trigger_radarr_cutoff_search(client, movie_ids=ids_r)
     finally:
         await client.aclose()
+    if ids_r:
+        base_detail_r = _manual_detail_text(scope, selected_records_r) or (
+            f"Manual {kind} search: command triggered immediately."
+        )
+        mode_partial_r = "missing" if scope == "radarr_missing" else "upgrade"
+        partial_r = _arr_search_partial_dispatch_extra(
+            app_label="Radarr",
+            mode=mode_partial_r,
+            started=len(ids_r),
+            pool_total=pool_total_r,
+            per_run_limit=radarr_limit,
+            item_label="movie(s)",
+            manual_context=True,
+        )
+        detail_r = f"{partial_r[0]}\n\n{base_detail_r}" if partial_r else base_detail_r
+    else:
+        mode_r = "missing" if scope == "radarr_missing" else "upgrade"
+        reason_r = "retry_delay_all" if pool_total_r > 0 else "empty_pool"
+        detail_r, _ = _arr_search_no_dispatch_messages(
+            app_label="Radarr",
+            mode=mode_r,
+            item_singular="movie",
+            item_plural="movies",
+            pool_total=int(pool_total_r or 0),
+            per_run_limit=radarr_limit,
+            reason=reason_r,
+            manual_context=True,
+        )
     session.add(
         ActivityLog(
             app="radarr",
             kind=kind,
             count=len(ids_r),
-            detail=_manual_detail_text(scope, selected_records_r)
-            or f"Manual {kind} search: command triggered immediately.",
+            detail=detail_r,
         )
     )
     await session.commit()

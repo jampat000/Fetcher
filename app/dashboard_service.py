@@ -53,6 +53,7 @@ _JOB_RETRY_HINT_MARKERS = (
     "within retry delay",
     "all items within retry delay",
     "suppressed (retry delay)",
+    "waiting for their retry delay",
 )
 
 

@@ -51,7 +51,10 @@ def test_placeholder_suppressed_when_terminal_same_start_second() -> None:
     final = _row(
         started_at=t.replace(microsecond=500000),
         finished_at=t.replace(microsecond=500000),
-        message="Sonarr: 0 searches — all items within retry delay (candidates=2)",
+        message=(
+            "Sonarr: Missing search — no searches started; "
+            "2 in scope, all still waiting for their retry delay"
+        ),
         ok=True,
     )
     rows = [final, orphan]
@@ -86,7 +89,10 @@ def test_placeholder_suppressed_adjacent_order_slight_timestamp_mismatch() -> No
     final = _row(
         started_at=datetime(2026, 3, 1, 9, 48, 2, 0),
         finished_at=datetime(2026, 3, 1, 9, 48, 2, 0),
-        message="Radarr: 0 searches — all items within retry delay (candidates=1)",
+        message=(
+            "Radarr: Missing search — no searches started; "
+            "1 in scope, all still waiting for their retry delay"
+        ),
         ok=True,
     )
     out = dedupe_job_run_logs_for_display([final, orphan])

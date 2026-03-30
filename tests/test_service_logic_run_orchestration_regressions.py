@@ -194,7 +194,7 @@ def test_run_once_sonarr_no_internal_interval_skip_anymore(monkeypatch: pytest.M
     monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
     result = asyncio.run(_run_once())
     assert result.ok is True
-    assert "Sonarr: 0 searches — no eligible missing items" in result.message
+    assert "Sonarr: Missing search — no searches started (nothing in scope)" in result.message
     assert seen["health"] == 1
     assert asyncio.run(_settings_row()).sonarr_last_run_at == fixed_now
     act = asyncio.run(_latest_activity())
@@ -202,7 +202,7 @@ def test_run_once_sonarr_no_internal_interval_skip_anymore(monkeypatch: pytest.M
     assert act.app == "sonarr"
     assert act.kind == "missing"
     assert act.count == 0
-    assert "0 searches — no eligible missing items" in (act.detail or "")
+    assert "No searches started" in (act.detail or "")
 
 
 def test_scheduled_scoped_run_sonarr_only(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -463,7 +463,7 @@ def test_sonarr_due_outside_window_skips_then_runs_when_window_opens(monkeypatch
     gate["allow"] = True
     res2 = asyncio.run(_run_once_scheduled("sonarr"))
     assert res2.ok is True
-    assert "Sonarr: 0 searches — no eligible missing items" in res2.message
+    assert "Sonarr: Missing search — no searches started (nothing in scope)" in res2.message
     assert seen["health"] == 1
 
 
@@ -558,7 +558,10 @@ def test_run_once_sonarr_suppressed_cooldown_snapshot_and_lifecycle(monkeypatch:
     monkeypatch.setattr("app.service_logic._wanted_queue_total", _wanted_total)
     result = asyncio.run(_run_once())
     assert result.ok is True
-    assert result.message == "Sonarr: 0 searches — all items within retry delay (candidates=4)"
+    assert result.message == (
+        "Sonarr: Missing search — no searches started; "
+        "4 in scope, all still waiting for their retry delay."
+    )
     assert seen["health"] == 1
     assert seen["aclose"] == 1
     snap = asyncio.run(_latest_snapshot())
@@ -573,7 +576,7 @@ def test_run_once_sonarr_suppressed_cooldown_snapshot_and_lifecycle(monkeypatch:
     assert act.app == "sonarr"
     assert act.kind == "missing"
     assert act.count == 0
-    assert "0 searches — all items within retry delay" in (act.detail or "")
+    assert "No searches started" in (act.detail or "") and "retry delay" in (act.detail or "").lower()
     assert asyncio.run(_settings_row()).sonarr_last_run_at == fixed_now
 
 
@@ -702,7 +705,7 @@ def test_run_once_manual_sonarr_missing_no_results_writes_activity(monkeypatch: 
     monkeypatch.setattr("app.service_logic._wanted_queue_total", _wanted_total)
     result = asyncio.run(_run_once("sonarr_missing"))
     assert result.ok is True
-    assert "Sonarr: 0 searches — no eligible missing items" in result.message
+    assert "Sonarr: Missing search (manual) — no searches started (nothing in scope)" in result.message
     act = asyncio.run(_latest_activity())
     assert act is not None
     assert act.app == "sonarr"
@@ -747,7 +750,7 @@ def test_run_once_manual_radarr_missing_no_results_writes_activity(monkeypatch: 
     monkeypatch.setattr("app.service_logic._wanted_queue_total", _wanted_total)
     result = asyncio.run(_run_once("radarr_missing"))
     assert result.ok is True
-    assert "Radarr: 0 searches — no eligible missing items" in result.message
+    assert "Radarr: Missing search (manual) — no searches started (nothing in scope)" in result.message
     act = asyncio.run(_latest_activity())
     assert act is not None
     assert act.app == "radarr"

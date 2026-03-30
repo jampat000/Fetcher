@@ -1120,6 +1120,134 @@ def _sanitize_log_text(text: str | None) -> str:
     return redact_sensitive_text(text)
 
 
+def _arr_search_no_dispatch_messages(
+    *,
+    app_label: str,
+    mode: Literal["missing", "upgrade"],
+    item_singular: str,
+    item_plural: str,
+    pool_total: int,
+    per_run_limit: int,
+    reason: Literal["empty_pool", "retry_delay_all"],
+    manual_context: bool,
+) -> tuple[str, str]:
+    """``ActivityLog.detail`` (multi-line) + single-line ``JobRunLog`` segment when no Arr search starts.
+
+    Human explanation stays in the first lines; compact counters stay under ``Diagnostics (support):``.
+    """
+    lines: list[str] = []
+    lines.append(
+        "No searches started (manual search)." if manual_context else "No searches started."
+    )
+    mode_title = "Missing search" if mode == "missing" else "Upgrade search"
+    manual_tag = " (manual)" if manual_context else ""
+
+    if reason == "empty_pool":
+        if mode == "missing":
+            lines.append(f"{app_label} found no monitored missing {item_plural} to check this run.")
+        else:
+            lines.append(
+                f"No {item_plural} in the cutoff-unmet queue needed an upgrade search this run."
+            )
+        job = f"{app_label}: {mode_title}{manual_tag} — no searches started (nothing in scope)."
+    else:
+        u = item_singular if pool_total == 1 else item_plural
+        if pool_total >= per_run_limit:
+            # Preview shows the first two lines — lead with why none ran, then the per-run cap.
+            lines.append(
+                f"{pool_total} {u} matched the check, but none could be started — "
+                "all are still waiting for their retry delay."
+            )
+            lines.append(f"Up to {per_run_limit} searches are allowed per run.")
+            job = (
+                f"{app_label}: {mode_title}{manual_tag} — no searches started; "
+                f"{pool_total} in scope, all still waiting for their retry delay "
+                f"(up to {per_run_limit} per run)."
+            )
+        else:
+            lines.append(
+                f"Only {pool_total} {u} were available to check this run, "
+                "and all are still waiting for their retry delay."
+            )
+            job = (
+                f"{app_label}: {mode_title}{manual_tag} — no searches started; "
+                f"{pool_total} in scope, all still waiting for their retry delay."
+            )
+
+    lines.append("")
+    lines.append("Diagnostics (support):")
+    if reason == "empty_pool":
+        lines.append(
+            f"  total_in_pool=0 eligible_started_this_run=0 retry_delay_blocked=0 "
+            f"per_run_limit={per_run_limit} mode={mode}"
+        )
+    else:
+        lines.append(
+            f"  total_in_pool={pool_total} eligible_started_this_run=0 "
+            f"retry_delay_blocked={pool_total} per_run_limit={per_run_limit} mode={mode}"
+        )
+
+    return _sanitize_log_text("\n".join(lines)), _sanitize_log_text(job)
+
+
+def _arr_search_partial_dispatch_extra(
+    *,
+    app_label: str,
+    mode: Literal["missing", "upgrade"],
+    started: int,
+    pool_total: int,
+    per_run_limit: int,
+    item_label: str,
+    manual_context: bool,
+) -> tuple[str, str] | None:
+    """Prefix for ``ActivityLog.detail`` + full job segment when some (but not up to limit) searches ran."""
+    if started <= 0 or started >= per_run_limit:
+        return None
+    mode_phrase = "Missing" if mode == "missing" else "Upgrade"
+    first = (
+        f"{mode_phrase} search started for {started} {item_label} this run"
+        f"{' (manual search)' if manual_context else ''}."
+    )
+    if pool_total > started:
+        extra_pool = pool_total - started
+        detail_mid = (
+            f"Up to {per_run_limit} searches are allowed per run. "
+            f"{extra_pool} additional {item_label} in scope were not searched because they are "
+            "still waiting for their retry delay."
+        )
+        if mode == "missing":
+            base_job = f"{app_label}: missing search for {started} {item_label}"
+        else:
+            base_job = f"{app_label}: cutoff-unmet search for {started} {item_label}"
+        job = (
+            f"{base_job}. Up to {per_run_limit} per run — {extra_pool} more {item_label} in scope "
+            "are still waiting for their retry delay."
+        )
+    else:
+        detail_mid = (
+            f"Only {pool_total} {item_label} were in scope this run "
+            f"(below the per-run limit of {per_run_limit})."
+        )
+        if mode == "missing":
+            base_job = f"{app_label}: missing search for {started} {item_label}"
+        else:
+            base_job = f"{app_label}: cutoff-unmet search for {started} {item_label}"
+        job = (
+            f"{base_job}. All {pool_total} in-scope {item_label} were searched "
+            f"(below the per-run limit of {per_run_limit})."
+        )
+
+    detail_lines = [
+        first,
+        detail_mid,
+        "",
+        "Diagnostics (support):",
+        f"  total_in_pool={pool_total} eligible_started_this_run={started} "
+        f"per_run_limit={per_run_limit} mode={mode}",
+    ]
+    return _sanitize_log_text("\n".join(detail_lines)), _sanitize_log_text(job)
+
+
 def _activity_detail_persist_fallback(o: ActivityLog) -> str:
     """Guarantee non-empty ActivityLog.detail for new rows (UI/lists assume readable text)."""
     if (getattr(o, "status", "") or "").strip().lower() == "failed":
@@ -1414,51 +1542,74 @@ async def _execute_sonarr_block(
                     actions.append(f"Sonarr: tag apply warning (fetcher-missing): {format_http_error_detail(e)}")
 
                 await trigger_sonarr_missing_search(sonarr, episode_ids=allowed_ids)
-                actions.append(f"Sonarr: missing search for {len(allowed_ids)} episode(s)")
                 labels = [
                     _sonarr_episode_label_with_fallback(r, sonarr_series_title_map)
                     for r in allowed_records
                 ]
+                extra_miss = _arr_search_partial_dispatch_extra(
+                    app_label="Sonarr",
+                    mode="missing",
+                    started=len(allowed_ids),
+                    pool_total=missing_total,
+                    per_run_limit=sonarr_limit,
+                    item_label="episode(s)",
+                    manual_context=arr_manual_scope == "sonarr_missing",
+                )
+                if extra_miss:
+                    detail_missing = f"{extra_miss[0]}\n\n{_detail_from_labels(labels)}"
+                    actions.append(extra_miss[1])
+                else:
+                    detail_missing = _detail_from_labels(labels)
+                    actions.append(f"Sonarr: missing search for {len(allowed_ids)} episode(s)")
                 session.add(
                     ActivityLog(
                         job_run_id=log.id,
                         app="sonarr",
                         kind="missing",
                         count=len(allowed_ids),
-                        detail=_detail_from_labels(labels),
+                        detail=detail_missing,
                     )
                 )
             elif missing_total > 0:
-                summary = f"Sonarr: 0 searches — all items within retry delay (candidates={missing_total})"
-                actions.append(summary)
-                # Scheduled runs also need a UI explanation (Activity page), not only JobRunLog text.
+                detail_z, job_z = _arr_search_no_dispatch_messages(
+                    app_label="Sonarr",
+                    mode="missing",
+                    item_singular="episode",
+                    item_plural="episodes",
+                    pool_total=missing_total,
+                    per_run_limit=sonarr_limit,
+                    reason="retry_delay_all",
+                    manual_context=arr_manual_scope == "sonarr_missing",
+                )
+                actions.append(job_z)
                 session.add(
                     ActivityLog(
                         job_run_id=log.id,
                         app="sonarr",
                         kind="missing",
                         count=0,
-                        detail=(
-                            f"0 searches — all items within retry delay (candidates={missing_total}, "
-                            f"retry_delay_filtered={missing_total}, cutoff_already_met_filtered=0, "
-                            f"quality_profile_filtered=0, other_constraints_filtered=0)."
-                        ),
+                        detail=detail_z,
                     )
                 )
             else:
-                summary = "Sonarr: 0 searches — no eligible missing items"
-                actions.append(summary)
+                detail_z, job_z = _arr_search_no_dispatch_messages(
+                    app_label="Sonarr",
+                    mode="missing",
+                    item_singular="episode",
+                    item_plural="episodes",
+                    pool_total=0,
+                    per_run_limit=sonarr_limit,
+                    reason="empty_pool",
+                    manual_context=arr_manual_scope == "sonarr_missing",
+                )
+                actions.append(job_z)
                 session.add(
                     ActivityLog(
                         job_run_id=log.id,
                         app="sonarr",
                         kind="missing",
                         count=0,
-                        detail=(
-                            "0 searches — no eligible missing items "
-                            "(candidates=0, retry_delay_filtered=0, cutoff_already_met_filtered=0, "
-                            "quality_profile_filtered=0, other_constraints_filtered=0)."
-                        ),
+                        detail=detail_z,
                     )
                 )
         else:
@@ -1495,44 +1646,76 @@ async def _execute_sonarr_block(
                     actions.append(f"Sonarr: tag apply warning (fetcher-upgrade): {format_http_error_detail(e)}")
 
                 await trigger_sonarr_cutoff_search(sonarr, episode_ids=allowed_ids)
-                actions.append(f"Sonarr: cutoff-unmet search for {len(allowed_ids)} episode(s)")
                 labels = [
                     _sonarr_episode_label_with_fallback(r, sonarr_series_title_map)
                     for r in allowed_records
                 ]
+                extra_up = _arr_search_partial_dispatch_extra(
+                    app_label="Sonarr",
+                    mode="upgrade",
+                    started=len(allowed_ids),
+                    pool_total=cutoff_total,
+                    per_run_limit=sonarr_limit,
+                    item_label="episode(s)",
+                    manual_context=arr_manual_scope == "sonarr_upgrade",
+                )
+                if extra_up:
+                    detail_up = f"{extra_up[0]}\n\n{_detail_from_labels(labels)}"
+                    actions.append(extra_up[1])
+                else:
+                    detail_up = _detail_from_labels(labels)
+                    actions.append(f"Sonarr: cutoff-unmet search for {len(allowed_ids)} episode(s)")
                 session.add(
                     ActivityLog(
                         job_run_id=log.id,
                         app="sonarr",
                         kind="upgrade",
                         count=len(allowed_ids),
-                        detail=_detail_from_labels(labels),
+                        detail=detail_up,
                     )
                 )
             elif cutoff_total > 0:
-                actions.append("Sonarr: cutoff-unmet search suppressed (retry delay)")
-                if arr_manual_scope == "sonarr_upgrade":
-                    session.add(
-                        ActivityLog(
-                            job_run_id=log.id,
-                            app="sonarr",
-                            kind="upgrade",
-                            count=0,
-                            detail="Manual upgrade search: suppressed by retry delay (no search triggered).",
-                        )
+                detail_z, job_z = _arr_search_no_dispatch_messages(
+                    app_label="Sonarr",
+                    mode="upgrade",
+                    item_singular="episode",
+                    item_plural="episodes",
+                    pool_total=cutoff_total,
+                    per_run_limit=sonarr_limit,
+                    reason="retry_delay_all",
+                    manual_context=arr_manual_scope == "sonarr_upgrade",
+                )
+                actions.append(job_z)
+                session.add(
+                    ActivityLog(
+                        job_run_id=log.id,
+                        app="sonarr",
+                        kind="upgrade",
+                        count=0,
+                        detail=detail_z,
                     )
+                )
             else:
-                actions.append("Sonarr: no cutoff-unmet episodes found")
-                if arr_manual_scope == "sonarr_upgrade":
-                    session.add(
-                        ActivityLog(
-                            job_run_id=log.id,
-                            app="sonarr",
-                            kind="upgrade",
-                            count=0,
-                            detail="Manual upgrade search: no cutoff-unmet episodes found.",
-                        )
+                detail_z, job_z = _arr_search_no_dispatch_messages(
+                    app_label="Sonarr",
+                    mode="upgrade",
+                    item_singular="episode",
+                    item_plural="episodes",
+                    pool_total=0,
+                    per_run_limit=sonarr_limit,
+                    reason="empty_pool",
+                    manual_context=arr_manual_scope == "sonarr_upgrade",
+                )
+                actions.append(job_z)
+                session.add(
+                    ActivityLog(
+                        job_run_id=log.id,
+                        app="sonarr",
+                        kind="upgrade",
+                        count=0,
+                        detail=detail_z,
                     )
+                )
 
         if want_missing and not want_upgrade:
             cutoff_total = await _wanted_queue_total(sonarr, kind="cutoff")
@@ -1645,47 +1828,71 @@ async def _execute_radarr_block(
                     actions.append(f"Radarr: tag apply warning (fetcher-missing): {format_http_error_detail(e)}")
 
                 await trigger_radarr_missing_search(radarr, movie_ids=allowed_ids)
-                actions.append(f"Radarr: missing search for {len(allowed_ids)} movie(s)")
                 labels = [_radarr_movie_label(r) for r in allowed_records]
+                extra_miss = _arr_search_partial_dispatch_extra(
+                    app_label="Radarr",
+                    mode="missing",
+                    started=len(allowed_ids),
+                    pool_total=missing_total,
+                    per_run_limit=radarr_limit,
+                    item_label="movie(s)",
+                    manual_context=arr_manual_scope == "radarr_missing",
+                )
+                if extra_miss:
+                    detail_missing = f"{extra_miss[0]}\n\n{_detail_from_labels(labels)}"
+                    actions.append(extra_miss[1])
+                else:
+                    detail_missing = _detail_from_labels(labels)
+                    actions.append(f"Radarr: missing search for {len(allowed_ids)} movie(s)")
                 session.add(
                     ActivityLog(
                         job_run_id=log.id,
                         app="radarr",
                         kind="missing",
                         count=len(allowed_ids),
-                        detail=_detail_from_labels(labels),
+                        detail=detail_missing,
                     )
                 )
             elif missing_total > 0:
-                summary = f"Radarr: 0 searches — all items within retry delay (candidates={missing_total})"
-                actions.append(summary)
+                detail_z, job_z = _arr_search_no_dispatch_messages(
+                    app_label="Radarr",
+                    mode="missing",
+                    item_singular="movie",
+                    item_plural="movies",
+                    pool_total=missing_total,
+                    per_run_limit=radarr_limit,
+                    reason="retry_delay_all",
+                    manual_context=arr_manual_scope == "radarr_missing",
+                )
+                actions.append(job_z)
                 session.add(
                     ActivityLog(
                         job_run_id=log.id,
                         app="radarr",
                         kind="missing",
                         count=0,
-                        detail=(
-                            f"0 searches — all items within retry delay (candidates={missing_total}, "
-                            f"retry_delay_filtered={missing_total}, cutoff_already_met_filtered=0, "
-                            f"quality_profile_filtered=0, other_constraints_filtered=0)."
-                        ),
+                        detail=detail_z,
                     )
                 )
             else:
-                summary = "Radarr: 0 searches — no eligible missing items"
-                actions.append(summary)
+                detail_z, job_z = _arr_search_no_dispatch_messages(
+                    app_label="Radarr",
+                    mode="missing",
+                    item_singular="movie",
+                    item_plural="movies",
+                    pool_total=0,
+                    per_run_limit=radarr_limit,
+                    reason="empty_pool",
+                    manual_context=arr_manual_scope == "radarr_missing",
+                )
+                actions.append(job_z)
                 session.add(
                     ActivityLog(
                         job_run_id=log.id,
                         app="radarr",
                         kind="missing",
                         count=0,
-                        detail=(
-                            "0 searches — no eligible missing items "
-                            "(candidates=0, retry_delay_filtered=0, cutoff_already_met_filtered=0, "
-                            "quality_profile_filtered=0, other_constraints_filtered=0)."
-                        ),
+                        detail=detail_z,
                     )
                 )
         else:
@@ -1716,41 +1923,73 @@ async def _execute_radarr_block(
                     actions.append(f"Radarr: tag apply warning (fetcher-upgrade): {format_http_error_detail(e)}")
 
                 await trigger_radarr_cutoff_search(radarr, movie_ids=allowed_ids)
-                actions.append(f"Radarr: cutoff-unmet search for {len(allowed_ids)} movie(s)")
                 labels = [_radarr_movie_label(r) for r in allowed_records]
+                extra_up = _arr_search_partial_dispatch_extra(
+                    app_label="Radarr",
+                    mode="upgrade",
+                    started=len(allowed_ids),
+                    pool_total=cutoff_total,
+                    per_run_limit=radarr_limit,
+                    item_label="movie(s)",
+                    manual_context=arr_manual_scope == "radarr_upgrade",
+                )
+                if extra_up:
+                    detail_up = f"{extra_up[0]}\n\n{_detail_from_labels(labels)}"
+                    actions.append(extra_up[1])
+                else:
+                    detail_up = _detail_from_labels(labels)
+                    actions.append(f"Radarr: cutoff-unmet search for {len(allowed_ids)} movie(s)")
                 session.add(
                     ActivityLog(
                         job_run_id=log.id,
                         app="radarr",
                         kind="upgrade",
                         count=len(allowed_ids),
-                        detail=_detail_from_labels(labels),
+                        detail=detail_up,
                     )
                 )
             elif cutoff_total > 0:
-                actions.append("Radarr: cutoff-unmet search suppressed (retry delay)")
-                if arr_manual_scope == "radarr_upgrade":
-                    session.add(
-                        ActivityLog(
-                            job_run_id=log.id,
-                            app="radarr",
-                            kind="upgrade",
-                            count=0,
-                            detail="Manual upgrade search: suppressed by retry delay (no search triggered).",
-                        )
+                detail_z, job_z = _arr_search_no_dispatch_messages(
+                    app_label="Radarr",
+                    mode="upgrade",
+                    item_singular="movie",
+                    item_plural="movies",
+                    pool_total=cutoff_total,
+                    per_run_limit=radarr_limit,
+                    reason="retry_delay_all",
+                    manual_context=arr_manual_scope == "radarr_upgrade",
+                )
+                actions.append(job_z)
+                session.add(
+                    ActivityLog(
+                        job_run_id=log.id,
+                        app="radarr",
+                        kind="upgrade",
+                        count=0,
+                        detail=detail_z,
                     )
+                )
             else:
-                actions.append("Radarr: no cutoff-unmet movies found")
-                if arr_manual_scope == "radarr_upgrade":
-                    session.add(
-                        ActivityLog(
-                            job_run_id=log.id,
-                            app="radarr",
-                            kind="upgrade",
-                            count=0,
-                            detail="Manual upgrade search: no cutoff-unmet movies found.",
-                        )
+                detail_z, job_z = _arr_search_no_dispatch_messages(
+                    app_label="Radarr",
+                    mode="upgrade",
+                    item_singular="movie",
+                    item_plural="movies",
+                    pool_total=0,
+                    per_run_limit=radarr_limit,
+                    reason="empty_pool",
+                    manual_context=arr_manual_scope == "radarr_upgrade",
+                )
+                actions.append(job_z)
+                session.add(
+                    ActivityLog(
+                        job_run_id=log.id,
+                        app="radarr",
+                        kind="upgrade",
+                        count=0,
+                        detail=detail_z,
                     )
+                )
 
         if want_missing and not want_upgrade:
             cutoff_total = await _wanted_queue_total(radarr, kind="cutoff")

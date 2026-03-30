@@ -28,7 +28,8 @@ def test_global_phase_never_cooling_and_uses_active_when_scheduled() -> None:
 
 def test_per_app_automation_subtext_independent() -> None:
     msg = (
-        "Sonarr: 0 searches — all items within retry delay (candidates=3) | "
+        "Sonarr: Missing search — no searches started; "
+        "3 in scope, all still waiting for their retry delay | "
         "Radarr: missing search for 2 movie(s)"
     )
     son = automation_card_subtext(app_key="sonarr", enabled=True, last_job_message=msg)
@@ -40,7 +41,9 @@ def test_per_app_automation_subtext_independent() -> None:
 
 def test_per_app_partial_retry_mixed_with_dispatched_search() -> None:
     msg = (
-        "Sonarr: missing search for 1 episode(s) | Sonarr: cutoff-unmet search suppressed (retry delay)"
+        "Sonarr: missing search for 1 episode(s) | "
+        "Sonarr: Upgrade search — no searches started; "
+        "9 in scope, all still waiting for their retry delay (up to 10 per run)"
     )
     son = automation_card_subtext(app_key="sonarr", enabled=True, last_job_message=msg)
     assert "some items were skipped" in son.lower()
@@ -68,7 +71,10 @@ def test_automation_subtext_fallback_when_no_run_evidence_and_no_line() -> None:
 
 
 def test_automation_subtext_retry_delay_still_shown_with_run_evidence() -> None:
-    msg = "Sonarr: all items within retry delay (candidates=2)"
+    msg = (
+        "Sonarr: Missing search — no searches started; "
+        "2 in scope, all still waiting for their retry delay"
+    )
     sub = automation_card_subtext(
         app_key="sonarr", enabled=True, last_job_message=msg, app_has_run_evidence=True
     )
