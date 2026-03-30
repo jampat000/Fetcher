@@ -76,7 +76,7 @@ When enabled under **TV** / **Movies** settings, Fetcher deletes matching rows f
 
 ## Common failure modes
 
-- **Service starts then stops:** JWT resolution failed (check **`fetcher.log`** for the exact line), DB path locked by another process, or WinSW **`*.err.log`**. For JWT: ensure **`%ProgramData%\Fetcher\machine-jwt-secret`** is writable on first run, or set **`FETCHER_JWT_SECRET`** at machine scope.
+- **Service starts then stops:** JWT resolution failed (check **`fetcher.log`** for the exact line), DB path locked by another process, or WinSW **`*.err.log`**. For JWT: ensure **`%ProgramData%\Fetcher\machine-jwt-secret`** is writable on first run, or set **`FETCHER_JWT_SECRET`** at machine scope. If the service **never appears** after setup, run an **elevated** command prompt in the install folder (e.g. **`C:\Program Files\Fetcher\Fetcher`**): **`winsw.exe install`** then **`winsw.exe start`** (see **`service/README.md`**).
 - **“Encryption key” warning every start:** harmless if you accept plaintext keys; set **`FETCHER_DATA_ENCRYPTION_KEY`** to silence it and protect new writes.
 - **Arr “connection failed”:** URL scheme/host/port, API key, and network path. Use in-app connection tests; confirm Sonarr/Radarr/Emby APIs are up outside Fetcher.
 

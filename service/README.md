@@ -7,7 +7,7 @@ This project uses **WinSW** (Windows Service Wrapper) to run the packaged `Fetch
 Download WinSW (x64) and name it `winsw.exe`, then place it in the same folder as:
 
 - `winsw.exe`
-- `FetcherService.xml`
+- `FetcherService.xml` (includes **`<workingdirectory>%BASE%</workingdirectory>`** for the PyInstaller one-folder layout)
 - `Fetcher.exe` (your packaged app)
 
 WinSW releases are available on GitHub (search “WinSW releases”).

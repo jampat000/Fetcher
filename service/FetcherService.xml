@@ -5,6 +5,8 @@
 
   <!-- Point this at your packaged exe path -->
   <executable>%BASE%\Fetcher.exe</executable>
+  <!-- PyInstaller one-folder: child must run with cwd = install dir so bundled DLLs load reliably. -->
+  <workingdirectory>%BASE%</workingdirectory>
   <!-- 0.0.0.0 = listen on all interfaces (LAN access). Use 127.0.0.1 to restrict to this machine. -->
   <arguments>--host 0.0.0.0 --port 8765</arguments>
   <!-- JWT: Do NOT set FETCHER_JWT_SECRET here with %VAR% expansion — an empty expansion overrides

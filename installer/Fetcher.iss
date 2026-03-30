@@ -49,6 +49,19 @@ begin
   end;
 end;
 
+function FetcherServiceRegistered: Boolean;
+var
+  ResultCode: Integer;
+  ScExe: String;
+begin
+  { WinSW <id>Fetcher</id> → Windows service name Fetcher. Do not guess from winsw restart exit codes:
+    restart can succeed (exit 0) when the service was never installed, which skipped install+start. }
+  ScExe := ExpandConstant('{sys}\sc.exe');
+  Result := FileExists(ScExe) and
+    Exec(ScExe, 'query Fetcher', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and
+    (ResultCode = 0);
+end;
+
 procedure RegisterWinSwServiceAfterInstall;
 var
   ResultCode: Integer;
@@ -59,12 +72,17 @@ begin
   WinswPath := AppDir + '\winsw.exe';
   if not FileExists(WinswPath) then
     Exit;
-  { No IsUpgrade() here — CI Inno Setup 6.0.x does not define it. Try restart first (upgrade / service exists);
-    if that fails (typical first install), install then start. }
-  if Exec(WinswPath, 'restart', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
-    Exit;
-  Exec(WinswPath, 'install', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Exec(WinswPath, 'start', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  if FetcherServiceRegistered then
+  begin
+    Exec(WinswPath, 'restart', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    if ResultCode <> 0 then
+      Exec(WinswPath, 'start', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end
+  else
+  begin
+    Exec(WinswPath, 'install', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exec(WinswPath, 'start', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

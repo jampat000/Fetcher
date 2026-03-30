@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.3] - 2026-03-30
+
+### Fixed
+
+- **Windows installer / service:** Post-install no longer relies on **`winsw restart` exit codes** to detect first install. **`sc query Fetcher`** decides whether the service is already registered: **upgrade → `restart`** (with **`start`** fallback if restart fails); **first install → `install` then `start`**. This fixes setups where **`restart` returned success without a registered service**, so **`install`/`start` never ran** and the service could not start.
+- **WinSW:** Set **`<workingdirectory>%BASE%</workingdirectory>`** so the PyInstaller **one-folder** `Fetcher.exe` runs with the install directory as cwd (reliable DLL load).
+
 ## [3.4.2] - 2026-03-30
 
 ### Fixed
