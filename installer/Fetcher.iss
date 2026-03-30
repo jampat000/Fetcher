@@ -59,19 +59,12 @@ begin
   WinswPath := AppDir + '\winsw.exe';
   if not FileExists(WinswPath) then
     Exit;
-  if IsUpgrade then
-  begin
-    { Re-running "install" often fails with "service already exists"; restart picks up new exe + winsw.xml. }
-    if Exec(WinswPath, 'restart', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
-      Exit;
-    Exec(WinswPath, 'install', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
-    Exec(WinswPath, 'start', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  end
-  else
-  begin
-    Exec(WinswPath, 'install', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
-    Exec(WinswPath, 'start', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  end;
+  { No IsUpgrade() here — CI Inno Setup 6.0.x does not define it. Try restart first (upgrade / service exists);
+    if that fails (typical first install), install then start. }
+  if Exec(WinswPath, 'restart', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
+    Exit;
+  Exec(WinswPath, 'install', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(WinswPath, 'start', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
