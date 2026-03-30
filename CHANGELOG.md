@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.2] - 2026-03-30
+
+### Fixed
+
+- **Windows installer (Inno Setup):** Removed use of **`IsUpgrade`** (not available in Inno 6.0.x on CI). Post-install still **tries `winsw restart` first**, then **`install` + `start`** if restart failed (first-time install).
+
 ## [3.4.1] - 2026-03-30
 
 ### Fixed
