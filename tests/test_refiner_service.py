@@ -1000,6 +1000,78 @@ def test_prune_empty_ancestors_under_watch(tmp_path) -> None:
     assert watch.is_dir()
 
 
+def test_refiner_service_exports_promotion_precheck_symbol() -> None:
+    import app.refiner_service as svc
+
+    assert hasattr(svc, "refiner_promotion_precheck")
+
+
+def test_sync_promotion_gate_runs_without_nameerror(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    calls = {"count": 0}
+
+    async def _fake_precheck(*, media_file, sonarr_client, radarr_client):  # noqa: ANN001
+        del media_file, sonarr_client, radarr_client
+        calls["count"] += 1
+        from app.refiner_promotion_gate import PromotionGateSyncResult
+
+        return PromotionGateSyncResult(True, (), None)
+
+    monkeypatch.setattr("app.refiner_service.refiner_promotion_precheck", _fake_precheck)
+    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_single_eng())
+    monkeypatch.setattr("app.refiner_service.is_remux_required", lambda *_a, **_k: False)
+    class _DoneFuture:
+        def __init__(self, value):
+            self._value = value
+
+        def result(self, timeout=None):  # noqa: ANN001
+            del timeout
+            return self._value
+
+    def _run_threadsafe(coro, _loop):  # noqa: ANN001
+        return _DoneFuture(asyncio.run(coro))
+
+    monkeypatch.setattr("app.refiner_service.asyncio.run_coroutine_threadsafe", _run_threadsafe)
+
+    watched = tmp_path / "watched"
+    output = tmp_path / "out"
+    work = tmp_path / "work"
+    watched.mkdir()
+    output.mkdir()
+    work.mkdir()
+    f = watched / "gate.mkv"
+    f.write_bytes(b"payload")
+
+    loop = asyncio.new_event_loop()
+    bridge = importlib.import_module("app.refiner_service").RefinerPromotionBridge(
+        loop=loop,
+        sonarr=None,
+        radarr=None,
+    )
+    code, _meta = _process_one_refiner_file_sync(
+        f,
+        RefinerRulesConfig(
+            primary_audio_lang="eng",
+            secondary_audio_lang="",
+            tertiary_audio_lang="",
+            default_audio_slot="primary",
+            remove_commentary=False,
+            subtitle_mode="remove_all",
+            subtitle_langs=(),
+            preserve_forced_subs=False,
+            preserve_default_subs=False,
+            audio_preference_mode="preferred_langs_quality",
+        ),
+        False,
+        watched,
+        output,
+        work,
+        promotion_bridge=bridge,
+    )
+    assert code == "ok"
+    assert calls["count"] == 1
+    loop.close()
+
+
 def test_refiner_inflight_source_path_is_suppressed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """A source path already in queued/processing/finalizing is ignored for this pass."""
     monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_multi_audio())

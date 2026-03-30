@@ -32,7 +32,7 @@ from app.refiner_media_identity import (
     resolve_activity_card_title,
 )
 from app.refiner_mux import ffprobe_json, remux_to_temp_file
-from app.refiner_promotion_gate import PromotionGateSyncResult
+from app.refiner_promotion_gate import PromotionGateSyncResult, refiner_promotion_precheck
 from app.refiner_rules import (
     RefinerRulesConfig,
     is_commentary_audio,

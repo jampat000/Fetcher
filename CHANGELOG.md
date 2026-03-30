@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.6] - 2026-03-30
+
+### Fixed
+
+- hotfix(refiner): import `refiner_promotion_precheck` in `refiner_service` so promotion-gate calls no longer crash with `NameError`
+- hotfix(refiner): add regression tests for promotion-gate symbol wiring and `_sync_promotion_gate` runtime execution path
+
 ## [3.4.5] - 2026-03-30
 
 ### Fixed
