@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-03-30
+
+### Changed
+
+- **Upgrade hardening:** Centralized SQLite path resolution in **`app/database_resolution.py`** with startup logging of the **exact** DB path and **why** it was chosen. **Packaged Windows** (`sys.frozen`) refuses to start if multiple substantial `fetcher.db` files could cause wrong-DB/auth confusion, or if the canonical path is empty but a legacy profile DB still exists — with **actionable** copy/`FETCHER_DATA_DIR` guidance (no silent auto-copy). **Unfrozen** Windows skips those checks so dev/tests can use an empty `FETCHER_DATA_DIR` without colliding with `%LOCALAPPDATA%\Fetcher`.
+- **Schema contract:** Documented repair-before-validate rules in **`app/schema_upgrade_contract.py`**; **`migrate()`** logs completion before strict validation; CI test ensures Refiner repair stays wired.
+- **Auth startup:** **`FETCHER_RESET_AUTH=1`** now logs an explicit **error**-level recovery line; **`Auth startup diagnostic`** logs whether the UI should show **login** vs **setup** for the DB in use.
+- **Startup logs:** **`app/main.py`** uses structured database resolution logging and a short line after **`migrate()`** before Refiner validation.
+
+### Documentation
+
+- **`docs/UPGRADE-AND-DATABASE.md`** — supported behaviors, canonical path precedence, packaged Windows legacy detection, schema/auth/uninstall notes.
+
 ## [3.2.3] - 2026-03-30
 
 ### Changed

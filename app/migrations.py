@@ -576,3 +576,7 @@ async def migrate(engine: AsyncEngine) -> None:
     await _migrate_036_refiner_activity_media_title(engine)
     await _migrate_034_forward_app_settings_schema_version(engine)
     await _ensure_refiner_app_settings_columns(engine)
+
+    logger.info(
+        "SQLite migrate() chain finished (idempotent repairs included; strict schema validation runs next)."
+    )

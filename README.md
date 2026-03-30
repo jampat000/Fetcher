@@ -114,7 +114,7 @@ WinSW may drop small **wrapper** `*.out.log` / `*.err.log` next to the service u
 ## Updating
 
 - **In-app:** **Settings → Software updates** can fetch and run a newer **`FetcherSetup.exe`** (treat like any installer: service stop/start is handled in the upgrade flow).
-- **Manual:** download the new **`FetcherSetup.exe`**, run it over the existing install. **ProgramData** (database, logs) is kept; migrations run on next startup.
+- **Manual:** download the new **`FetcherSetup.exe`**, run it over the existing install. **ProgramData** (database, logs) is kept; migrations run on next startup. Path rules, legacy DB detection, and auth expectations: **`docs/UPGRADE-AND-DATABASE.md`**.
 - **After update:** confirm the **Fetcher** service is **Running**, open the UI, check **Settings → Software updates** or **`GET /api/version`** for the version you expect.
 
 Installs **3.1.0+** remove **`FetcherCompanion.exe`** and companion **`.ps1`** scripts from the **application folder** (`{app}`) on upgrade via the installer’s delete-before-copy step. That is the only place Fetcher can safely auto-clean: **Scheduled Tasks**, **Start Menu** shortcuts, or other **per-user** items you created for the old Browse flow live under each Windows user profile and are **not** touched by the installer. They are **harmless** if left in place (the companion binary is gone); remove them manually in **Task Scheduler** or the Start Menu if you want a tidy machine. Details: **[docs/INSTALL-AND-OPERATIONS.md](docs/INSTALL-AND-OPERATIONS.md)** → *Updates and migrations*.

@@ -1,4 +1,7 @@
-"""Fail-fast checks that ``app_settings`` matches this build (Refiner columns present)."""
+"""Fail-fast checks that ``app_settings`` matches this build (Refiner columns present).
+
+Runs **after** :func:`app.migrations.migrate` on startup. Contributor rules: ``app/schema_upgrade_contract.py``.
+"""
 
 from __future__ import annotations
 
