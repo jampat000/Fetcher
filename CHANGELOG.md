@@ -29,25 +29,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `.gitignore` now excludes local `Fetcher-v*-windows-dist.zip` (+ `.sha256`) patterns so Windows distro bundles are not committed by mistake.
 - Installer uses `[InstallDelete]` before file copy on upgrade and `[UninstallDelete]` on uninstall to remove obsolete `FetcherCompanion.exe` and companion `.ps1` scripts from `{app}` when present (per-user tasks/shortcuts may still need manual removal—see README / **INSTALL-AND-OPERATIONS**).
 
+## [3.1.1] - 2026-03-28
+
+### Changed
+
+- **CI:** consolidated **`test`**, **`security`**, and **`docker-build`** into **`.github/workflows/ci.yml`** (Actions name **Test**; jobs **pytest**, **pip-audit**, **docker-build**). Release workflows unchanged (**tag-release**, **build-installer**, **docker-publish**).
+
+### Notes
+
+- If **`master`** branch protection still requires **`Security / pip-audit`**, update it to **`Test / pip-audit`** (see **`.github/BRANCH_PROTECTION.md`**).
+
 ## [3.1.0] - 2026-03-27
 
 ### Changed
 
-- Removed Refiner folder Browse feature.
-- Folder paths are now entered manually.
+- Refiner folder paths are entered **manually** (Browse feature removed).
+- Windows installer and service stack simplified accordingly.
 
 ### Removed
 
-- FetcherCompanion and all related functionality.
-- Windows session-based folder picker logic.
-- Companion startup scripts and installer integration.
-- Picker-related API endpoints.
+- **FetcherCompanion** and related browse/proxy flow, picker API routes, and installer integration.
 
 ### Notes
 
-- This change improves reliability and simplifies installation.
-- Existing folder paths and processing behavior are unchanged.
-- **Upgrade from 3.0.x:** installers **3.1.0+** delete companion binaries/scripts from `{app}` via `[InstallDelete]` before installing updated files; optional per-user Scheduled Task / Start Menu items from the old Browse flow are not removed automatically (documented in README and **docs/INSTALL-AND-OPERATIONS.md**).
+- **Upgrade:** installers **3.1.0+** drop companion binaries/scripts from **`{app}`** via **`[InstallDelete]`**; optional per-user task/Start Menu items from the old flow may remain until removed manually (see README / **docs/INSTALL-AND-OPERATIONS.md**).
 
 ## [3.0.9] - 2026-03-27
 
@@ -1179,7 +1184,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
 
-[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.1.0...HEAD
+[Unreleased]: https://github.com/jampat000/Fetcher/compare/v3.2.0...HEAD
+[3.2.0]: https://github.com/jampat000/Fetcher/compare/v3.1.1...v3.2.0
+[3.1.1]: https://github.com/jampat000/Fetcher/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/jampat000/Fetcher/compare/v3.0.9...v3.1.0
 [3.0.9]: https://github.com/jampat000/Fetcher/compare/v3.0.8...v3.0.9
 [3.0.8]: https://github.com/jampat000/Fetcher/compare/v3.0.7...v3.0.8
