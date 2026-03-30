@@ -471,6 +471,13 @@ async def _migrate_035_activity_log_trimmer_app_identity(engine: AsyncEngine) ->
         await conn.execute(text("UPDATE activity_log SET app = 'trimmer' WHERE LOWER(app) = 'emby'"))
 
 
+async def _migrate_036_refiner_activity_media_title(engine: AsyncEngine) -> None:
+    """Refiner activity: optional human media title from ffprobe tags (parallel to file_name)."""
+    table = "refiner_activity"
+    if not await _has_column(engine, table=table, column="media_title"):
+        await _add_column(engine, table=table, ddl="media_title VARCHAR(512) NOT NULL DEFAULT ''")
+
+
 # Refiner column repair DDL: :mod:`app.refiner_app_settings_contract` (must match ``AppSettings``).
 
 
@@ -566,5 +573,6 @@ async def migrate(engine: AsyncEngine) -> None:
     await _migrate_032_app_settings_schema_version(engine)
     await _migrate_033_refiner_activity_context(engine)
     await _migrate_035_activity_log_trimmer_app_identity(engine)
+    await _migrate_036_refiner_activity_media_title(engine)
     await _migrate_034_forward_app_settings_schema_version(engine)
     await _ensure_refiner_app_settings_columns(engine)

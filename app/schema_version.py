@@ -3,4 +3,4 @@
 from __future__ import annotations
 
 # Bump when the persisted schema contract changes (with a matching migration).
-CURRENT_SCHEMA_VERSION: int = 34
+CURRENT_SCHEMA_VERSION: int = 35

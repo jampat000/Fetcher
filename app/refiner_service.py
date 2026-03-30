@@ -19,6 +19,7 @@ from app.refiner_errors import failure_hint_from_exception, format_refiner_failu
 from app.models import ActivityLog, AppSettings, JobRunLog, RefinerActivity
 from app.schedule import in_window
 from app.time_util import utc_now_naive
+from app.refiner_media_identity import MediaIdentity, provisional_media_title_before_probe
 from app.refiner_mux import ffprobe_json, remux_to_temp_file
 from app.refiner_rules import (
     RefinerRulesConfig,
@@ -44,6 +45,7 @@ _refiner_lock = asyncio.Lock()
 
 def _activity_snapshot(
     *,
+    ident: dict[str, str] | None = None,
     audio_before: str = "",
     audio_after: str = "",
     subs_before: str = "",
@@ -54,19 +56,23 @@ def _activity_snapshot(
     finalized: bool = False,
     source_removed: bool = False,
 ) -> str:
-    return dumps_activity_context(
-        {
-            "audio_before": audio_before,
-            "audio_after": audio_after,
-            "subs_before": subs_before,
-            "subs_after": subs_after,
-            "commentary_removed": bool(commentary_removed),
-            "failure_reason": (failure_reason or "").strip()[:8000],
-            "dry_run": bool(dry_run),
-            "finalized": bool(finalized),
-            "source_removed": bool(source_removed),
-        }
-    )
+    payload: dict[str, Any] = {
+        "audio_before": audio_before,
+        "audio_after": audio_after,
+        "subs_before": subs_before,
+        "subs_after": subs_after,
+        "commentary_removed": bool(commentary_removed),
+        "failure_reason": (failure_reason or "").strip()[:8000],
+        "dry_run": bool(dry_run),
+        "finalized": bool(finalized),
+        "source_removed": bool(source_removed),
+    }
+    idn = ident or {}
+    for key in ("media_title", "refiner_title", "refiner_year"):
+        v = (idn.get(key) or "").strip()
+        if v:
+            payload[key] = v[:500] if key != "refiner_year" else v[:32]
+    return dumps_activity_context(payload)
 _MEDIA_EXTENSIONS = frozenset({".mkv", ".mp4", ".m4v", ".webm", ".avi"})
 _REFINER_JOB_LOG_MAX_CHARS = 400_000
 
@@ -265,9 +271,11 @@ async def _insert_refiner_processing_row(file_name: str) -> int | None:
     """Create a single activity row in ``processing`` state (updated when the file finishes)."""
     try:
         fn = str(file_name or "")[:512]
+        prov = provisional_media_title_before_probe(fn)[:512]
         async with SessionLocal() as session:
             row = RefinerActivity(
                 file_name=fn,
+                media_title=prov,
                 status="processing",
                 size_before_bytes=0,
                 size_after_bytes=0,
@@ -291,6 +299,7 @@ async def _update_refiner_activity_row(row_id: int, meta: dict[str, Any]) -> Non
     """Finalize a row created by ``_insert_refiner_processing_row`` (same logical job, no second row)."""
     try:
         fn = str(meta.get("file_name") or "")[:512]
+        mt = str(meta.get("media_title") or "")[:512]
         st = str(meta.get("status") or "failed").strip().lower()
         if st not in ("success", "skipped", "failed"):
             st = "failed"
@@ -302,6 +311,7 @@ async def _update_refiner_activity_row(row_id: int, meta: dict[str, Any]) -> Non
                 .where(RefinerActivity.id == row_id)
                 .values(
                     file_name=fn,
+                    media_title=mt,
                     status=st,
                     size_before_bytes=int(meta.get("size_before_bytes") or 0),
                     size_after_bytes=int(meta.get("size_after_bytes") or 0),
@@ -322,6 +332,7 @@ async def _persist_refiner_activity_safe(meta: dict[str, Any]) -> None:
     """Fail-safe: never raises; insert-only path when processing row could not be created."""
     try:
         fn = str(meta.get("file_name") or "")[:512]
+        mt = str(meta.get("media_title") or "")[:512]
         st = str(meta.get("status") or "failed").strip().lower()
         if st not in ("success", "skipped", "failed"):
             st = "failed"
@@ -331,6 +342,7 @@ async def _persist_refiner_activity_safe(meta: dict[str, Any]) -> None:
             session.add(
                 RefinerActivity(
                     file_name=fn,
+                    media_title=mt,
                     status=st,
                     size_before_bytes=int(meta.get("size_before_bytes") or 0),
                     size_after_bytes=int(meta.get("size_after_bytes") or 0),
@@ -400,6 +412,7 @@ def _failure_activity_meta(
     """Activity row payload when processing aborts outside ``_process_one_refiner_file_sync``."""
     return {
         "file_name": fname,
+        "media_title": provisional_media_title_before_probe(fname)[:512],
         "status": "failed",
         "size_before_bytes": int(size_before),
         "size_after_bytes": int(size_before),
@@ -422,6 +435,9 @@ def _process_one_refiner_file_sync(
     """Per file: ffprobe analysis → rule planning from probe data → remux/validate/move (source delete only after success)."""
     t0 = time.perf_counter()
     fname = path.name
+    _provisional_mt = provisional_media_title_before_probe(fname)[:512]
+    identity_snap: dict[str, str] = {}
+    _media_title_col: list[str] = [""]
 
     def pack(
         act_status: str,
@@ -437,6 +453,7 @@ def _process_one_refiner_file_sync(
     ) -> dict[str, Any]:
         d: dict[str, Any] = {
             "file_name": fname,
+            "media_title": (_media_title_col[0] or _provisional_mt)[:512],
             "status": act_status,
             "size_before_bytes": int(sb),
             "size_after_bytes": int(sa),
@@ -451,7 +468,10 @@ def _process_one_refiner_file_sync(
         if activity_context is not None and str(activity_context).strip() != "":
             d["activity_context"] = str(activity_context)[:120_000]
         elif failure_hint:
-            d["activity_context"] = _activity_snapshot(failure_reason=str(failure_hint).strip()[:8000])
+            d["activity_context"] = _activity_snapshot(
+                ident=identity_snap,
+                failure_reason=str(failure_hint).strip()[:8000],
+            )
         else:
             d["activity_context"] = ""
         return d
@@ -467,7 +487,10 @@ def _process_one_refiner_file_sync(
             0,
             0,
             failure_hint="Source file is missing or not a regular file.",
-            activity_context=_activity_snapshot(failure_reason="Source file is missing or not a regular file."),
+            activity_context=_activity_snapshot(
+                ident=identity_snap,
+                failure_reason="Source file is missing or not a regular file.",
+            ),
         )
 
     sb0 = _file_size_bytes(path)
@@ -493,10 +516,14 @@ def _process_one_refiner_file_sync(
             0,
             0,
             failure_hint=fh,
-            activity_context=_activity_snapshot(failure_reason=fh),
+            activity_context=_activity_snapshot(ident=identity_snap, failure_reason=fh),
         )
 
     video, audio, subs = split_streams(ffprobe_report)
+    ident = MediaIdentity.from_ffprobe(ffprobe_report)
+    identity_snap.clear()
+    identity_snap.update(ident.snapshot_identity_fields())
+    _media_title_col[0] = ident.persisted_media_title_column()
     sb = _file_size_bytes(path)
     ab_len = len(audio)
     sbb_len = len(subs)
@@ -514,6 +541,7 @@ def _process_one_refiner_file_sync(
             sbb_len,
             failure_hint=fn0,
             activity_context=_activity_snapshot(
+                ident=identity_snap,
                 subs_before=subs_b_line,
                 failure_reason=fn0,
             ),
@@ -535,6 +563,7 @@ def _process_one_refiner_file_sync(
             sbb_len,
             failure_hint=fn1,
             activity_context=_activity_snapshot(
+                ident=identity_snap,
                 audio_before=ab_line,
                 subs_before=subs_b_line,
                 failure_reason=fn1,
@@ -551,6 +580,7 @@ def _process_one_refiner_file_sync(
             sbb_len,
             sbb_len,
             activity_context=_activity_snapshot(
+                ident=identity_snap,
                 audio_before=ab_line,
                 audio_after=ab_line,
                 subs_before=subs_b_line,
@@ -573,6 +603,7 @@ def _process_one_refiner_file_sync(
             sbb_len,
             sbb_len,
             activity_context=_activity_snapshot(
+                ident=identity_snap,
                 audio_before=ab_line,
                 audio_after=ab_line,
                 subs_before=subs_b_line,
@@ -594,6 +625,7 @@ def _process_one_refiner_file_sync(
             sbb_len,
             failure_hint=fn2,
             activity_context=_activity_snapshot(
+                ident=identity_snap,
                 audio_before=ab_line,
                 audio_after=ab_line,
                 subs_before=subs_b_line,
@@ -616,6 +648,7 @@ def _process_one_refiner_file_sync(
                 sbb_len,
                 failure_hint=fn3,
                 activity_context=_activity_snapshot(
+                    ident=identity_snap,
                     audio_before=ab_line,
                     audio_after=ab_line,
                     subs_before=subs_b_line,
@@ -639,6 +672,7 @@ def _process_one_refiner_file_sync(
             sbb_len,
             failure_hint=fn4,
             activity_context=_activity_snapshot(
+                ident=identity_snap,
                 audio_before=ab_line,
                 audio_after=ab_line,
                 subs_before=subs_b_line,
@@ -669,6 +703,7 @@ def _process_one_refiner_file_sync(
         subs_after = subtitle_after_line_from_plan(plan, remove_all=cfg.subtitle_mode == "remove_all")
         commentary_removed = bool(cfg.remove_commentary) and any(is_commentary_audio(s) for s in audio)
         ok_ctx = _activity_snapshot(
+            ident=identity_snap,
             audio_before=ab_line,
             audio_after=audio_after_line_from_plan(plan),
             subs_before=subs_b_line,
@@ -700,6 +735,7 @@ def _process_one_refiner_file_sync(
             )
         reason_body = summary if not detail else f"{summary}\n  {detail}"
         err_ctx = _activity_snapshot(
+            ident=identity_snap,
             audio_before=ab_line,
             audio_after=ab_line,
             subs_before=subs_b_line,

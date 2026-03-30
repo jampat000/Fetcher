@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.2.3] - 2026-03-30
+
+### Changed
+
+- **Refiner activity (dashboard / Activity feed):** Per-file rows are **result-style cards**: media title first, clear outcome (**Completed**, **Failed**, **No changes required**, **Dry run**, **Processing**), **Applied** / **Preview only** when relevant, **Before / After** comparison for audio, subtitles, and file size when there is something to compare, and short **summary** bullets. **Dry run** with projected changes is no longer described like a no-op; true no-change skips omit the comparison grid. Logging-style detail and failure reasons remain available.
+- **Refiner media titles:** Canonical title from **ffprobe** container **`format.tags`** (title / show / series and year fields) is stored in **`activity_context`** and in a new **`refiner_activity.media_title`** column (**schema 35**). **Processing** rows get a **provisional** title immediately (same filename-based rules as the card when tags are not available yet); when the probe finishes, the row **upgrades** to the canonical string when present. Optional muted **File:** line when the display title comes from tags and differs from the raw filename. Title resolution stays **one model** in **`refiner_media_identity`** (ORM / JSON → title+year → conservative filename → raw name).
+
+### Fixed
+
+- **Refiner:** Empty **media_title** on in-progress rows before ffprobe; failure paths without a successful probe still carry a usable display label.
+
 ## [3.2.2] - 2026-03-30
 
 ### Fixed
