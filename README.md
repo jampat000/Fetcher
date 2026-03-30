@@ -4,6 +4,8 @@ Fetcher is a small **Windows-first** web app (FastAPI + SQLite + background sche
 
 Fetcher is a production-ready automation service for Sonarr, Radarr, and Emby, focused on accurate monitored-missing progression and truthful system state reporting.
 
+**How we build:** Fetcher is **production-grade**, and intentionally **“vibe-coded”** for what it is: automation you run in a **single-user, controlled environment** on your own network. It was built **quickly and deliberately**—not to carry legacy baggage or to over-engineer for hypothetical scale. Startup, schema, and errors stay strict; the codebase stays **small, inspectable, and dependable** day to day.
+
 **What it’s for:** automate **missing** and **upgrade (cutoff)** searches on a schedule, keep an eye on **what ran and when**, and optionally drive **Emby Trimmer** rules (scan, review, apply) from the same place. Sonarr and Radarr still own your library; Fetcher just calls their APIs on your behalf. Emby is the playback server Trimmer uses to find candidates against your rules.
 
 **License:** [MIT](LICENSE) · **Security:** [SECURITY.md](SECURITY.md) · **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) · **Install / ops detail:** [docs/INSTALL-AND-OPERATIONS.md](docs/INSTALL-AND-OPERATIONS.md)
