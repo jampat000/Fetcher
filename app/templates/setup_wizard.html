@@ -47,7 +47,8 @@
     {% endif %}
 
     {% if step < 5 %}
-    <form method="post" action="/setup/{{ step }}" class="setup-wizard-form" data-fetcher-setup-async="1"{% if step > 0 %} autocomplete="off"{% endif %}>
+    {# Form-level autocomplete=off limits unrelated credential injection into Sonarr/Radarr/Emby URL and API-key fields. Step 0 overrides auth fields with section-scoped tokens. #}
+    <form method="post" action="/setup/{{ step }}" class="setup-wizard-form" data-fetcher-setup-async="1" autocomplete="off">
       <div class="settings-async-feedback" hidden role="status" aria-live="polite"></div>
       {% if step > 0 %}
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
@@ -56,9 +57,9 @@
       <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Sign in for Fetcher</h2>
       <p class="hint"><strong>Why:</strong> Fetcher’s web UI is only as safe as this login. <strong>What to enter:</strong> any username (often <code class="code-inline">admin</code>) and a password with at least 8 characters. You’ll use them on every visit; change them anytime under <strong>Fetcher settings</strong> → Security.</p>
       <label for="setup_auth_username">Username — who signs in to this Fetcher install</label>
-      <input class="input" id="setup_auth_username" name="setup_auth_username" type="text" value="{{ settings.auth_username|default('admin', true) }}" autocomplete="username" />
+      <input class="input" id="setup_auth_username" name="setup_auth_username" type="text" value="{{ settings.auth_username|default('admin', true) }}" autocomplete="section-fetcher-setup username" />
       <label for="setup_auth_password">Password — protects the dashboard and API from strangers on your network</label>
-      <input class="password" id="setup_auth_password" name="setup_auth_password" type="password" autocomplete="new-password" minlength="8" required />
+      <input class="password" id="setup_auth_password" name="setup_auth_password" type="password" autocomplete="section-fetcher-setup new-password" minlength="8" required />
       <p class="small">Use at least 8 characters. Avoid reusing passwords from Sonarr/Radarr — this is separate.</p>
       {% elif step == 1 %}
       <h2>Step {{ step + 1 }} of {{ setup_steps_total }} — Sonarr</h2>
@@ -66,10 +67,10 @@
       <p class="small muted small--flush-top">Examples: LAN <code class="code-inline">http://192.168.1.10:8989</code>, this PC <code class="code-inline">http://localhost:8989</code>, reverse proxy <code class="code-inline">https://sonarr.example.com</code></p>
       {% call toggle_checkbox("sonarr_enabled", settings.sonarr_enabled) %}<strong>Enable</strong> Sonarr automation (interval searches for missing/upgrades){% endcall %}
       <label for="sonarr_url">Sonarr URL — base address only, no path after the port</label>
-      <input class="input" id="sonarr_url" name="sonarr_url" type="text" value="{{ settings.sonarr_url }}" placeholder="http://localhost:8989" inputmode="url" autocomplete="off" autocorrect="off" spellcheck="false" />
+      <input class="input" id="sonarr_url" name="sonarr_url" type="text" value="{{ settings.sonarr_url }}" placeholder="http://localhost:8989" inputmode="url" autocomplete="off" autocorrect="off" spellcheck="false" data-fetcher-integration-url="1" readonly onfocus="this.removeAttribute('readonly');" />
       <label for="sonarr_api_key">Sonarr API key — proves Fetcher is allowed to use the Sonarr API</label>
       <div class="control">
-        <input class="password" id="sonarr_api_key" name="sonarr_api_key" type="password" value="{{ settings.sonarr_api_key }}" placeholder="X-Api-Key" autocomplete="off" />
+        <input class="password" id="sonarr_api_key" name="sonarr_api_key" type="password" value="{{ settings.sonarr_api_key }}" placeholder="X-Api-Key" autocomplete="off" data-fetcher-integration-secret="1" readonly onfocus="this.removeAttribute('readonly');" />
         <button class="icon-btn" data-reveal="sonarr_api_key" type="button">Show</button>
       </div>
       <div class="setup-wizard-buttons">
@@ -82,10 +83,10 @@
       <p class="small muted small--flush-top">Examples: LAN <code class="code-inline">http://192.168.1.10:7878</code>, this PC <code class="code-inline">http://localhost:7878</code>, reverse proxy <code class="code-inline">https://radarr.example.com</code></p>
       {% call toggle_checkbox("radarr_enabled", settings.radarr_enabled) %}<strong>Enable</strong> Radarr automation (interval searches for missing/upgrades){% endcall %}
       <label for="radarr_url">Radarr URL — base address only, no path after the port</label>
-      <input class="input" id="radarr_url" name="radarr_url" type="text" value="{{ settings.radarr_url }}" placeholder="http://localhost:7878" inputmode="url" autocomplete="off" autocorrect="off" spellcheck="false" />
+      <input class="input" id="radarr_url" name="radarr_url" type="text" value="{{ settings.radarr_url }}" placeholder="http://localhost:7878" inputmode="url" autocomplete="off" autocorrect="off" spellcheck="false" data-fetcher-integration-url="1" readonly onfocus="this.removeAttribute('readonly');" />
       <label for="radarr_api_key">Radarr API key — proves Fetcher is allowed to use the Radarr API</label>
       <div class="control">
-        <input class="password" id="radarr_api_key" name="radarr_api_key" type="password" value="{{ settings.radarr_api_key }}" placeholder="X-Api-Key" autocomplete="off" />
+        <input class="password" id="radarr_api_key" name="radarr_api_key" type="password" value="{{ settings.radarr_api_key }}" placeholder="X-Api-Key" autocomplete="off" data-fetcher-integration-secret="1" readonly onfocus="this.removeAttribute('readonly');" />
         <button class="icon-btn" data-reveal="radarr_api_key" type="button">Show</button>
       </div>
       <div class="setup-wizard-buttons">
@@ -98,14 +99,14 @@
       <p class="small muted small--flush-top">Examples: LAN <code class="code-inline">http://192.168.1.10:8096</code>, this PC <code class="code-inline">http://localhost:8096</code>, reverse proxy <code class="code-inline">https://emby.example.com</code></p>
       {% call toggle_checkbox("emby_enabled", settings.emby_enabled) %}<strong>Enable Trimmer</strong> (optional library cleanup){% endcall %}
       <label for="emby_url">Emby server URL — same host you use in the browser</label>
-      <input class="input" id="emby_url" name="emby_url" type="text" value="{{ settings.emby_url }}" placeholder="http://localhost:8096" inputmode="url" autocomplete="off" autocorrect="off" spellcheck="false" />
+      <input class="input" id="emby_url" name="emby_url" type="text" value="{{ settings.emby_url }}" placeholder="http://localhost:8096" inputmode="url" autocomplete="off" autocorrect="off" spellcheck="false" data-fetcher-integration-url="1" readonly onfocus="this.removeAttribute('readonly');" />
       <label for="emby_api_key">Emby API key — from Dashboard → Advanced → API Keys (not your login password)</label>
       <div class="control">
-        <input class="password" id="emby_api_key" name="emby_api_key" type="password" value="{{ settings.emby_api_key }}" placeholder="API key" autocomplete="off" />
+        <input class="password" id="emby_api_key" name="emby_api_key" type="password" value="{{ settings.emby_api_key }}" placeholder="API key" autocomplete="off" data-fetcher-integration-secret="1" readonly onfocus="this.removeAttribute('readonly');" />
         <button class="icon-btn" data-reveal="emby_api_key" type="button">Show</button>
       </div>
       <label for="emby_user_id">Emby user ID (optional) — only if your server requires requests scoped to one user’s libraries</label>
-      <input class="input" id="emby_user_id" name="emby_user_id" type="text" value="{{ settings.emby_user_id }}" placeholder="e.g. user guid" autocomplete="off" />
+      <input class="input" id="emby_user_id" name="emby_user_id" type="text" value="{{ settings.emby_user_id }}" placeholder="e.g. user guid" autocomplete="off" data-fetcher-integration-text="1" readonly onfocus="this.removeAttribute('readonly');" />
       <div class="setup-wizard-buttons">
         <button class="btn secondary" type="button" id="btn-test-emby">Test connection</button>
       </div>

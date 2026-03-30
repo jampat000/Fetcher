@@ -134,6 +134,7 @@ If you use **`FETCHER_DATA_ENCRYPTION_KEY`**, keep it set the same way after upg
 | UI loops to setup | Wizard visibility follows **saved** config: password missing or an enabled integration missing URL/key. Fix the relevant fields in setup or settings. |
 | Where are logs? | Default **`%ProgramData%\Fetcher\logs\fetcher.log`**. The **Logs** page in the UI lists that directory. |
 | Refiner folder selection | Folder Browse was removed. Enter or paste full folder paths manually in Refiner settings. |
+| Login or setup shows wrong text in URL/API fields | Usually **browser or password-manager autofill** (not Fetcher). Clear those fields and type manually, or use a private window. The sign-in page explains when autofill is wrong. If sign-in still fails after that, check **`fetcher.log`** for **`SQLite database path:`** and confirm you are using the **`fetcher.db`** where your account was created (**`%ProgramData%\Fetcher`** by default for the service). |
 
 ---
 
