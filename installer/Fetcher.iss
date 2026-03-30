@@ -31,6 +31,56 @@ Compression=lzma
 SolidCompression=yes
 PrivilegesRequired=admin
 WizardStyle=modern
+CloseApplications=yes
+
+[Code]
+
+procedure StopFetcherServiceBeforeFileCopy;
+var
+  ResultCode: Integer;
+  WinswPath: String;
+begin
+  { Avoid locked Fetcher.exe / DLLs during upgrade: stop the service before [Files] replaces binaries. }
+  WinswPath := ExpandConstant('{app}\winsw.exe');
+  if FileExists(WinswPath) then
+  begin
+    Exec(WinswPath, 'stop', ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Sleep(3000);
+  end;
+end;
+
+procedure RegisterWinSwServiceAfterInstall;
+var
+  ResultCode: Integer;
+  AppDir: String;
+  WinswPath: String;
+begin
+  AppDir := ExpandConstant('{app}');
+  WinswPath := AppDir + '\winsw.exe';
+  if not FileExists(WinswPath) then
+    Exit;
+  if IsUpgrade then
+  begin
+    { Re-running "install" often fails with "service already exists"; restart picks up new exe + winsw.xml. }
+    if Exec(WinswPath, 'restart', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
+      Exit;
+    Exec(WinswPath, 'install', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exec(WinswPath, 'start', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end
+  else
+  begin
+    Exec(WinswPath, 'install', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exec(WinswPath, 'start', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssInstall then
+    StopFetcherServiceBeforeFileCopy;
+  if CurStep = ssPostInstall then
+    RegisterWinSwServiceAfterInstall;
+end;
 
 [InstallDelete]
 ; Browse/companion-era files from pre-3.1.0 installs — removed before new files copy (upgrade path).
@@ -56,8 +106,7 @@ Source: "..\service\FetcherService.xml"; DestDir: "{app}"; DestName: "winsw.xml"
 Source: "..\service\winsw.exe"; DestDir: "{app}"; DestName: "winsw.exe"; Flags: ignoreversion
 
 [Run]
-Filename: "{app}\winsw.exe"; Parameters: "install"; Flags: runhidden waituntilterminated
-Filename: "{app}\winsw.exe"; Parameters: "start"; Flags: runhidden waituntilterminated
+; WinSW install/start/restart runs from [Code] CurStepChanged(ssPostInstall) so upgrades can use restart.
 Filename: "http://127.0.0.1:8765"; Description: "Open Fetcher in browser"; Flags: shellexec postinstall nowait skipifsilent
 
 [UninstallRun]

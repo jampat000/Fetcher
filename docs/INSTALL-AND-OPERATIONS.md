@@ -26,7 +26,7 @@ Optional but recommended: set **`FETCHER_DATA_ENCRYPTION_KEY`** (Fernet) **befor
 
 ## Updates and migrations
 
-- Run a newer **`FetcherSetup.exe`** over the existing install (or use **Settings → Software updates**). **ProgramData** is left in place; the app runs **SQLite migrations** on startup when the bundled schema version moves forward.
+- Run a newer **`FetcherSetup.exe`** over the existing install (or use **Settings → Software updates**). The installer **stops the Fetcher Windows service before replacing files** under Program Files (so binaries are not locked), then **restarts** the service on upgrade. **ProgramData** is left in place; the app runs **SQLite migrations** on startup when the bundled schema version moves forward.
 - **Database path, legacy detection, and auth expectations** after upgrade: see **[UPGRADE-AND-DATABASE.md](UPGRADE-AND-DATABASE.md)** (canonical path, packaged Windows checks, schema repair order).
 - After upgrade: service **Running**, UI loads, **`/api/version`** matches what you installed.
 
