@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.7] - 2026-03-30
+
+### Fixed
+
+- fix(refiner): surface primary blocked reason in parent activity summaries
+
 ## [3.4.6] - 2026-03-30
 
 ### Fixed

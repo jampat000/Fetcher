@@ -17,9 +17,11 @@ from app.time_util import utc_now_naive
 from app.refiner_rules import RefinerRulesConfig
 from app.refiner_service import (
     _finalize_output_file,
+    _pick_primary_actionable_reason,
     _pipeline_from_settings,
     _process_one_refiner_file_sync,
     _reconcile_interrupted_refiner_processing_rows_before_pass,
+    _refiner_run_parent_summary,
     _rules_config_from_settings,
     _set_refiner_pass_job_status,
     _try_remove_empty_watch_subfolder,
@@ -1252,3 +1254,41 @@ def test_refiner_parent_summary_uses_current_run_only(monkeypatch: pytest.Monkey
             assert "errors=" not in (parent.detail or "")
 
     asyncio.run(_go())
+
+
+def test_refiner_parent_summary_success_only() -> None:
+    assert (
+        _refiner_run_parent_summary(processed=3, blocked=0, failed=0) == "3 files processed"
+    )
+
+
+def test_refiner_parent_summary_mixed_includes_primary_reason() -> None:
+    msg = _refiner_run_parent_summary(
+        processed=7,
+        blocked=1,
+        failed=0,
+        primary_reason="Output file already exists in the destination folder.",
+    )
+    assert msg == "7 processed · 1 blocked — Output file already exists in the destination folder."
+
+
+def test_refiner_parent_summary_reason_selection_prefers_common_then_recent() -> None:
+    picked = _pick_primary_actionable_reason(
+        [
+            "Source file is missing or not a regular file.",
+            "Output file already exists in the destination folder.",
+            "Source file is missing or not a regular file.",
+        ]
+    )
+    assert picked == "Source file is missing or not a regular file."
+
+
+def test_refiner_parent_summary_never_exposes_raw_exception_blob() -> None:
+    msg = _refiner_run_parent_summary(
+        processed=1,
+        blocked=0,
+        failed=1,
+        primary_reason="Traceback (most recent call last): RuntimeError('boom')",
+    )
+    assert msg == "1 processed · 1 blocked"
+    assert "Traceback" not in msg

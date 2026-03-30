@@ -404,18 +404,67 @@ async def _has_prior_refiner_failure(*, source_path: str, reason_code: str) -> b
     return False
 
 
-def _refiner_run_parent_summary(*, processed: int, blocked: int, failed: int) -> str:
+def _parent_actionable_reason(raw: str) -> str:
+    s = (raw or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not s:
+        return ""
+    line = next((ln.strip() for ln in s.splitlines() if ln.strip()), "")
+    if not line:
+        return ""
+    low = line.lower()
+    if low.startswith("traceback") or line.startswith("{") or line.startswith("["):
+        return ""
+    if len(line) > 180:
+        line = line[:177].rstrip() + "..."
+    return line
+
+
+def _pick_primary_actionable_reason(reasons: list[str]) -> str:
+    cleaned: list[str] = []
+    for r in reasons:
+        cr = _parent_actionable_reason(r)
+        if cr:
+            cleaned.append(cr)
+    if not cleaned:
+        return ""
+    # Prefer most common reason; tie-break by most recent occurrence in this run.
+    counts: dict[str, int] = {}
+    last_idx: dict[str, int] = {}
+    for idx, reason in enumerate(cleaned):
+        counts[reason] = counts.get(reason, 0) + 1
+        last_idx[reason] = idx
+    return max(counts.keys(), key=lambda r: (counts[r], last_idx[r]))
+
+
+def _reason_from_meta_for_parent(meta: dict[str, Any] | None) -> str:
+    if not isinstance(meta, dict):
+        return ""
+    hint = _parent_actionable_reason(str(meta.get("failure_hint") or ""))
+    if hint:
+        return hint
+    ctx = _activity_context_dict(str(meta.get("activity_context") or ""))
+    reason = _parent_actionable_reason(str(ctx.get("failure_reason") or ""))
+    if reason:
+        return reason
+    ipb = ctx.get("import_promotion_block") if isinstance(ctx.get("import_promotion_block"), dict) else {}
+    return _parent_actionable_reason(str(ipb.get("subtitle") or ""))
+
+
+def _refiner_run_parent_summary(*, processed: int, blocked: int, failed: int, primary_reason: str = "") -> str:
     # Current run only (no history aggregation).
     if processed == 0 and blocked == 0 and failed == 0:
         return "No new actions — all items already processed or blocked"
     if failed == 0 and blocked == 0:
         noun = "file" if processed == 1 else "files"
         return f"{processed} {noun} processed"
+    reason = _parent_actionable_reason(primary_reason)
     if processed > 0:
-        return f"{processed} processed · {blocked + failed} blocked"
+        base = f"{processed} processed · {blocked + failed} blocked"
+        return f"{base} — {reason}" if reason else base
     if blocked + failed > 0:
         noun = "item" if (blocked + failed) == 1 else "items"
-        return f"{blocked + failed} {noun} needs attention"
+        base = f"{blocked + failed} {noun} needs attention"
+        return f"{base} — {reason}" if reason else base
     return "No new actions — all items already processed or blocked"
 
 
@@ -1494,6 +1543,7 @@ async def run_refiner_pass(
             if prom_bridge.sonarr is None and prom_bridge.radarr is None:
                 prom_bridge = None
         failure_notes: list[str] = []
+        blocked_reasons: list[str] = []
         job_rows: list[tuple[Path, int | None]] = []
         for fp in files:
             act_id = await _insert_refiner_pass_job_row(
@@ -1623,18 +1673,26 @@ async def run_refiner_pass(
                 dry_c += 1
             elif status == "blocked_import":
                 import_blocked_c += 1
+                r = _reason_from_meta_for_parent(meta)
+                if r:
+                    blocked_reasons.append(r)
             else:
                 if suppress_duplicate_failure:
                     continue
                 err_c += 1
                 hint = (meta or {}).get("failure_hint") or "Processing failed."
                 failure_notes.append(f"{fp.name}: {hint}")
+                r = _reason_from_meta_for_parent(meta)
+                if r:
+                    blocked_reasons.append(r)
         row.refiner_last_run_at = utc_now_naive()
         row.updated_at = utc_now_naive()
+        primary_reason = _pick_primary_actionable_reason(blocked_reasons)
         detail = _refiner_run_parent_summary(
             processed=ok_c + dry_c,
             blocked=import_blocked_c,
             failed=err_c,
+            primary_reason=primary_reason,
         )
         job_lines = [detail]
         if failure_notes:
