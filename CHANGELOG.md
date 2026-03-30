@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.2.2] - 2026-03-30
+
+### Fixed
+
+- **SQLite / Refiner schema upgrades:** Centralized repair DDL and expected SQLite default backfill for missing **`app_settings`** **`refiner_*`** columns in **`app/refiner_app_settings_contract.py`** (aligned with **`AppSettings`**). **`migrate()`** remains the repair entry point before strict Refiner schema validation. Tests cover column presence, default values after repair, pre-upgrade simulation, and idempotent **`migrate()`** — improving **startup and upgrade reliability** for databases that predated those columns.
+- **UI / autofill mitigation:** Login and setup wizard forms reduce browser or password-manager autofill from filling **Sonarr/Radarr/Emby URL and API-key** fields with unrelated saved data (form-level **`autocomplete="off"`**, scoped **`autocomplete`** tokens for Fetcher-only auth fields, **`readonly`** until focus on integration inputs). Short note on the login page when autofill may be wrong. **No change to server-side auth logic**; this release does not address mistaken credentials or choosing the wrong **`fetcher.db`** on a host (operational checks unchanged).
+
 ## [3.2.1] - 2026-03-30
 
 ### Fixed

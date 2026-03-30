@@ -14,7 +14,8 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.migrations import _REFINER_APP_SETTINGS_SQLITE_SPECS, migrate
+from app.migrations import migrate
+from app.refiner_app_settings_contract import REFINER_APP_SETTINGS_SQLITE_SPECS
 from app.models import Base
 from app.schema_validation import (
     REQUIRED_REFINER_APP_SETTINGS_COLUMNS,
@@ -29,7 +30,7 @@ def _sqlite_supports_drop_column() -> bool:
 def _strip_refiner_columns_from_app_settings(db_path: Path) -> None:
     con = sqlite3.connect(db_path)
     try:
-        for col_name, _ in _REFINER_APP_SETTINGS_SQLITE_SPECS:
+        for col_name, _ in REFINER_APP_SETTINGS_SQLITE_SPECS:
             con.execute(f"ALTER TABLE app_settings DROP COLUMN {col_name}")
         con.commit()
     finally:
@@ -123,7 +124,7 @@ def test_migrate_repairs_app_settings_missing_refiner_columns_pre_upgrade_shape(
             async with engine.connect() as conn:
                 res = await conn.execute(text("PRAGMA table_info(app_settings)"))
                 names = {row[1] for row in res.fetchall()}
-            for col_name, _ in _REFINER_APP_SETTINGS_SQLITE_SPECS:
+            for col_name, _ in REFINER_APP_SETTINGS_SQLITE_SPECS:
                 assert col_name in names, f"missing after repair: {col_name}"
         finally:
             await engine.dispose()
