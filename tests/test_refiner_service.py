@@ -289,6 +289,7 @@ def test_refiner_schema_contract_v34_activity_context_and_trimmer_activity() -> 
     assert "_migrate_033_refiner_activity_context" in migrations_text
     assert "_migrate_035_activity_log_trimmer_app_identity" in migrations_text
     assert "_migrate_034_forward_app_settings_schema_version" in migrations_text
+    assert "_ensure_refiner_app_settings_columns" in migrations_text
     assert "refiner_processing_pass_generation" not in migrations_text
 
 

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.2.1] - 2026-03-30
+
+### Fixed
+
+- **SQLite upgrades:** `app.migrations.migrate()` now runs an idempotent repair step that adds any missing canonical **`refiner_*`** columns on **`app_settings`** (types and defaults aligned with **`app.models.AppSettings`**) before **`validate_refiner_app_settings_schema`**. Existing databases created before those columns existed no longer fail startup after `create_all` (which does not alter existing tables). Strict Refiner schema validation after repair is unchanged; SQL errors during `ALTER TABLE` are not swallowed.
+
 ## [3.2.0] - 2026-03-30
 
 ### Documentation

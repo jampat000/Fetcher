@@ -33,7 +33,8 @@ _RUNTIME_ERROR_DETAIL = (
 async def validate_refiner_app_settings_schema(engine: AsyncEngine) -> None:
     """Raise ``RuntimeError`` if ``app_settings`` is missing required ``refiner_*`` columns.
 
-    Call after ``create_all`` and schema migration so the table exists when the DB is initialized.
+    Call after ``create_all`` and :func:`app.migrations.migrate` (which repairs missing
+    ``refiner_*`` columns on SQLite ``app_settings`` before this check).
     """
     if engine.dialect.name != "sqlite":
         logger.error(

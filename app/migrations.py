@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.schema_version import CURRENT_SCHEMA_VERSION
+
+logger = logging.getLogger(__name__)
 
 
 async def _has_column(engine: AsyncEngine, *, table: str, column: str) -> bool:
@@ -466,6 +470,64 @@ async def _migrate_035_activity_log_trimmer_app_identity(engine: AsyncEngine) ->
         await conn.execute(text("UPDATE activity_log SET app = 'trimmer' WHERE LOWER(app) = 'emby'"))
 
 
+# SQLite ``CREATE TABLE`` / ``create_all`` does not add columns to existing ``app_settings`` rows.
+# Older DBs never received refiner_* columns via numbered migrations; keep definitions aligned with
+# ``app.models.AppSettings`` refiner_* fields (types and defaults as SQLite ALTER clauses).
+_REFINER_APP_SETTINGS_SQLITE_SPECS: tuple[tuple[str, str], ...] = (
+    ("refiner_enabled", "INTEGER NOT NULL DEFAULT 0"),
+    ("refiner_dry_run", "INTEGER NOT NULL DEFAULT 1"),
+    ("refiner_primary_audio_lang", "TEXT NOT NULL DEFAULT ''"),
+    ("refiner_secondary_audio_lang", "TEXT NOT NULL DEFAULT ''"),
+    ("refiner_tertiary_audio_lang", "TEXT NOT NULL DEFAULT ''"),
+    ("refiner_default_audio_slot", "TEXT NOT NULL DEFAULT 'primary'"),
+    ("refiner_remove_commentary", "INTEGER NOT NULL DEFAULT 0"),
+    ("refiner_subtitle_mode", "TEXT NOT NULL DEFAULT 'remove_all'"),
+    ("refiner_subtitle_langs_csv", "TEXT NOT NULL DEFAULT ''"),
+    ("refiner_preserve_forced_subs", "INTEGER NOT NULL DEFAULT 1"),
+    ("refiner_preserve_default_subs", "INTEGER NOT NULL DEFAULT 1"),
+    ("refiner_watched_folder", "TEXT NOT NULL DEFAULT ''"),
+    ("refiner_output_folder", "TEXT NOT NULL DEFAULT ''"),
+    ("refiner_work_folder", "TEXT NOT NULL DEFAULT ''"),
+    ("refiner_paths", "TEXT NOT NULL DEFAULT ''"),
+    (
+        "refiner_audio_preference_mode",
+        "TEXT NOT NULL DEFAULT 'preferred_langs_quality'",
+    ),
+    ("refiner_interval_seconds", "INTEGER NOT NULL DEFAULT 60"),
+    ("refiner_schedule_enabled", "INTEGER NOT NULL DEFAULT 0"),
+    ("refiner_schedule_days", "TEXT NOT NULL DEFAULT ''"),
+    ("refiner_schedule_start", "TEXT NOT NULL DEFAULT '00:00'"),
+    ("refiner_schedule_end", "TEXT NOT NULL DEFAULT '23:59'"),
+    ("refiner_last_run_at", "DATETIME"),
+)
+
+
+async def _app_settings_table_exists(engine: AsyncEngine) -> bool:
+    async with engine.connect() as conn:
+        res = await conn.execute(
+            text("SELECT 1 FROM sqlite_master WHERE type='table' AND name='app_settings' LIMIT 1")
+        )
+        return res.fetchone() is not None
+
+
+async def _ensure_refiner_app_settings_columns(engine: AsyncEngine) -> None:
+    """Add missing ``refiner_*`` columns on ``app_settings`` (SQLite only, idempotent).
+
+    Runs after ``create_all`` and other migrations so upgraded installs match the ORM before
+    :func:`app.schema_validation.validate_refiner_app_settings_schema`.
+    """
+    if engine.dialect.name != "sqlite":
+        return
+    if not await _app_settings_table_exists(engine):
+        return
+    for col_name, type_default in _REFINER_APP_SETTINGS_SQLITE_SPECS:
+        if await _has_column(engine, table="app_settings", column=col_name):
+            continue
+        ddl = f"{col_name} {type_default}"
+        logger.info("app_settings schema repair: adding column %s", col_name)
+        await _add_column(engine, table="app_settings", ddl=ddl)
+
+
 async def _migrate_034_forward_app_settings_schema_version(engine: AsyncEngine) -> None:
     """After DDL migrations, bump stored schema_version when this build is newer (upgrade path)."""
     table = "app_settings"
@@ -533,3 +595,4 @@ async def migrate(engine: AsyncEngine) -> None:
     await _migrate_033_refiner_activity_context(engine)
     await _migrate_035_activity_log_trimmer_app_identity(engine)
     await _migrate_034_forward_app_settings_schema_version(engine)
+    await _ensure_refiner_app_settings_columns(engine)
