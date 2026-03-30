@@ -33,6 +33,7 @@ from app.refiner_media_identity import (
 )
 from app.refiner_mux import ffprobe_json, remux_to_temp_file
 from app.refiner_promotion_gate import PromotionGateSyncResult, refiner_promotion_precheck
+from app.refiner_source_readiness import check_source_readiness, log_readiness_skip_throttled
 from app.refiner_rules import (
     RefinerRulesConfig,
     is_commentary_audio,
@@ -1511,14 +1512,14 @@ async def run_refiner_pass(
             )
             await session.commit()
             return {"ok": False, "ran": False, "error": "output_folder_invalid"}
-        files = _gather_watched_files(watched_root)
+        candidates = _gather_watched_files(watched_root)
         await _reconcile_interrupted_refiner_processing_rows_before_pass()
         active_paths = await _active_refiner_source_paths()
         if active_paths:
-            files = [
-                fp for fp in files if _norm_source_path_for_identity(fp) not in active_paths
+            candidates = [
+                fp for fp in candidates if _norm_source_path_for_identity(fp) not in active_paths
             ]
-        if not files:
+        if not candidates:
             logger.info("Refiner: watched folder has no supported media files — nothing to do.")
             session.add(
                 JobRunLog(
@@ -1530,6 +1531,43 @@ async def run_refiner_pass(
             )
             await session.commit()
             return {"ok": True, "ran": False, "reason": "no_files"}
+
+        files: list[Path] = []
+        skipped_readiness = 0
+        for fp in candidates:
+            rr = await asyncio.to_thread(check_source_readiness, fp)
+            if not rr.ready:
+                skipped_readiness += 1
+                log_readiness_skip_throttled(fp, rr)
+                continue
+            files.append(fp)
+
+        if not files:
+            n = len(candidates)
+            msg = (
+                f"Refiner: {n} media file(s) in watch folder but none ready yet "
+                "(still downloading, locked, or unstable — will retry on the next run)."
+            )
+            logger.info(msg)
+            session.add(
+                JobRunLog(
+                    started_at=t_start,
+                    finished_at=utc_now_naive(),
+                    ok=True,
+                    message=_refiner_job_log_text(msg),
+                )
+            )
+            await session.commit()
+            return {
+                "ok": True,
+                "ran": True,
+                "reason": "no_ready_sources",
+                "skipped_not_ready": skipped_readiness,
+                "remuxed": 0,
+                "unchanged": 0,
+                "dry_run_items": 0,
+                "errors": 0,
+            }
         dry = bool(row.refiner_dry_run)
         ok_c = dry_c = err_c = import_blocked_c = 0
         noop_c = 0  # log field unchanged=0 (no in-place “skipped” live passes without pipeline finalize)
@@ -1729,4 +1767,5 @@ async def run_refiner_pass(
             "unchanged": noop_c,
             "dry_run_items": dry_c,
             "errors": err_c,
+            "skipped_not_ready": 0,
         }

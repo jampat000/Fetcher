@@ -4,6 +4,7 @@ import asyncio
 import importlib
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,12 @@ from app.refiner_service import (
     run_refiner_pass,
 )
 from app.schema_version import CURRENT_SCHEMA_VERSION
+
+
+def _age_refiner_watch_source(path: Path, *, age_sec: float = 120.0) -> None:
+    """Backdate mtime/atime so ``check_source_readiness`` treats the file as past the quiet window."""
+    t = time.time() - age_sec
+    os.utime(path, (t, t))
 
 
 def _fake_probe_multi_audio() -> dict:
@@ -63,6 +70,7 @@ def test_dry_run_no_file_changes(monkeypatch: pytest.MonkeyPatch, tmp_path) -> N
         output.mkdir()
         f = watched / "m.mkv"
         f.write_bytes(b"original")
+        _age_refiner_watch_source(f)
         async with SessionLocal() as session:
             row = await _get_or_create_settings(session)
             row.refiner_enabled = True
@@ -101,6 +109,7 @@ def test_live_run_moves_to_output_and_deletes_source(monkeypatch: pytest.MonkeyP
         f = watched / "a" / "m.mkv"
         f.parent.mkdir(parents=True)
         f.write_bytes(b"original")
+        _age_refiner_watch_source(f)
         async with SessionLocal() as session:
             row = await _get_or_create_settings(session)
             row.refiner_enabled = True
@@ -139,6 +148,7 @@ def test_live_no_remux_copies_to_output_removes_source_and_empty_folder(
         sub.mkdir(parents=True)
         f = sub / "clean.file.name.1080p.mkv"
         f.write_bytes(b"payload")
+        _age_refiner_watch_source(f)
         output.mkdir()
         async with SessionLocal() as session:
             row = await _get_or_create_settings(session)
@@ -171,6 +181,7 @@ def test_live_no_remux_leaves_folder_when_other_files_remain(
         sub.mkdir(parents=True)
         f = sub / "one.mkv"
         f.write_bytes(b"x")
+        _age_refiner_watch_source(f)
         # Dedicated release folder: subtitle sidecar must survive residue cleanup (.txt would be removed).
         (sub / "keep.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\nhold\n", encoding="utf-8")
         output.mkdir()
@@ -202,6 +213,7 @@ def test_dry_run_no_remux_does_not_copy_or_delete(monkeypatch: pytest.MonkeyPatc
         output.mkdir()
         f = watched / "solo.mkv"
         f.write_bytes(b"orig")
+        _age_refiner_watch_source(f)
         async with SessionLocal() as session:
             row = await _get_or_create_settings(session)
             row.refiner_enabled = True
@@ -241,6 +253,7 @@ def test_source_preserved_on_failure(monkeypatch: pytest.MonkeyPatch, tmp_path) 
         output.mkdir()
         f = watched / "m.mkv"
         f.write_bytes(b"original")
+        _age_refiner_watch_source(f)
         async with SessionLocal() as session:
             row = await _get_or_create_settings(session)
             row.refiner_enabled = True
@@ -279,6 +292,7 @@ def test_custom_work_folder_used(monkeypatch: pytest.MonkeyPatch, tmp_path) -> N
         output.mkdir()
         f = watched / "m.mkv"
         f.write_bytes(b"orig")
+        _age_refiner_watch_source(f)
         async with SessionLocal() as session:
             row = await _get_or_create_settings(session)
             row.refiner_enabled = True
@@ -333,6 +347,7 @@ def test_default_work_folder_usage(monkeypatch: pytest.MonkeyPatch, tmp_path) ->
         output.mkdir()
         f = watched / "m.mkv"
         f.write_bytes(b"orig")
+        _age_refiner_watch_source(f)
         async with SessionLocal() as session:
             row = await _get_or_create_settings(session)
             row.refiner_enabled = True
@@ -562,7 +577,7 @@ def test_worker_boot_reconcile_closes_processing_rows() -> None:
     asyncio.run(_go())
 
 
-def test_source_missing_skips_as_failed(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+def test_source_missing_skipped_at_readiness_gate(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_multi_audio())
 
     async def _go() -> None:
@@ -584,7 +599,8 @@ def test_source_missing_skips_as_failed(monkeypatch: pytest.MonkeyPatch, tmp_pat
             row.refiner_output_folder = str(output)
             await session.commit()
             r = await run_refiner_pass(session, trigger="scheduled")
-        assert r.get("errors") == 1
+        assert r.get("reason") == "no_ready_sources"
+        assert r.get("skipped_not_ready") == 1
         assert not missing.exists()
 
     asyncio.run(_go())
@@ -615,6 +631,7 @@ def test_refiner_pass_calls_insert_then_update_per_file(monkeypatch: pytest.Monk
         watched.mkdir()
         output.mkdir()
         (watched / "m.mkv").write_bytes(b"x")
+        _age_refiner_watch_source(watched / "m.mkv")
         async with SessionLocal() as session:
             row = await _get_or_create_settings(session)
             row.refiner_enabled = True
@@ -664,6 +681,8 @@ def test_refiner_pass_processes_files_strict_fifo_order(monkeypatch: pytest.Monk
         output.mkdir()
         (watched / "b.mkv").write_bytes(b"x")
         (watched / "a.mkv").write_bytes(b"y")
+        _age_refiner_watch_source(watched / "b.mkv")
+        _age_refiner_watch_source(watched / "a.mkv")
         async with SessionLocal() as session:
             row = await _get_or_create_settings(session)
             row.refiner_enabled = True
@@ -774,6 +793,7 @@ def test_live_pass_calls_set_status_processing_then_finalizing(monkeypatch: pyte
         output.mkdir()
         f = watched / "solo.mkv"
         f.write_bytes(b"z")
+        _age_refiner_watch_source(f)
         async with SessionLocal() as session:
             row = await _get_or_create_settings(session)
             row.refiner_enabled = True
@@ -847,6 +867,7 @@ def test_refiner_pass_persists_job_run_log_with_failure_hints(
         output.mkdir()
         f = watched / "m.mkv"
         f.write_bytes(b"original")
+        _age_refiner_watch_source(f)
         async with SessionLocal() as session:
             row = await _get_or_create_settings(session)
             row.refiner_enabled = True
@@ -892,6 +913,7 @@ def test_live_run_refuses_overwrite_existing_destination(monkeypatch: pytest.Mon
         output.mkdir()
         src = watched / "m.mkv"
         src.write_bytes(b"original")
+        _age_refiner_watch_source(src)
         existing = output / "m.mkv"
         existing.write_bytes(b"existing")
         async with SessionLocal() as session:
@@ -1085,6 +1107,7 @@ def test_refiner_inflight_source_path_is_suppressed(monkeypatch: pytest.MonkeyPa
         output.mkdir()
         src = watched / "same.mkv"
         src.write_bytes(b"x")
+        _age_refiner_watch_source(src)
 
         # Existing in-flight row from another active pass.
         async with SessionLocal() as s:
@@ -1138,6 +1161,7 @@ def test_refiner_duplicate_failure_suppressed_same_path_same_reason(
         output.mkdir()
         src = watched / "dup.mkv"
         src.write_bytes(b"payload")
+        _age_refiner_watch_source(src)
         async with SessionLocal() as session:
             row = await _get_or_create_settings(session)
             row.refiner_enabled = True
@@ -1180,6 +1204,7 @@ def test_refiner_failure_not_suppressed_when_reason_changes(
         output.mkdir()
         src = watched / "reasons.mkv"
         src.write_bytes(b"payload")
+        _age_refiner_watch_source(src)
         async with SessionLocal() as session:
             row = await _get_or_create_settings(session)
             row.refiner_enabled = True
@@ -1212,6 +1237,7 @@ def test_refiner_parent_summary_uses_current_run_only(monkeypatch: pytest.Monkey
         output.mkdir()
         src = watched / "ok.mkv"
         src.write_bytes(b"payload")
+        _age_refiner_watch_source(src)
 
         # Prior-run failure history must not bleed into current summary.
         async with SessionLocal() as s:
@@ -1330,6 +1356,7 @@ def test_refiner_pass_no_meaningful_work_skips_activity_log(monkeypatch: pytest.
         output.mkdir()
         d = watched / "d.mkv"
         d.write_bytes(b"x")
+        _age_refiner_watch_source(d)
         sp = str(d.resolve())
         async with SessionLocal() as s:
             await s.execute(delete(ActivityLog).where(ActivityLog.app == "refiner"))
@@ -1417,6 +1444,7 @@ def test_refiner_pass_blocked_import_still_writes_activity_log(
         watched.mkdir()
         output.mkdir()
         (watched / "b.mkv").write_bytes(b"bb")
+        _age_refiner_watch_source(watched / "b.mkv")
         async with SessionLocal() as s:
             await s.execute(delete(ActivityLog).where(ActivityLog.app == "refiner"))
             await s.commit()
@@ -1469,6 +1497,7 @@ def test_refiner_pass_failure_still_writes_activity_log(
         watched.mkdir()
         output.mkdir()
         (watched / "m.mkv").write_bytes(b"original")
+        _age_refiner_watch_source(watched / "m.mkv")
         async with SessionLocal() as s:
             await s.execute(delete(ActivityLog).where(ActivityLog.app == "refiner"))
             await s.commit()

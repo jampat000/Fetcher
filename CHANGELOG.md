@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.9] - 2026-03-31
+
+### Fixed
+
+- **Refiner source readiness (production hardening):** Before probe/remux/finalize, each candidate file must pass a conservative gate — minimum quiet period after last modification, Windows non-shared read open (detects common in-use/lock cases), and a short size/mtime stability probe. In-progress, locked, or still-growing downloads are skipped with throttled info logging and a single job-run summary when nothing is ready yet (`no_ready_sources`). Prevents partial/poisoned outputs, WinError 32 delete races, and scheduler overlap from long retries on bad sources.
+
+### Added
+
+- `app/refiner_source_readiness.py` — canonical `check_source_readiness` / throttled skip logging.
+- Tests: `tests/test_refiner_readiness.py`; refiner service tests age watch-folder fixtures past the quiet window.
+
 ## [3.4.8] - 2026-03-31
 
 ### Fixed
