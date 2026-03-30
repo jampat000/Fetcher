@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.8] - 2026-03-31
+
+### Fixed
+
+- fix(refiner): remove empty-run activity spam ("Refiner skipped — no new actions")
+- fix(refiner): activity feed now only shows meaningful work or issues
+
 ## [3.4.7] - 2026-03-30
 
 ### Fixed
