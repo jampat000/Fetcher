@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-03-30
+
 ### Documentation
 
 - **Failed-import cleanup (Sonarr / Radarr):** CHANGELOG, README, and settings helper text now match runtime behavior. Cleanup uses each app’s **download queue** API (`DELETE /api/v3/queue/{id}`): **blocklist** is requested on the first delete; if that fails, Fetcher retries with **queue-only** removal. **removeFromClient** is not enabled. **Activity** records a row only when a delete succeeds, with titles **Failed import cleaned up** (queue removed and blocklist applied on that call) or **Failed import removed** (queue removed without blocklist). Waiting-to-import, unknown, and no-match paths do **not** add cleanup activity rows. Job-run summaries use the same outcome wording (no API-style phrasing).
@@ -14,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Breaking:** Removed **Windows SQLite path migration** (no copy/rename from service profile **`AppData\Local\Fetcher`**, no **`fetcher.db.migrated_from_legacy`** marker, no archive suffix flow). Packaged builds use **`%ProgramData%\Fetcher\fetcher.db`** or **`FETCHER_DATA_DIR`** only—move **`fetcher.db`** manually when needed (service stopped).
 - **Breaking:** Startup requires a SQLite **`app_settings`** row with full **Refiner** columns (**`refiner_*`**) and **`schema_version`** equal to the build. **`POST /refiner/settings/save`** accepts **`refiner_*`** form fields only. Settings JSON backup/restore accepts **current** format and column names only (see README / **HOWTO-RESTORE.md**).
+- **Dashboard:** Automation section uses four tiles (Sonarr, Radarr, Refiner, Trimmer) with aligned layout, footer notes/actions, and client-side status polling refinements.
 
 ### Internal
 
