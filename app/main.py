@@ -17,10 +17,13 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.auth import FetcherAuthRequired, bootstrap_auth_on_startup
 from app.branding import APP_NAME
 from app.database_resolution import get_last_database_resolution, log_database_resolution_startup
+from app.database_startup import (
+    run_schema_upgrade_phase,
+    verify_sqlite_engine_matches_canonical_path,
+)
 from app.db import db_path, engine
 from app.httpx_shared import aclose_shared_httpx_client, init_shared_httpx_client
 from app.log_sanitize import configure_fetcher_logging
-from app.migrations import migrate
 from app.models import Base
 from app.schema_validation import (
     validate_app_settings_schema_version,
@@ -30,7 +33,7 @@ from app.paths import STATIC_DIR, resolved_logs_dir
 from app.rate_limit import limiter
 from app.refiner_service import reconcile_refiner_processing_rows_on_worker_boot
 from app.scheduler import scheduler
-from app.security_utils import get_jwt_secret_from_env, warn_if_data_encryption_key_missing
+from app.security_utils import resolve_fetcher_jwt_secret_at_startup, warn_if_data_encryption_key_missing
 from app.web_common import refiner_settings_redirect_url, trimmer_settings_redirect_url
 from app import updates as app_updates
 from app.routers import api as api_router
@@ -49,14 +52,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     configure_fetcher_logging()
-    jwt_secret = (get_jwt_secret_from_env() or "").strip()
-    if not jwt_secret:
-        raise RuntimeError(
-            "Missing required JWT configuration: FETCHER_JWT_SECRET is not set or is empty. "
-            "Set this environment variable to a stable, high-entropy secret before starting Fetcher "
-            "(Windows service environment, installer, or shell). "
-            "It signs API access and refresh tokens; changing it invalidates existing refresh tokens."
-        )
+    jwt_secret = resolve_fetcher_jwt_secret_at_startup(logger=logger)
     _app.state.jwt_secret = jwt_secret
     warn_if_data_encryption_key_missing(logger)
     _ = db_path()
@@ -74,10 +70,13 @@ async def _lifespan(_app: FastAPI):
         if delay:
             await asyncio.sleep(delay)
         try:
+            verify_sqlite_engine_matches_canonical_path(
+                engine, canonical_db_file=db_path(), log=logger
+            )
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
-            await migrate(engine)
-            logger.info("Startup: schema repair/migrate phase complete; running Refiner reconcile + validation.")
+            await run_schema_upgrade_phase(engine, log=logger)
+            logger.info("Startup: Refiner worker reconcile (processing rows)")
             await reconcile_refiner_processing_rows_on_worker_boot()
             await validate_refiner_app_settings_schema(engine)
             last_err = None
@@ -101,6 +100,7 @@ async def _lifespan(_app: FastAPI):
 
     await bootstrap_auth_on_startup()
     await validate_app_settings_schema_version(engine)
+    logger.info("Startup: database schema ready — continuing (auth, HTTP client, scheduler)")
     await init_shared_httpx_client()
     # Packaged-build CI smoke test: skip background scheduler so /healthz is reachable quickly
     # (first scheduler tick can otherwise block startup on Arr/Emby HTTP before the server listens).

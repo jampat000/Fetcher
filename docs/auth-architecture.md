@@ -24,8 +24,8 @@ This is a short maintenance map for auth-related code in Fetcher.
 
 ## Required environment variables
 
-- **`FETCHER_JWT_SECRET`** (required)
-  - Dedicated JWT signing key. Startup fails fast if missing.
+- **`FETCHER_JWT_SECRET`** (required for dev / unfrozen)
+  - Dedicated JWT signing key. **Packaged:** if unset, a stable **`machine-jwt-secret`** file next to `fetcher.db` is used or created; this env var overrides the file.
 - **Optional auth/security env vars**
   - `FETCHER_JWT_ACCESS_MINUTES`
   - `FETCHER_JWT_REFRESH_DAYS`

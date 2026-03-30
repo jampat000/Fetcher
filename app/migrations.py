@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncConnection
 
 from app.refiner_app_settings_contract import REFINER_APP_SETTINGS_SQLITE_SPECS
 from app.schema_version import CURRENT_SCHEMA_VERSION
@@ -11,11 +11,16 @@ from app.schema_version import CURRENT_SCHEMA_VERSION
 logger = logging.getLogger(__name__)
 
 
+async def _column_names_sqlite(conn: AsyncConnection, *, table: str) -> set[str]:
+    """Column names on ``table`` via ``pragma_table_info`` (same connection as DDL)."""
+    res = await conn.execute(text(f"SELECT name FROM pragma_table_info('{table}')"))
+    return {str(row[0]) for row in res.fetchall() if row[0] is not None}
+
+
 async def _has_column(engine: AsyncEngine, *, table: str, column: str) -> bool:
     async with engine.connect() as conn:
-        res = await conn.execute(text(f"PRAGMA table_info({table})"))
-        cols = [r[1] for r in res.fetchall()]  # (cid, name, type, notnull, dflt_value, pk)
-        return column in cols
+        names = await _column_names_sqlite(conn, table=table)
+        return column in names
 
 
 async def _add_column(engine: AsyncEngine, *, table: str, ddl: str) -> None:
@@ -481,30 +486,66 @@ async def _migrate_036_refiner_activity_media_title(engine: AsyncEngine) -> None
 # Refiner column repair DDL: :mod:`app.refiner_app_settings_contract` (must match ``AppSettings``).
 
 
+async def _app_settings_table_exists_on_conn(conn: AsyncConnection) -> bool:
+    res = await conn.execute(
+        text("SELECT 1 FROM sqlite_master WHERE type='table' AND name='app_settings' LIMIT 1")
+    )
+    return res.fetchone() is not None
+
+
 async def _app_settings_table_exists(engine: AsyncEngine) -> bool:
     async with engine.connect() as conn:
-        res = await conn.execute(
-            text("SELECT 1 FROM sqlite_master WHERE type='table' AND name='app_settings' LIMIT 1")
-        )
-        return res.fetchone() is not None
+        return await _app_settings_table_exists_on_conn(conn)
 
 
-async def _ensure_refiner_app_settings_columns(engine: AsyncEngine) -> None:
+async def repair_refiner_app_settings_columns(engine: AsyncEngine) -> None:
     """Add missing ``refiner_*`` columns on ``app_settings`` (SQLite only, idempotent).
 
-    Runs after ``create_all`` and other migrations so upgraded installs match the ORM before
-    :func:`app.schema_validation.validate_refiner_app_settings_schema`.
+    Runs all detection and ``ALTER TABLE`` on **one** connection inside a single transaction so
+    checks and DDL cannot diverge across the pool (WAL/read-your-writes). Safe to call from
+    :func:`app.migrations.migrate` and from :func:`app.schema_validation.validate_refiner_app_settings_schema`
+    when validation finds gaps.
+
+    Logs each column as **added** or **already present**; no silent skips.
     """
     if engine.dialect.name != "sqlite":
+        logger.warning("app_settings refiner repair skipped: dialect is not sqlite (%r)", engine.dialect.name)
         return
-    if not await _app_settings_table_exists(engine):
-        return
-    for col_name, type_default in REFINER_APP_SETTINGS_SQLITE_SPECS:
-        if await _has_column(engine, table="app_settings", column=col_name):
-            continue
-        ddl = f"{col_name} {type_default}"
-        logger.info("app_settings schema repair: adding column %s", col_name)
-        await _add_column(engine, table="app_settings", ddl=ddl)
+
+    logger.info("schema repair starting: app_settings refiner_* columns (single transaction)")
+    async with engine.begin() as conn:
+        if not await _app_settings_table_exists_on_conn(conn):
+            logger.warning(
+                "schema repair: app_settings table missing; cannot add refiner_* columns here"
+            )
+            return
+
+        names = await _column_names_sqlite(conn, table="app_settings")
+        added_any = False
+        for col_name, type_default in REFINER_APP_SETTINGS_SQLITE_SPECS:
+            if col_name in names:
+                logger.info("app_settings schema repair: column %s already present", col_name)
+                continue
+            ddl = f"{col_name} {type_default}"
+            stmt = text(f"ALTER TABLE app_settings ADD COLUMN {ddl}")
+            try:
+                await conn.execute(stmt)
+            except Exception as exc:
+                logger.error(
+                    "app_settings schema repair failed: ADD COLUMN %s (%s) — %s",
+                    col_name,
+                    ddl,
+                    exc,
+                )
+                raise
+            logger.info("app_settings schema repair: added column %s", col_name)
+            names.add(col_name)
+            added_any = True
+
+    if added_any:
+        logger.info("schema repair complete: app_settings refiner_* columns (ALTER applied)")
+    else:
+        logger.info("schema repair complete: app_settings refiner_* columns (no changes needed)")
 
 
 async def _migrate_034_forward_app_settings_schema_version(engine: AsyncEngine) -> None:
@@ -575,7 +616,7 @@ async def migrate(engine: AsyncEngine) -> None:
     await _migrate_035_activity_log_trimmer_app_identity(engine)
     await _migrate_036_refiner_activity_media_title(engine)
     await _migrate_034_forward_app_settings_schema_version(engine)
-    await _ensure_refiner_app_settings_columns(engine)
+    await repair_refiner_app_settings_columns(engine)
 
     logger.info(
         "SQLite migrate() chain finished (idempotent repairs included; strict schema validation runs next)."

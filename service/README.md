@@ -19,22 +19,21 @@ WinSW releases are available on GitHub (search “WinSW releases”).
 .\winsw.exe start
 ```
 
-## Required JWT secret for installed service
+## JWT secret (installed service)
 
-`Fetcher.exe` requires `FETCHER_JWT_SECRET` at startup. Configure it as a persistent machine env var, then restart the service:
+Packaged **`Fetcher.exe`** resolves the JWT signing secret in this order:
+
+1. **`FETCHER_JWT_SECRET`** if set in the process environment (e.g. machine-level variable — inherited by WinSW; no XML needed).
+2. Otherwise **`machine-jwt-secret`** next to **`fetcher.db`** (default **`%ProgramData%\Fetcher\machine-jwt-secret`**), created on **first** successful start with a stable random value.
+
+**Do not** add `<env name="FETCHER_JWT_SECRET" value="%FETCHER_JWT_SECRET%"/>` to WinSW: when the machine variable is missing, that expands to **empty** and prevents both inheritance and the file fallback.
+
+Optional explicit secret:
 
 ```powershell
 [Environment]::SetEnvironmentVariable("FETCHER_JWT_SECRET","<your-32+char-random-secret>","Machine")
 .\winsw.exe restart
 ```
-
-`FetcherService.xml` forwards this value to the process via:
-
-```xml
-<env name="FETCHER_JWT_SECRET" value="%FETCHER_JWT_SECRET%"/>
-```
-
-No fallback JWT secret is used; missing secret causes intentional fail-fast startup.
 
 ## Optional API key encryption (`FETCHER_DATA_ENCRYPTION_KEY`)
 

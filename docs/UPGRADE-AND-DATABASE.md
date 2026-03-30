@@ -32,8 +32,11 @@ Behavior:
 
 ## Schema repair and validation
 
-- All upgrades go through **`migrate()`** in `app/migrations.py` (idempotent `ALTER` / column repair, including Refiner columns via `_ensure_refiner_app_settings_columns`).
-- **Strict** checks in `app/schema_validation.py` run **after** `migrate()` on startup.
+Full contract: **[`docs/DATABASE-SCHEMA-CONTRACT.md`](DATABASE-SCHEMA-CONTRACT.md)**.
+
+- Upgrades run **`migrate()`** in `app/migrations.py` (idempotent `ALTER` / data fixes), then **`app/database_startup.run_schema_upgrade_phase`**: post-migrate refiner repair, **connection pool dispose**, and refiner repair again (all idempotent).
+- The SQLite engine must match **`db_path()`** at startup; otherwise Fetcher exits with an explicit error (env must be set before `app.db` is imported).
+- **Strict** checks in `app/schema_validation.py` run **after** the upgrade phase: idempotent refiner repair, then assert required `refiner_*` columns; then `schema_version` must match the build.
 - Contributor rules: `app/schema_upgrade_contract.py`.
 
 ## Auth after reinstall / upgrade
@@ -46,12 +49,12 @@ Startup logs an **auth diagnostic** line: `password_hash_configured=…` and `ne
 
 ## Installer / uninstall
 
-- **Upgrade**: replaces files under `{app}`; **does not** remove `%ProgramData%\Fetcher` (DB and logs stay). See `installer/Fetcher.iss` comments and **INSTALL-AND-OPERATIONS.md**.
+- **Upgrade**: replaces files under `{app}`; **does not** remove `%ProgramData%\Fetcher` (DB, logs, and **`machine-jwt-secret`** stay). See `installer/Fetcher.iss` comments and **INSTALL-AND-OPERATIONS.md**.
 - **Uninstall**: removes installed application files; **ProgramData is not deleted** by the installer script so data can survive uninstall.
 
 ## Docker / Linux
 
-- Typically set **`FETCHER_DATA_DIR`** (and **`FETCHER_JWT_SECRET`**). No Windows legacy paths; policy is a straight canonical file.
+- Typically set **`FETCHER_DATA_DIR`** (and **`FETCHER_JWT_SECRET`**). Windows packaged installs can omit the JWT env var if the persisted file next to `fetcher.db` is acceptable. No Windows legacy paths; policy is a straight canonical file.
 
 ## If startup refuses with a database message
 

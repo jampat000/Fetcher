@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-03-30
+
+### Fixed
+
+- **Deterministic DB upgrade → validation:** Startup enforces that the SQLite **engine URL matches** `db_path()` (fails fast if the DB file was selected after `app.db` was imported). After `migrate()`, Fetcher **disposes the connection pool** and runs **idempotent** `repair_refiner_app_settings_columns` again so strict validation does not read a stale `app_settings` definition from a pooled connection. **Strict Refiner validation** always runs repair once more, then asserts; columns still missing afterward are treated as unsupported/corrupt with explicit logs. **Ambiguous multi-database layouts are not auto-resolved** — existing `database_resolution` errors still apply.
+- **Refiner `app_settings` SQLite repair:** Column detection and all `ALTER TABLE` steps for refiner fields run in **one transaction** per repair pass; strict validation requires the full **`REFINER_APP_SETTINGS_SQLITE_SPECS`** column set (same as repair DDL).
+- **Windows service / JWT:** WinSW no longer injects `FETCHER_JWT_SECRET=%FETCHER_JWT_SECRET%` (empty expansion blocked service startup). Packaged (`frozen`) builds **load or create** persisted **`machine-jwt-secret`** next to the data directory when the env var is unset; **`FETCHER_JWT_SECRET`** still overrides when set.
+
+### Added
+
+- **`app/database_startup.py`** — canonical upgrade phase helper and engine/path verification.
+- **`docs/DATABASE-SCHEMA-CONTRACT.md`** — supported upgrade rules, legacy vs runtime, unsupported cases.
+- **Tests:** `tests/test_database_startup_contract.py` (engine mismatch, upgrade phase + strip, double subprocess lifespan, no-`app_settings` failure); `tests/test_jwt_secret_persistence.py` (JWT secret file and env override).
+
+### Changed
+
+- **Startup logging:** phased messages for upgrade, reconcile, strict Refiner validation, `schema_version` check, and “database schema ready”.
+- **`service/FetcherService.xml`:** removed JWT `<env>` forwarding; optional machine env vars are inherited normally.
+- **Documentation:** `service/README.md`, **`docs/INSTALL-AND-OPERATIONS.md`**, **`SECURITY.md`**, **`docs/auth-architecture.md`**, **`docs/UPGRADE-AND-DATABASE.md`**, **`README.md`** — aligned with persisted **`machine-jwt-secret`**, WinSW, and the database schema contract; **`.gitignore`** ignores that filename for local copies.
+
 ## [3.3.0] - 2026-03-30
 
 ### Changed

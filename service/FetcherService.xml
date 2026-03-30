@@ -7,9 +7,11 @@
   <executable>%BASE%\Fetcher.exe</executable>
   <!-- 0.0.0.0 = listen on all interfaces (LAN access). Use 127.0.0.1 to restrict to this machine. -->
   <arguments>--host 0.0.0.0 --port 8765</arguments>
-  <!-- Required: must be set as a machine/user env var before service start (no fallback secret). -->
-  <env name="FETCHER_JWT_SECRET" value="%FETCHER_JWT_SECRET%"/>
-  <!-- Optional: override data folder (default is %ProgramData%\Fetcher; legacy profile DB is copied once on upgrade then renamed with .fetcher-programdata-migration-archive). Set machine FETCHER_DATA_DIR and uncomment:
+  <!-- JWT: Do NOT set FETCHER_JWT_SECRET here with %VAR% expansion — an empty expansion overrides
+       the process environment and breaks the service when the machine variable is unset.
+       Packaged Fetcher loads or creates a stable secret under %ProgramData%\Fetcher\machine-jwt-secret.
+       Optional: set machine-level FETCHER_JWT_SECRET to override that file (inherited by the service). -->
+  <!-- Optional: override data folder (default is %ProgramData%\Fetcher). Set machine FETCHER_DATA_DIR and uncomment:
   <env name="FETCHER_DATA_DIR" value="%FETCHER_DATA_DIR%"/>
   -->
 

@@ -1,7 +1,7 @@
 """Canonical SQLite repair DDL and expected default values for ``app_settings.refiner_*``.
 
 Aligned with :class:`app.models.AppSettings` (``mapped_column`` types and ``default=``).
-Used by :func:`app.migrations._ensure_refiner_app_settings_columns` and upgrade tests.
+Used by :func:`app.migrations.repair_refiner_app_settings_columns` and upgrade tests.
 """
 
 from __future__ import annotations

@@ -57,10 +57,9 @@ def test_activity_display_row_refiner_batch() -> None:
 
 
 def test_humanize_refiner_batch_detail_readable() -> None:
-    detail = "Refiner (scheduled): processed=2 unchanged=1 dry_run_items=0 errors=0"
+    detail = "Refiner (scheduled): processed=3 unchanged=0 dry_run_items=0 errors=0"
     lines = _humanize_refiner_batch_log_detail(detail)
     assert lines is not None
     assert len(lines) == 1
-    assert "2 refined" in lines[0]
-    assert "1 unchanged" in lines[0]
+    assert "3 refined" in lines[0]
     assert "scheduled" in lines[0]

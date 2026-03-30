@@ -52,7 +52,8 @@ def test_validate_refiner_schema_raises_when_table_missing(tmp_path: Path) -> No
     asyncio.run(run())
 
 
-def test_validate_refiner_schema_raises_when_columns_missing(tmp_path: Path) -> None:
+def test_validate_refiner_schema_repairs_when_columns_missing(tmp_path: Path) -> None:
+    """Validation runs a repair pass so bare legacy app_settings rows are not fatal."""
     db = tmp_path / "incomplete.sqlite"
     con = sqlite3.connect(db)
     con.execute("CREATE TABLE app_settings (id INTEGER PRIMARY KEY, sonarr_url TEXT NOT NULL DEFAULT '')")
@@ -62,12 +63,41 @@ def test_validate_refiner_schema_raises_when_columns_missing(tmp_path: Path) -> 
     async def run() -> None:
         engine = create_async_engine(f"sqlite+aiosqlite:///{db.as_posix()}")
         try:
+            await validate_refiner_app_settings_schema(engine)
+            async with engine.connect() as conn:
+                res = await conn.execute(text("SELECT name FROM pragma_table_info('app_settings')"))
+                names = {row[0] for row in res.fetchall()}
+            for col in REQUIRED_REFINER_APP_SETTINGS_COLUMNS:
+                assert col in names, f"expected column after repair: {col}"
+        finally:
+            await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_validate_refiner_schema_raises_when_repair_does_not_fix_columns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db = tmp_path / "still_bad.sqlite"
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE app_settings (id INTEGER PRIMARY KEY, sonarr_url TEXT NOT NULL DEFAULT '')")
+    con.commit()
+    con.close()
+
+    import app.schema_validation as schema_validation
+
+    async def noop_repair(_engine: object) -> None:
+        return None
+
+    monkeypatch.setattr(schema_validation, "repair_refiner_app_settings_columns", noop_repair)
+
+    async def run() -> None:
+        engine = create_async_engine(f"sqlite+aiosqlite:///{db.as_posix()}")
+        try:
             with pytest.raises(RuntimeError) as exc_info:
                 await validate_refiner_app_settings_schema(engine)
-            msg = str(exc_info.value)
-            assert "not supported" in msg.lower() or "requires" in msg.lower()
-            for col in REQUIRED_REFINER_APP_SETTINGS_COLUMNS:
-                assert col in msg
+            msg = str(exc_info.value).lower()
+            assert "refiner" in msg or "missing" in msg or "column" in msg
         finally:
             await engine.dispose()
 

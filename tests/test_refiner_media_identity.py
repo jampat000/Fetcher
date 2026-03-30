@@ -16,6 +16,7 @@ from app.refiner_media_identity import (
 def _parse_ctx(**kwargs: str) -> dict:
     base = {
         "v": 1,
+        "trusted_title": "",
         "media_title": "",
         "refiner_title": "",
         "refiner_year": "",
@@ -64,23 +65,29 @@ def test_media_identity_show_tag() -> None:
     assert ident.media_title == "Severance (2022)"
 
 
-def test_resolve_prefers_orm_media_title_over_filename() -> None:
-    ctx = _parse_ctx()
+def test_resolve_prefers_filename_derived_over_ffprobe_orm() -> None:
+    ctx = _parse_ctx(media_title="The Grifters (1990)")
     t = resolve_activity_card_title(
         "The.Grifters.1990.1080p.BluRay.x264.mkv",
         ctx,
         orm_media_title="The Grifters (1990)",
     )
-    assert t == "The Grifters (1990)"
+    assert t == "The Grifters 1990 1080p BluRay x264"
 
 
-def test_resolve_title_year_from_context_without_media_title() -> None:
+def test_resolve_uses_ffprobe_when_filename_derived_empty() -> None:
     ctx = _parse_ctx(
         refiner_title="The Grifters",
         refiner_year="1990",
     )
-    t = resolve_activity_card_title("release-name.mkv", ctx, orm_media_title="")
+    t = resolve_activity_card_title("", ctx, orm_media_title="")
     assert t == "The Grifters (1990)"
+
+
+def test_resolve_trusted_title_wins_over_filename_and_ffprobe() -> None:
+    ctx = _parse_ctx(trusted_title="Pipeline Canonical Title", media_title="Wrong")
+    t = resolve_activity_card_title("Other.File.2020.mkv", ctx, orm_media_title="")
+    assert t == "Pipeline Canonical Title"
 
 
 def test_resolve_conservative_filename_when_no_metadata() -> None:
@@ -109,7 +116,7 @@ def test_should_show_raw_file_when_upstream_differs() -> None:
         orm_media_title="",
     )
     assert not should_show_raw_source_filename(
-        display_title="The Grifters (1990)",
+        display_title="The Grifters 1990",
         file_name="The.Grifters.1990.mkv",
         ctx={},
         orm_media_title="",

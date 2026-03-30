@@ -129,26 +129,55 @@ def provisional_media_title_before_probe(file_name: str) -> str:
     return resolve_activity_card_title(file_name, {}, orm_media_title="")
 
 
+def _ffprobe_title_from_parts(
+    *,
+    media_title: str,
+    refiner_title: str,
+    refiner_year: str,
+) -> str:
+    mt = (media_title or "").strip()
+    if mt:
+        return mt[:500]
+    rt = (refiner_title or "").strip()
+    ry = (refiner_year or "").strip()
+    if rt:
+        if ry and not _YEAR_IN_PARENS.search(rt):
+            return f"{rt} ({ry})"[:500]
+        return rt[:500]
+    return ""
+
+
 def resolve_activity_card_title(
     file_name: str,
     ctx: dict[str, Any],
     *,
     orm_media_title: str = "",
+    ffprobe_media_title: str | None = None,
+    ffprobe_refiner_title: str | None = None,
+    ffprobe_year: str | None = None,
 ) -> str:
-    """Display title priority: ORM/ctx media_title → title+year → filename-derived → raw file_name."""
-    for candidate in ((orm_media_title or "").strip(), (ctx.get("media_title") or "").strip()):
-        if candidate:
-            return candidate[:500]
-    rt = (ctx.get("refiner_title") or "").strip()
-    ry = (ctx.get("refiner_year") or "").strip()
-    if rt:
-        if ry and not _YEAR_IN_PARENS.search(rt):
-            return f"{rt} ({ry})"[:500]
-        return rt[:500]
+    """Display title priority: trusted pipeline → filename-derived → ffprobe → ORM fallback → raw file_name."""
+    trusted = (ctx.get("trusted_title") or "").strip()
+    if trusted:
+        return trusted[:500]
+
     fn = (file_name or "").strip()
-    derived = conservative_filename_display(fn)
-    if derived:
-        return derived[:500]
+    if fn:
+        derived = conservative_filename_display(fn)
+        if derived:
+            return derived[:500]
+
+    pm = ffprobe_media_title if ffprobe_media_title is not None else (ctx.get("media_title") or "")
+    pr = ffprobe_refiner_title if ffprobe_refiner_title is not None else (ctx.get("refiner_title") or "")
+    py = ffprobe_year if ffprobe_year is not None else (ctx.get("refiner_year") or "")
+    ff = _ffprobe_title_from_parts(media_title=str(pm), refiner_title=str(pr), refiner_year=str(py))
+    if ff:
+        return ff
+
+    orm = (orm_media_title or "").strip()
+    if orm:
+        return orm[:500]
+
     return fn[:512] if fn else "—"
 
 
@@ -165,12 +194,16 @@ def should_show_raw_source_filename(
         return False
     if display_title.strip().casefold() == raw.casefold():
         return False
+    if (ctx.get("trusted_title") or "").strip():
+        return True
+    derived = conservative_filename_display(raw)
+    if derived and display_title.strip().casefold() == derived.casefold():
+        return False
     if (ctx.get("media_title") or "").strip() or (ctx.get("refiner_title") or "").strip():
         return True
     orm = (orm_media_title or "").strip()
     if not orm:
         return False
-    derived = conservative_filename_display(raw)
     if derived and orm.casefold() == derived.casefold():
         return False
     if orm.casefold() == raw.casefold():

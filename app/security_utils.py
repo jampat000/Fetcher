@@ -8,8 +8,10 @@ from __future__ import annotations
 import hmac
 import os
 import secrets
+import sys
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from pathlib import Path
 from typing import Any
 
 import jwt
@@ -46,12 +48,118 @@ def needs_password_rehash(stored_hash: str) -> bool:
 def get_jwt_secret_from_env() -> str:
     """Read ``FETCHER_JWT_SECRET`` for HS256 signing of access and refresh JWTs.
 
-    **Required at process start:** the app lifespan in ``app.main`` refuses to boot if this is empty.
-    Set it in the service environment, installer defaults, or shell to a stable, high-entropy secret
-    (32+ random bytes encoded as hex or base64 is typical). Rotating it invalidates outstanding
-    refresh tokens.
+    **Packaged (frozen) builds** also persist a stable secret under the canonical data directory; see
+    :func:`resolve_fetcher_jwt_secret_at_startup`, which may set this env var after reading that file.
+
+    **Required at process start:** unfrozen/dev processes must have this set in the environment.
+    Rotating the secret invalidates outstanding refresh tokens.
     """
     return (os.environ.get("FETCHER_JWT_SECRET") or "").strip()
+
+
+_MACHINE_JWT_SECRET_FILENAME = "machine-jwt-secret"
+_MIN_PERSISTED_JWT_SECRET_LEN = 32
+
+
+def persistent_jwt_secret_file_path() -> Path:
+    """Path to the stable JWT secret file for packaged installs (next to ``fetcher.db``)."""
+    from app.database_resolution import default_data_dir
+
+    return default_data_dir() / _MACHINE_JWT_SECRET_FILENAME
+
+
+def _load_first_line_secret(path: Path) -> str:
+    raw = path.read_text(encoding="utf-8")
+    for ln in raw.splitlines():
+        s = ln.split("#", 1)[0].strip()
+        if s:
+            return s
+    return ""
+
+
+def _atomic_write_utf8(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(text, encoding="utf-8", newline="\n")
+        tmp.replace(path)
+    finally:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def resolve_fetcher_jwt_secret_at_startup(*, logger: logging.Logger) -> str:
+    """Return JWT signing secret; packaged builds load or create a persisted file when env is unset.
+
+    Precedence:
+
+    1. Non-empty ``FETCHER_JWT_SECRET`` in the process environment (operator override).
+    2. If ``sys.frozen``: read ``machine-jwt-secret`` under :func:`persistent_jwt_secret_file_path`
+       parent (same layout as SQLite data). If missing, create with :func:`secrets.token_hex` (32 bytes)
+       and write atomically. The value is copied into ``os.environ["FETCHER_JWT_SECRET"]`` so the rest
+       of the process sees a single source.
+
+    Unfrozen dev/test must set ``FETCHER_JWT_SECRET`` explicitly.
+    """
+    existing = get_jwt_secret_from_env()
+    if existing:
+        logger.info(
+            "JWT configuration: using FETCHER_JWT_SECRET from the process environment (operator override)."
+        )
+        return existing
+
+    if not getattr(sys, "frozen", False):
+        raise RuntimeError(
+            "Missing required JWT configuration: FETCHER_JWT_SECRET is not set or is empty. "
+            "Set this environment variable to a stable, high-entropy secret before starting Fetcher "
+            "(for example scripts/dev-start.ps1 sets a dev-only default). "
+            "It signs API access and refresh tokens; changing it invalidates existing refresh tokens."
+        )
+
+    path = persistent_jwt_secret_file_path()
+    if path.is_file():
+        try:
+            secret = _load_first_line_secret(path)
+        except OSError as e:
+            raise RuntimeError(
+                f"Fetcher could not read persisted JWT secret file ({path}): {e}. "
+                "Fix file permissions or set FETCHER_JWT_SECRET in the environment to override."
+            ) from e
+        if len(secret) < _MIN_PERSISTED_JWT_SECRET_LEN:
+            raise RuntimeError(
+                f"Persisted JWT secret in {path} is too short or empty "
+                f"(need at least {_MIN_PERSISTED_JWT_SECRET_LEN} characters). "
+                "Delete the file to regenerate on next start, or set FETCHER_JWT_SECRET."
+            )
+        logger.info(
+            "JWT configuration: loaded stable secret from %s (set FETCHER_JWT_SECRET to override).",
+            path,
+        )
+        os.environ["FETCHER_JWT_SECRET"] = secret
+        return secret
+
+    secret = secrets.token_hex(32)
+    try:
+        _atomic_write_utf8(path, secret + "\n")
+    except OSError as e:
+        raise RuntimeError(
+            f"Fetcher could not create persisted JWT secret file ({path}): {e}. "
+            "Ensure the service account can write under the Fetcher data directory "
+            "(default %ProgramData%\\Fetcher), or set FETCHER_JWT_SECRET."
+        ) from e
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+    logger.info(
+        "JWT configuration: created persisted secret file at %s (first packaged start). "
+        "This file is kept across upgrades; set FETCHER_JWT_SECRET to use an explicit secret instead.",
+        path,
+    )
+    os.environ["FETCHER_JWT_SECRET"] = secret
+    return secret
 
 
 def warn_if_data_encryption_key_missing(logger: logging.Logger) -> None:

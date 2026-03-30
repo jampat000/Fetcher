@@ -19,7 +19,11 @@ from app.refiner_errors import failure_hint_from_exception, format_refiner_failu
 from app.models import ActivityLog, AppSettings, JobRunLog, RefinerActivity
 from app.schedule import in_window
 from app.time_util import utc_now_naive
-from app.refiner_media_identity import MediaIdentity, provisional_media_title_before_probe
+from app.refiner_media_identity import (
+    MediaIdentity,
+    provisional_media_title_before_probe,
+    resolve_activity_card_title,
+)
 from app.refiner_mux import ffprobe_json, remux_to_temp_file
 from app.refiner_rules import (
     RefinerRulesConfig,
@@ -55,6 +59,9 @@ def _activity_snapshot(
     dry_run: bool = False,
     finalized: bool = False,
     source_removed: bool = False,
+    folder_cleanup: str = "",
+    pipeline_no_remux: bool = False,
+    no_change_bullets: list[str] | None = None,
 ) -> str:
     payload: dict[str, Any] = {
         "audio_before": audio_before,
@@ -66,9 +73,13 @@ def _activity_snapshot(
         "dry_run": bool(dry_run),
         "finalized": bool(finalized),
         "source_removed": bool(source_removed),
+        "folder_cleanup": (folder_cleanup or "").strip()[:200],
+        "pipeline_no_remux": bool(pipeline_no_remux),
     }
+    if no_change_bullets:
+        payload["no_change_bullets"] = [str(x).strip()[:500] for x in no_change_bullets if str(x).strip()][:8]
     idn = ident or {}
-    for key in ("media_title", "refiner_title", "refiner_year"):
+    for key in ("media_title", "refiner_title", "refiner_year", "trusted_title"):
         v = (idn.get(key) or "").strip()
         if v:
             payload[key] = v[:500] if key != "refiner_year" else v[:32]
@@ -265,6 +276,74 @@ def _finalize_output_file(src: Path, dst: Path) -> None:
             e,
         )
     logger.info("Refiner finalize: complete (destination finalized, work temp handled)")
+
+
+def _try_remove_empty_watch_subfolder(*, source_parent: Path, watched_root: Path) -> str:
+    """Remove the immediate parent of the source file only if it is empty and strictly inside watched_root.
+
+    Does not walk up beyond one level. Returns a short token for activity context / support logs.
+    """
+    try:
+        w = watched_root.resolve()
+        parent = source_parent.resolve()
+    except OSError as e:
+        logger.info("Refiner folder cleanup: skipped (could not resolve paths: %s)", e)
+        return "skipped_resolve"
+    if parent == w:
+        logger.info(
+            "Refiner folder cleanup: skipped (source was directly under watch root: %s)",
+            parent,
+        )
+        return "skipped_watch_root"
+    try:
+        parent.relative_to(w)
+    except ValueError:
+        logger.info(
+            "Refiner folder cleanup: skipped (parent %s is not under watch root %s)",
+            parent,
+            w,
+        )
+        return "skipped_not_under_watch"
+    if not parent.is_dir():
+        logger.info("Refiner folder cleanup: skipped (not a directory: %s)", parent)
+        return "skipped_not_dir"
+    try:
+        entries = list(parent.iterdir())
+    except OSError as e:
+        logger.warning("Refiner folder cleanup: skipped (could not list %s: %s)", parent, e)
+        return "skipped_list_error"
+    if entries:
+        logger.info(
+            "Refiner folder cleanup: skipped (folder not empty: %s has %s item(s))",
+            parent,
+            len(entries),
+        )
+        return "skipped_not_empty"
+    try:
+        parent.rmdir()
+    except OSError as e:
+        logger.warning("Refiner folder cleanup: failed to remove %s (%s)", parent, e)
+        return "failed_rmdir"
+    logger.info("Refiner folder cleanup: removed empty folder %s", parent)
+    return "removed_empty_folder"
+
+
+def _no_change_explanation_bullets(plan: Any, *, sbb_len: int, sba_len: int) -> list[str]:
+    """Short operator-facing lines for no-remux outcomes (dry or live copy-only)."""
+    bullets: list[str] = []
+    notes = getattr(plan, "audio_selection_notes", None) or []
+    for line in notes[:4]:
+        t = (str(line) if line is not None else "").strip()
+        if not t:
+            continue
+        bullets.append(t if t.endswith(".") else f"{t}.")
+    if sbb_len == 0 and sba_len == 0:
+        bullets.append("Subtitles: none present.")
+    elif sbb_len > 0 and sbb_len == sba_len:
+        bullets.append(f"Subtitles: {sbb_len} track(s) already match your rules.")
+    if not bullets:
+        bullets.append("Streams already match your current rules.")
+    return bullets[:6]
 
 
 async def _insert_refiner_processing_row(file_name: str) -> int | None:
@@ -523,7 +602,14 @@ def _process_one_refiner_file_sync(
     ident = MediaIdentity.from_ffprobe(ffprobe_report)
     identity_snap.clear()
     identity_snap.update(ident.snapshot_identity_fields())
-    _media_title_col[0] = ident.persisted_media_title_column()
+    _media_title_col[0] = resolve_activity_card_title(
+        fname,
+        {k: v for k, v in identity_snap.items() if k == "trusted_title"},
+        orm_media_title="",
+        ffprobe_media_title=ident.media_title,
+        ffprobe_refiner_title=ident.refiner_title,
+        ffprobe_year=ident.refiner_year,
+    )
     sb = _file_size_bytes(path)
     ab_len = len(audio)
     sbb_len = len(subs)
@@ -571,22 +657,119 @@ def _process_one_refiner_file_sync(
         )
 
     if not is_remux_required(plan, audio, subs):
-        return "noop", pack(
-            "skipped",
-            sb,
-            sb,
-            ab_len,
-            ab_len,
-            sbb_len,
-            sbb_len,
-            activity_context=_activity_snapshot(
+        nc_bullets = _no_change_explanation_bullets(plan, sbb_len=sbb_len, sba_len=sbb_len)
+        if dry:
+            _log_plan_outcome(path=path, plan=plan, dry=True)
+            return "dry_run", pack(
+                "skipped",
+                sb,
+                sb,
+                ab_len,
+                ab_len,
+                sbb_len,
+                sbb_len,
+                activity_context=_activity_snapshot(
+                    ident=identity_snap,
+                    audio_before=ab_line,
+                    audio_after=ab_line,
+                    subs_before=subs_b_line,
+                    subs_after=subs_b_line,
+                    dry_run=True,
+                    no_change_bullets=nc_bullets,
+                ),
+            )
+
+        destination = _output_path_for_source(src=path, watched_root=watched_root, output_root=output_root)
+        if destination.exists():
+            if destination.is_dir():
+                logger.error("Refiner: output path is a directory (expected a file path) — %s", destination)
+                fn_nd = "Output path is a directory, not a file — check folder layout under the output root."
+                return "error", pack(
+                    "failed",
+                    sb,
+                    sb,
+                    ab_len,
+                    ab_len,
+                    sbb_len,
+                    sbb_len,
+                    failure_hint=fn_nd,
+                    activity_context=_activity_snapshot(
+                        ident=identity_snap,
+                        audio_before=ab_line,
+                        audio_after=ab_line,
+                        subs_before=subs_b_line,
+                        subs_after=subs_b_line,
+                        failure_reason=fn_nd,
+                    ),
+                )
+            logger.error("Refiner: output already exists, refusing overwrite: %s", destination)
+            fn_ne = "Output file already exists — remove or rename it in the output folder, then retry."
+            return "error", pack(
+                "failed",
+                sb,
+                sb,
+                ab_len,
+                ab_len,
+                sbb_len,
+                sbb_len,
+                failure_hint=fn_ne,
+                activity_context=_activity_snapshot(
+                    ident=identity_snap,
+                    audio_before=ab_line,
+                    audio_after=ab_line,
+                    subs_before=subs_b_line,
+                    subs_after=subs_b_line,
+                    failure_reason=fn_ne,
+                ),
+            )
+
+        _log_plan_outcome(path=path, plan=plan, dry=False)
+        try:
+            source_parent = path.parent
+            _finalize_output_file(path, destination)
+            fold = _try_remove_empty_watch_subfolder(source_parent=source_parent, watched_root=watched_root)
+            sa = _file_size_bytes(destination)
+            ok_ctx = _activity_snapshot(
                 ident=identity_snap,
                 audio_before=ab_line,
                 audio_after=ab_line,
                 subs_before=subs_b_line,
                 subs_after=subs_b_line,
-            ),
-        )
+                finalized=True,
+                source_removed=True,
+                folder_cleanup=fold,
+                pipeline_no_remux=True,
+                no_change_bullets=nc_bullets,
+            )
+            return "ok", pack(
+                "success", sb, sa, ab_len, ab_len, sbb_len, sbb_len, activity_context=ok_ctx
+            )
+        except Exception as e:
+            fh = failure_hint_from_exception(e)
+            summary, detail = format_refiner_failure_for_operator(e)
+            logger.error("Refiner: no-remux pipeline finalize failed for %s — %s", path.name, summary)
+            if detail:
+                logger.error("Refiner: reason for %s — %s", path.name, detail)
+            reason_body = summary if not detail else f"{summary}\n  {detail}"
+            err_ctx = _activity_snapshot(
+                ident=identity_snap,
+                audio_before=ab_line,
+                audio_after=ab_line,
+                subs_before=subs_b_line,
+                subs_after=subs_b_line,
+                failure_reason=reason_body.strip()[:8000],
+            )
+            return "error", pack(
+                "failed",
+                sb,
+                sb,
+                ab_len,
+                ab_len,
+                sbb_len,
+                sbb_len,
+                failure_hint=fh,
+                activity_context=err_ctx,
+            )
 
     _log_plan_outcome(path=path, plan=plan, dry=dry)
     destination = _output_path_for_source(src=path, watched_root=watched_root, output_root=output_root)
@@ -696,6 +879,7 @@ def _process_one_refiner_file_sync(
                 u_err,
                 path,
             )
+        fold = _try_remove_empty_watch_subfolder(source_parent=path.parent, watched_root=watched_root)
         logger.info("Refiner: output written to %s (watched file: %s)", destination, path.name)
         sa = _file_size_bytes(destination)
         aa = len(plan.audio)
@@ -711,6 +895,7 @@ def _process_one_refiner_file_sync(
             commentary_removed=commentary_removed,
             finalized=True,
             source_removed=True,
+            folder_cleanup=fold,
         )
         return "ok", pack(
             "success", sb, sa, ab_len, aa, sbb_len, sba, activity_context=ok_ctx
@@ -855,7 +1040,8 @@ async def run_refiner_pass(
             await session.commit()
             return {"ok": True, "ran": False, "reason": "no_files"}
         dry = bool(row.refiner_dry_run)
-        ok_c = noop_c = dry_c = err_c = 0
+        ok_c = dry_c = err_c = 0
+        noop_c = 0  # log field unchanged=0 (no in-place “skipped” live passes without pipeline finalize)
         failure_notes: list[str] = []
         for fp in files:
             t_job = time.perf_counter()
@@ -903,8 +1089,6 @@ async def run_refiner_pass(
                     await _persist_refiner_activity_safe(meta)
             if status == "ok":
                 ok_c += 1
-            elif status == "noop":
-                noop_c += 1
             elif status == "dry_run":
                 dry_c += 1
             else:

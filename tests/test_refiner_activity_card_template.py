@@ -44,16 +44,17 @@ def _ctx(**kwargs: object) -> str:
         "dry_run": False,
         "finalized": False,
         "source_removed": False,
+        "no_change_bullets": [],
     }
     base.update(kwargs)
     return json.dumps(base)
 
 
 @pytest.mark.parametrize(
-    ("fname", "canonical"),
-    (("Movie.Name.2023.mkv", "Movie Name (2023)"),),
+    ("fname", "expected_title"),
+    (("Movie.Name.2023.mkv", "Movie Name 2023"),),
 )
-def test_refiner_card_renders_media_title_first(fname: str, canonical: str) -> None:
+def test_refiner_card_renders_filename_derived_title_before_outcome(fname: str, expected_title: str) -> None:
     r = RefinerActivity(
         file_name=fname,
         status="success",
@@ -64,17 +65,18 @@ def test_refiner_card_renders_media_title_first(fname: str, canonical: str) -> N
         subtitle_tracks_before=0,
         subtitle_tracks_after=0,
         created_at=datetime(2026, 1, 1, 12, 0, 0),
-        activity_context=_ctx(media_title=canonical, finalized=True),
+        activity_context=_ctx(media_title="Wrong tag title", finalized=True),
+        media_title="Wrong tag title",
     )
     html = _render_refiner_card(r)
     pos_title = html.find("activity-refiner-media-title")
     pos_outcome = html.find("activity-refiner-outcome-label")
     assert pos_title != -1 and pos_outcome != -1
     assert pos_title < pos_outcome
-    assert canonical in html
-    assert "File:" in html and fname in html
+    assert expected_title in html
     assert "Completed" in html
     assert "Applied" in html
+    assert "Before / after detail" in html
     assert "Before" in html and "After" in html
 
 
@@ -117,6 +119,7 @@ def test_refiner_card_shows_before_after_when_comparison_enabled() -> None:
         ),
     )
     html = _render_refiner_card(r)
+    assert html.find("activity-refiner-summary-list") < html.find("activity-refiner-compare-details")
     assert "activity-refiner-compare" in html
     assert "Audio" in html
     assert "Subtitles" in html
@@ -139,10 +142,12 @@ def test_refiner_card_no_change_skip_hides_comparison_grid() -> None:
             audio_after="English 2.0 AAC",
             subs_before="English",
             subs_after="English",
+            no_change_bullets=["Audio: already optimal.", "Subtitles: 1 track(s) already match your rules."],
         ),
     )
     html = _render_refiner_card(r)
     assert "No changes required" in html
+    assert "already optimal" in html
     assert "activity-refiner-compare" not in html
 
 
