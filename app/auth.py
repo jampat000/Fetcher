@@ -267,7 +267,12 @@ async def bootstrap_auth_on_startup() -> None:
             settings.updated_at = utc_now_naive()
             await session.commit()
             log.warning(
-                "Auth credentials reset via FETCHER_RESET_AUTH. Visit /setup/0 to set a new password."
+                "FETCHER_RESET_AUTH=1 — credentials cleared for this process. "
+                "Visit /setup/0 to set a new password, then remove FETCHER_RESET_AUTH from the "
+                "environment so it does not run on every start."
+            )
+            log.error(
+                "SECURITY/RECOVERY: FETCHER_RESET_AUTH is set to 1. This is not a normal running state."
             )
         if not (settings.auth_session_secret or "").strip():
             settings.auth_session_secret = secrets.token_hex(32)
@@ -283,6 +288,13 @@ async def bootstrap_auth_on_startup() -> None:
         await session.commit()
 
         settings = await _get_or_create_settings(session)
+        has_pw = bool((settings.auth_password_hash or "").strip())
+        log.info(
+            "Auth startup diagnostic: password_hash_configured=%s next_ui=%s",
+            has_pw,
+            "login" if has_pw else "setup(/setup/0)",
+        )
+
         if settings.auth_bypass_lan:
             log.warning(
                 "auth_bypass_lan has been migrated to an explicit IP allowlist. The following ranges were added: "

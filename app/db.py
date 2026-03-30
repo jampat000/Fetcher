@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -9,6 +8,11 @@ from pathlib import Path
 from sqlalchemy import event, func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
+from app.database_resolution import (
+    compute_canonical_db_path,
+    default_data_dir,
+    enforce_database_location_policy,
+)
 from app.models import AppSettings, AppSnapshot
 
 logger = logging.getLogger(__name__)
@@ -17,10 +21,6 @@ logger = logging.getLogger(__name__)
 _SQLITE_CONNECT_TIMEOUT_S = 10.0
 # SQLite ``busy_timeout`` PRAGMA is in milliseconds.
 _SQLITE_BUSY_TIMEOUT_MS = 10_000
-
-
-def _windows_program_data_fetcher_dir() -> Path:
-    return Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "Fetcher"
 
 
 def _configure_logging_early_frozen_windows() -> None:
@@ -35,18 +35,11 @@ def _configure_logging_early_frozen_windows() -> None:
         pass
 
 
-def default_data_dir() -> Path:
-    if sys.platform == "win32" and getattr(sys, "frozen", False):
-        base = _windows_program_data_fetcher_dir()
-        base.mkdir(parents=True, exist_ok=True)
-        return base
-    base = Path.home() / "AppData" / "Local" / "Fetcher"
-    base.mkdir(parents=True, exist_ok=True)
-    return base
-
-
 def db_path() -> Path:
-    """Resolve SQLite file path.
+    """Resolve SQLite file path (canonical) and enforce the multi-DB safety policy.
+
+    Implementation is centralized in :mod:`app.database_resolution` so logs, docs, and runtime
+    cannot disagree about which file is authoritative.
 
     Precedence:
 
@@ -55,25 +48,9 @@ def db_path() -> Path:
     3. ``default_data_dir()`` / ``fetcher.db`` — packaged Windows uses ``%ProgramData%\\Fetcher``;
        dev/other uses ``%LOCALAPPDATA%\\Fetcher`` (see :func:`default_data_dir`).
     """
-    override = (os.environ.get("FETCHER_DEV_DB_PATH") or "").strip()
-    if override:
-        p = Path(override).expanduser()
-        try:
-            p = p.resolve()
-        except OSError:
-            p = Path(override).expanduser()
-        p.parent.mkdir(parents=True, exist_ok=True)
-        return p
-    data_dir = (os.environ.get("FETCHER_DATA_DIR") or "").strip()
-    if data_dir:
-        root = Path(data_dir).expanduser()
-        try:
-            root = root.resolve()
-        except OSError:
-            root = Path(data_dir).expanduser()
-        root.mkdir(parents=True, exist_ok=True)
-        return root / "fetcher.db"
-    return default_data_dir() / "fetcher.db"
+    path, reason = compute_canonical_db_path()
+    enforce_database_location_policy(path, reason)
+    return path
 
 
 _configure_logging_early_frozen_windows()

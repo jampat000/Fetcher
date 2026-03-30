@@ -16,6 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.auth import FetcherAuthRequired, bootstrap_auth_on_startup
 from app.branding import APP_NAME
+from app.database_resolution import get_last_database_resolution, log_database_resolution_startup
 from app.db import db_path, engine
 from app.httpx_shared import aclose_shared_httpx_client, init_shared_httpx_client
 from app.log_sanitize import configure_fetcher_logging
@@ -58,7 +59,10 @@ async def _lifespan(_app: FastAPI):
         )
     _app.state.jwt_secret = jwt_secret
     warn_if_data_encryption_key_missing(logger)
-    logger.info("SQLite database path: %s", db_path())
+    _ = db_path()
+    res = get_last_database_resolution()
+    if res is not None:
+        log_database_resolution_startup(res)
     logger.info(
         "Application log file: %s (override with FETCHER_LOG_DIR)",
         resolved_logs_dir() / "fetcher.log",
@@ -73,6 +77,7 @@ async def _lifespan(_app: FastAPI):
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
             await migrate(engine)
+            logger.info("Startup: schema repair/migrate phase complete; running Refiner reconcile + validation.")
             await reconcile_refiner_processing_rows_on_worker_boot()
             await validate_refiner_app_settings_schema(engine)
             last_err = None
