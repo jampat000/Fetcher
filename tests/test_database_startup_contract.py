@@ -16,6 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.database_startup import (
+    _sqlite_db_paths_refer_to_same_file,
     run_schema_upgrade_phase,
     verify_sqlite_engine_matches_canonical_path,
 )
@@ -31,6 +32,14 @@ from tests.test_schema_validation_refiner import _strip_refiner_columns_from_app
 
 def _sqlite_supports_drop_column() -> bool:
     return sqlite3.sqlite_version_info >= (3, 35, 0)
+
+
+def test_sqlite_db_paths_equivalent_same_file(tmp_path: Path) -> None:
+    db = tmp_path / "fetcher.db"
+    db.write_bytes(b"x")
+    a = db
+    b = Path(str(db).replace("\\", "/")) if "\\" in str(db) else Path(str(db))
+    assert _sqlite_db_paths_refer_to_same_file(a, b)
 
 
 def test_verify_sqlite_engine_mismatch_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

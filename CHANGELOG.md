@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.1] - 2026-03-30
+
+### Fixed
+
+- **Windows upgrade / service start:** The installer now **stops the Fetcher WinSW service before replacing files** under Program Files (avoids locked `Fetcher.exe` / DLLs and broken partial upgrades). On **upgrade**, setup uses **`winsw restart`** so the service is not re-registered with a failing second `install` (service already exists); fresh installs still run **`install`** then **`start`**. Optional **`CloseApplications=yes`** prompts to close a running Fetcher window if it holds locks.
+- **SQLite engine vs `db_path()` check:** Path comparison is **Windows-safe** (`samefile` when the file exists, `normcase`/`normpath` fallback) so a correct engine binding is not rejected because of path spelling.
+
 ## [3.4.0] - 2026-03-30
 
 ### Fixed
