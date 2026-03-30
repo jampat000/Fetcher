@@ -4,6 +4,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# pip/pyinstaller emit notices on stderr; PS 7.2+ would treat that as a terminating error with Stop.
+if ($PSVersionTable.PSVersion -ge [version]"7.2") {
+  $PSNativeCommandUseErrorActionPreference = $false
+}
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
 if ($Clean) {

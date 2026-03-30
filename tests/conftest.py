@@ -26,7 +26,11 @@ def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool 
     """
     if (os.environ.get("REGEN_README_SCREENSHOTS") or "").strip():
         return None
+    if (os.environ.get("CAPTURE_UI_SCREENSHOTS_ZIP") or "").strip():
+        return None
     if collection_path.name == "test_readme_screenshots.py":
+        return True
+    if collection_path.name == "test_ui_pages_screenshots_zip.py":
         return True
     return None
 

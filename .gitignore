@@ -1,38 +1,110 @@
 .venv/
+
 __pycache__/
+
 *.pyc
+
 *.pyo
+
 *.pyd
+
 *.sqlite3
+
 *.db
+
 *.log
 
-# Build artifacts
+
+
+# Never commit release bundles, checksums, or local snapshots
+
+*.zip
+
+*.sha256
+
+Fetcher-v*-windows-dist.zip
+
+Fetcher-v*-windows-dist.zip.sha256
+
+Fetcher-*-source-snapshot*.zip
+
+
+
+# PyInstaller / one-folder output
+
 build/
+
 dist/
+
+**/build/
+
+**/dist/
+
+*.egg-info/
+
+
+
+# Inno Setup / installer output
+
 installer/output/
+
 installer/_inno/
+
 installer/_innosetup-*.exe
+
+FetcherSetup.exe
+
+
+
 service/winsw.exe
+
 packaging/ffmpeg-bin/
+
 packaging/ffmpeg-download/
+
+
+
 # Ignore stray PyInstaller specs; keep the real one for CI/local builds
+
 *.spec
+
 !packaging/fetcher.spec
 
+
+
 # IDE / OS
+
 .idea/
+
 .vscode/
+
 .DS_Store
+
 Thumbs.db
+
 *.tmp
 
-# Local scratch
+
+
+# Local scratch / ad-hoc SQLite files
+
 tmp/
 
+tmp*.sqlite3
+
+tmp-*.sqlite3
+
+
+
 # Never commit secrets or exported settings (see docs/PUBLIC-REPO-CHECKLIST.md)
+
 config.yaml
+
 .env
+
 .env.*
+
 fetcher-settings-backup*.json
+
 *settings-backup*.json
+

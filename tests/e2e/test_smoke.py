@@ -50,6 +50,6 @@ def test_trimmer_fast_path(e2e_server: str) -> None:
             _e2e_sign_in(page, e2e_server)
             page.goto(f"{e2e_server}/trimmer")
             assert page.locator("text=Trimmer").first.is_visible()
-            assert page.locator("text=Scan Emby for matches").first.is_visible()
+            assert page.locator("text=Scan for matches").first.is_visible()
         finally:
             browser.close()

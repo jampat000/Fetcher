@@ -1,9 +1,6 @@
-# Publish the Linux container image to GitHub Container Registry (GHCR).
-# Separate from the Windows installer workflow (.github/workflows/build-installer.yml).
-#
-# Tag pushes from GITHUB_TOKEN do not trigger on.push.tags; "Tag release" dispatches this workflow.
-# Dispatch must use the default branch as `ref` so the workflow YAML is current; pass the release
-# tag in checkout_ref (ref trap: dispatching with ref=vX.Y.Z uses workflow files from that old commit).
+# Canonical release — Docker (part 3 of 3): build + push image to GHCR. Windows: build-installer.yml.
+# Orchestrator: tag-release.yml dispatches this on `master` with checkout_ref=vX.Y.Z (ref trap — docs/GITHUB-CLI.md).
+# `on.push.tags` covers human/PAT tag pushes. CI docker verify: ci.yml job `docker-build`.
 name: Docker publish
 
 on:

@@ -40,7 +40,7 @@ class EmbyClient:
         opts: dict[str, Any] = dict(kwargs)
         opts.setdefault("timeout", self._timeout_s)
         # Emby installs vary in how they validate API credentials; send
-        # both common token headers and api_key query param for compatibility.
+        # Both common token headers and api_key query param (Emby accepts either).
         headers = dict(opts.pop("headers", {}))
         headers.setdefault("X-Emby-Token", self._cfg.api_key)
         headers.setdefault("X-MediaBrowser-Token", self._cfg.api_key)

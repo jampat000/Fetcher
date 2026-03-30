@@ -3,6 +3,8 @@ from __future__ import annotations
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from app.schema_version import CURRENT_SCHEMA_VERSION
+
 
 async def _has_column(engine: AsyncEngine, *, table: str, column: str) -> bool:
     async with engine.connect() as conn:
@@ -413,118 +415,6 @@ async def _migrate_025_sonarr_remove_failed_imports(engine: AsyncEngine) -> None
         await _add_column(engine, table=table, ddl="sonarr_remove_failed_imports BOOLEAN NOT NULL DEFAULT 0")
 
 
-async def _migrate_026_stream_manager_columns(engine: AsyncEngine) -> None:
-    table = "app_settings"
-    if not await _has_column(engine, table=table, column="stream_manager_enabled"):
-        await _add_column(engine, table=table, ddl="stream_manager_enabled BOOLEAN NOT NULL DEFAULT 0")
-    if not await _has_column(engine, table=table, column="stream_manager_dry_run"):
-        await _add_column(engine, table=table, ddl="stream_manager_dry_run BOOLEAN NOT NULL DEFAULT 1")
-    if not await _has_column(engine, table=table, column="stream_manager_primary_audio_lang"):
-        await _add_column(engine, table=table, ddl="stream_manager_primary_audio_lang TEXT NOT NULL DEFAULT ''")
-    if not await _has_column(engine, table=table, column="stream_manager_secondary_audio_lang"):
-        await _add_column(engine, table=table, ddl="stream_manager_secondary_audio_lang TEXT NOT NULL DEFAULT ''")
-    if not await _has_column(engine, table=table, column="stream_manager_tertiary_audio_lang"):
-        await _add_column(engine, table=table, ddl="stream_manager_tertiary_audio_lang TEXT NOT NULL DEFAULT ''")
-    if not await _has_column(engine, table=table, column="stream_manager_default_audio_slot"):
-        await _add_column(engine, table=table, ddl="stream_manager_default_audio_slot TEXT NOT NULL DEFAULT 'primary'")
-    if not await _has_column(engine, table=table, column="stream_manager_remove_commentary"):
-        await _add_column(engine, table=table, ddl="stream_manager_remove_commentary BOOLEAN NOT NULL DEFAULT 0")
-    if not await _has_column(engine, table=table, column="stream_manager_subtitle_mode"):
-        await _add_column(engine, table=table, ddl="stream_manager_subtitle_mode TEXT NOT NULL DEFAULT 'remove_all'")
-    if not await _has_column(engine, table=table, column="stream_manager_subtitle_langs_csv"):
-        await _add_column(engine, table=table, ddl="stream_manager_subtitle_langs_csv TEXT NOT NULL DEFAULT ''")
-    if not await _has_column(engine, table=table, column="stream_manager_preserve_forced_subs"):
-        await _add_column(engine, table=table, ddl="stream_manager_preserve_forced_subs BOOLEAN NOT NULL DEFAULT 1")
-    if not await _has_column(engine, table=table, column="stream_manager_preserve_default_subs"):
-        await _add_column(engine, table=table, ddl="stream_manager_preserve_default_subs BOOLEAN NOT NULL DEFAULT 1")
-    if not await _has_column(engine, table=table, column="stream_manager_paths"):
-        await _add_column(engine, table=table, ddl="stream_manager_paths TEXT NOT NULL DEFAULT ''")
-    if not await _has_column(engine, table=table, column="stream_manager_interval_minutes"):
-        await _add_column(engine, table=table, ddl="stream_manager_interval_minutes INTEGER NOT NULL DEFAULT 60")
-    if not await _has_column(engine, table=table, column="stream_manager_schedule_enabled"):
-        await _add_column(engine, table=table, ddl="stream_manager_schedule_enabled BOOLEAN NOT NULL DEFAULT 0")
-    if not await _has_column(engine, table=table, column="stream_manager_schedule_days"):
-        await _add_column(engine, table=table, ddl="stream_manager_schedule_days TEXT NOT NULL DEFAULT ''")
-    if not await _has_column(engine, table=table, column="stream_manager_schedule_start"):
-        await _add_column(engine, table=table, ddl="stream_manager_schedule_start TEXT NOT NULL DEFAULT '00:00'")
-    if not await _has_column(engine, table=table, column="stream_manager_schedule_end"):
-        await _add_column(engine, table=table, ddl="stream_manager_schedule_end TEXT NOT NULL DEFAULT '23:59'")
-    if not await _has_column(engine, table=table, column="stream_manager_last_run_at"):
-        await _add_column(engine, table=table, ddl="stream_manager_last_run_at DATETIME")
-
-
-async def _migrate_027_stream_manager_pipeline_columns(engine: AsyncEngine) -> None:
-    table = "app_settings"
-    if not await _has_column(engine, table=table, column="stream_manager_watched_folder"):
-        await _add_column(engine, table=table, ddl="stream_manager_watched_folder TEXT NOT NULL DEFAULT ''")
-    if not await _has_column(engine, table=table, column="stream_manager_output_folder"):
-        await _add_column(engine, table=table, ddl="stream_manager_output_folder TEXT NOT NULL DEFAULT ''")
-    if not await _has_column(engine, table=table, column="stream_manager_work_folder"):
-        await _add_column(engine, table=table, ddl="stream_manager_work_folder TEXT NOT NULL DEFAULT ''")
-    if not await _has_column(engine, table=table, column="stream_manager_audio_preference_mode"):
-        await _add_column(
-            engine,
-            table=table,
-            ddl="stream_manager_audio_preference_mode TEXT NOT NULL DEFAULT 'preferred_langs_quality'",
-        )
-    # One-time carry forward from v1 paths model when pipeline folders are blank.
-    if await _has_column(engine, table=table, column="stream_manager_paths"):
-        async with engine.begin() as conn:
-            await conn.execute(
-                text(
-                    f"""
-                    UPDATE {table}
-                    SET stream_manager_watched_folder = CASE
-                          WHEN trim(stream_manager_watched_folder) = ''
-                           AND trim(stream_manager_paths) <> ''
-                          THEN trim(
-                            CASE
-                              WHEN instr(replace(stream_manager_paths, char(13), ''), char(10)) > 0
-                              THEN substr(replace(stream_manager_paths, char(13), ''), 1, instr(replace(stream_manager_paths, char(13), ''), char(10)) - 1)
-                              ELSE stream_manager_paths
-                            END
-                          )
-                          ELSE stream_manager_watched_folder
-                        END
-                    """
-                )
-            )
-            await conn.execute(
-                text(
-                    f"""
-                    UPDATE {table}
-                    SET stream_manager_output_folder = stream_manager_watched_folder
-                    WHERE trim(stream_manager_output_folder) = '' AND trim(stream_manager_watched_folder) <> ''
-                    """
-                )
-            )
-
-
-async def _migrate_028_stream_manager_interval_seconds(engine: AsyncEngine) -> None:
-    """Watched-folder cadence is stored in seconds (was minutes); migrate values × 60 then drop old column."""
-    table = "app_settings"
-    if not await _has_column(engine, table=table, column="stream_manager_interval_seconds"):
-        await _add_column(engine, table=table, ddl="stream_manager_interval_seconds INTEGER NOT NULL DEFAULT 60")
-        if await _has_column(engine, table=table, column="stream_manager_interval_minutes"):
-            async with engine.begin() as conn:
-                await conn.execute(
-                    text(
-                        f"""
-                        UPDATE {table}
-                        SET stream_manager_interval_seconds = CASE
-                          WHEN COALESCE(stream_manager_interval_minutes, 0) < 1 THEN 60
-                          WHEN stream_manager_interval_minutes * 60 < 5 THEN 5
-                          WHEN stream_manager_interval_minutes * 60 > 604800 THEN 604800
-                          ELSE stream_manager_interval_minutes * 60
-                        END
-                        """
-                    )
-                )
-    if await _has_column(engine, table=table, column="stream_manager_interval_minutes"):
-        async with engine.begin() as conn:
-            await conn.execute(text(f"ALTER TABLE {table} DROP COLUMN stream_manager_interval_minutes"))
-
-
 async def _migrate_029_refiner_activity(engine: AsyncEngine) -> None:
     """Per-file Refiner processing stats for unified Activity feed."""
     async with engine.begin() as conn:
@@ -563,6 +453,54 @@ async def _migrate_030_failed_import_cleanup_interval(engine: AsyncEngine) -> No
         await _add_column(engine, table=table, ddl="radarr_failed_import_cleanup_last_run_at DATETIME")
 
 
+async def _migrate_033_refiner_activity_context(engine: AsyncEngine) -> None:
+    """Persist operator-facing Refiner activity snapshot (audio · subtitle lines, failure reason)."""
+    table = "refiner_activity"
+    if not await _has_column(engine, table=table, column="activity_context"):
+        await _add_column(engine, table=table, ddl="activity_context TEXT NOT NULL DEFAULT ''")
+
+
+async def _migrate_035_activity_log_trimmer_app_identity(engine: AsyncEngine) -> None:
+    """Activity feed: Trimmer rows use app ``trimmer`` (not legacy ``emby``)."""
+    async with engine.begin() as conn:
+        await conn.execute(text("UPDATE activity_log SET app = 'trimmer' WHERE LOWER(app) = 'emby'"))
+
+
+async def _migrate_034_forward_app_settings_schema_version(engine: AsyncEngine) -> None:
+    """After DDL migrations, bump stored schema_version when this build is newer (upgrade path)."""
+    table = "app_settings"
+    col = "schema_version"
+    if not await _has_column(engine, table=table, column=col):
+        return
+    v = int(CURRENT_SCHEMA_VERSION)
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                f"UPDATE {table} SET {col} = :v "
+                f"WHERE {col} IS NULL OR {col} < :v"
+            ),
+            {"v": v},
+        )
+
+
+async def _migrate_032_app_settings_schema_version(engine: AsyncEngine) -> None:
+    """Track DB schema contract; value must match :data:`app.schema_version.CURRENT_SCHEMA_VERSION`."""
+    table = "app_settings"
+    col = "schema_version"
+    v = CURRENT_SCHEMA_VERSION
+    if not await _has_column(engine, table=table, column=col):
+        await _add_column(
+            engine,
+            table=table,
+            ddl=f"{col} INTEGER NOT NULL DEFAULT {int(v)}",
+        )
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(f"UPDATE {table} SET {col} = :v WHERE {col} IS NULL"),
+            {"v": int(v)},
+        )
+
+
 async def migrate(engine: AsyncEngine) -> None:
     await _migrate_001_sonarr_per_app_columns(engine)
     await _migrate_002_radarr_per_app_columns(engine)
@@ -589,8 +527,9 @@ async def migrate(engine: AsyncEngine) -> None:
     await _migrate_023_radarr_remove_failed_imports(engine)
     await _migrate_024_arr_retry_delay_columns(engine)
     await _migrate_025_sonarr_remove_failed_imports(engine)
-    await _migrate_026_stream_manager_columns(engine)
-    await _migrate_027_stream_manager_pipeline_columns(engine)
-    await _migrate_028_stream_manager_interval_seconds(engine)
     await _migrate_029_refiner_activity(engine)
     await _migrate_030_failed_import_cleanup_interval(engine)
+    await _migrate_032_app_settings_schema_version(engine)
+    await _migrate_033_refiner_activity_context(engine)
+    await _migrate_035_activity_log_trimmer_app_identity(engine)
+    await _migrate_034_forward_app_settings_schema_version(engine)

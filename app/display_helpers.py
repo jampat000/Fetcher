@@ -114,6 +114,30 @@ def _relative_phrase_past(dt_event: datetime, now: datetime) -> str:
     return f"{t0.strftime('%d-%m-%Y %I:%M %p')} UTC"
 
 
+def activity_relative_time(dt_event: datetime, now: datetime) -> str:
+    """
+    Compact relative labels for activity feeds (refreshed in-browser on a light interval).
+    Switches to a stable date string for older events.
+    """
+    t0 = _as_utc_naive(dt_event)
+    t1 = _as_utc_naive(now)
+    secs = max(0, int((t1 - t0).total_seconds()))
+    if secs < 10:
+        return "just now"
+    if secs < 60:
+        return f"{secs}s ago"
+    mins = secs // 60
+    if mins < 60:
+        return f"{mins}m ago"
+    hrs = secs // 3600
+    if hrs < 48:
+        return f"{hrs}h ago"
+    days = secs // 86400
+    if days < 14:
+        return f"{days}d ago"
+    return t0.strftime("%d %b %Y · %H:%M")
+
+
 def _relative_phrase_until(dt_future: datetime, now: datetime) -> str:
     """Human-friendly time until dt_future (naive UTC recommended)."""
     t0 = _as_utc_naive(now)

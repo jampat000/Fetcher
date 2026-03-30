@@ -1,0 +1,66 @@
+"""ActivityLog Refiner batch rows (canonical app/kind only)."""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+from app.models import ActivityLog
+from app.web_common import _activity_primary_label, _humanize_refiner_batch_log_detail, activity_display_row
+
+
+def test_refiner_batch_primary_label_completed() -> None:
+    ts = datetime(2026, 1, 1, 12, 0, 0)
+    e = ActivityLog(
+        id=1,
+        job_run_id=None,
+        created_at=ts,
+        app="refiner",
+        kind="refiner",
+        status="ok",
+        count=3,
+        detail="Refiner (scheduled): processed=3 unchanged=0 dry_run_items=0 errors=0",
+    )
+    assert _activity_primary_label(e) == "Refiner completed"
+
+
+def test_refiner_batch_primary_label_failed() -> None:
+    ts = datetime(2026, 1, 1, 12, 0, 0)
+    e = ActivityLog(
+        id=1,
+        job_run_id=None,
+        created_at=ts,
+        app="refiner",
+        kind="refiner",
+        status="failed",
+        count=0,
+        detail="Refiner (scheduled): processed=0 unchanged=0 dry_run_items=0 errors=1",
+    )
+    assert _activity_primary_label(e) == "Refiner failed"
+
+
+def test_activity_display_row_refiner_batch() -> None:
+    ts = datetime(2026, 1, 1, 12, 0, 0)
+    e = ActivityLog(
+        id=1,
+        job_run_id=None,
+        created_at=ts,
+        app="refiner",
+        kind="refiner",
+        status="ok",
+        count=2,
+        detail="Refiner (manual): processed=2 unchanged=0 dry_run_items=0 errors=0",
+    )
+    row = activity_display_row(e, "UTC")
+    assert row["app"] == "refiner"
+    assert row["kind"] == "refiner"
+    assert row["primary_label"] == "Refiner completed"
+
+
+def test_humanize_refiner_batch_detail_readable() -> None:
+    detail = "Refiner (scheduled): processed=2 unchanged=1 dry_run_items=0 errors=0"
+    lines = _humanize_refiner_batch_log_detail(detail)
+    assert lines is not None
+    assert len(lines) == 1
+    assert "2 refined" in lines[0]
+    assert "1 unchanged" in lines[0]
+    assert "scheduled" in lines[0]

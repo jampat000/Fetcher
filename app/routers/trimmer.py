@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime
 from typing import Annotated
 
 import httpx
@@ -14,21 +15,33 @@ from app.auth import get_csrf_token_for_template, require_csrf
 from app.branding import APP_NAME, APP_TAGLINE
 from app.constants import _MOVIE_GENRE_OPTIONS, _PEOPLE_CREDIT_OPTIONS
 from app.db import _get_or_create_settings, fetch_latest_app_snapshots, get_session
-from app.display_helpers import _normalize_hhmm, _now_local, _time_select_orphan
+from app.display_helpers import (
+    _normalize_hhmm,
+    _now_local,
+    _schedule_days_display,
+    _schedule_time_range_friendly,
+    _time_select_orphan,
+    activity_relative_time,
+)
 from app.emby_client import EmbyClient, EmbyConfig
 from app.emby_rules import (
     parse_genres_csv,
     parse_movie_people_credit_types_csv,
 )
 from app.form_helpers import _looks_like_url, _normalize_base_url, _people_credit_types_csv_from_form
-from app.models import AppSnapshot
+from app.models import AppSettings, AppSnapshot
 from app.resolvers.api_keys import resolve_emby_api_key
 from app.schedule import normalize_schedule_days_csv, schedule_time_dropdown_choices
 from app.security_utils import encrypt_secret_for_storage
 from app.time_util import utc_now_naive
-from app.trimmer_service import TrimmerApplyService, TrimmerReviewService
+from app.trimmer_service import (
+    TRIMMER_REVIEW_ERROR_MISSING_CONNECTION,
+    TrimmerApplyService,
+    TrimmerReviewService,
+)
 from app.ui_templates import templates
 from app.web_common import (
+    effective_emby_rules,
     is_setup_complete,
     movie_credit_types_summary,
     schedule_days_csv_from_named_day_checks,
@@ -60,6 +73,66 @@ def _trimmer_cleaner_ui_section(trimmer_section: str | None) -> str:
     if s in ("connection", "schedule", "rules", "people"):
         return s
     return "schedule"
+
+
+def build_trimmer_overview_config(settings: AppSettings) -> dict[str, object]:
+    """Saved Trimmer / Emby configuration lines for the overview card."""
+    rules = effective_emby_rules(settings)
+    mr = int(rules["movie_rating_below"] or 0)
+    mud = int(rules["movie_unwatched_days"] or 0)
+    tv_w = bool(rules["tv_delete_watched"])
+    tud = int(rules["tv_unwatched_days"] or 0)
+    movies_on = mr > 0 or mud > 0
+    tv_on = tv_w or tud > 0
+
+    sched_on = bool(settings.emby_schedule_enabled)
+    days_d = _schedule_days_display(settings.emby_schedule_days or "")
+    es = _normalize_hhmm(settings.emby_schedule_start, "00:00")
+    ee = _normalize_hhmm(settings.emby_schedule_end, "23:59")
+    win = _schedule_time_range_friendly(es, ee)
+    sched_detail = f"{days_d or '—'} · {win}" if sched_on else "—"
+
+    key = resolve_emby_api_key(settings)
+    conn = "Configured" if ((settings.emby_url or "").strip() and bool(key)) else "Missing"
+    emby_user = (settings.emby_user_id or "").strip() or "—"
+
+    em_m = max(1, int(settings.emby_interval_minutes or 60))
+
+    movie_unwatched_display = f"{mud} days" if mud > 0 else "Off"
+    tv_unwatched_display = f"{tud} days" if tud > 0 else "Off"
+    tv_continuing = "Future episodes monitored; aired episodes unmonitored after trim."
+    tv_ended = "Episodes unmonitored after trim."
+
+    rules_active = mr > 0 or mud > 0 or tv_w or tud > 0
+    rules_collapsed = not rules_active
+    schedule_collapsed = not sched_on
+
+    return {
+        "enabled": "On" if settings.emby_enabled else "Off",
+        "mode": "Dry run" if settings.emby_dry_run else "Live",
+        "connection": conn,
+        "emby_user": emby_user,
+        "movies_scope": "On" if movies_on else "Off",
+        "tv_scope": "On" if tv_on else "Off",
+        "delete_watched_movies": "On" if mr > 0 else "Off",
+        "movie_unwatched_age": movie_unwatched_display,
+        "delete_watched_episodes": "On" if tv_w else "Off",
+        "tv_unwatched_age": tv_unwatched_display,
+        "tv_continuing": tv_continuing,
+        "tv_ended": tv_ended,
+        "schedule_enabled": "Yes" if sched_on else "No",
+        "schedule_detail": sched_detail,
+        "run_interval_min": str(em_m),
+        "rules_collapsed": rules_collapsed,
+        "schedule_collapsed": schedule_collapsed,
+    }
+
+
+def build_trimmer_recent_activity_summary(settings: AppSettings, *, now: datetime) -> str:
+    """Lightweight Trimmer overview recent line from persisted last run only (no scheduler coupling)."""
+    if settings.emby_last_run_at is not None:
+        return f"Last scan {activity_relative_time(settings.emby_last_run_at, now)}"
+    return "No runs yet"
 
 
 @router.get("/trimmer/settings", response_class=HTMLResponse)
@@ -125,6 +198,9 @@ async def trimmer_page(request: Request, session: AsyncSession = Depends(get_ses
     # Side effects (live deletes + last-run persistence) stay in apply service, not in route logic.
     await TrimmerApplyService().apply_live_delete_if_needed(settings, session, review)
 
+    now = utc_now_naive()
+    trimmer_recent_activity_summary = build_trimmer_recent_activity_summary(settings, now=now)
+
     return templates.TemplateResponse(
         request,
         "trimmer.html",
@@ -136,6 +212,7 @@ async def trimmer_page(request: Request, session: AsyncSession = Depends(get_ses
             "settings": settings,
             "rows": review.rows,
             "error": review.error,
+            "trimmer_error_missing_connection": TRIMMER_REVIEW_ERROR_MISSING_CONNECTION,
             "used_user_id": review.used_user_id,
             "used_user_name": review.used_user_name,
             "movie_rating_below": review.movie_rating_below,
@@ -154,11 +231,13 @@ async def trimmer_page(request: Request, session: AsyncSession = Depends(get_ses
             "matched_count": len(review.rows),
             "scan_prompt": review.scan_prompt,
             "scan_loaded": review.scan_loaded,
-            "now": utc_now_naive(),
+            "now": now,
             "now_local": _now_local(tz),
             "timezone": tz,
             "csrf_token": await get_csrf_token_for_template(request, session),
             "show_setup_wizard": show_setup_wizard,
+            "trimmer_overview": build_trimmer_overview_config(settings),
+            "trimmer_recent_activity_summary": trimmer_recent_activity_summary,
         },
     )
 

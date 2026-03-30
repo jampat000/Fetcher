@@ -29,7 +29,16 @@ Optional but recommended: set **`FETCHER_DATA_ENCRYPTION_KEY`** (Fernet) **befor
 - Run a newer **`FetcherSetup.exe`** over the existing install (or use **Settings → Software updates**). **ProgramData** is left in place; the app runs **SQLite migrations** on startup when the bundled schema version moves forward.
 - After upgrade: service **Running**, UI loads, **`/api/version`** matches what you installed.
 
-**Backup:** export **Settings → Backup & Restore** before major upgrades if you like a portable snapshot; the SQLite file is the full source of truth.
+**Upgrading from 3.0.x (Refiner Browse / companion era):**
+
+| Location | What the installer does | If something is “left over” |
+| --- | --- | --- |
+| **`{app}`** (Program Files, application folder) | **Deletes** legacy **`FetcherCompanion.exe`** and companion **`.ps1`** files **before** copying the new build (`[InstallDelete]` / uninstall cleanup). | After upgrade, those filenames should be **gone**. If an old copy somehow remained, uninstall/reinstall or delete manually—Fetcher no longer ships or invokes them. |
+| **Per-user profile** (Task Scheduler, Start Menu, Desktop shortcuts you added) | **No automatic removal.** Windows does not give a service installer reliable, safe access to every user’s tasks and shortcuts. | **Optional cleanup:** open **Task Scheduler** and remove tasks you created for the companion; remove **Start Menu** / Desktop shortcuts. **Harmless if ignored:** they may point at a removed binary or do nothing; they do not affect the current app. |
+
+**Automation:** Refiner settings **`POST /refiner/settings/save`** uses form field names **`refiner_*`** only (see **CHANGELOG** `[Unreleased]`).
+
+**Backup:** export **Settings → Backup & Restore** for a portable snapshot of the **`app_settings`** row (Sonarr/Radarr/Trimmer/Refiner/auth); the SQLite file remains the full source of truth including history tables. **JSON** must use **current format** (`format_version` **2**, **`fetcher_backup`**) and **`supported_schema_version`** = **`CURRENT_SCHEMA_VERSION`**. Anything else is **rejected** on import.
 
 ---
 
@@ -55,6 +64,12 @@ Wrapper logs under Program Files (`*.out.log` / `*.err.log`) are WinSW noise; th
 | **`FETCHER_RESET_AUTH`** | Recovery | **`1`** once to clear lockout—see **SECURITY.md**. |
 
 Docker-specific vars are in **DOCKER.md**.
+
+---
+
+## Sonarr/Radarr failed-import cleanup (optional)
+
+When enabled under **TV** / **Movies** settings, Fetcher deletes matching rows from Sonarr’s or Radarr’s **download queue** only. It calls the queue delete endpoint with **blocklist** on the first attempt and retries **without** blocklist if the first call fails. **Remove-from-client** is **not** requested. **Activity** shows an entry only when a delete actually succeeds.
 
 ---
 

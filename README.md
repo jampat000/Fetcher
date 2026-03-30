@@ -15,7 +15,7 @@ Fetcher is a production-ready automation service for Sonarr, Radarr, and Emby, f
 - **Missing & upgrade automation** — scheduled (and manual) searches for monitored items without files and for cutoff-unmet queues, with **per-app Retry Delay** so you’re not hammering the same items every tick.
 - **Dashboard** — per-app last/next run, live-style queue counts when Arr is reachable, and short hints from the last service run (including retry-delay context where it applies).
 - **Activity & job logs** — human-readable summaries; logs page reads the same log directory the service writes to.
-- **Failed import cleanup** — optional Radarr/Sonarr queue cleanup where supported.
+- **Failed import cleanup** — optional Sonarr/Radarr: removes **terminal** failed imports from each app’s **download queue** (queue API delete with **blocklist** attempted on the same request, then **queue-only** removal if that fails). Fetcher does **not** enable **remove-from-client**. Successful removals appear in **Activity** as **Failed import cleaned up** or **Failed import removed**; waiting/unknown/no-op paths do not add cleanup rows.
 - **Setup wizard** — shown until real configuration is in place (password + at least one integration configured the way the app checks it). No separate “I’m done” flag; it’s driven by saved state.
 - **Auth** — password (bcrypt), session cookie, optional IP allowlist; JSON API can use **Bearer access tokens** from the auth endpoints.
 - **Backup / restore** — settings JSON from the UI (treat it as secret).
@@ -115,6 +115,8 @@ WinSW may drop small **wrapper** `*.out.log` / `*.err.log` next to the service u
 - **Manual:** download the new **`FetcherSetup.exe`**, run it over the existing install. **ProgramData** (database, logs) is kept; migrations run on next startup.
 - **After update:** confirm the **Fetcher** service is **Running**, open the UI, check **Settings → Software updates** or **`GET /api/version`** for the version you expect.
 
+Installs **3.1.0+** remove **`FetcherCompanion.exe`** and companion **`.ps1`** scripts from the **application folder** (`{app}`) on upgrade via the installer’s delete-before-copy step. That is the only place Fetcher can safely auto-clean: **Scheduled Tasks**, **Start Menu** shortcuts, or other **per-user** items you created for the old Browse flow live under each Windows user profile and are **not** touched by the installer. They are **harmless** if left in place (the companion binary is gone); remove them manually in **Task Scheduler** or the Start Menu if you want a tidy machine. Details: **[docs/INSTALL-AND-OPERATIONS.md](docs/INSTALL-AND-OPERATIONS.md)** → *Updates and migrations*.
+
 If you use **`FETCHER_DATA_ENCRYPTION_KEY`**, keep it set the same way after upgrades.
 
 ---
@@ -182,7 +184,10 @@ Not the Windows installer path. See **[docs/DOCKER.md](docs/DOCKER.md)** and pul
 | `service/` | WinSW service notes |
 | `installer/` | Inno → **`FetcherSetup.exe`** |
 | `docs/` | Docker, CLI, **INSTALL-AND-OPERATIONS**, etc. |
+| `docs/archive/release-notes/` | Historical 3.0.x release blurbs (Browse/companion era); see **`CHANGELOG.md`** for the canonical record |
 | `VERSION` | Release semver |
+
+Release builds may produce **`Fetcher-v*-windows-dist.zip`** (and checksum files) in the repo root locally; those patterns are **gitignored** and are **not** source files.
 
 Optional **`config.yaml`** next to **`Fetcher.exe`** can supply API keys—see **`config.example.yaml`** (gitignored when copied to **`config.yaml`**).
 
@@ -191,6 +196,8 @@ Optional **`config.yaml`** next to **`Fetcher.exe`** can supply API keys—see *
 ## Backup and restore
 
 **Settings → Backup & Restore** exports JSON including secrets—store it safely. Details: **[HOWTO-RESTORE.md](HOWTO-RESTORE.md)**.
+
+The JSON is the **full `app_settings` row** (Sonarr, Radarr, Emby/Trimmer, Refiner, web auth, schedules)—not activity or history tables. Each export uses **`format_version`: `2`**, **`fetcher_backup`**, **`supported_schema_version`**, and **`settings.schema_version`**. **Restore requires the same supported schema version** as the running build (`CURRENT_SCHEMA_VERSION`), the **current backup format only**, and **current field names**. Unsupported headers, older `format_version`, obsolete global Arr keys, and cross-version files are **rejected**; use a backup exported from the same build.
 
 ---
 
@@ -203,6 +210,8 @@ Optional **`config.yaml`** next to **`Fetcher.exe`** can supply API keys—see *
 ## More documentation
 
 **[docs/README.md](docs/README.md)** — index of guides.
+
+**[docs/BUILD-AND-RELEASE.md](docs/BUILD-AND-RELEASE.md)** — **clean** Windows (`FetcherSetup.exe`) and Docker builds; what not to commit.
 
 ---
 

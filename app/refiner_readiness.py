@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 from app.models import AppSettings
-from app.stream_manager_rules import normalize_lang
+from app.refiner_rules import normalize_lang
 
 RefinerUiPhase = Literal["off", "not_ready", "ready"]
 
@@ -23,7 +23,7 @@ class RefinerState:
 
 def get_refiner_state(config: AppSettings) -> RefinerState:
     """Derive off / not_ready / ready from settings (same logic for Jinja and JSON)."""
-    enabled = bool(getattr(config, "stream_manager_enabled", False))
+    enabled = bool(getattr(config, "refiner_enabled", False))
     if not enabled:
         return RefinerState(phase="off", enabled=False, issue_pairs=())
     pairs = refiner_readiness_issues(config)
@@ -74,10 +74,10 @@ def refiner_validate_settings_save_section(
 
 def refiner_readiness_issues(row: AppSettings) -> list[tuple[str, str]]:
     """Human-readable issues when Refiner is enabled but not ready to process. (fragment id, message)."""
-    if not getattr(row, "stream_manager_enabled", False):
+    if not getattr(row, "refiner_enabled", False):
         return []
     issues: list[tuple[str, str]] = []
-    if not normalize_lang(getattr(row, "stream_manager_primary_audio_lang", "") or ""):
+    if not normalize_lang(getattr(row, "refiner_primary_audio_lang", "") or ""):
         issues.append(
             (
                 "refiner-audio",
@@ -85,33 +85,45 @@ def refiner_readiness_issues(row: AppSettings) -> list[tuple[str, str]]:
             )
         )
 
-    w_raw = (getattr(row, "stream_manager_watched_folder", "") or "").strip()
+    w_raw = (getattr(row, "refiner_watched_folder", "") or "").strip()
     if not w_raw:
         issues.append(("refiner-folders", "Watched folder path is missing. Set it under Folders."))
     else:
         watched = _resolve_folder_path(w_raw)
         if watched is None:
-            issues.append(("refiner-folders", "Watched folder path is invalid or could not be resolved."))
+            issues.append(
+                (
+                    "refiner-folders",
+                    "Watched folder path is invalid or could not be resolved. Use an absolute path "
+                    "(e.g. /downloads in Docker or a bind mount).",
+                )
+            )
         elif not watched.is_dir():
             issues.append(
                 (
                     "refiner-folders",
-                    f"Watched folder must be an existing folder Refiner can read: {watched}",
+                    f"Watched folder must be an existing directory on this machine or container: {watched}",
                 )
             )
 
-    o_raw = (getattr(row, "stream_manager_output_folder", "") or "").strip()
+    o_raw = (getattr(row, "refiner_output_folder", "") or "").strip()
     if not o_raw:
         issues.append(("refiner-folders", "Output folder path is missing. Set it under Folders."))
     else:
         output = _resolve_folder_path(o_raw)
         if output is None:
-            issues.append(("refiner-folders", "Output folder path is invalid or could not be resolved."))
+            issues.append(
+                (
+                    "refiner-folders",
+                    "Output folder path is invalid or could not be resolved. Use an absolute path "
+                    "(e.g. /output) so it matches where finished files should go.",
+                )
+            )
         elif not output.is_dir():
             issues.append(
                 (
                     "refiner-folders",
-                    f"Output folder must be an existing folder: {output}",
+                    f"Output folder must be an existing directory (not a file): {output}",
                 )
             )
 
@@ -120,12 +132,12 @@ def refiner_readiness_issues(row: AppSettings) -> list[tuple[str, str]]:
 
 def refiner_scheduler_should_run(row: AppSettings) -> bool:
     """True when Refiner is on and minimum fields are set so the interval job may run (execution still validates paths)."""
-    if not getattr(row, "stream_manager_enabled", False):
+    if not getattr(row, "refiner_enabled", False):
         return False
-    if not normalize_lang(getattr(row, "stream_manager_primary_audio_lang", "") or ""):
+    if not normalize_lang(getattr(row, "refiner_primary_audio_lang", "") or ""):
         return False
-    if not (getattr(row, "stream_manager_watched_folder", "") or "").strip():
+    if not (getattr(row, "refiner_watched_folder", "") or "").strip():
         return False
-    if not (getattr(row, "stream_manager_output_folder", "") or "").strip():
+    if not (getattr(row, "refiner_output_folder", "") or "").strip():
         return False
     return True

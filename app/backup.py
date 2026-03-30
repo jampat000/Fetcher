@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import base64
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
@@ -12,22 +12,22 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import AppSettings
+from app.schema_version import CURRENT_SCHEMA_VERSION
 from app.security_utils import decrypt_secret_from_storage, encrypt_secret_for_storage
+
+logger = logging.getLogger(__name__)
 
 BACKUP_MAGIC = "fetcher_settings_v1"
 BACKUP_FORMAT_VERSION = 2
 
-# Human-readable timestamps in JSON (import accepts ISO from older exports too).
+# Non-Fetcher JSON top-level key (rejected on restore if present alongside a Fetcher-shaped file).
+_FOREIGN_BACKUP_HEADER_KEY = "grabby_backup"
+
+# Obsolete global Arr field names; not valid inside backup ``settings`` (per-app keys only).
+_OBSOLETE_GLOBAL_ARR_JSON_KEYS = frozenset({"search_missing", "search_upgrades", "max_items_per_run"})
+
+# Human-readable timestamps in JSON; datetime values may also use ISO-8601.
 BACKUP_DATETIME_FMT = "%d-%m-%Y %H:%M:%S"
-
-
-def _legacy_export_backup_key() -> str:
-    """Pre-rename JSON key (decoded at runtime; avoids embedding the old product token in source)."""
-    return base64.b64decode("Z3JhYmJ5X2JhY2t1cA==").decode("ascii")
-
-
-def _legacy_export_backup_magic() -> str:
-    return base64.b64decode("Z3JhYmJ5X3NldHRpbmdzX3Yx").decode("ascii")
 
 
 def format_backup_datetime(dt: datetime) -> str:
@@ -40,7 +40,7 @@ def format_backup_datetime(dt: datetime) -> str:
 
 
 def parse_backup_datetime_string(s: str) -> datetime:
-    """Parse datetime from backup JSON: ISO-8601 (older exports) or dd-mm-yyyy [HH:MM:SS]."""
+    """Parse datetime from backup JSON: ISO-8601 or dd-mm-yyyy [HH:MM:SS]."""
     raw = str(s).strip().replace("Z", "+00:00")
     try:
         dt = datetime.fromisoformat(raw)
@@ -79,15 +79,23 @@ def app_settings_to_plain(row: AppSettings) -> dict[str, Any]:
 
 
 def build_export_payload(row: AppSettings) -> dict[str, Any]:
-    """One DB row holds Fetcher (Arr) + Trimmer (Emby); all columns are exported."""
+    """Export the full ``app_settings`` row (all columns except ``id``) as JSON."""
+    v = int(CURRENT_SCHEMA_VERSION)
     return {
         "fetcher_backup": BACKUP_MAGIC,
         "format_version": BACKUP_FORMAT_VERSION,
+        # Explicit contract: restore is allowed only when this equals app.schema_version.CURRENT_SCHEMA_VERSION.
+        "supported_schema_version": v,
         "exported_at": format_backup_datetime(datetime.now(timezone.utc)),
         "includes": {
             "fetcher": True,
             "trimmer": True,
-            "note": "Single app_settings row: Sonarr/Radarr/schedules and Emby/Trimmer rules together.",
+            "refiner": True,
+            "note": (
+                "Full app_settings row: Sonarr, Radarr, Emby/Trimmer, Refiner, web authentication, "
+                "schedules, and schema_version. Excludes activity_log, job_run_log, app_snapshot, "
+                "refiner_activity, and arr_action_log."
+            ),
         },
         "settings": app_settings_to_plain(row),
     }
@@ -99,9 +107,22 @@ def export_json_bytes(row: AppSettings) -> bytes:
 
 
 def _backup_header_valid(data: dict[str, Any]) -> bool:
-    if data.get("fetcher_backup") == BACKUP_MAGIC:
-        return True
-    return data.get(_legacy_export_backup_key()) == _legacy_export_backup_magic()
+    return data.get("fetcher_backup") == BACKUP_MAGIC
+
+
+def _reject_disallowed_backup_payload(data: dict[str, Any], settings: dict[str, Any]) -> None:
+    if _FOREIGN_BACKUP_HEADER_KEY in data:
+        raise ValueError(
+            "This backup file contains an unsupported top-level key and cannot be restored. "
+            "Export a new backup from this Fetcher build only."
+        )
+    bad = _OBSOLETE_GLOBAL_ARR_JSON_KEYS & settings.keys()
+    if bad:
+        raise ValueError(
+            "Backup settings contain unsupported field name(s): "
+            f"{', '.join(sorted(bad))}. Use current per-app keys only "
+            "(for example sonarr_search_missing, not a single global search_missing)."
+        )
 
 
 def parse_and_validate_settings_dict(raw: bytes) -> dict[str, Any]:
@@ -112,31 +133,69 @@ def parse_and_validate_settings_dict(raw: bytes) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError("Backup must be a JSON object")
     if not _backup_header_valid(data):
-        raise ValueError("This file is not a Fetcher settings backup (wrong or missing fetcher_backup).")
+        raise ValueError(
+            "This file is not a valid Fetcher settings backup (missing or invalid fetcher_backup)."
+        )
     fv = data.get("format_version")
-    if fv not in (1, BACKUP_FORMAT_VERSION):
-        raise ValueError(f"Unsupported format_version: {fv!r} (expected 1 or {BACKUP_FORMAT_VERSION})")
+    if fv != BACKUP_FORMAT_VERSION:
+        raise ValueError(
+            f"Unsupported format_version: {fv!r} (expected {BACKUP_FORMAT_VERSION} only)."
+        )
     settings = data.get("settings")
     if not isinstance(settings, dict):
         raise ValueError("Backup is missing a settings object")
-    _merge_removed_global_keys_into_per_app(settings)
+    _enforce_backup_schema_version_matches_build(data, settings)
+    _reject_disallowed_backup_payload(data, settings)
     return settings
 
 
-def _merge_removed_global_keys_into_per_app(settings: dict[str, Any]) -> None:
-    """Older exports included global Arr keys we no longer store; map them if per-app keys are absent."""
-    if "sonarr_search_missing" not in settings and "search_missing" in settings:
-        settings["sonarr_search_missing"] = settings["search_missing"]
-    if "radarr_search_missing" not in settings and "search_missing" in settings:
-        settings["radarr_search_missing"] = settings["search_missing"]
-    if "sonarr_search_upgrades" not in settings and "search_upgrades" in settings:
-        settings["sonarr_search_upgrades"] = settings["search_upgrades"]
-    if "radarr_search_upgrades" not in settings and "search_upgrades" in settings:
-        settings["radarr_search_upgrades"] = settings["search_upgrades"]
-    if "sonarr_max_items_per_run" not in settings and "max_items_per_run" in settings:
-        settings["sonarr_max_items_per_run"] = settings["max_items_per_run"]
-    if "radarr_max_items_per_run" not in settings and "max_items_per_run" in settings:
-        settings["radarr_max_items_per_run"] = settings["max_items_per_run"]
+def _backup_declared_schema_version(data: dict[str, Any], settings: dict[str, Any]) -> int:
+    """Resolve schema version from payload (top-level preferred, then ``settings.schema_version``)."""
+    raw_top = data.get("supported_schema_version")
+    parsed_top: int | None = None
+    if raw_top is not None:
+        try:
+            parsed_top = int(raw_top)
+        except (TypeError, ValueError) as e:
+            raise ValueError(
+                "Backup field supported_schema_version is invalid (must be an integer)."
+            ) from e
+    raw_s = settings.get("schema_version")
+    parsed_s: int | None = None
+    if raw_s is not None:
+        try:
+            parsed_s = int(raw_s)
+        except (TypeError, ValueError) as e:
+            raise ValueError(
+                "Backup settings.schema_version is invalid (must be an integer)."
+            ) from e
+    if parsed_top is not None and parsed_s is not None and parsed_top != parsed_s:
+        raise ValueError(
+            "Backup supported_schema_version and settings.schema_version disagree; file is inconsistent."
+        )
+    if parsed_top is not None:
+        return parsed_top
+    if parsed_s is not None:
+        return parsed_s
+    raise ValueError(
+        "This backup does not include schema version metadata (supported_schema_version or "
+        "settings.schema_version) and cannot be restored with this build."
+    )
+
+
+def _enforce_backup_schema_version_matches_build(data: dict[str, Any], settings: dict[str, Any]) -> None:
+    found = _backup_declared_schema_version(data, settings)
+    expected = int(CURRENT_SCHEMA_VERSION)
+    if found != expected:
+        logger.error(
+            "Backup restore blocked: schema version mismatch (expected %s, found %s)",
+            expected,
+            found,
+        )
+        raise ValueError(
+            f"This backup was created with schema version {found}, but this Fetcher build requires "
+            f"schema version {expected}. Restore is not supported across schema versions."
+        )
 
 
 def _coerce_for_column(col: Any, raw: Any) -> Any:

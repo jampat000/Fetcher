@@ -5,7 +5,6 @@
   <div class="page-head">
     <div>
       <h1 class="ph-title">Trimmer</h1>
-      <p>Review Trimmer candidates before running delete operations. Rules and schedules live under <a href="/trimmer/settings">Trimmer settings</a>.</p>
     </div>
   </div>
 
@@ -13,90 +12,212 @@
 
   {% if not settings.emby_enabled %}
   <div class="banner banner-ok trimmer-mode-banner banner--soft" role="status">
-    <strong>Trimmer off</strong> — Turn on <strong>Enable Trimmer</strong> in <a href="/trimmer/settings">Settings</a> to use dry run or live mode.
+    <strong>Trimmer off</strong> — Turn on <strong>Enable Trimmer</strong> in <a class="ink-link" href="/trimmer/settings">Settings</a> to use dry run or live mode.
   </div>
   {% endif %}
 
-  <div class="card gc">
-      <div class="gc-title">Trimmer overview</div>
-      <div class="hint">
-        See <strong>which titles in Emby match your Trimmer rules</strong> — same checks the scheduler uses.
-        <strong>Scan Emby for matches</strong> loads from Emby; with <strong>dry run</strong> on you get a preview only, with <strong>dry run</strong> off matched items are removed during that scan (up to max rows). Opening <strong>Trimmer</strong> without scanning stays fast.
-      </div>
-
-    <div class="m-grid">
-      <div class="m">
-        <div class="label">Matched now</div>
-        <div class="value">{{ matched_count }}</div>
-      </div>
-      <div class="m">
-        <div class="label">Mode</div>
-        <div class="value {% if dry_run %}mode-safe{% else %}mode-live{% endif %}">{{ "Dry run" if dry_run else "Live delete" }}</div>
-      </div>
-      <div class="m">
-        <div class="label">User</div>
-        <div class="value">{{ used_user_name or "-" }}</div>
-      </div>
+  {% if error == trimmer_error_missing_connection %}
+  <div class="trimmer-page-top-notices" role="region" aria-label="Trimmer setup notice">
+    <div class="trimmer-validation-notice trimmer-validation-notice--top" role="status">
+      <div class="trimmer-validation-notice__title">Connection required</div>
+      <p class="trimmer-validation-notice__body">
+        Configure a media server URL and API key in <a class="ink-link" href="/trimmer/settings#trimmer-connection">Settings</a> to use Trimmer.
+      </p>
     </div>
+  </div>
+  {% endif %}
 
-    <div class="btn-row">
-      <a class="btn" href="/trimmer?scan=1">Scan Emby for matches</a>
-      <a class="btn secondary" href="/trimmer" title="Clear the list and stop until you scan again">Clear results</a>
-    </div>
+  <div class="card gc trimmer-overview-summary-card">
+    <div class="gc-title">Trimmer overview</div>
 
-    {% if not dry_run %}
-      <div class="section">
-        <p class="preview-warning">Live delete mode is enabled in Trimmer settings. Scheduled runs can delete matching items.</p>
-      </div>
-    {% endif %}
-
-      {% if error %}
-        <div class="section">
-          <p class="status-fail">{{ error }}</p>
-        </div>
-      {% elif scan_prompt %}
-        <div class="section">
-          <div class="banner banner-warn" role="status">
-            <strong>No scan yet.</strong> Click <a href="/trimmer?scan=1"><strong>Scan Emby for matches</strong></a> above to load your library from Emby and list titles that match your rules <em>right now</em>.
-            Large libraries may take a minute.
+    <div class="trimmer-overview-body">
+      <section class="overview-section trimmer-overview-section trimmer-overview-section--status">
+        <div class="overview-section-heading">Status</div>
+        <div class="overview-kv-stack">
+          <div class="overview-kv-row">
+            <div class="label">Trimmer enabled</div>
+            <div class="value">{{ trimmer_overview.enabled }}</div>
+          </div>
+          <div class="overview-kv-row">
+            <div class="label">Mode</div>
+            <div class="value {% if settings.emby_dry_run %}mode-safe{% else %}mode-live{% endif %}">{{ trimmer_overview.mode }}</div>
           </div>
         </div>
-      {% else %}
-        <div class="section">
-          {% if rows %}
-          <table>
-          <thead>
-            <tr>
-              <th>Title</th>
-              <th>Type</th>
-              <th>Played</th>
-              <th>Rating</th>
-              <th>Age (days)</th>
-              <th>Reason</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for r in rows %}
-            <tr>
-              <td>{{ r.name }}</td>
-              <td>{{ r.type }}</td>
-              <td>{{ "Yes" if r.played else "No" }}</td>
-              <td>{{ r.rating if r.rating is not none else "-" }}</td>
-              <td>{{ r.age_days if r.age_days is not none else "-" }}</td>
-              <td>
-                {% for reason in r.reasons %}
-                  <span class="preview-reason {% if reason.startswith('movie:') %}preview-reason-movie{% elif reason.startswith('tv:') %}preview-reason-tv{% endif %}">{{ reason }}</span>
-                {% endfor %}
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-          </table>
+      </section>
+
+      <section class="overview-section trimmer-overview-section">
+        <div class="overview-section-heading">Connection</div>
+        <div class="overview-kv-stack">
+          <div class="overview-kv-row">
+            <div class="label">Connection</div>
+            <div class="value {% if trimmer_overview.connection == 'Missing' %}mode-live{% endif %}">{{ trimmer_overview.connection }}</div>
+          </div>
+          <div class="overview-kv-row">
+            <div class="label">User</div>
+            <div class="value {% if trimmer_overview.emby_user == '—' %}overview-value--muted{% endif %}">{{ trimmer_overview.emby_user }}</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="overview-section trimmer-overview-section">
+        <div class="overview-section-heading">Scope</div>
+        <div class="overview-kv-stack">
+          <div class="overview-kv-row">
+            <div class="label">Movies</div>
+            <div class="value">{{ trimmer_overview.movies_scope }}</div>
+          </div>
+          <div class="overview-kv-row">
+            <div class="label">TV</div>
+            <div class="value">{{ trimmer_overview.tv_scope }}</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="overview-section trimmer-overview-section">
+        <div class="overview-section-heading">Rules</div>
+        <div class="overview-kv-stack">
+          {% if trimmer_overview.rules_collapsed %}
+          <div class="overview-kv-row">
+            <div class="label">Rules</div>
+            <div class="value overview-value--muted">No active rules</div>
+          </div>
           {% else %}
-          <p class="small muted">No titles currently match your enabled rules (within scan limits).</p>
+          <div class="overview-kv-row">
+            <div class="label">Delete watched movies</div>
+            <div class="value">{{ trimmer_overview.delete_watched_movies }}</div>
+          </div>
+          <div class="overview-kv-row">
+            <div class="label">Movie unwatched-age rule</div>
+            <div class="value">{{ trimmer_overview.movie_unwatched_age }}</div>
+          </div>
+          <div class="overview-kv-row">
+            <div class="label">Delete watched episodes</div>
+            <div class="value">{{ trimmer_overview.delete_watched_episodes }}</div>
+          </div>
+          <div class="overview-kv-row">
+            <div class="label">TV unwatched-age rule</div>
+            <div class="value">{{ trimmer_overview.tv_unwatched_age }}</div>
+          </div>
           {% endif %}
         </div>
-      {% endif %}
+      </section>
+
+      <section class="overview-section trimmer-overview-section">
+        <div class="overview-section-heading">TV handling</div>
+        <div class="overview-kv-stack">
+          <div class="overview-kv-row">
+            <div class="label">Continuing</div>
+            <div class="value overview-path">{{ trimmer_overview.tv_continuing }}</div>
+          </div>
+          <div class="overview-kv-row">
+            <div class="label">Ended</div>
+            <div class="value overview-path">{{ trimmer_overview.tv_ended }}</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="overview-section trimmer-overview-section">
+        <div class="overview-section-heading">Schedule</div>
+        <div class="overview-kv-stack">
+          {% if trimmer_overview.schedule_collapsed %}
+          <div class="overview-kv-row">
+            <div class="label">Schedule</div>
+            <div class="value overview-value--muted">Disabled</div>
+          </div>
+          <div class="overview-kv-row">
+            <div class="label">Run interval</div>
+            <div class="value">{{ trimmer_overview.run_interval_min }} min</div>
+          </div>
+          {% else %}
+          <div class="overview-kv-row">
+            <div class="label">Schedule window</div>
+            <div class="value">{{ trimmer_overview.schedule_enabled }}</div>
+          </div>
+          <div class="overview-kv-row">
+            <div class="label">Schedule detail</div>
+            <div class="value overview-path">{{ trimmer_overview.schedule_detail }}</div>
+          </div>
+          <div class="overview-kv-row">
+            <div class="label">Run interval</div>
+            <div class="value">{{ trimmer_overview.run_interval_min }} min</div>
+          </div>
+          {% endif %}
+        </div>
+      </section>
+
+      <section class="overview-section overview-section--recent trimmer-overview-section">
+        <div class="overview-section-heading">Recent activity</div>
+        <div class="overview-kv-stack">
+          <div class="overview-kv-row">
+            <div class="label">Last scan</div>
+            <div class="value {% if trimmer_recent_activity_summary == 'No runs yet' %}overview-value--muted{% endif %}">{{ trimmer_recent_activity_summary }}</div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="trimmer-overview-actions">
+    <div class="btn-row trimmer-overview-btn-row">
+      <a class="btn" href="/trimmer?scan=1">Scan for matches</a>
+      <a class="btn secondary" href="/trimmer" title="Clear the list and stop until you scan again">Clear results</a>
+    </div>
+    <p class="small muted overview-activity-log-link"><a class="ink-link" href="/activity?app=trimmer">View full activity log</a></p>
+  </div>
+
+  <div class="trimmer-page-below-overview trimmer-page-validation-and-results">
+  {% if not dry_run %}
+  <div class="section">
+    <p class="preview-warning">Live delete mode is enabled in Trimmer settings. Scheduled runs can delete matching items.</p>
+  </div>
+  {% endif %}
+
+  {% if error and error != trimmer_error_missing_connection %}
+  <div class="section">
+    <p class="status-fail">{{ error }}</p>
+  </div>
+  {% elif scan_prompt %}
+  <div class="section">
+    <div class="banner banner-warn" role="status">
+      <strong>No scan loaded.</strong> Run <a class="ink-link" href="/trimmer?scan=1"><strong>Scan for matches</strong></a> to list current matches.
+    </div>
+  </div>
+  {% elif not error %}
+  <div class="section">
+    {% if rows %}
+    <table>
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Type</th>
+        <th>Played</th>
+        <th>Rating</th>
+        <th>Age (days)</th>
+        <th>Reason</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.name }}</td>
+        <td>{{ r.type }}</td>
+        <td>{{ "Yes" if r.played else "No" }}</td>
+        <td>{{ r.rating if r.rating is not none else "-" }}</td>
+        <td>{{ r.age_days if r.age_days is not none else "-" }}</td>
+        <td>
+          {% for reason in r.reasons %}
+            <span class="preview-reason {% if reason.startswith('movie:') %}preview-reason-movie{% elif reason.startswith('tv:') %}preview-reason-tv{% endif %}">{{ reason }}</span>
+          {% endfor %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    </table>
+    {% else %}
+    <p class="small muted">No titles currently match your enabled rules (within scan limits).</p>
+    {% endif %}
+  </div>
+  {% endif %}
   </div>
 </div>
 {% endblock %}

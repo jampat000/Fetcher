@@ -27,6 +27,9 @@ TrimmerApplyService owns live-delete side effects (delete apply + last-run persi
 If you change dry-run vs live-delete behavior, update regression tests first.
 """
 
+# Template maps this to user-facing copy (connection URL + API key missing).
+TRIMMER_REVIEW_ERROR_MISSING_CONNECTION = "trimmer:review:missing_connection"
+
 
 @dataclass(slots=True)
 class TrimmerReviewResult:
@@ -81,7 +84,7 @@ class TrimmerReviewService:
 
         emby_key = resolve_emby_api_key(settings)
         if not settings.emby_url or not emby_key:
-            result.error = "Emby URL and API key are required."
+            result.error = TRIMMER_REVIEW_ERROR_MISSING_CONNECTION
             return result
 
         if (

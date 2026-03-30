@@ -1,12 +1,10 @@
 {% extends "layout.html" %}
 {% from "macros/refiner_area.html" import refiner_area_tabs %}
-{% from "macros/activity_row.html" import activity_row %}
 {% block content %}
 <div class="wrap">
   <div class="page-head">
     <div>
       <h1 class="ph-title">Refiner</h1>
-      <p>Refiner checks your watched folder on a schedule, remuxes files with your rules, and writes to the output folder. Paths, timing, and rules are under <a href="/refiner/settings">Refiner settings</a>.</p>
     </div>
   </div>
 
@@ -16,15 +14,15 @@
     id="refiner-banner-off"
     class="banner banner-ok refiner-mode-banner banner--soft"
     role="status"
-    {% if refiner_state.phase != "off" %}hidden{% endif %}
+    {% if refiner_state.phase != 'off' %}hidden{% endif %}
   >
-    <strong>Refiner is off.</strong> Enable it under <a href="/refiner/settings#refiner-processing">Processing</a> in settings, then choose dry run or live mode.
+    <strong>Refiner is off.</strong> Enable it under <a class="ink-link" href="/refiner/settings#refiner-processing">Processing</a> in settings, then choose dry run or live mode.
   </div>
   <div
     id="refiner-banner-readiness"
     class="banner banner-warn refiner-readiness-banner banner--soft"
     role="status"
-    {% if refiner_state.phase != "not_ready" %}hidden{% endif %}
+    {% if refiner_state.phase != 'not_ready' %}hidden{% endif %}
   >
     <strong>Refiner is on but not ready to process yet.</strong>
     <ul id="refiner-readiness-list" class="refiner-readiness-list">
@@ -32,70 +30,143 @@
       <li>{{ msg }}</li>
       {% endfor %}
     </ul>
-    <p class="small muted refiner-readiness-hint">Fix each item in <a href="/refiner/settings">Refiner settings</a> (links in the banner there jump to the right section).</p>
+    <p class="small muted refiner-readiness-hint">Fix each item in <a class="ink-link" href="/refiner/settings">Refiner settings</a> (links in the banner there jump to the right section).</p>
   </div>
 
   <div class="card gc">
     <div class="gc-title">Refiner overview</div>
-    <p class="hint">Saved settings only. Refiner runs in the background; there is no separate run-now action.</p>
 
-    <div class="m-grid refiner-overview-grid">
-      <div class="m">
-        <div class="label">Status</div>
-        <div class="value">{% if settings.stream_manager_enabled %}On{% else %}Off{% endif %}</div>
-      </div>
-      <div class="m">
-        <div class="label">Output mode</div>
-        <div class="value {% if settings.stream_manager_dry_run %}mode-safe{% else %}mode-live{% endif %}">
-          {{ "Dry run (preview only)" if settings.stream_manager_dry_run else "Live (writes and deletes)" }}
+    <div class="refiner-overview-body">
+      <section class="overview-section refiner-overview-section refiner-overview-section--status">
+        <div class="overview-section-heading">Status</div>
+        <div class="overview-kv-stack">
+          <div class="overview-kv-row">
+            <div class="label">Status</div>
+            <div class="value">{% if settings.refiner_enabled %}On{% else %}Off{% endif %}</div>
+          </div>
+          <div class="overview-kv-row">
+            <div class="label">Ready</div>
+            <div class="value{% if refiner_overview.readiness == 'Not ready' %} mode-live{% elif refiner_overview.readiness == 'Ready' %} mode-safe{% endif %}">{{ refiner_overview.readiness }}</div>
+          </div>
+          <div class="overview-kv-row">
+            <div class="label">Mode</div>
+            <div class="value {% if settings.refiner_dry_run %}mode-safe{% else %}mode-live{% endif %}">{{ "Dry run" if settings.refiner_dry_run else "Live" }}</div>
+          </div>
         </div>
-      </div>
-      <div class="m">
-        <div class="label">Watched folder check interval</div>
-        <div class="value {% if not settings.stream_manager_enabled %}refiner-overview-value--muted{% endif %}">{% if settings.stream_manager_enabled %}{{ settings.stream_manager_interval_seconds or 60 }} s{% else %}Not set{% endif %}</div>
-      </div>
-      <div class="m">
-        <div class="label">Schedule window</div>
-        <div class="value {% if not settings.stream_manager_enabled %}refiner-overview-value--muted{% endif %}">{% if not settings.stream_manager_enabled %}Not set{% elif settings.stream_manager_schedule_enabled %}On{% else %}Off{% endif %}</div>
-      </div>
-      <div class="m">
-        <div class="label">Watched folder</div>
-        <div class="value refiner-overview-path {% if not settings.stream_manager_watched_folder %}refiner-overview-value--muted{% endif %}">{% if settings.stream_manager_watched_folder %}{{ settings.stream_manager_watched_folder[:52] }}{% if settings.stream_manager_watched_folder|length > 52 %}…{% endif %}{% else %}Not set{% endif %}</div>
-      </div>
-      <div class="m">
-        <div class="label">Output folder</div>
-        <div class="value refiner-overview-path {% if not settings.stream_manager_output_folder %}refiner-overview-value--muted{% endif %}">{% if settings.stream_manager_output_folder %}{{ settings.stream_manager_output_folder[:52] }}{% if settings.stream_manager_output_folder|length > 52 %}…{% endif %}{% else %}Not set{% endif %}</div>
-      </div>
+      </section>
+
+      <section class="overview-section refiner-overview-section">
+        <div class="overview-section-heading">Folders</div>
+        <div class="overview-kv-stack">
+          <div class="overview-kv-row">
+            <div class="label">Watched folder</div>
+            <div class="value overview-path {% if refiner_overview.watched_folder == '—' %}overview-value--muted{% endif %}">{{ refiner_overview.watched_folder }}</div>
+          </div>
+          <div class="overview-kv-row">
+            <div class="label">Output folder</div>
+            <div class="value overview-path {% if refiner_overview.output_folder == '—' %}overview-value--muted{% endif %}">{{ refiner_overview.output_folder }}</div>
+          </div>
+          <div class="overview-kv-row">
+            <div class="label">Work folder</div>
+            <div class="value overview-path">{{ refiner_overview.work_folder_line }}</div>
+          </div>
+          <div class="overview-kv-row">
+            <div class="label">Scan interval</div>
+            <div class="value">{{ refiner_overview.scan_interval }}</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="overview-section refiner-overview-section">
+        <div class="overview-section-heading">Audio</div>
+        <div class="overview-kv-stack">
+          <div class="overview-kv-row">
+            <div class="label">Audio tracks</div>
+            <div class="value">{{ refiner_overview.audio_tracks_mode }}</div>
+          </div>
+          <div class="overview-kv-row">
+            <div class="label">Languages</div>
+            <div class="value overview-path {% if refiner_overview.audio_languages == '—' %}overview-value--muted{% endif %}">{{ refiner_overview.audio_languages }}</div>
+          </div>
+          <div class="overview-kv-row">
+            <div class="label">Policy</div>
+            <div class="value">{{ refiner_overview.audio_policy }}</div>
+          </div>
+          <div class="overview-kv-row">
+            <div class="label">Commentary</div>
+            <div class="value">{{ refiner_overview.commentary }}</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="overview-section refiner-overview-section">
+        <div class="overview-section-heading">Subtitles</div>
+        <div class="overview-kv-stack">
+          {% if refiner_overview.subtitles_collapsed %}
+          <div class="overview-kv-row">
+            <div class="label">Subtitles</div>
+            <div class="value">{{ refiner_overview.subtitles_mode }}</div>
+          </div>
+          {% else %}
+          <div class="overview-kv-row">
+            <div class="label">Subtitles</div>
+            <div class="value">{{ refiner_overview.subtitles_mode }}</div>
+          </div>
+          <div class="overview-kv-row">
+            <div class="label">Languages</div>
+            <div class="value overview-path {% if refiner_overview.subtitle_languages == '—' %}overview-value--muted{% endif %}">{{ refiner_overview.subtitle_languages }}</div>
+          </div>
+          <div class="overview-kv-row">
+            <div class="label">Types</div>
+            <div class="value {% if refiner_overview.subtitle_types == '—' %}overview-value--muted{% endif %}">{{ refiner_overview.subtitle_types }}</div>
+          </div>
+          {% endif %}
+        </div>
+      </section>
+
+      <section class="overview-section refiner-overview-section">
+        <div class="overview-section-heading">Processing</div>
+        <div class="overview-kv-stack">
+          <div class="overview-kv-row">
+            <div class="label">Source cleanup</div>
+            <div class="value {% if refiner_overview.source_cleanup == 'Off' %}overview-value--muted{% endif %}">{{ refiner_overview.source_cleanup }}</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="overview-section refiner-overview-section">
+        <div class="overview-section-heading">Schedule</div>
+        <div class="overview-kv-stack">
+          {% if refiner_overview.schedule_collapsed %}
+          <div class="overview-kv-row">
+            <div class="label">Schedule</div>
+            <div class="value overview-value--muted">Disabled</div>
+          </div>
+          {% else %}
+          <div class="overview-kv-row">
+            <div class="label">Schedule window</div>
+            <div class="value">{{ refiner_overview.schedule_window }}</div>
+          </div>
+          <div class="overview-kv-row">
+            <div class="label">Schedule detail</div>
+            <div class="value overview-path">{{ refiner_overview.schedule_detail }}</div>
+          </div>
+          {% endif %}
+        </div>
+      </section>
+
+      <section class="overview-section overview-section--recent refiner-overview-section">
+        <div class="overview-section-heading">Recent activity</div>
+        <div class="overview-kv-stack">
+          <div class="overview-kv-row">
+            <div class="label">Last scan</div>
+            <div class="value {% if refiner_recent_activity_summary == 'Processing now' %}mode-live{% elif refiner_recent_activity_summary == 'No runs yet' %}overview-value--muted{% endif %}">{{ refiner_recent_activity_summary }}</div>
+          </div>
+        </div>
+      </section>
     </div>
 
-    {% if settings.stream_manager_enabled and not settings.stream_manager_dry_run %}
-    <div class="section">
-      <p class="preview-warning">Live mode: originals may be deleted after a successful write to the output folder.</p>
-    </div>
-    {% endif %}
-    <div class="section">
-      <div class="small"><strong>Audio:</strong> Keeps allowed languages; one track per file by policy.</div>
-      <div class="small"><strong>Subtitles:</strong> Remove all or keep selected languages only.</div>
-      <div class="small"><strong>Commentary:</strong> Optional removal before selection.</div>
-    </div>
-
-    <div class="btn-row">
-      <a class="btn" href="/refiner/settings">Open Refiner settings</a>
-    </div>
-
-    <div class="section refiner-overview-recent-activity">
-      <div class="gc-title">Recent activity</div>
-      {% if refiner_recent_activity %}
-      <div class="activity-list">
-        {% for e in refiner_recent_activity %}
-        {{ activity_row(e, activity_detail_preview) }}
-        {% endfor %}
-      </div>
-      <p class="small"><a href="/activity">View all activity</a></p>
-      {% else %}
-      <p class="small muted">No activity yet<br />Refiner will show processed files here once it runs.</p>
-      {% endif %}
-    </div>
+    <p class="small muted overview-activity-log-link"><a class="ink-link" href="/activity?app=refiner">View full activity log</a></p>
   </div>
 </div>
 {% endblock %}

@@ -34,7 +34,7 @@
         "do_not_enforce_on_create": false,
         "required_status_checks": [
           { "context": "Test / pytest" },
-          { "context": "Security / pip-audit" }
+          { "context": "Test / pip-audit" }
         ]
       }
     }

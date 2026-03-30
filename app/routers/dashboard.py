@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, Mapping
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
@@ -39,6 +40,32 @@ from app.web_common import (
 from app.routers.deps import AUTH_DEPS
 
 router = APIRouter(dependencies=AUTH_DEPS)
+
+
+def _automation_view_for_template(settings: Any, dash_status: Mapping[str, Any]) -> dict[str, Any]:
+    """Single dict for Automation card rows + footer (dashboard.html ``automation_view`` / ``av``)."""
+    return {
+        "fetcher_phase": dash_status["fetcher_phase"],
+        "fetcher_phase_label": dash_status["fetcher_phase_label"],
+        "fetcher_phase_detail": dash_status["fetcher_phase_detail"],
+        "last_sonarr_run": dash_status["last_sonarr_run"],
+        "last_radarr_run": dash_status["last_radarr_run"],
+        "last_trimmer_run": dash_status["last_trimmer_run"],
+        "next_sonarr_tick_local": dash_status["next_sonarr_tick_local"],
+        "next_radarr_tick_local": dash_status["next_radarr_tick_local"],
+        "next_trimmer_tick_local": dash_status["next_trimmer_tick_local"],
+        "next_sonarr_relative": dash_status["next_sonarr_relative"],
+        "next_radarr_relative": dash_status["next_radarr_relative"],
+        "next_trimmer_relative": dash_status["next_trimmer_relative"],
+        "sonarr_enabled": bool(settings.sonarr_enabled),
+        "radarr_enabled": bool(settings.radarr_enabled),
+        "refiner_enabled": bool(settings.refiner_enabled),
+        "emby_enabled": bool(settings.emby_enabled),
+        "refiner_last_run_at": settings.refiner_last_run_at,
+        "sonarr_automation_sub": dash_status["sonarr_automation_sub"],
+        "radarr_automation_sub": dash_status["radarr_automation_sub"],
+        "trimmer_automation_sub": dash_status["trimmer_automation_sub"],
+    }
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -99,6 +126,7 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
         settings.radarr_schedule_start or "00:00",
         settings.radarr_schedule_end or "23:59",
     )
+    automation_view = _automation_view_for_template(settings, dash_status)
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -125,6 +153,9 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
             "sonarr_automation_sub": sonarr_automation_sub,
             "radarr_automation_sub": radarr_automation_sub,
             "trimmer_automation_sub": trimmer_automation_sub,
+            "trimmer_connection_type": dash_status["trimmer_connection_type"],
+            "trimmer_connection_status": dash_status["trimmer_connection_status"],
+            "automation_view": automation_view,
             "emby_schedule_start_display": emby_schedule_start_display,
             "emby_schedule_end_display": emby_schedule_end_display,
             "sonarr_schedule_start_display": sonarr_schedule_start_display,

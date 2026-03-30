@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime
 from types import SimpleNamespace
 
-from app.scheduler import ServiceScheduler, compute_job_intervals_minutes, effective_stream_manager_interval_seconds
+from app.scheduler import ServiceScheduler, compute_job_intervals_minutes, effective_refiner_interval_seconds
 
 
 def _arr_settings(**kwargs: object) -> SimpleNamespace:
@@ -61,36 +61,36 @@ def test_compute_job_intervals_minutes_uses_single_configured_app() -> None:
     assert compute_job_intervals_minutes(s) == {"sonarr": 45}
 
 
-def test_compute_job_intervals_minutes_excludes_stream_manager() -> None:
+def test_compute_job_intervals_minutes_excludes_refiner() -> None:
     s = _arr_settings(
-        stream_manager_enabled=True,
-        stream_manager_watched_folder="D:\\Media\\incoming",
-        stream_manager_output_folder="D:\\Media\\processed",
-        stream_manager_interval_seconds=120,
+        refiner_enabled=True,
+        refiner_watched_folder="D:\\Media\\incoming",
+        refiner_output_folder="D:\\Media\\processed",
+        refiner_interval_seconds=120,
     )
     assert compute_job_intervals_minutes(s) == {}
 
 
-def test_effective_stream_manager_interval_seconds_when_configured() -> None:
+def test_effective_refiner_interval_seconds_when_configured() -> None:
     s = _arr_settings(
-        stream_manager_enabled=True,
-        stream_manager_primary_audio_lang="eng",
-        stream_manager_watched_folder="D:\\Media\\incoming",
-        stream_manager_output_folder="D:\\Media\\processed",
-        stream_manager_interval_seconds=120,
+        refiner_enabled=True,
+        refiner_primary_audio_lang="eng",
+        refiner_watched_folder="D:\\Media\\incoming",
+        refiner_output_folder="D:\\Media\\processed",
+        refiner_interval_seconds=120,
     )
-    assert effective_stream_manager_interval_seconds(s) == 120
+    assert effective_refiner_interval_seconds(s) == 120
 
 
-def test_effective_stream_manager_interval_seconds_none_without_primary_lang() -> None:
+def test_effective_refiner_interval_seconds_none_without_primary_lang() -> None:
     s = _arr_settings(
-        stream_manager_enabled=True,
-        stream_manager_primary_audio_lang="",
-        stream_manager_watched_folder="D:\\Media\\incoming",
-        stream_manager_output_folder="D:\\Media\\processed",
-        stream_manager_interval_seconds=120,
+        refiner_enabled=True,
+        refiner_primary_audio_lang="",
+        refiner_watched_folder="D:\\Media\\incoming",
+        refiner_output_folder="D:\\Media\\processed",
+        refiner_interval_seconds=120,
     )
-    assert effective_stream_manager_interval_seconds(s) is None
+    assert effective_refiner_interval_seconds(s) is None
 
 
 def test_start_creates_independent_jobs_for_enabled_apps() -> None:
@@ -120,7 +120,7 @@ def test_start_creates_independent_jobs_for_enabled_apps() -> None:
     assert ("fetcher_trimmer", "minutes", 45) in calls
 
 
-def test_start_adds_stream_manager_job_in_seconds() -> None:
+def test_start_adds_refiner_job_in_seconds() -> None:
     s = ServiceScheduler()
     calls: list[tuple] = []
 
@@ -143,7 +143,7 @@ def test_start_adds_stream_manager_job_in_seconds() -> None:
     s._current_scheduler_intervals = _fake_payload
     asyncio.run(s.start())
     assert ("fetcher_sonarr", "minutes", 30) in calls
-    assert ("fetcher_stream_manager", "seconds", 90) in calls
+    assert ("fetcher_refiner", "seconds", 90) in calls
 
 
 def test_reschedule_updates_only_requested_job() -> None:
@@ -171,7 +171,7 @@ def test_reschedule_updates_only_requested_job() -> None:
     assert calls == [("fetcher_radarr", "minutes", 120)]
 
 
-def test_reschedule_stream_manager_uses_seconds() -> None:
+def test_reschedule_refiner_uses_seconds() -> None:
     s = ServiceScheduler()
     calls: list[tuple] = []
 
@@ -192,8 +192,8 @@ def test_reschedule_stream_manager_uses_seconds() -> None:
 
     s._sched = _FakeSched()
     s._current_scheduler_intervals = _fake_payload
-    asyncio.run(s.reschedule(targets={"stream_manager"}))
-    assert calls == [("fetcher_stream_manager", "seconds", 42)]
+    asyncio.run(s.reschedule(targets={"refiner"}))
+    assert calls == [("fetcher_refiner", "seconds", 42)]
 
 
 def test_next_runs_by_job_returns_independent_values() -> None:
@@ -219,7 +219,7 @@ def test_next_runs_by_job_returns_independent_values() -> None:
     assert runs["sonarr"] == datetime(2026, 3, 24, 12, 0, 0)
     assert runs["radarr"] == datetime(2026, 3, 24, 12, 30, 0)
     assert runs["trimmer"] is None
-    assert runs["stream_manager"] is None
+    assert runs["refiner"] is None
 
 
 def test_shutdown_ignores_runtime_error_when_loop_closed() -> None:

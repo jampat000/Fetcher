@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Documentation
+
+- **Failed-import cleanup (Sonarr / Radarr):** CHANGELOG, README, and settings helper text now match runtime behavior. Cleanup uses each app’s **download queue** API (`DELETE /api/v3/queue/{id}`): **blocklist** is requested on the first delete; if that fails, Fetcher retries with **queue-only** removal. **removeFromClient** is not enabled. **Activity** records a row only when a delete succeeds, with titles **Failed import cleaned up** (queue removed and blocklist applied on that call) or **Failed import removed** (queue removed without blocklist). Waiting-to-import, unknown, and no-match paths do **not** add cleanup activity rows. Job-run summaries use the same outcome wording (no API-style phrasing).
+
+### Changed
+
+- **Breaking:** Removed **Windows SQLite path migration** (no copy/rename from service profile **`AppData\Local\Fetcher`**, no **`fetcher.db.migrated_from_legacy`** marker, no archive suffix flow). Packaged builds use **`%ProgramData%\Fetcher\fetcher.db`** or **`FETCHER_DATA_DIR`** only—move **`fetcher.db`** manually when needed (service stopped).
+- **Breaking:** Startup requires a SQLite **`app_settings`** row with full **Refiner** columns (**`refiner_*`**) and **`schema_version`** equal to the build. **`POST /refiner/settings/save`** accepts **`refiner_*`** form fields only. Settings JSON backup/restore accepts **current** format and column names only (see README / **HOWTO-RESTORE.md**).
+
+### Internal
+
+- Refiner rules and settings routes live under `app/refiner_rules.py` and `app/routers/refiner.py`; poll-interval helpers in `refiner_watch_config` use `REFINER_WATCH_*` / `clamp_refiner_interval_seconds`.
+
+### Repository / installer hygiene
+
+- **GitHub Actions:** **`test.yml`**, **`security.yml`**, and **`docker-build.yml`** merged into one **`.github/workflows/ci.yml`** (workflow name still **Test** — jobs **`pytest`**, **`pip-audit`**, **`docker-build`**). Release remains **three intentional workflows** (**`tag-release.yml`**, **`build-installer.yml`**, **`docker-publish.yml`**) because GitHub does not fire tag-push workflows from `GITHUB_TOKEN` tag creation; orchestration + ref semantics require that split. If **`master`** required checks still list **`Security / pip-audit`**, update them to **`Test / pip-audit`** (see **`.github/BRANCH_PROTECTION.md`**).
+- Root-level `release-notes-v3.0.*.md` snapshots moved to `docs/archive/release-notes/` (canonical history remains this file).
+- `.gitignore` now excludes local `Fetcher-v*-windows-dist.zip` (+ `.sha256`) patterns so Windows distro bundles are not committed by mistake.
+- Installer uses `[InstallDelete]` before file copy on upgrade and `[UninstallDelete]` on uninstall to remove obsolete `FetcherCompanion.exe` and companion `.ps1` scripts from `{app}` when present (per-user tasks/shortcuts may still need manual removal—see README / **INSTALL-AND-OPERATIONS**).
+
 ## [3.1.0] - 2026-03-27
 
 ### Changed
@@ -24,6 +44,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - This change improves reliability and simplifies installation.
 - Existing folder paths and processing behavior are unchanged.
+- **Upgrade from 3.0.x:** installers **3.1.0+** delete companion binaries/scripts from `{app}` via `[InstallDelete]` before installing updated files; optional per-user Scheduled Task / Start Menu items from the old Browse flow are not removed automatically (documented in README and **docs/INSTALL-AND-OPERATIONS.md**).
 
 ## [3.0.9] - 2026-03-27
 
@@ -135,8 +156,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Highlights
 
 - **Refiner** promoted to a first-class system
-- Failed import cleanup reliability (**Sonarr** + **Radarr** parity)
-- Added explicit failed-import cleanup interval
+- **Sonarr / Radarr failed-import cleanup:** shared interval setting; terminal failed imports removed from each app’s **download queue** via queue delete (blocklist attempted first, remove-only fallback); **Activity** when a removal succeeds
+- Added explicit failed-import cleanup interval (minutes), shared by Sonarr and Radarr when cleanup is enabled
 - **Activity** feed includes **Refiner** before/after detail
 - **Settings** UI consistency and helper standardization
 - Save behavior consistency improvements
@@ -180,13 +201,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **Sonarr/Radarr failed-import cleanup:** Queue removal now calls the native API with **`blocklist=true`** on the same delete, so the associated release is blocklisted per Sonarr/Radarr (reduces immediate re-grab). Activity and run summaries use explicit wording: removed from queue; blocklist requested via Sonarr/Radarr API (no claim of independent verification).
-- **Sonarr failed-import cleanup:** Delete failures are caught and reported like Radarr (**`failed-import queue remove failed`** + HTTP detail), with no misleading success Activity row.
-- **Settings (Sonarr & Radarr):** Checkbox labels clarified for **search missing**, **cutoff-unmet upgrade search**, and **remove failed imports (queue + blocklist)**; helper text notes API blocklist on removal.
+- **Sonarr/Radarr failed-import cleanup:** Terminal cases are removed from each app’s **download queue** using **`DELETE /api/v3/queue/{id}`**. The first attempt uses **`blocklist=true`**; if that fails, Fetcher retries with **`blocklist=false`** so the queue row can still be cleared. **`removeFromClient`** is not used. When a delete succeeds, **Activity** and job-run lines describe the outcome (removed with blocklist vs queue-only), not raw API parameters.
+- **Sonarr failed-import cleanup:** Failed deletes are reported like Radarr (**removal failed** + HTTP detail), with **no** success Activity row when nothing was removed.
+- **Settings (Sonarr & Radarr):** Checkbox labels clarified for **search missing**, **cutoff-unmet upgrade search**, and **remove failed imports from queue**; helper text states queue removal, blocklist attempted on delete, and remove-only fallback.
 
 ### Maintenance
 
-- **Tests:** Radarr cleanup asserts **`blocklist=True`** on delete; added focused Sonarr failed-import cleanup tests. Default pytest suite and screenshot-regeneration opt-in behavior unchanged.
+- **Tests:** Radarr cleanup asserts **`blocklist=True`** on the first successful delete path; added focused Sonarr failed-import cleanup tests. Default pytest suite and screenshot-regeneration opt-in behavior unchanged.
 
 ## [2.4.11] - 2026-03-26
 
@@ -465,7 +486,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **Radarr (opt-in):** **Remove failed imports from queue** — when enabled under Radarr settings, each automation run scans Radarr history for explicit **import failed** events, matches the **download queue** by exact **download ID** only, and removes the queue item when there is exactly one match (no title/fuzzy matching, no blocklist, no re-search). Successful removals are recorded in **Activity** with title and reason when available. No-match and ambiguous multi-match cases skip safely without deleting.
+- **Radarr (opt-in):** **Remove failed imports from queue** — scans Radarr history for **import failed**, matches the download **queue** by **download ID**, and deletes matching queue rows via the Radarr queue API (this version: queue delete without requesting blocklist or remove-from-client). Successful removals appear in **Activity** with title and reason when available; no-match cases skip without deleting. **Newer builds** use blocklist on the first delete attempt with a remove-only fallback, and add Sonarr parity (**see 2.4.12**).
 
 ## [2.1.1] - 2026-03-24
 
@@ -705,7 +726,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **Docs:** **[`docs/WORKSPACE-FOLDER.md`](docs/WORKSPACE-FOLDER.md)** — use local folder **`Fetcher`** (not legacy **`grabby`**), **`fetcher.code-workspace`** for Cursor/VS Code, and **`scripts/rename-local-repo-folder.ps1`** to rename an existing clone.
+- **Docs:** **[`docs/WORKSPACE-FOLDER.md`](docs/WORKSPACE-FOLDER.md)** — use local folder **`Fetcher`**, **`fetcher.code-workspace`** for Cursor/VS Code, and **`scripts/rename-local-repo-folder.ps1`** to rename an existing clone.
 
 ## [2.0.0] - 2026-03-22
 
@@ -1150,7 +1171,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 3. **Merge-first (recommended):** Commit on **`release/vX.Y.Z`** from **`origin/master`**, open **PR → `master`**, merge when checks pass. A push to **`master`** that changes **`VERSION`** runs **Tag release (from VERSION)** — creates **`vX.Y.Z`** if missing, then dispatches **Build installer** and **Docker publish** (see **`.github/workflows/tag-release.yml`**). After merge: **`git switch master && git pull --ff-only`**, delete the remote release branch if you like.
 4. **Shortcut:** **`.\scripts\ship-release.ps1`** on your release branch pushes **`origin`** and dispatches **Tag release** on that ref (useful before merge; still merge to **`master`** so **`VERSION`** matches the default branch).
 5. After **`git fetch origin master --tags`**, you may run **`gh workflow run build-installer.yml --repo jampat000/Fetcher --ref vX.Y.Z`** — **only** if **`vX.Y.Z`** points to the commit you intend to ship (**ref trap:** workflow YAML comes from that tag’s commit). Prefer **Tag release** so **Docker publish** uses **`checkout_ref`** correctly. See **`.cursor/rules/github-installer-workflow-ref-trap.mdc`**.
-6. If tagging did not run, use **Actions → Tag release (from VERSION) → Run workflow** on **`master`** (or your release branch). Avoid hand-creating tags only from the **Releases** UI unless you know the commit matches **`VERSION`**.
+6. If tagging did not run, use **Actions → Tag release (from VERSION) → Run workflow** with ref **`master`** (after merge), or run it on **`release/v…`** only when using **`.\scripts\ship-release.ps1`** before merge. Avoid hand-creating tags from the **Releases** UI unless the commit matches **`VERSION`**.
 7. If a **tag** exists but **Releases → Latest** never updated (no **`FetcherSetup.exe`**), compare **`git rev-parse vX.Y.Z`** vs **`git rev-parse origin/master`**. An **old** tag SHA can **build** but **skip** the **release** job. **Fix:** move the tag, **or** bump **`VERSION`** and release again, **or** **`gh release create`** + attach **`FetcherSetup.exe`** from a green artifact.
 8. Follow **GitHub Actions** / environment rules for approving production releases if configured.
 9. **Compare links** at the end of this file list **recent v2.x** diffs. **v1.x** and older: **[GitHub Releases](https://github.com/jampat000/Fetcher/releases)**.
