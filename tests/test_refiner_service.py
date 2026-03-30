@@ -18,6 +18,7 @@ from app.refiner_service import (
     _pipeline_from_settings,
     _reconcile_interrupted_refiner_processing_rows_before_pass,
     _rules_config_from_settings,
+    _try_remove_empty_watch_subfolder,
     reconcile_refiner_processing_rows_on_worker_boot,
     run_refiner_pass,
 )
@@ -31,6 +32,16 @@ def _fake_probe_multi_audio() -> dict:
             {"index": 1, "codec_type": "audio", "tags": {"language": "eng"}, "disposition": {}},
             {"index": 2, "codec_type": "audio", "tags": {"language": "spa"}, "disposition": {}},
         ]
+    }
+
+
+def _fake_probe_single_eng() -> dict:
+    return {
+        "format": {"tags": {"title": "ZZZ Junk Tag"}},
+        "streams": [
+            {"index": 0, "codec_type": "video"},
+            {"index": 1, "codec_type": "audio", "tags": {"language": "eng"}, "disposition": {}},
+        ],
     }
 
 
@@ -97,8 +108,116 @@ def test_live_run_moves_to_output_and_deletes_source(monkeypatch: pytest.MonkeyP
         assert r.get("remuxed") == 1
         assert not f.exists()
         assert (output / "a" / "m.mkv").exists()
+        assert not (watched / "a").exists()
 
     asyncio.run(_go())
+
+
+def test_live_no_remux_copies_to_output_removes_source_and_empty_folder(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    calls: list[int] = []
+
+    def _no_remux(*_a, **_k):
+        calls.append(1)
+        raise AssertionError("remux should not run when no stream changes are required")
+
+    monkeypatch.setattr("app.refiner_service.remux_to_temp_file", _no_remux)
+    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_single_eng())
+    monkeypatch.setattr("app.refiner_service.is_remux_required", lambda *_a, **_k: False)
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        sub = watched / "sub"
+        sub.mkdir(parents=True)
+        f = sub / "clean.file.name.1080p.mkv"
+        f.write_bytes(b"payload")
+        output.mkdir()
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = False
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            r = await run_refiner_pass(session, trigger="scheduled")
+        assert calls == []
+        assert r.get("remuxed") == 1
+        assert not f.exists()
+        assert (output / "sub" / "clean.file.name.1080p.mkv").read_bytes() == b"payload"
+        assert not sub.exists()
+
+    asyncio.run(_go())
+
+
+def test_live_no_remux_leaves_folder_when_other_files_remain(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_single_eng())
+    monkeypatch.setattr("app.refiner_service.is_remux_required", lambda *_a, **_k: False)
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        sub = watched / "sub"
+        sub.mkdir(parents=True)
+        f = sub / "one.mkv"
+        f.write_bytes(b"x")
+        (sub / "keep.txt").write_text("hold", encoding="utf-8")
+        output.mkdir()
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = False
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            await run_refiner_pass(session, trigger="scheduled")
+        assert not f.exists()
+        assert (output / "sub" / "one.mkv").exists()
+        assert sub.is_dir()
+        assert (sub / "keep.txt").exists()
+
+    asyncio.run(_go())
+
+
+def test_dry_run_no_remux_does_not_copy_or_delete(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_single_eng())
+    monkeypatch.setattr("app.refiner_service.is_remux_required", lambda *_a, **_k: False)
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        f = watched / "solo.mkv"
+        f.write_bytes(b"orig")
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = True
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            r = await run_refiner_pass(session, trigger="scheduled")
+        assert int(r.get("dry_run_items") or 0) >= 1
+        assert f.exists()
+        assert not (output / "solo.mkv").exists()
+
+    asyncio.run(_go())
+
+
+def test_try_remove_empty_skips_watch_root(tmp_path: Path) -> None:
+    watched = tmp_path / "w"
+    watched.mkdir()
+    assert (
+        _try_remove_empty_watch_subfolder(source_parent=watched, watched_root=watched)
+        == "skipped_watch_root"
+    )
 
 
 def test_source_preserved_on_failure(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
@@ -291,7 +410,7 @@ def test_refiner_schema_contract_v35_activity_context_media_title_and_trimmer_ac
     assert "_migrate_035_activity_log_trimmer_app_identity" in migrations_text
     assert "_migrate_036_refiner_activity_media_title" in migrations_text
     assert "_migrate_034_forward_app_settings_schema_version" in migrations_text
-    assert "_ensure_refiner_app_settings_columns" in migrations_text
+    assert "repair_refiner_app_settings_columns" in migrations_text
     assert "refiner_processing_pass_generation" not in migrations_text
 
 

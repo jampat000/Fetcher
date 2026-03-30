@@ -11,11 +11,11 @@ We fix security issues in the **latest release** on the default branch (`master`
 
 These are **runtime** requirements for the Fetcher process (Windows service, Docker, or dev). Full install context is in **[`README.md`](README.md)** and **[`docs/INSTALL-AND-OPERATIONS.md`](docs/INSTALL-AND-OPERATIONS.md)**.
 
-### `FETCHER_JWT_SECRET` (required)
+### `FETCHER_JWT_SECRET` (required for dev; packaged default is a persisted file)
 
 - Used only to sign **JWT access and refresh tokens** for the JSON API (`HS256`).
-- **If unset or empty, Fetcher exits on startup**—by design, with an error message that names the variable.
-- Generate a long random secret; set it in the **machine** environment (Windows service) or container env, then restart.
+- **Unfrozen / dev:** if unset or empty, Fetcher exits on startup with an error naming the variable.
+- **Packaged (`frozen`) builds:** if unset, Fetcher loads or creates **`machine-jwt-secret`** beside **`fetcher.db`** (same folder as the SQLite database). Set **`FETCHER_JWT_SECRET`** in the environment to override; treat that file like part of your backup boundary.
 
 ### `FETCHER_DATA_ENCRYPTION_KEY` (optional)
 

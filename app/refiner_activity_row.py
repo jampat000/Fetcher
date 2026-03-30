@@ -94,19 +94,30 @@ def _success_summary_bullets(
     ctx: dict[str, Any], ab: int, aa: int, sbb: int, sba: int, sb: int, sa: int
 ) -> list[str]:
     out: list[str] = []
-    if ab != aa:
-        out.append(f"Audio: {ab} track(s) → {aa} track(s).")
-    elif _norm_line(ctx.get("audio_before")) != _norm_line(ctx.get("audio_after")):
-        out.append("Audio: layout updated.")
-    else:
-        out.append("Audio: unchanged.")
+    nc_list = ctx.get("no_change_bullets")
+    has_nc = isinstance(nc_list, list) and bool(nc_list)
+    if ctx.get("pipeline_no_remux"):
+        out.append("No remux required — streams already match your rules.")
+        if has_nc:
+            for line in nc_list:
+                t = str(line).strip()
+                if t and t not in out:
+                    out.append(t)
 
-    if sba < sbb:
-        out.append(f"Subtitles: {sbb} track(s) → {sba} track(s) (removed or merged per rules).")
-    elif sba > sbb:
-        out.append(f"Subtitles: {sbb} track(s) → {sba} track(s).")
-    else:
-        out.append("Subtitles: unchanged.")
+    if not (ctx.get("pipeline_no_remux") and has_nc):
+        if ab != aa:
+            out.append(f"Audio: {ab} track(s) → {aa} track(s).")
+        elif _norm_line(ctx.get("audio_before")) != _norm_line(ctx.get("audio_after")):
+            out.append("Audio: layout updated.")
+        else:
+            out.append("Audio: unchanged.")
+
+        if sba < sbb:
+            out.append(f"Subtitles: {sbb} track(s) → {sba} track(s) (removed or merged per rules).")
+        elif sba > sbb:
+            out.append(f"Subtitles: {sbb} track(s) → {sba} track(s).")
+        else:
+            out.append("Subtitles: unchanged.")
 
     ss = _saved_sentence(sb, sa)
     if ss:
@@ -114,9 +125,15 @@ def _success_summary_bullets(
     if ctx.get("commentary_removed"):
         out.append("Commentary tracks removed.")
     if ctx.get("finalized") and not ctx.get("dry_run"):
-        out.append("Output written to the destination folder; source removed from the watch folder.")
+        if ctx.get("pipeline_no_remux"):
+            out.append("Copied to output; source removed from watch folder.")
+        else:
+            out.append("Output written to the destination folder; source removed from the watch folder.")
     elif not ctx:
         out.append("Output written to the destination folder; source removed from the watch folder.")
+    fc = (ctx.get("folder_cleanup") or "").strip()
+    if fc == "removed_empty_folder":
+        out.append("Removed empty source subfolder under the watch path.")
     return out
 
 
@@ -145,6 +162,9 @@ def build_refiner_activity_row_dict(r: RefinerActivity, tz: str, now: datetime) 
         fname if fname != "—" else "",
         ctx,
         orm_media_title=orm_mt,
+        ffprobe_media_title=(ctx.get("media_title") or None),
+        ffprobe_refiner_title=(ctx.get("refiner_title") or None),
+        ffprobe_year=(ctx.get("refiner_year") or None),
     )
     source_file_line: str | None = None
     raw_fn = fname if fname != "—" else ""
@@ -222,7 +242,12 @@ def build_refiner_activity_row_dict(r: RefinerActivity, tz: str, now: datetime) 
             outcome_ui = "skipped"
             tone = "skip"
             show_comparison = False
-            summary_bullets = ["Dry run: rules would leave this file unchanged."]
+            nc = ctx.get("no_change_bullets")
+            if isinstance(nc, list) and nc:
+                summary_bullets = [str(x).strip() for x in nc if str(x).strip()]
+                summary_bullets.insert(0, "Dry run: no file changes.")
+            else:
+                summary_bullets = ["Dry run: rules would leave this file unchanged."]
         else:
             outcome_label = "No changes required"
             outcome_sub = None
@@ -230,7 +255,11 @@ def build_refiner_activity_row_dict(r: RefinerActivity, tz: str, now: datetime) 
             outcome_ui = "skipped"
             tone = "skip"
             show_comparison = False
-            summary_bullets = ["Remux not required; file already matches your rules."]
+            nc = ctx.get("no_change_bullets")
+            if isinstance(nc, list) and nc:
+                summary_bullets = [str(x).strip() for x in nc if str(x).strip()]
+            else:
+                summary_bullets = ["Remux not required; file already matches your rules."]
         if ctx.get("commentary_removed") and dry:
             technical_notes.append("Commentary would be affected per rules (see comparison).")
     else:

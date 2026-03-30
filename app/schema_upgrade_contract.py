@@ -4,6 +4,7 @@
 
 1. Any new required column/table on existing tables must be added in ``app/migrations.py`` inside
    ``migrate()`` (or helpers it calls), using idempotent ``IF NOT EXISTS`` / ``_has_column`` patterns.
+   Startup also runs :mod:`app.database_startup` (pool recycle + refiner repair) before strict checks.
 2. Bump ``app/schema_version.py`` ``CURRENT_SCHEMA_VERSION`` when the persisted contract changes,
    with a migration that backfills or defaults new fields.
 3. Strict checks stay in ``app/schema_validation.py`` and run **after** ``migrate()`` in application
@@ -18,4 +19,4 @@ narrow, logged via SQLAlchemy/logging, and must be safe to run repeatedly.
 from __future__ import annotations
 
 # Migrations module must end ``migrate()`` with refiner column repair before validation.
-REFINER_REPAIR_ENTRYPOINT = "_ensure_refiner_app_settings_columns"
+REFINER_REPAIR_ENTRYPOINT = "repair_refiner_app_settings_columns"

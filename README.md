@@ -34,11 +34,14 @@ Fetcher is a production-ready automation service for Sonarr, Radarr, and Emby, f
 
 ## Required environment variables
 
-### `FETCHER_JWT_SECRET` (required)
+### `FETCHER_JWT_SECRET` (required for dev; packaged installs auto-persist)
 
 - **What it is:** signing secret for **access and refresh JWTs** used by the JSON API (`HS256`). It is **not** your login password.
-- **What happens without it:** the process **exits on startup** with a clear error. There is no baked-in default.
-- **How to set it (Windows service):** persistent **Machine** environment variable, then restart the service:
+- **Packaged Windows service / frozen `Fetcher.exe`:** if `FETCHER_JWT_SECRET` is **not** set, Fetcher **creates or reads** a stable file **`machine-jwt-secret`** in the same folder as **`fetcher.db`** (default **`%ProgramData%\Fetcher\`**). That file survives **upgrade/reinstall** of the app binaries (ProgramData is not removed by the installer). Startup logs say whether the secret came from **environment** or **persisted file**.
+- **Operator override:** set **`FETCHER_JWT_SECRET`** as a **Machine** environment variable (or any method that injects it into the service process); it **always wins** over the file.
+- **Dev / pytest / unfrozen:** the variable must be set in the environment; there is no dev default in code paths that skip the frozen bundle.
+
+**Optional — set an explicit machine secret and restart the service:**
 
 ```powershell
 [Environment]::SetEnvironmentVariable(
@@ -61,7 +64,7 @@ Restart-Service Fetcher
 openssl rand -base64 32
 ```
 
-**Dev / tests:** set it in the environment before `scripts/dev-start.ps1` or pytest (see `CONTRIBUTING.md`).
+**Dev / tests:** set it in the environment before `scripts/dev-start.ps1` or pytest (see `CONTRIBUTING.md`). The persisted **`machine-jwt-secret`** file is only used for **frozen** packaged builds.
 
 ---
 
@@ -87,7 +90,7 @@ Other useful vars (logs, data dir, dev DB) are documented in **[docs/INSTALL-AND
 
 1. Download **`FetcherSetup.exe`** from **[Releases](https://github.com/jampat000/Fetcher/releases/latest)**.
 2. Run the installer (admin prompt is normal). Binaries land under **Program Files**; **data** defaults to **`%ProgramData%\Fetcher`** (SQLite DB + `logs\`).
-3. Set **`FETCHER_JWT_SECRET`** at machine scope (see above), then **restart** the **Fetcher** service.
+3. Start the **Fetcher** service (first run creates **`%ProgramData%\Fetcher\machine-jwt-secret`** if no JWT env var is set). Optionally set **`FETCHER_JWT_SECRET`** at machine scope first if you want a known secret (see above).
 4. Open **`http://127.0.0.1:8765`** on the machine, or **`http://<host-ip>:8765`** from another device (open **TCP 8765** in Windows Firewall if needed).
 5. Complete **setup** (account, integrations, schedule). After that you’ll use **`/login`** when the session expires.
 
@@ -105,6 +108,7 @@ Refiner folder paths are **manual-entry only**. Enter or paste full paths for wa
 | --- | --- |
 | App binaries | `Program Files` (per installer) |
 | SQLite DB | `%ProgramData%\Fetcher\fetcher.db` |
+| JWT signing secret (packaged default) | `%ProgramData%\Fetcher\machine-jwt-secret` (override: set `FETCHER_JWT_SECRET`) |
 | App log file | `%ProgramData%\Fetcher\logs\fetcher.log` (override: `FETCHER_LOG_DIR`) |
 
 WinSW may drop small **wrapper** `*.out.log` / `*.err.log` next to the service under Program Files—they’re not the main app log.
@@ -127,7 +131,7 @@ If you use **`FETCHER_DATA_ENCRYPTION_KEY`**, keep it set the same way after upg
 
 | Symptom | What to check |
 | --- | --- |
-| Service won’t start / app exits immediately | **`FETCHER_JWT_SECRET`** set? Machine-level env + **restart service**. Read the Windows Application log or **`fetcher.log`** for the exact message. |
+| Service won’t start / app exits immediately | Read **`fetcher.log`** and WinSW **`*.err.log`** next to the service. Check JWT: **`FETCHER_JWT_SECRET`** override, or **`%ProgramData%\Fetcher\machine-jwt-secret`** readable/writable by the service account. |
 | “Plaintext” / encryption warning at startup | **`FETCHER_DATA_ENCRYPTION_KEY`** not set—optional but recommended; see above. |
 | Can’t reach Sonarr/Radarr/Emby from Fetcher | Base URL (no trailing junk), API key, firewall between hosts, HTTPS certs if you use HTTPS. Use the setup **Test connection** actions. |
 | 401 / “not signed in” on API | Session cookie expired or missing; or use **`POST /api/auth/token`** and send **`Authorization: Bearer <access_token>`**. Don’t send a **refresh** token as the Bearer header for API calls. |

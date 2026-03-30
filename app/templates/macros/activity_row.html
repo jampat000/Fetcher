@@ -44,29 +44,32 @@
                 {% endif %}
               </div>
             </div>
-            {% if _show_cmp and _rows | length > 0 %}
-            <div class="activity-refiner-compare" role="group" aria-label="Before and after">
-              <div class="activity-refiner-compare-head">
-                <span class="activity-refiner-compare-h activity-refiner-compare-h--before">Before</span>
-                <span class="activity-refiner-compare-h activity-refiner-compare-h--after">After</span>
-              </div>
-              {% for row in _rows %}
-              <div class="activity-refiner-compare-row">
-                <div class="activity-refiner-compare-label">{{ row.label }}</div>
-                <div class="activity-refiner-compare-cells">
-                  <div class="activity-refiner-compare-cell activity-refiner-compare-cell--before">{{ row.before }}</div>
-                  <div class="activity-refiner-compare-cell activity-refiner-compare-cell--after">{{ row.after }}</div>
-                </div>
-              </div>
-              {% endfor %}
-            </div>
-            {% endif %}
             {% if _bullets | length > 0 %}
             <ul class="activity-refiner-summary-list">
               {% for b in _bullets %}
               <li class="activity-refiner-summary-item">{{ b }}</li>
               {% endfor %}
             </ul>
+            {% endif %}
+            {% if _show_cmp and _rows | length > 0 %}
+            <details class="activity-refiner-compare-details">
+              <summary class="activity-refiner-compare-summary">Before / after detail</summary>
+              <div class="activity-refiner-compare activity-refiner-compare--nested" role="group" aria-label="Before and after">
+                <div class="activity-refiner-compare-head">
+                  <span class="activity-refiner-compare-h activity-refiner-compare-h--before">Before</span>
+                  <span class="activity-refiner-compare-h activity-refiner-compare-h--after">After</span>
+                </div>
+                {% for row in _rows %}
+                <div class="activity-refiner-compare-row">
+                  <div class="activity-refiner-compare-label">{{ row.label }}</div>
+                  <div class="activity-refiner-compare-cells">
+                    <div class="activity-refiner-compare-cell activity-refiner-compare-cell--before">{{ row.before }}</div>
+                    <div class="activity-refiner-compare-cell activity-refiner-compare-cell--after">{{ row.after }}</div>
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+            </details>
             {% endif %}
             {% if _notes | length > 0 %}
             <div class="activity-refiner-technical-notes">

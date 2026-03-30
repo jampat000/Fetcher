@@ -1,6 +1,7 @@
 """Fail-fast checks that ``app_settings`` matches this build (Refiner columns present).
 
-Runs **after** :func:`app.migrations.migrate` on startup. Contributor rules: ``app/schema_upgrade_contract.py``.
+Runs **after** :func:`app.database_startup.run_schema_upgrade_phase` on startup (repair is idempotent).
+Contributor rules: ``app/schema_upgrade_contract.py``; product contract: ``docs/DATABASE-SCHEMA-CONTRACT.md``.
 """
 
 from __future__ import annotations
@@ -11,18 +12,15 @@ from typing import FrozenSet
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from app.migrations import repair_refiner_app_settings_columns
+from app.refiner_app_settings_contract import REFINER_APP_SETTINGS_SQLITE_SPECS
 from app.schema_version import CURRENT_SCHEMA_VERSION
 
 logger = logging.getLogger(__name__)
 
-# Minimum Refiner persistence surface required on app_settings.
+# All ``refiner_*`` columns enforced by strict validation (same set as SQLite repair DDL).
 REQUIRED_REFINER_APP_SETTINGS_COLUMNS: FrozenSet[str] = frozenset(
-    {
-        "refiner_enabled",
-        "refiner_watched_folder",
-        "refiner_output_folder",
-        "refiner_work_folder",
-    }
+    name for name, _ in REFINER_APP_SETTINGS_SQLITE_SPECS
 )
 
 _RUNTIME_ERROR_DETAIL = (
@@ -33,11 +31,25 @@ _RUNTIME_ERROR_DETAIL = (
 )
 
 
-async def validate_refiner_app_settings_schema(engine: AsyncEngine) -> None:
-    """Raise ``RuntimeError`` if ``app_settings`` is missing required ``refiner_*`` columns.
+async def _app_settings_column_names(engine: AsyncEngine) -> tuple[bool, set[str]]:
+    """Return ``(table_exists, column_names)`` for ``app_settings`` on SQLite."""
+    async with engine.connect() as conn:
+        res = await conn.execute(
+            text("SELECT 1 FROM sqlite_master WHERE type='table' AND name='app_settings' LIMIT 1")
+        )
+        if res.fetchone() is None:
+            return False, set()
+        res = await conn.execute(text("SELECT name FROM pragma_table_info('app_settings')"))
+        names = {str(row[0]) for row in res.fetchall() if row[0] is not None}
+        return True, names
 
-    Call after ``create_all`` and :func:`app.migrations.migrate` (which repairs missing
-    ``refiner_*`` columns on SQLite ``app_settings`` before this check).
+
+async def validate_refiner_app_settings_schema(engine: AsyncEngine) -> None:
+    """Strict check after upgrade: always run idempotent repair, then require full refiner surface.
+
+    Call only after :func:`app.database_startup.run_schema_upgrade_phase` (or equivalent migrate +
+    pool recycle). This function does not assume migrate already repaired — it runs repair again
+    so validation never observes a repairable gap without attempting DDL first.
     """
     if engine.dialect.name != "sqlite":
         logger.error(
@@ -48,34 +60,39 @@ async def validate_refiner_app_settings_schema(engine: AsyncEngine) -> None:
             f"Fetcher requires SQLite for database schema checks; got dialect {engine.dialect.name!r}."
         )
 
-    async with engine.connect() as conn:
-        res = await conn.execute(
-            text("SELECT 1 FROM sqlite_master WHERE type='table' AND name='app_settings' LIMIT 1")
-        )
-        if res.fetchone() is None:
-            missing = ", ".join(sorted(REQUIRED_REFINER_APP_SETTINGS_COLUMNS))
-            logger.error(
-                "Refiner schema validation failed: app_settings table missing."
-            )
-            raise RuntimeError(
-                _RUNTIME_ERROR_DETAIL.format(missing=missing),
-            )
+    logger.info(
+        "Startup: strict validation — Refiner app_settings (idempotent repair, then assert)"
+    )
+    await repair_refiner_app_settings_columns(engine)
 
-        res = await conn.execute(text("PRAGMA table_info(app_settings)"))
-        cols = {row[1] for row in res.fetchall()}
+    exists, cols = await _app_settings_column_names(engine)
+    if not exists:
+        missing = ", ".join(sorted(REQUIRED_REFINER_APP_SETTINGS_COLUMNS))
+        logger.error("Refiner schema validation failed: app_settings table missing after repair.")
+        raise RuntimeError(_RUNTIME_ERROR_DETAIL.format(missing=missing))
 
     missing_set = REQUIRED_REFINER_APP_SETTINGS_COLUMNS - cols
     if missing_set:
         missing_list = ", ".join(sorted(missing_set))
         logger.error(
-            "Refiner schema validation failed: missing app_settings columns: %s.",
+            "Refiner schema validation failed: required refiner_* columns still missing after "
+            "repair (unsupported DB shape or repair error): %s.",
             missing_list,
         )
         raise RuntimeError(_RUNTIME_ERROR_DETAIL.format(missing=missing_list))
 
+    logger.info(
+        "Startup: Refiner app_settings strict validation OK (%s columns).",
+        len(REQUIRED_REFINER_APP_SETTINGS_COLUMNS),
+    )
+
 
 async def validate_app_settings_schema_version(engine: AsyncEngine) -> None:
     """Raise ``RuntimeError`` unless ``app_settings.schema_version`` equals :data:`CURRENT_SCHEMA_VERSION`."""
+    logger.info(
+        "Startup: strict validation — app_settings.schema_version == %s",
+        int(CURRENT_SCHEMA_VERSION),
+    )
     if engine.dialect.name != "sqlite":
         logger.error(
             "Schema version check failed: expected SQLite, got dialect %r.",
@@ -117,3 +134,4 @@ async def validate_app_settings_schema_version(engine: AsyncEngine) -> None:
             f"This Fetcher build requires database schema version exactly {exp}. "
             f"Found {actual_i}. Use a database file from this Fetcher build or restore a compatible backup."
         )
+    logger.info("Startup: app_settings.schema_version strict validation OK (%s)", exp)

@@ -16,8 +16,8 @@ Override the data directory with **`FETCHER_DATA_DIR`** (machine env, service re
 ## First startup checklist
 
 1. Install **`FetcherSetup.exe`**.
-2. Set **`FETCHER_JWT_SECRET`** (machine environment variable). **The service will not stay up without it.**
-3. Restart the **Fetcher** Windows service.
+2. Start the **Fetcher** service. On first run, a stable JWT secret is created under **`%ProgramData%\Fetcher\machine-jwt-secret`** unless **`FETCHER_JWT_SECRET`** is already set (optional machine env override).
+3. If you changed environment variables, restart the **Fetcher** Windows service.
 4. Open **`http://127.0.0.1:8765`** and finish **setup** (password + at least one of Sonarr / Radarr / Emby configured to the app’s satisfaction).
 
 Optional but recommended: set **`FETCHER_DATA_ENCRYPTION_KEY`** (Fernet) **before** you store production API keys, so new writes go encrypted. If you add it later, existing plaintext keys in the DB stay plaintext until re-saved from the UI (or you accept a one-time re-entry).
@@ -57,7 +57,7 @@ Wrapper logs under Program Files (`*.out.log` / `*.err.log`) are WinSW noise; th
 
 | Variable | Required? | Role |
 | --- | --- | --- |
-| **`FETCHER_JWT_SECRET`** | **Yes** | Signs JWT access/refresh tokens. Missing → process exits at startup. |
+| **`FETCHER_JWT_SECRET`** | **Yes for dev/unfrozen** | Signs JWT access/refresh tokens. **Packaged:** if unset, **`machine-jwt-secret`** next to **`fetcher.db`** is used or created. Set this env var to override the file. |
 | **`FETCHER_DATA_ENCRYPTION_KEY`** | No | Fernet key; when set, Arr API keys encrypted at rest in SQLite. When unset, plaintext + startup **warning**. |
 | **`FETCHER_LOG_DIR`** | No | Directory for **`fetcher.log`**. |
 | **`FETCHER_DATA_DIR`** | No | SQLite (and default logs) directory; see **`service/README.md`**. |
@@ -76,7 +76,7 @@ When enabled under **TV** / **Movies** settings, Fetcher deletes matching rows f
 
 ## Common failure modes
 
-- **Service starts then stops:** almost always missing **`FETCHER_JWT_SECRET`** or DB path locked by another process (e.g. dev server on the same file). Read **`fetcher.log`** or Event Viewer.
+- **Service starts then stops:** JWT resolution failed (check **`fetcher.log`** for the exact line), DB path locked by another process, or WinSW **`*.err.log`**. For JWT: ensure **`%ProgramData%\Fetcher\machine-jwt-secret`** is writable on first run, or set **`FETCHER_JWT_SECRET`** at machine scope.
 - **“Encryption key” warning every start:** harmless if you accept plaintext keys; set **`FETCHER_DATA_ENCRYPTION_KEY`** to silence it and protect new writes.
 - **Arr “connection failed”:** URL scheme/host/port, API key, and network path. Use in-app connection tests; confirm Sonarr/Radarr/Emby APIs are up outside Fetcher.
 

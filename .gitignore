@@ -98,6 +98,8 @@ tmp-*.sqlite3
 
 # Never commit secrets or exported settings (see docs/PUBLIC-REPO-CHECKLIST.md)
 
+machine-jwt-secret
+
 config.yaml
 
 .env

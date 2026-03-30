@@ -71,7 +71,7 @@ def test_refiner_activity_display_row_success_with_context() -> None:
     row = refiner_activity_display_row(r, "UTC", now)
     assert row["activity_time_iso"].endswith("Z")
     assert row["activity_type"] == "refiner"
-    assert row["refiner_media_title"] == "Movie Name (2023)"
+    assert row["refiner_media_title"] == "Movie Name 2023"
     assert row["refiner_outcome_label"] == "Completed"
     assert row["refiner_apply_mode"] == "applied"
     assert row["refiner_show_comparison"] is True
@@ -132,7 +132,7 @@ def test_refiner_processing_empty_orm_still_resolves_display_title() -> None:
     assert row["refiner_media_title"] != "—"
 
 
-def test_refiner_completed_upgrades_to_canonical_in_context() -> None:
+def test_refiner_completed_filename_derived_beats_ffprobe_context() -> None:
     r = RefinerActivity(
         file_name="Ugly.Pack.1990.mkv",
         media_title="The Grifters (1990)",
@@ -152,8 +152,8 @@ def test_refiner_completed_upgrades_to_canonical_in_context() -> None:
         ),
     )
     row = refiner_activity_display_row(r, "UTC", datetime(2026, 1, 1, 12, 0, 2))
-    assert row["refiner_media_title"] == "The Grifters (1990)"
-    assert provisional_media_title_before_probe(r.file_name) != "The Grifters (1990)"
+    assert row["refiner_media_title"] == "Ugly Pack 1990"
+    assert provisional_media_title_before_probe(r.file_name) == "Ugly Pack 1990"
 
 
 def test_merge_activity_feed_newest_first() -> None:
@@ -245,7 +245,7 @@ def test_refiner_skipped_dry_run_with_projected_subtitle_change() -> None:
     assert sub["before"] != sub["after"]
 
 
-def test_refiner_display_uses_orm_media_title_column() -> None:
+def test_refiner_display_filename_derived_beats_orm_when_no_probe_in_context() -> None:
     r = RefinerActivity(
         file_name="Ugly.Release.Name.1990.mkv",
         media_title="The Grifters (1990)",
@@ -260,8 +260,8 @@ def test_refiner_display_uses_orm_media_title_column() -> None:
         activity_context=_ctx(),
     )
     row = refiner_activity_display_row(r, "UTC", datetime(2026, 1, 1, 12, 0, 1))
-    assert row["refiner_media_title"] == "The Grifters (1990)"
-    assert row["refiner_source_file_line"] == "Ugly.Release.Name.1990.mkv"
+    assert row["refiner_media_title"] == "Ugly Release Name 1990"
+    assert row["refiner_source_file_line"] is None
 
 
 def test_refiner_failed_includes_reason_block() -> None:

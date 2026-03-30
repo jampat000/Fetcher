@@ -1659,11 +1659,58 @@ h2.gc-title,
   border-color: rgba(200, 170, 90, 0.35);
   background: rgba(80, 65, 30, 0.25);
 }
+.activity-refiner-compare-details {
+  margin-top: 2px;
+  border-radius: var(--r-sm);
+}
+.activity-refiner-compare-summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text2);
+  padding: 6px 0;
+  user-select: none;
+}
+.activity-refiner-compare-summary::-webkit-details-marker {
+  display: none;
+}
+.activity-refiner-compare-summary::before {
+  content: "";
+  display: inline-block;
+  width: 0.35em;
+  height: 0.35em;
+  margin-right: 0.45em;
+  border-right: 1.5px solid var(--text2);
+  border-bottom: 1.5px solid var(--text2);
+  transform: rotate(-45deg);
+  vertical-align: 0.15em;
+  opacity: 0.65;
+}
+.activity-refiner-compare-details[open] .activity-refiner-compare-summary::before {
+  transform: rotate(45deg);
+  vertical-align: 0.05em;
+}
 .activity-refiner-compare {
   border-radius: var(--r-sm);
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(0, 0, 0, 0.2);
   padding: 10px 12px;
+}
+.activity-refiner-compare--nested {
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-color: rgba(255, 255, 255, 0.05);
+  background: rgba(0, 0, 0, 0.12);
+}
+.activity-refiner-compare--nested .activity-refiner-compare-cell {
+  font-size: 12px;
+  color: var(--text2);
+}
+.activity-refiner-compare--nested .activity-refiner-compare-label {
+  font-size: 11px;
+  color: var(--text2);
+  opacity: 0.92;
 }
 .activity-refiner-compare-head {
   display: grid;
@@ -1712,11 +1759,12 @@ h2.gc-title,
   color: var(--text);
 }
 .activity-refiner-summary-list {
-  margin: 0;
+  margin: 4px 0 0;
   padding-left: 1.15em;
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.5;
-  color: var(--text2);
+  color: var(--text);
+  font-weight: 500;
 }
 .activity-refiner-summary-item {
   margin: 0.25em 0;
