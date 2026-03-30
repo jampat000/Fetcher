@@ -186,8 +186,8 @@ class RefinerActivity(Base):
     file_name: Mapped[str] = mapped_column(String(512), default="")
     # Canonical display label from container tags when known (ffprobe); may be empty for legacy rows.
     media_title: Mapped[str] = mapped_column(String(512), default="")
-    # "queued" | "processing" | "success" | "skipped" | "failed"
-    status: Mapped[str] = mapped_column(String(16), default="failed")
+    # "queued" | "processing" | "finalizing" | "success" | "skipped" | "skipped_terminal_failed" | "failed"
+    status: Mapped[str] = mapped_column(String(32), default="failed")
     size_before_bytes: Mapped[int] = mapped_column(Integer, default=0)
     size_after_bytes: Mapped[int] = mapped_column(Integer, default=0)
     audio_tracks_before: Mapped[int] = mapped_column(Integer, default=0)

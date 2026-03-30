@@ -183,6 +183,51 @@ def test_refiner_card_dry_run_projected_changes_not_no_changes_required() -> Non
     assert "Before" in html and "After" in html
 
 
+def test_refiner_card_renders_skipped_failed_import() -> None:
+    r = RefinerActivity(
+        file_name="blocked.mkv",
+        status="skipped_terminal_failed",
+        size_before_bytes=100,
+        size_after_bytes=100,
+        audio_tracks_before=1,
+        audio_tracks_after=1,
+        subtitle_tracks_before=0,
+        subtitle_tracks_after=0,
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+        activity_context=_ctx(
+            import_promotion_block={
+                "arr_app": "radarr",
+                "import_state": "not an upgrade vs existing file",
+                "subtitle": "Not promoted — item classified as a failed import",
+            },
+        ),
+    )
+    html = _render_refiner_card(r)
+    assert "Skipped (failed import)" in html
+    assert "activity-row--refiner-skip-import" in html
+    assert "shield-alert" in html
+
+
+def test_refiner_card_renders_finalizing_distinct_from_processing() -> None:
+    r = RefinerActivity(
+        file_name="fin.mkv",
+        status="finalizing",
+        size_before_bytes=100,
+        size_after_bytes=0,
+        audio_tracks_before=1,
+        audio_tracks_after=1,
+        subtitle_tracks_before=0,
+        subtitle_tracks_after=0,
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+        activity_context=_ctx(),
+    )
+    html = _render_refiner_card(r)
+    assert "Finalizing" in html
+    assert "activity-row--refiner-finalizing" in html
+    assert "activity-row--refiner-processing" not in html
+    assert "activity-refiner-status-svg--finalize" in html
+
+
 def test_refiner_card_hides_compare_toggle_when_no_rows() -> None:
     """No detail affordance when there is nothing to compare (spec: no empty toggle)."""
     r = RefinerActivity(
@@ -206,6 +251,24 @@ def test_refiner_card_hides_compare_toggle_when_no_rows() -> None:
     assert row["refiner_show_comparison"] is False
     html = _render_refiner_card(r)
     assert "activity-refiner-compare-details" not in html
+
+
+def test_refiner_card_hides_raw_identifier_title_with_placeholder() -> None:
+    r = RefinerActivity(
+        file_name="ABCDEF1234567890ABCDEF1234567890.mkv",
+        status="queued",
+        size_before_bytes=0,
+        size_after_bytes=0,
+        audio_tracks_before=0,
+        audio_tracks_after=0,
+        subtitle_tracks_before=0,
+        subtitle_tracks_after=0,
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+        activity_context=_ctx(),
+    )
+    html = _render_refiner_card(r)
+    assert "Detecting file details..." in html
+    assert "ABCDEF1234567890ABCDEF1234567890" not in html
 
 
 def test_refiner_row_dict_true_no_change_consistent_no_comparison() -> None:

@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.5] - 2026-03-30
+
+### Fixed
+
+- fix(refiner): prevent duplicate in-flight processing using source-path ownership
+- fix(refiner): suppress repeated identical failure activity spam
+- fix(refiner): remove raw identifier titles; use placeholder until resolved
+- fix(refiner): correct activity summaries to reflect current run only
+- fix(refiner): hide compare UI when no valid before/after exists
+
 ## [3.4.4] - 2026-03-30
 
 ### Fixed

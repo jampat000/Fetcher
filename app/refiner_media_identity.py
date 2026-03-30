@@ -9,6 +9,8 @@ from typing import Any
 
 _YEAR_IN_PARENS = re.compile(r"\(\s*(19\d{2}|20[0-3]\d)\s*\)\s*$")
 _YEAR_IN_TEXT = re.compile(r"(19\d{2}|20[0-3]\d)")
+_HEX_LONG = re.compile(r"^[a-f0-9]{16,}$", re.I)
+_IDISH = re.compile(r"^(?:[a-f0-9]{8,}|[a-z0-9]{12,})$", re.I)
 
 # Trailing release tokens (conservative): strip only when preceded by separator-like run.
 _TRAILING_RELEASE = re.compile(
@@ -121,6 +123,22 @@ def conservative_filename_display(file_name: str) -> str:
     return s or raw
 
 
+def looks_like_internal_identifier(value: str) -> bool:
+    s = (value or "").strip()
+    if not s:
+        return False
+    if " " in s and not s.lower().startswith(("downloadid", "dlid")):
+        return False
+    compact = re.sub(r"[\s._-]+", "", s)
+    if _HEX_LONG.fullmatch(compact):
+        return True
+    if compact.lower().startswith(("downloadid", "dlid")):
+        return True
+    if _IDISH.fullmatch(compact) and not _YEAR_IN_TEXT.search(compact):
+        return True
+    return False
+
+
 def provisional_media_title_before_probe(file_name: str) -> str:
     """
     Title stored on ``processing`` rows before ffprobe — same rules as the activity card
@@ -158,24 +176,24 @@ def resolve_activity_card_title(
 ) -> str:
     """Display title priority: trusted pipeline → filename-derived → ffprobe → ORM fallback → raw file_name."""
     trusted = (ctx.get("trusted_title") or "").strip()
-    if trusted:
+    if trusted and not looks_like_internal_identifier(trusted):
         return trusted[:500]
 
     fn = (file_name or "").strip()
     if fn:
         derived = conservative_filename_display(fn)
-        if derived:
+        if derived and not looks_like_internal_identifier(derived):
             return derived[:500]
 
     pm = ffprobe_media_title if ffprobe_media_title is not None else (ctx.get("media_title") or "")
     pr = ffprobe_refiner_title if ffprobe_refiner_title is not None else (ctx.get("refiner_title") or "")
     py = ffprobe_year if ffprobe_year is not None else (ctx.get("refiner_year") or "")
     ff = _ffprobe_title_from_parts(media_title=str(pm), refiner_title=str(pr), refiner_year=str(py))
-    if ff:
+    if ff and not looks_like_internal_identifier(ff):
         return ff
 
     orm = (orm_media_title or "").strip()
-    if orm:
+    if orm and not looks_like_internal_identifier(orm):
         return orm[:500]
 
     return fn[:512] if fn else "—"

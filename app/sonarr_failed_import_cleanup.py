@@ -9,6 +9,7 @@ Matches history/queue by ``downloadId``, classifies terminal vs waiting vs unkno
 from __future__ import annotations
 
 import logging
+from contextlib import AsyncExitStack
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +27,7 @@ from app.failed_import_activity import (
     format_failed_import_cleanup_activity_detail,
 )
 from app.http_status_hints import format_http_error_detail
+from app.import_item_lock import hold_import_item_lock
 from app.models import ActivityLog
 from app.radarr_failed_import_cleanup import (
     _paginate_records,
@@ -140,58 +142,61 @@ async def run_sonarr_failed_import_queue_cleanup(
                 target_qid,
                 download_id,
             )
-            try:
-                await client.delete_queue_item(queue_id=target_qid, blocklist=True)
-                blocklist_mode = "requested"
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    "Sonarr failed-import cleanup: delete failed for queue id=%s with blocklist=true: %s",
-                    target_qid,
-                    format_http_error_detail(exc),
-                )
+            async with AsyncExitStack() as stack:
+                if download_id.strip():
+                    await stack.enter_async_context(hold_import_item_lock("sonarr", download_id))
                 try:
-                    await client.delete_queue_item(queue_id=target_qid, blocklist=False)
-                    blocklist_mode = "failed; removed queue without blocklist"
-                except Exception as exc2:  # noqa: BLE001
-                    suffix = f" ({title})" if title else ""
-                    actions.append(
-                        f"Sonarr: Failed import removal failed{suffix}: {format_http_error_detail(exc2)}"
-                    )
+                    await client.delete_queue_item(queue_id=target_qid, blocklist=True)
+                    blocklist_mode = "requested"
+                except Exception as exc:  # noqa: BLE001
                     logger.warning(
-                        "Sonarr failed-import cleanup: delete fallback failed for queue id=%s: %s",
+                        "Sonarr failed-import cleanup: delete failed for queue id=%s with blocklist=true: %s",
                         target_qid,
-                        format_http_error_detail(exc2),
+                        format_http_error_detail(exc),
                     )
-                    continue
+                    try:
+                        await client.delete_queue_item(queue_id=target_qid, blocklist=False)
+                        blocklist_mode = "failed; removed queue without blocklist"
+                    except Exception as exc2:  # noqa: BLE001
+                        suffix = f" ({title})" if title else ""
+                        actions.append(
+                            f"Sonarr: Failed import removal failed{suffix}: {format_http_error_detail(exc2)}"
+                        )
+                        logger.warning(
+                            "Sonarr failed-import cleanup: delete fallback failed for queue id=%s: %s",
+                            target_qid,
+                            format_http_error_detail(exc2),
+                        )
+                        continue
 
-            removed_queue_ids.add(target_qid)
-            eligible_from_history += 1
+                removed_queue_ids.add(target_qid)
+                eligible_from_history += 1
 
-            detail = format_failed_import_cleanup_activity_detail(
-                "sonarr",
-                blocklist_applied=blocklist_mode == "requested",
-                title=title,
-                reason=reason,
-                queue_signal=None,
-            )
-            session.add(
-                ActivityLog(
-                    job_run_id=job_run_id,
-                    app="sonarr",
-                    kind="cleanup",
-                    count=1,
-                    status="ok",
-                    detail=detail,
-                )
-            )
-            label = title if title else f"queue id {target_qid}"
-            actions.append(
-                failed_import_cleanup_action_success(
-                    "Sonarr",
+                detail = format_failed_import_cleanup_activity_detail(
+                    "sonarr",
                     blocklist_applied=blocklist_mode == "requested",
-                    label=label,
+                    title=title,
+                    reason=reason,
+                    queue_signal=None,
                 )
-            )
+                session.add(
+                    ActivityLog(
+                        job_run_id=job_run_id,
+                        app="sonarr",
+                        kind="cleanup",
+                        count=1,
+                        status="ok",
+                        detail=detail,
+                    )
+                )
+                label = title if title else f"queue id {target_qid}"
+                actions.append(
+                    failed_import_cleanup_action_success(
+                        "Sonarr",
+                        blocklist_applied=blocklist_mode == "requested",
+                        label=label,
+                    )
+                )
 
         queue_records = [
             q
@@ -222,63 +227,67 @@ async def run_sonarr_failed_import_queue_cleanup(
             continue
 
         label = q.get("title") if isinstance(q.get("title"), str) else ""
+        qdid = str(q.get("downloadId") or "").strip()
         logger.info(
             "Sonarr failed-import cleanup: eligible queue id=%s (%s) via queue signal: %s",
             qid,
             (label or "unknown"),
             q_signal,
         )
-        try:
-            await client.delete_queue_item(queue_id=qid, blocklist=True)
-            blocklist_mode = "requested"
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "Sonarr failed-import cleanup: queue-signal delete failed for queue id=%s with blocklist=true: %s",
-                qid,
-                format_http_error_detail(exc),
-            )
+        async with AsyncExitStack() as stack:
+            if qdid:
+                await stack.enter_async_context(hold_import_item_lock("sonarr", qdid))
             try:
-                await client.delete_queue_item(queue_id=qid, blocklist=False)
-                blocklist_mode = "failed; removed queue without blocklist"
-            except Exception as exc2:  # noqa: BLE001
-                suffix = f" ({label})" if label else ""
-                actions.append(
-                    f"Sonarr: Failed import removal failed{suffix}: {format_http_error_detail(exc2)}"
-                )
+                await client.delete_queue_item(queue_id=qid, blocklist=True)
+                blocklist_mode = "requested"
+            except Exception as exc:  # noqa: BLE001
                 logger.warning(
-                    "Sonarr failed-import cleanup: queue-signal delete fallback failed for queue id=%s: %s",
+                    "Sonarr failed-import cleanup: queue-signal delete failed for queue id=%s with blocklist=true: %s",
                     qid,
-                    format_http_error_detail(exc2),
+                    format_http_error_detail(exc),
                 )
-                continue
+                try:
+                    await client.delete_queue_item(queue_id=qid, blocklist=False)
+                    blocklist_mode = "failed; removed queue without blocklist"
+                except Exception as exc2:  # noqa: BLE001
+                    suffix = f" ({label})" if label else ""
+                    actions.append(
+                        f"Sonarr: Failed import removal failed{suffix}: {format_http_error_detail(exc2)}"
+                    )
+                    logger.warning(
+                        "Sonarr failed-import cleanup: queue-signal delete fallback failed for queue id=%s: %s",
+                        qid,
+                        format_http_error_detail(exc2),
+                    )
+                    continue
 
-        removed_queue_ids.add(qid)
-        eligible_from_queue += 1
-        detail = format_failed_import_cleanup_activity_detail(
-            "sonarr",
-            blocklist_applied=blocklist_mode == "requested",
-            title=label,
-            reason="",
-            queue_signal=q_signal,
-        )
-        session.add(
-            ActivityLog(
-                job_run_id=job_run_id,
-                app="sonarr",
-                kind="cleanup",
-                count=1,
-                status="ok",
-                detail=detail,
-            )
-        )
-        lab = label if label else f"queue id {qid}"
-        actions.append(
-            failed_import_cleanup_action_success(
-                "Sonarr",
+            removed_queue_ids.add(qid)
+            eligible_from_queue += 1
+            detail = format_failed_import_cleanup_activity_detail(
+                "sonarr",
                 blocklist_applied=blocklist_mode == "requested",
-                label=lab,
+                title=label,
+                reason="",
+                queue_signal=q_signal,
             )
-        )
+            session.add(
+                ActivityLog(
+                    job_run_id=job_run_id,
+                    app="sonarr",
+                    kind="cleanup",
+                    count=1,
+                    status="ok",
+                    detail=detail,
+                )
+            )
+            lab = label if label else f"queue id {qid}"
+            actions.append(
+                failed_import_cleanup_action_success(
+                    "Sonarr",
+                    blocklist_applied=blocklist_mode == "requested",
+                    label=lab,
+                )
+            )
 
     logger.info(
         "Sonarr failed-import cleanup: scan complete; removed=%s (history=%s queue-signal=%s), ineligible=%s",

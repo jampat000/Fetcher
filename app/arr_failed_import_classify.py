@@ -215,3 +215,17 @@ def sonarr_queue_terminal_cleanup_label(queue_blob: str) -> str | None:
     if lab:
         return lab
     return _read_file_failure_terminal_label(low)
+
+
+# Labels that mean *arr rejected the release as not being a quality/custom-format upgrade.
+_EXPLICIT_NON_UPGRADE_TERMINAL_LABELS: frozenset[str] = frozenset(
+    {
+        "not an upgrade vs existing file",
+        "not a preferred-word upgrade",
+        "not a custom-format upgrade",
+    }
+)
+
+
+def terminal_cleanup_label_is_explicit_non_upgrade(label: str | None) -> bool:
+    return bool(label and label in _EXPLICIT_NON_UPGRADE_TERMINAL_LABELS)

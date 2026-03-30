@@ -1,17 +1,24 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
+import re
 import shutil
+import threading
 import time
 import uuid
+from collections.abc import Callable
+from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any, Literal
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.arr_client import ArrClient, ArrConfig
 from app.db import SessionLocal, db_path
 from app.log_sanitize import redact_sensitive_text
 from app.refiner_activity_context import dumps_activity_context
@@ -25,6 +32,7 @@ from app.refiner_media_identity import (
     resolve_activity_card_title,
 )
 from app.refiner_mux import ffprobe_json, remux_to_temp_file
+from app.refiner_promotion_gate import PromotionGateSyncResult
 from app.refiner_rules import (
     RefinerRulesConfig,
     is_commentary_audio,
@@ -46,10 +54,144 @@ logger = logging.getLogger(__name__)
 
 _refiner_lock = asyncio.Lock()
 
-# One in-flight pipeline per pass (FIFO). The inner loop awaits ``asyncio.to_thread(_process_one_refiner_file_sync)``
-# for the full sync function — including finalize, source delete, and folder prune — before starting the next file.
-# ``_refiner_lock`` serializes overlapping scheduler ticks so two passes never run concurrently.
+# One in-flight pipeline per pass (FIFO). Each iteration awaits one ``asyncio.to_thread(...)`` wrapping the full
+# sync file handler (probe → remux/plan → finalize/delete/prune) before the next file starts.
+# Live (non-dry) runs pass ``enter_finalizing`` so the activity row becomes ``finalizing`` when promotion/delete/prune
+# begins. ``_refiner_lock`` prevents concurrent passes from overlapping scheduler ticks.
 REFINER_PASS_MAX_CONCURRENT_FILES = 1
+
+# Refiner source folders are dedicated release directories on the media server (not mixed user data).
+# Residue cleanup is allow-list delete only — never “delete everything except …”.
+#
+# Preserved: final video payloads and external subtitle sidecars processed separately from the main file.
+_REFINER_SOURCE_PRESERVED_SUFFIXES: frozenset[str] = frozenset(
+    {".mkv", ".mp4", ".srt", ".ass", ".ssa", ".sub", ".idx"}
+)
+# Deleted after successful live completion (same release folder + shallow sample/), plus multipart ``.rNN``.
+_REFINER_RELEASE_RESIDUE_SUFFIXES: frozenset[str] = frozenset(
+    {".par", ".par2", ".nfo", ".sfv", ".srr", ".rar", ".zip", ".7z", ".txt", ".url"}
+)
+
+
+@dataclass(frozen=True)
+class RefinerPromotionBridge:
+    """Live Refiner pass: asyncio loop + optional *arr clients for pre-promotion gate + locking."""
+
+    loop: asyncio.AbstractEventLoop
+    sonarr: ArrClient | None
+    radarr: ArrClient | None
+
+
+def _optional_arr_client(url: str, api_key: str, enabled: bool) -> ArrClient | None:
+    if not enabled:
+        return None
+    u, k = (url or "").strip(), (api_key or "").strip()
+    if not u or not k:
+        return None
+    return ArrClient(ArrConfig(base_url=u, api_key=k))
+
+
+def _release_import_promotion_locks(locks: tuple[threading.Lock, ...]) -> None:
+    for lk in reversed(locks):
+        try:
+            lk.release()
+        except RuntimeError:
+            pass
+
+
+def _is_multipart_rar_suffix(suffix: str) -> bool:
+    s = suffix.lower()
+    if len(s) < 4 or not s.startswith(".r"):
+        return False
+    return s[2:].isdigit()
+
+
+def _is_release_residue_file(p: Path) -> bool:
+    """True if this path is an allow-listed junk artefact (not preserved video/subtitle payload)."""
+    suf = p.suffix.lower()
+    if suf in _REFINER_SOURCE_PRESERVED_SUFFIXES:
+        return False
+    if suf in _REFINER_RELEASE_RESIDUE_SUFFIXES:
+        return True
+    return _is_multipart_rar_suffix(suf)
+
+
+def _remove_safe_release_residue(*, release_dir: Path, watched_root: Path) -> list[str]:
+    """Remove known release junk from the dedicated source folder after a successful live job.
+
+    Policy: delete only extensions in ``_REFINER_RELEASE_RESIDUE_SUFFIXES`` and multipart RAR parts
+    (``.r00``+). Preserve ``_REFINER_SOURCE_PRESERVED_SUFFIXES`` (video + external subtitles).
+    Scope: this directory and shallow ``sample`` / ``samples`` only; output folder is never touched.
+    """
+    removed: list[str] = []
+    try:
+        w = watched_root.resolve()
+        rd = release_dir.resolve()
+        rd.relative_to(w)
+    except (OSError, ValueError):
+        return removed
+    if not rd.is_dir():
+        return removed
+    for sample_name in ("sample", "samples"):
+        sp = rd / sample_name
+        if not sp.is_dir():
+            continue
+        if sp.name.lower() != sample_name:
+            continue
+        for child in list(sp.iterdir()):
+            if child.is_file() and _is_release_residue_file(child):
+                try:
+                    child.unlink()
+                    removed.append(f"{sample_name}/{child.name}")
+                except OSError:
+                    pass
+        try:
+            if not any(sp.iterdir()):
+                sp.rmdir()
+                removed.append(f"{sample_name}/")
+        except OSError:
+            pass
+    for p in list(rd.iterdir()):
+        if p.is_file() and _is_release_residue_file(p):
+            try:
+                p.unlink()
+                removed.append(p.name)
+            except OSError:
+                pass
+    return removed
+
+
+def _prune_empty_ancestors_under_watch(start_dir: Path, watched_root: Path, *, max_hops: int = 24) -> str:
+    """Walk upward from ``start_dir`` removing empty directories until the watch root."""
+    try:
+        w = watched_root.resolve()
+        cur = start_dir.resolve()
+    except OSError:
+        return ""
+    removed_any = False
+    for _ in range(max_hops):
+        if cur == w:
+            break
+        try:
+            cur.relative_to(w)
+        except ValueError:
+            break
+        if not cur.is_dir():
+            try:
+                cur = cur.parent
+            except (OSError, ValueError):
+                break
+            continue
+        try:
+            if any(cur.iterdir()):
+                break
+            cur.rmdir()
+            removed_any = True
+            nxt = cur.parent
+            cur = nxt
+        except OSError:
+            break
+    return "removed_empty_ancestors" if removed_any else ""
 
 
 def _activity_snapshot(
@@ -67,6 +209,10 @@ def _activity_snapshot(
     folder_cleanup: str = "",
     pipeline_no_remux: bool = False,
     no_change_bullets: list[str] | None = None,
+    import_promotion_block: dict[str, Any] | None = None,
+    residue_files_removed: list[str] | None = None,
+    source_path: str = "",
+    reason_code: str = "",
 ) -> str:
     payload: dict[str, Any] = {
         "audio_before": audio_before,
@@ -80,9 +226,21 @@ def _activity_snapshot(
         "source_removed": bool(source_removed),
         "folder_cleanup": (folder_cleanup or "").strip()[:200],
         "pipeline_no_remux": bool(pipeline_no_remux),
+        "source_path": (source_path or "").strip()[:4000],
+        "reason_code": (reason_code or "").strip().lower()[:120],
     }
     if no_change_bullets:
         payload["no_change_bullets"] = [str(x).strip()[:500] for x in no_change_bullets if str(x).strip()][:8]
+    if import_promotion_block:
+        ipb = dict(import_promotion_block)
+        for k in list(ipb.keys()):
+            if isinstance(ipb[k], str):
+                ipb[k] = str(ipb[k]).strip()[:2000]
+        payload["import_promotion_block"] = ipb
+    if residue_files_removed:
+        payload["residue_files_removed"] = [str(x).strip()[:260] for x in residue_files_removed if str(x).strip()][
+            :200
+        ]
     idn = ident or {}
     for key in ("media_title", "refiner_title", "refiner_year", "trusted_title"):
         v = (idn.get(key) or "").strip()
@@ -158,6 +316,107 @@ def _gather_watched_files(watched_folder: Path) -> list[Path]:
         return []
     out.sort(key=lambda x: str(x).lower())
     return out
+
+
+def _norm_source_path_for_identity(path: Path | str | None) -> str:
+    raw = str(path or "").strip()
+    if not raw:
+        return ""
+    p = Path(raw).expanduser()
+    try:
+        return str(p.resolve())
+    except OSError:
+        return str(p)
+
+
+def _activity_context_dict(raw: str | None) -> dict[str, Any]:
+    t = (raw or "").strip()
+    if not t:
+        return {}
+    try:
+        d = json.loads(t)
+    except Exception:
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
+def _activity_context_with_identity(
+    raw: str | None,
+    *,
+    source_path: str,
+    reason_code: str,
+) -> str:
+    payload = _activity_context_dict(raw)
+    payload["source_path"] = (source_path or "").strip()[:4000]
+    payload["reason_code"] = (reason_code or "").strip().lower()[:120]
+    return dumps_activity_context(payload)
+
+
+async def _active_refiner_source_paths() -> set[str]:
+    """Paths currently in queued/processing/finalizing states (in-flight only)."""
+    out: set[str] = set()
+    async with SessionLocal() as session:
+        rows = (
+            await session.execute(
+                select(RefinerActivity.file_name, RefinerActivity.activity_context).where(
+                    RefinerActivity.status.in_(("queued", "processing", "finalizing"))
+                )
+            )
+        ).all()
+    for _file_name, activity_context in rows:
+        ctx = _activity_context_dict(activity_context)
+        src = _norm_source_path_for_identity(ctx.get("source_path"))
+        if src:
+            out.add(src)
+    return out
+
+
+def _reason_code_from_hint(hint: str) -> str:
+    s = (hint or "").strip().lower()
+    if not s:
+        return "failed_unknown"
+    slug = re.sub(r"[^a-z0-9]+", "_", s).strip("_")
+    if not slug:
+        return "failed_unknown"
+    return f"failed_{slug[:96]}"
+
+
+async def _has_prior_refiner_failure(*, source_path: str, reason_code: str) -> bool:
+    """True when a terminal failure row with same path+reason already exists."""
+    src = _norm_source_path_for_identity(source_path)
+    rc = (reason_code or "").strip().lower()
+    if not src or not rc:
+        return False
+    async with SessionLocal() as session:
+        rows = (
+            await session.execute(
+                select(RefinerActivity.activity_context).where(
+                    RefinerActivity.status.in_(("failed", "skipped_terminal_failed"))
+                )
+            )
+        ).all()
+    for (raw_ctx,) in rows:
+        ctx = _activity_context_dict(raw_ctx)
+        if _norm_source_path_for_identity(ctx.get("source_path")) != src:
+            continue
+        if str(ctx.get("reason_code") or "").strip().lower() == rc:
+            return True
+    return False
+
+
+def _refiner_run_parent_summary(*, processed: int, blocked: int, failed: int) -> str:
+    # Current run only (no history aggregation).
+    if processed == 0 and blocked == 0 and failed == 0:
+        return "No new actions — all items already processed or blocked"
+    if failed == 0 and blocked == 0:
+        noun = "file" if processed == 1 else "files"
+        return f"{processed} {noun} processed"
+    if processed > 0:
+        return f"{processed} processed · {blocked + failed} blocked"
+    if blocked + failed > 0:
+        noun = "item" if (blocked + failed) == 1 else "items"
+        return f"{blocked + failed} {noun} needs attention"
+    return "No new actions — all items already processed or blocked"
 
 
 def _log_plan_outcome(*, path: Path, plan: Any, dry: bool) -> None:
@@ -352,7 +611,10 @@ def _no_change_explanation_bullets(plan: Any, *, sbb_len: int, sba_len: int) -> 
 
 
 async def _insert_refiner_pass_job_row(
-    file_name: str, *, initial_status: Literal["queued", "processing"]
+    file_name: str,
+    *,
+    initial_status: Literal["queued", "processing"],
+    source_path: str = "",
 ) -> int | None:
     """Insert one ``refiner_activity`` row. Passes use ``queued`` first; ``processing`` is for narrow call sites."""
     if initial_status not in ("queued", "processing"):
@@ -372,7 +634,10 @@ async def _insert_refiner_pass_job_row(
                 subtitle_tracks_before=0,
                 subtitle_tracks_after=0,
                 processing_time_ms=None,
-                activity_context="",
+                activity_context=_activity_snapshot(
+                    source_path=source_path,
+                    reason_code="in_flight",
+                ),
             )
             session.add(row)
             await session.commit()
@@ -388,11 +653,13 @@ async def _insert_refiner_processing_row(file_name: str) -> int | None:
     return await _insert_refiner_pass_job_row(file_name, initial_status="queued")
 
 
-async def _set_refiner_pass_job_status(row_id: int | None, status: Literal["queued", "processing"]) -> None:
-    """Move a pass job row between queued and active processing (no-op if ``row_id`` is None)."""
+async def _set_refiner_pass_job_status(
+    row_id: int | None, status: Literal["queued", "processing", "finalizing"]
+) -> None:
+    """Update in-pass job status (queued → processing → finalizing). Terminal rows use ``_update_refiner_activity_row``."""
     if row_id is None:
         return
-    if status not in ("queued", "processing"):
+    if status not in ("queued", "processing", "finalizing"):
         return
     try:
         async with SessionLocal() as session:
@@ -412,7 +679,7 @@ async def _update_refiner_activity_row(row_id: int, meta: dict[str, Any]) -> Non
         fn = str(meta.get("file_name") or "")[:512]
         mt = str(meta.get("media_title") or "")[:512]
         st = str(meta.get("status") or "failed").strip().lower()
-        if st not in ("success", "skipped", "failed"):
+        if st not in ("success", "skipped", "failed", "skipped_terminal_failed"):
             st = "failed"
         ptm = meta.get("processing_time_ms")
         ptm_i = int(ptm) if ptm is not None else None
@@ -445,7 +712,7 @@ async def _persist_refiner_activity_safe(meta: dict[str, Any]) -> None:
         fn = str(meta.get("file_name") or "")[:512]
         mt = str(meta.get("media_title") or "")[:512]
         st = str(meta.get("status") or "failed").strip().lower()
-        if st not in ("success", "skipped", "failed"):
+        if st not in ("success", "skipped", "failed", "skipped_terminal_failed"):
             st = "failed"
         ptm = meta.get("processing_time_ms")
         ptm_i = int(ptm) if ptm is not None else None
@@ -476,7 +743,7 @@ async def _close_all_processing_refiner_activity_rows(*, context: str) -> None:
         async with SessionLocal() as session:
             res = await session.execute(
                 update(RefinerActivity)
-                .where(RefinerActivity.status.in_(("processing", "queued")))
+                .where(RefinerActivity.status.in_(("processing", "queued", "finalizing")))
                 .values(status="failed", processing_time_ms=None)
             )
             await session.commit()
@@ -513,6 +780,8 @@ async def _reconcile_interrupted_refiner_processing_rows_before_pass() -> None:
 def _failure_activity_meta(
     fname: str,
     *,
+    source_path: str = "",
+    reason_code: str = "failed_unknown",
     size_before: int,
     audio_before: int,
     subs_before: int,
@@ -530,6 +799,8 @@ def _failure_activity_meta(
         "subtitle_tracks_before": int(subs_before),
         "subtitle_tracks_after": int(subs_before),
         "processing_time_ms": int((time.perf_counter() - t0) * 1000),
+        "reason_code": (reason_code or "failed_unknown").strip().lower()[:120],
+        "source_path": _norm_source_path_for_identity(source_path)[:4000],
     }
 
 
@@ -540,10 +811,39 @@ def _process_one_refiner_file_sync(
     watched_root: Path,
     output_root: Path,
     work_dir: Path,
+    *,
+    enter_finalizing: Callable[[], None] | None = None,
+    promotion_bridge: RefinerPromotionBridge | None = None,
 ) -> tuple[str, dict[str, Any]]:
-    """One file end-to-end in the calling thread: probe → plan → remux or copy → finalize → delete/prune when applicable."""
+    """One file in the worker thread: probe → plan → remux/stream work, then finalize (move/delete/prune).
+
+    ``enter_finalizing`` is invoked once when remux/planning is done and only file promotion / cleanup remains.
+    Dry-run paths never call it. Callbacks often hop to the asyncio loop (see ``run_refiner_pass``).
+    ``promotion_bridge`` enables the *arr pre-promotion gate (terminal failed-import block + per-downloadId locks).
+    """
     t0 = time.perf_counter()
+    _finalize_phase_done: list[bool] = [False]
+
+    def _enter_finalize_phase() -> None:
+        if _finalize_phase_done[0] or enter_finalizing is None:
+            return
+        _finalize_phase_done[0] = True
+        enter_finalizing()
     fname = path.name
+
+    def _sync_promotion_gate(watch_path: Path) -> PromotionGateSyncResult:
+        if dry or promotion_bridge is None:
+            return PromotionGateSyncResult(True, (), None)
+        fut = asyncio.run_coroutine_threadsafe(
+            refiner_promotion_precheck(
+                media_file=watch_path,
+                sonarr_client=promotion_bridge.sonarr,
+                radarr_client=promotion_bridge.radarr,
+            ),
+            promotion_bridge.loop,
+        )
+        return fut.result(timeout=180)
+
     _provisional_mt = provisional_media_title_before_probe(fname)[:512]
     identity_snap: dict[str, str] = {}
     _media_title_col: list[str] = [""]
@@ -754,52 +1054,83 @@ def _process_one_refiner_file_sync(
             )
 
         _log_plan_outcome(path=path, plan=plan, dry=False)
+        source_parent = path.parent
+        gate_nr = _sync_promotion_gate(path)
+        if not gate_nr.allowed and gate_nr.block_detail is not None:
+            ipb = dict(gate_nr.block_detail)
+            ipb["subtitle"] = "Not promoted — item classified as a failed import"
+            ipb["reason_code"] = "skipped_terminal_failed"
+            blocked_ctx = _activity_snapshot(
+                ident=identity_snap,
+                audio_before=ab_line,
+                audio_after=ab_line,
+                subs_before=subs_b_line,
+                subs_after=subs_b_line,
+                import_promotion_block=ipb,
+            )
+            return "blocked_import", pack(
+                "skipped_terminal_failed",
+                sb,
+                sb,
+                ab_len,
+                ab_len,
+                sbb_len,
+                sbb_len,
+                activity_context=blocked_ctx,
+            )
         try:
-            source_parent = path.parent
-            _finalize_output_file(path, destination)
-            fold = _try_remove_empty_watch_subfolder(source_parent=source_parent, watched_root=watched_root)
-            sa = _file_size_bytes(destination)
-            ok_ctx = _activity_snapshot(
-                ident=identity_snap,
-                audio_before=ab_line,
-                audio_after=ab_line,
-                subs_before=subs_b_line,
-                subs_after=subs_b_line,
-                finalized=True,
-                source_removed=True,
-                folder_cleanup=fold,
-                pipeline_no_remux=True,
-                no_change_bullets=nc_bullets,
-            )
-            return "ok", pack(
-                "success", sb, sa, ab_len, ab_len, sbb_len, sbb_len, activity_context=ok_ctx
-            )
-        except Exception as e:
-            fh = failure_hint_from_exception(e)
-            summary, detail = format_refiner_failure_for_operator(e)
-            logger.error("Refiner: no-remux pipeline finalize failed for %s — %s", path.name, summary)
-            if detail:
-                logger.error("Refiner: reason for %s — %s", path.name, detail)
-            reason_body = summary if not detail else f"{summary}\n  {detail}"
-            err_ctx = _activity_snapshot(
-                ident=identity_snap,
-                audio_before=ab_line,
-                audio_after=ab_line,
-                subs_before=subs_b_line,
-                subs_after=subs_b_line,
-                failure_reason=reason_body.strip()[:8000],
-            )
-            return "error", pack(
-                "failed",
-                sb,
-                sb,
-                ab_len,
-                ab_len,
-                sbb_len,
-                sbb_len,
-                failure_hint=fh,
-                activity_context=err_ctx,
-            )
+            try:
+                _enter_finalize_phase()
+                _finalize_output_file(path, destination)
+                res_names = _remove_safe_release_residue(
+                    release_dir=source_parent, watched_root=watched_root
+                )
+                fold = _prune_empty_ancestors_under_watch(source_parent, watched_root)
+                sa = _file_size_bytes(destination)
+                ok_ctx = _activity_snapshot(
+                    ident=identity_snap,
+                    audio_before=ab_line,
+                    audio_after=ab_line,
+                    subs_before=subs_b_line,
+                    subs_after=subs_b_line,
+                    finalized=True,
+                    source_removed=True,
+                    folder_cleanup=fold,
+                    pipeline_no_remux=True,
+                    no_change_bullets=nc_bullets,
+                    residue_files_removed=res_names or None,
+                )
+                return "ok", pack(
+                    "success", sb, sa, ab_len, ab_len, sbb_len, sbb_len, activity_context=ok_ctx
+                )
+            except Exception as e:
+                fh = failure_hint_from_exception(e)
+                summary, detail_ex = format_refiner_failure_for_operator(e)
+                logger.error("Refiner: no-remux pipeline finalize failed for %s — %s", path.name, summary)
+                if detail_ex:
+                    logger.error("Refiner: reason for %s — %s", path.name, detail_ex)
+                reason_body = summary if not detail_ex else f"{summary}\n  {detail_ex}"
+                err_ctx = _activity_snapshot(
+                    ident=identity_snap,
+                    audio_before=ab_line,
+                    audio_after=ab_line,
+                    subs_before=subs_b_line,
+                    subs_after=subs_b_line,
+                    failure_reason=reason_body.strip()[:8000],
+                )
+                return "error", pack(
+                    "failed",
+                    sb,
+                    sb,
+                    ab_len,
+                    ab_len,
+                    sbb_len,
+                    sbb_len,
+                    failure_hint=fh,
+                    activity_context=err_ctx,
+                )
+        finally:
+            _release_import_promotion_locks(gate_nr.held_locks)
 
     _log_plan_outcome(path=path, plan=plan, dry=dry)
     destination = _output_path_for_source(src=path, watched_root=watched_root, output_root=output_root)
@@ -898,38 +1229,6 @@ def _process_one_refiner_file_sync(
     try:
         destination.parent.mkdir(parents=True, exist_ok=True)
         temp_file = remux_to_temp_file(src=path, work_dir=work_dir, plan=plan)
-        _finalize_output_file(temp_file, destination)
-        try:
-            path.unlink()
-        except OSError as u_err:
-            logger.warning(
-                "Refiner: wrote output to %s but could not delete the watched file (%s). "
-                "Remove the original manually if you no longer need it: %s",
-                destination,
-                u_err,
-                path,
-            )
-        fold = _try_remove_empty_watch_subfolder(source_parent=path.parent, watched_root=watched_root)
-        logger.info("Refiner: output written to %s (watched file: %s)", destination, path.name)
-        sa = _file_size_bytes(destination)
-        aa = len(plan.audio)
-        sba = len(plan.subtitles)
-        subs_after = subtitle_after_line_from_plan(plan, remove_all=cfg.subtitle_mode == "remove_all")
-        commentary_removed = bool(cfg.remove_commentary) and any(is_commentary_audio(s) for s in audio)
-        ok_ctx = _activity_snapshot(
-            ident=identity_snap,
-            audio_before=ab_line,
-            audio_after=audio_after_line_from_plan(plan),
-            subs_before=subs_b_line,
-            subs_after=subs_after,
-            commentary_removed=commentary_removed,
-            finalized=True,
-            source_removed=True,
-            folder_cleanup=fold,
-        )
-        return "ok", pack(
-            "success", sb, sa, ab_len, aa, sbb_len, sba, activity_context=ok_ctx
-        )
     except Exception as e:
         if temp_file is not None:
             try:
@@ -968,6 +1267,114 @@ def _process_one_refiner_file_sync(
             failure_hint=fh,
             activity_context=err_ctx,
         )
+
+    gate_mx = _sync_promotion_gate(path)
+    if not gate_mx.allowed and gate_mx.block_detail is not None:
+        if temp_file is not None:
+            try:
+                if temp_file.is_file():
+                    temp_file.unlink()
+            except OSError:
+                logger.warning(
+                    "Refiner: could not remove temp file after import gate block: %s",
+                    temp_file,
+                    exc_info=True,
+                )
+        ipb = dict(gate_mx.block_detail)
+        ipb["subtitle"] = "Not promoted — item classified as a failed import"
+        ipb["reason_code"] = "skipped_terminal_failed"
+        blocked_ctx = _activity_snapshot(
+            ident=identity_snap,
+            audio_before=ab_line,
+            audio_after=ab_line,
+            subs_before=subs_b_line,
+            subs_after=subtitle_after_line_from_plan(plan, remove_all=cfg.subtitle_mode == "remove_all"),
+            import_promotion_block=ipb,
+        )
+        return "blocked_import", pack(
+            "skipped_terminal_failed",
+            sb,
+            sb,
+            ab_len,
+            ab_len,
+            sbb_len,
+            sbb_len,
+            activity_context=blocked_ctx,
+        )
+
+    try:
+        _enter_finalize_phase()
+        _finalize_output_file(temp_file, destination)
+        source_parent = path.parent
+        try:
+            path.unlink()
+        except OSError as u_err:
+            logger.warning(
+                "Refiner: wrote output to %s but could not delete the watched file (%s). "
+                "Remove the original manually if you no longer need it: %s",
+                destination,
+                u_err,
+                path,
+            )
+        res_names = _remove_safe_release_residue(
+            release_dir=source_parent, watched_root=watched_root
+        )
+        fold = _prune_empty_ancestors_under_watch(source_parent, watched_root)
+        logger.info("Refiner: output written to %s (watched file: %s)", destination, path.name)
+        sa = _file_size_bytes(destination)
+        aa = len(plan.audio)
+        sba = len(plan.subtitles)
+        subs_after = subtitle_after_line_from_plan(plan, remove_all=cfg.subtitle_mode == "remove_all")
+        commentary_removed = bool(cfg.remove_commentary) and any(is_commentary_audio(s) for s in audio)
+        ok_ctx = _activity_snapshot(
+            ident=identity_snap,
+            audio_before=ab_line,
+            audio_after=audio_after_line_from_plan(plan),
+            subs_before=subs_b_line,
+            subs_after=subs_after,
+            commentary_removed=commentary_removed,
+            finalized=True,
+            source_removed=True,
+            folder_cleanup=fold,
+            residue_files_removed=res_names or None,
+        )
+        return "ok", pack(
+            "success", sb, sa, ab_len, aa, sbb_len, sba, activity_context=ok_ctx
+        )
+    except Exception as e:
+        fh = failure_hint_from_exception(e)
+        summary, detail_ex = format_refiner_failure_for_operator(e)
+        logger.error("Refiner: processing failed for %s — %s", path.name, summary)
+        if detail_ex:
+            logger.error("Refiner: reason for %s — %s", path.name, detail_ex)
+        if isinstance(e, RuntimeError) and "Output file appeared" in str(e):
+            logger.info(
+                "Refiner: action — another file appeared at the output path while remuxing %s; "
+                "remove or rename it in the output folder, then retry.",
+                path.name,
+            )
+        reason_body = summary if not detail_ex else f"{summary}\n  {detail_ex}"
+        err_ctx = _activity_snapshot(
+            ident=identity_snap,
+            audio_before=ab_line,
+            audio_after=ab_line,
+            subs_before=subs_b_line,
+            subs_after=subtitle_after_line_from_plan(plan, remove_all=cfg.subtitle_mode == "remove_all"),
+            failure_reason=reason_body.strip()[:8000],
+        )
+        return "error", pack(
+            "failed",
+            sb,
+            sb,
+            ab_len,
+            ab_len,
+            sbb_len,
+            sbb_len,
+            failure_hint=fh,
+            activity_context=err_ctx,
+        )
+    finally:
+        _release_import_promotion_locks(gate_mx.held_locks)
 
 
 async def run_scheduled_refiner_pass(session: AsyncSession) -> dict[str, Any]:
@@ -1057,6 +1464,11 @@ async def run_refiner_pass(
             return {"ok": False, "ran": False, "error": "output_folder_invalid"}
         files = _gather_watched_files(watched_root)
         await _reconcile_interrupted_refiner_processing_rows_before_pass()
+        active_paths = await _active_refiner_source_paths()
+        if active_paths:
+            files = [
+                fp for fp in files if _norm_source_path_for_identity(fp) not in active_paths
+            ]
         if not files:
             logger.info("Refiner: watched folder has no supported media files — nothing to do.")
             session.add(
@@ -1070,22 +1482,60 @@ async def run_refiner_pass(
             await session.commit()
             return {"ok": True, "ran": False, "reason": "no_files"}
         dry = bool(row.refiner_dry_run)
-        ok_c = dry_c = err_c = 0
+        ok_c = dry_c = err_c = import_blocked_c = 0
         noop_c = 0  # log field unchanged=0 (no in-place “skipped” live passes without pipeline finalize)
+        prom_bridge: RefinerPromotionBridge | None = None
+        if not dry:
+            prom_bridge = RefinerPromotionBridge(
+                loop=asyncio.get_running_loop(),
+                sonarr=_optional_arr_client(row.sonarr_url or "", row.sonarr_api_key or "", row.sonarr_enabled),
+                radarr=_optional_arr_client(row.radarr_url or "", row.radarr_api_key or "", row.radarr_enabled),
+            )
+            if prom_bridge.sonarr is None and prom_bridge.radarr is None:
+                prom_bridge = None
         failure_notes: list[str] = []
         job_rows: list[tuple[Path, int | None]] = []
         for fp in files:
-            act_id = await _insert_refiner_pass_job_row(fp.name, initial_status="queued")
+            act_id = await _insert_refiner_pass_job_row(
+                fp.name,
+                initial_status="queued",
+                source_path=_norm_source_path_for_identity(fp),
+            )
             job_rows.append((fp, act_id))
+        loop = asyncio.get_running_loop()
+
+        def _sync_finalizing_notifier(row_id: int | None) -> Callable[[], None] | None:
+            if row_id is None:
+                return None
+
+            def _notify() -> None:
+                fut = asyncio.run_coroutine_threadsafe(
+                    _set_refiner_pass_job_status(int(row_id), "finalizing"), loop
+                )
+                fut.result(timeout=180)
+
+            return _notify
+
         for fp, act_id in job_rows:
             t_job = time.perf_counter()
             await _set_refiner_pass_job_status(act_id, "processing")
             status: str = "error"
             meta: dict[str, Any] | None = None
+            suppress_duplicate_failure = False
             try:
-                status, meta = await asyncio.to_thread(
-                    _process_one_refiner_file_sync, fp, cfg, dry, watched_root, output_root, work_dir
+                enter_fn = None if dry else _sync_finalizing_notifier(act_id)
+                sync_call = partial(
+                    _process_one_refiner_file_sync,
+                    fp,
+                    cfg,
+                    dry,
+                    watched_root,
+                    output_root,
+                    work_dir,
+                    enter_finalizing=enter_fn,
+                    promotion_bridge=prom_bridge,
                 )
+                status, meta = await asyncio.to_thread(sync_call)
             except Exception:
                 logger.exception(
                     "Refiner: unexpected failure for %s (thread error, cancellation, or timeout)",
@@ -1097,7 +1547,12 @@ async def run_refiner_pass(
                 except Exception:
                     pass
                 meta = _failure_activity_meta(
-                    fp.name, size_before=sb_e, audio_before=0, subs_before=0, t0=t_job
+                    fp.name,
+                    source_path=_norm_source_path_for_identity(fp),
+                    size_before=sb_e,
+                    audio_before=0,
+                    subs_before=0,
+                    t0=t_job,
                 )
                 meta["failure_hint"] = (
                     "Unexpected error during processing (thread, timeout, or cancellation). "
@@ -1111,29 +1566,75 @@ async def run_refiner_pass(
                     except Exception:
                         pass
                     meta = _failure_activity_meta(
-                        fp.name, size_before=sb_f, audio_before=0, subs_before=0, t0=t_job
+                        fp.name,
+                        source_path=_norm_source_path_for_identity(fp),
+                        size_before=sb_f,
+                        audio_before=0,
+                        subs_before=0,
+                        t0=t_job,
+                    )
+                src_identity = _norm_source_path_for_identity(fp)
+                if not str(meta.get("source_path") or "").strip():
+                    meta["source_path"] = src_identity
+                st_meta = str(meta.get("status") or "").strip().lower()
+                if st_meta in ("failed", "skipped_terminal_failed"):
+                    existing_rc = str(meta.get("reason_code") or "").strip().lower()
+                    if not existing_rc:
+                        hint = str(meta.get("failure_hint") or meta.get("failure_reason") or "").strip()
+                        if st_meta == "skipped_terminal_failed":
+                            rc = "skipped_terminal_failed"
+                        else:
+                            rc = _reason_code_from_hint(hint)
+                        meta["reason_code"] = rc
+                if st_meta in ("failed", "skipped_terminal_failed"):
+                    meta["activity_context"] = _activity_context_with_identity(
+                        meta.get("activity_context"),
+                        source_path=str(meta.get("source_path") or "")[:4000],
+                        reason_code=str(meta.get("reason_code") or "")[:120],
                     )
                 if meta.get("failure_hint") and not str(meta.get("activity_context") or "").strip():
                     meta["activity_context"] = _activity_snapshot(
-                        failure_reason=str(meta["failure_hint"]).strip()[:8000]
+                        failure_reason=str(meta["failure_hint"]).strip()[:8000],
+                        source_path=str(meta.get("source_path") or "")[:4000],
+                        reason_code=str(meta.get("reason_code") or "")[:120],
                     )
-                if act_id is not None:
-                    await _update_refiner_activity_row(act_id, meta)
+                suppress_duplicate_failure = False
+                if st_meta in ("failed", "skipped_terminal_failed"):
+                    rc_check = str(meta.get("reason_code") or "").strip().lower()
+                    if rc_check and src_identity and await _has_prior_refiner_failure(
+                        source_path=src_identity, reason_code=rc_check
+                    ):
+                        suppress_duplicate_failure = True
+                if suppress_duplicate_failure:
+                    if act_id is not None:
+                        async with SessionLocal() as cleanup_session:
+                            await cleanup_session.execute(
+                                delete(RefinerActivity).where(RefinerActivity.id == int(act_id))
+                            )
+                            await cleanup_session.commit()
                 else:
-                    await _persist_refiner_activity_safe(meta)
+                    if act_id is not None:
+                        await _update_refiner_activity_row(act_id, meta)
+                    else:
+                        await _persist_refiner_activity_safe(meta)
             if status == "ok":
                 ok_c += 1
             elif status == "dry_run":
                 dry_c += 1
+            elif status == "blocked_import":
+                import_blocked_c += 1
             else:
+                if suppress_duplicate_failure:
+                    continue
                 err_c += 1
                 hint = (meta or {}).get("failure_hint") or "Processing failed."
                 failure_notes.append(f"{fp.name}: {hint}")
         row.refiner_last_run_at = utc_now_naive()
         row.updated_at = utc_now_naive()
-        detail = (
-            f"Refiner ({trigger}): processed={ok_c} unchanged={noop_c} "
-            f"dry_run_items={dry_c} errors={err_c}"
+        detail = _refiner_run_parent_summary(
+            processed=ok_c + dry_c,
+            blocked=import_blocked_c,
+            failed=err_c,
         )
         job_lines = [detail]
         if failure_notes:

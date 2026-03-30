@@ -1554,8 +1554,40 @@ h2.gc-title,
     transparent 100%
   );
 }
+.activity-row--refiner-finalizing {
+  border-left: 3px solid rgba(56, 189, 248, 0.65);
+  padding-left: calc(var(--space-3) - 3px);
+  background: linear-gradient(
+    90deg,
+    rgba(56, 189, 248, 0.1) 0%,
+    rgba(56, 189, 248, 0.03) 55%,
+    transparent 100%
+  );
+}
+.activity-row--refiner-skip-import {
+  border-left: 3px solid rgba(251, 146, 60, 0.55);
+  padding-left: calc(var(--space-3) - 3px);
+  background: linear-gradient(
+    90deg,
+    rgba(251, 191, 36, 0.08) 0%,
+    rgba(251, 146, 60, 0.03) 55%,
+    transparent 100%
+  );
+}
+.activity-row--outcome-skipped_import .activity-refiner-outcome-label {
+  color: rgba(253, 224, 71, 0.92);
+}
+.activity-refiner-status-svg--skip-import {
+  color: rgba(251, 191, 36, 0.92);
+}
 .activity-row--outcome-queued .activity-refiner-outcome-label {
   color: var(--text2);
+}
+.activity-row--outcome-finalizing .activity-refiner-outcome-label {
+  color: rgba(186, 230, 253, 0.95);
+}
+.activity-refiner-status-svg--finalize {
+  color: rgba(56, 189, 248, 0.95);
 }
 .activity-refiner-mark--progress {
   color: var(--accent, #d97706);

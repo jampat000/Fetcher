@@ -483,6 +483,13 @@ async def _migrate_036_refiner_activity_media_title(engine: AsyncEngine) -> None
         await _add_column(engine, table=table, ddl="media_title VARCHAR(512) NOT NULL DEFAULT ''")
 
 
+async def _migrate_037_refiner_activity_status_skipped_terminal_failed(_engine: AsyncEngine) -> None:
+    """Refiner activity status may store ``skipped_terminal_failed`` (SQLite TEXT already unconstrained).
+
+    ORM width widened to 32 for documentation parity; no SQLite ALTER required.
+    """
+
+
 # Refiner column repair DDL: :mod:`app.refiner_app_settings_contract` (must match ``AppSettings``).
 
 
@@ -615,6 +622,7 @@ async def migrate(engine: AsyncEngine) -> None:
     await _migrate_033_refiner_activity_context(engine)
     await _migrate_035_activity_log_trimmer_app_identity(engine)
     await _migrate_036_refiner_activity_media_title(engine)
+    await _migrate_037_refiner_activity_status_skipped_terminal_failed(engine)
     await _migrate_034_forward_app_settings_schema_version(engine)
     await repair_refiner_app_settings_columns(engine)
 

@@ -12,13 +12,16 @@ import pytest
 from sqlalchemy import delete, select
 
 from app.db import SessionLocal, _get_or_create_settings
-from app.models import JobRunLog, RefinerActivity
+from app.models import ActivityLog, JobRunLog, RefinerActivity
 from app.time_util import utc_now_naive
+from app.refiner_rules import RefinerRulesConfig
 from app.refiner_service import (
     _finalize_output_file,
     _pipeline_from_settings,
+    _process_one_refiner_file_sync,
     _reconcile_interrupted_refiner_processing_rows_before_pass,
     _rules_config_from_settings,
+    _set_refiner_pass_job_status,
     _try_remove_empty_watch_subfolder,
     reconcile_refiner_processing_rows_on_worker_boot,
     run_refiner_pass,
@@ -166,7 +169,8 @@ def test_live_no_remux_leaves_folder_when_other_files_remain(
         sub.mkdir(parents=True)
         f = sub / "one.mkv"
         f.write_bytes(b"x")
-        (sub / "keep.txt").write_text("hold", encoding="utf-8")
+        # Dedicated release folder: subtitle sidecar must survive residue cleanup (.txt would be removed).
+        (sub / "keep.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\nhold\n", encoding="utf-8")
         output.mkdir()
         async with SessionLocal() as session:
             row = await _get_or_create_settings(session)
@@ -180,7 +184,7 @@ def test_live_no_remux_leaves_folder_when_other_files_remain(
         assert not f.exists()
         assert (output / "sub" / "one.mkv").exists()
         assert sub.is_dir()
-        assert (sub / "keep.txt").exists()
+        assert (sub / "keep.srt").exists()
 
     asyncio.run(_go())
 
@@ -396,7 +400,7 @@ def test_rules_config_parses_dropdown_values() -> None:
 
 
 def test_refiner_schema_contract_v35_activity_context_media_title_and_trimmer_activity() -> None:
-    assert CURRENT_SCHEMA_VERSION == 35
+    assert CURRENT_SCHEMA_VERSION == 36
     from app.models import AppSettings, RefinerActivity
 
     assert "refiner_processing_pass_generation" not in AppSettings.__annotations__
@@ -498,6 +502,26 @@ def test_reconcile_before_pass_closes_all_processing_rows() -> None:
     asyncio.run(_go())
 
 
+def test_reconcile_before_pass_closes_finalizing_rows() -> None:
+    """Interrupted ``finalizing`` rows are closed before a new pass (same as processing/queued)."""
+
+    async def _go() -> None:
+        async with SessionLocal() as s:
+            r = RefinerActivity(file_name="stuck-final.mkv", status="finalizing")
+            s.add(r)
+            await s.commit()
+            rid = r.id
+        await _reconcile_interrupted_refiner_processing_rows_before_pass()
+        async with SessionLocal() as s:
+            row = (await s.execute(select(RefinerActivity).where(RefinerActivity.id == rid))).scalars().first()
+            assert row is not None
+            assert row.status == "failed"
+            await s.execute(delete(RefinerActivity).where(RefinerActivity.id == rid))
+            await s.commit()
+
+    asyncio.run(_go())
+
+
 def test_reconcile_before_pass_closes_queued_rows() -> None:
     """Queued rows from an interrupted pass are closed like processing rows."""
 
@@ -567,7 +591,7 @@ def test_source_missing_skips_as_failed(monkeypatch: pytest.MonkeyPatch, tmp_pat
 def test_refiner_pass_calls_insert_then_update_per_file(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     calls: list[tuple[str, Any]] = []
 
-    async def _fake_insert(name: str, *, initial_status: str) -> int:
+    async def _fake_insert(name: str, *, initial_status: str, source_path: str = "") -> int:
         calls.append(("insert", name, initial_status))
         return 901
 
@@ -652,6 +676,157 @@ def test_refiner_pass_processes_files_strict_fifo_order(monkeypatch: pytest.Monk
     assert order == ["a.mkv", "b.mkv"]
 
 
+def test_enter_finalizing_runs_before_finalize_output_no_remux(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """``enter_finalizing`` runs once immediately before ``_finalize_output_file`` (no-remux path)."""
+    order: list[str] = []
+
+    def notify() -> None:
+        order.append("finalizing")
+
+    promote_calls: list[str] = []
+
+    def wrap_finalize(src: Path, dst: Path) -> None:
+        promote_calls.append("promote")
+        return _finalize_output_file(src, dst)
+
+    monkeypatch.setattr("app.refiner_service._finalize_output_file", wrap_finalize)
+    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_single_eng())
+    monkeypatch.setattr("app.refiner_service.is_remux_required", lambda *_a, **_k: False)
+    watched = tmp_path / "watch"
+    output = tmp_path / "out"
+    watched.mkdir()
+    output.mkdir()
+    f = watched / "one.mkv"
+    f.write_bytes(b"body")
+    work = tmp_path / "work"
+    cfg = RefinerRulesConfig(
+        primary_audio_lang="eng",
+        secondary_audio_lang="",
+        tertiary_audio_lang="",
+        default_audio_slot="primary",
+        remove_commentary=False,
+        subtitle_mode="remove_all",
+        subtitle_langs=(),
+        preserve_forced_subs=False,
+        preserve_default_subs=False,
+        audio_preference_mode="preferred_langs_quality",
+    )
+    code, meta = _process_one_refiner_file_sync(
+        f, cfg, False, watched, output, work, enter_finalizing=notify
+    )
+    assert code == "ok"
+    assert meta.get("status") == "success"
+    assert order == ["finalizing"]
+    assert promote_calls == ["promote"]
+
+
+def test_dry_run_does_not_invoke_enter_finalizing(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    hits: list[str] = []
+
+    def notify() -> None:
+        hits.append("x")
+
+    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_single_eng())
+    monkeypatch.setattr("app.refiner_service.is_remux_required", lambda *_a, **_k: False)
+    watched = tmp_path / "watch"
+    output = tmp_path / "out"
+    watched.mkdir()
+    output.mkdir()
+    f = watched / "one.mkv"
+    f.write_bytes(b"body")
+    cfg = RefinerRulesConfig(
+        primary_audio_lang="eng",
+        secondary_audio_lang="",
+        tertiary_audio_lang="",
+        default_audio_slot="primary",
+        remove_commentary=False,
+        subtitle_mode="remove_all",
+        subtitle_langs=(),
+        preserve_forced_subs=False,
+        preserve_default_subs=False,
+        audio_preference_mode="preferred_langs_quality",
+    )
+    code, _meta = _process_one_refiner_file_sync(
+        f, cfg, True, watched, output, tmp_path / "w", enter_finalizing=notify
+    )
+    assert code == "dry_run"
+    assert hits == []
+
+
+def test_live_pass_calls_set_status_processing_then_finalizing(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    status_seq: list[str] = []
+
+    async def wrap_set(rid: int | None, st: str) -> None:
+        if rid is not None:
+            status_seq.append(st)
+        await _set_refiner_pass_job_status(rid, st)  # type: ignore[arg-type]
+
+    monkeypatch.setattr("app.refiner_service._set_refiner_pass_job_status", wrap_set)
+    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_single_eng())
+    monkeypatch.setattr("app.refiner_service.is_remux_required", lambda *_a, **_k: False)
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        f = watched / "solo.mkv"
+        f.write_bytes(b"z")
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = False
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            await run_refiner_pass(session, trigger="scheduled")
+
+    asyncio.run(_go())
+    assert "processing" in status_seq
+    assert "finalizing" in status_seq
+    assert status_seq.index("processing") < status_seq.index("finalizing")
+
+
+def test_finalize_failure_after_enter_finalizing_returns_failed(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    entered: list[str] = []
+
+    def notify() -> None:
+        entered.append("fin")
+
+    def boom(_s: Path, _d: Path) -> None:
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr("app.refiner_service._finalize_output_file", boom)
+    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_single_eng())
+    monkeypatch.setattr("app.refiner_service.is_remux_required", lambda *_a, **_k: False)
+    watched = tmp_path / "watch"
+    output = tmp_path / "out"
+    watched.mkdir()
+    output.mkdir()
+    f = watched / "bad.mkv"
+    f.write_bytes(b"body")
+    cfg = RefinerRulesConfig(
+        primary_audio_lang="eng",
+        secondary_audio_lang="",
+        tertiary_audio_lang="",
+        default_audio_slot="primary",
+        remove_commentary=False,
+        subtitle_mode="remove_all",
+        subtitle_langs=(),
+        preserve_forced_subs=False,
+        preserve_default_subs=False,
+        audio_preference_mode="preferred_langs_quality",
+    )
+    code, meta = _process_one_refiner_file_sync(
+        f, cfg, False, watched, output, tmp_path / "work", enter_finalizing=notify
+    )
+    assert code == "error"
+    assert meta.get("status") == "failed"
+    assert entered == ["fin"]
+    assert f.exists()
+
+
 def test_refiner_pass_persists_job_run_log_with_failure_hints(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
@@ -686,11 +861,11 @@ def test_refiner_pass_persists_job_run_log_with_failure_hints(
             )
             assert jl is not None
             assert jl.ok is False
-            assert jl.message.startswith("Refiner (")
+            assert "item needs attention" in jl.message.lower()
             low = jl.message.lower()
             assert "stream_manager" not in low
             assert "streammgr" not in low
-            assert "errors=1" in jl.message
+            assert "needs attention" in low
             assert "Per-file failures" in jl.message
             assert "m.mkv" in jl.message
 
@@ -743,5 +918,265 @@ def test_live_run_refuses_overwrite_existing_destination(monkeypatch: pytest.Mon
             )
             assert act is not None
             assert act.status == "failed"
+
+    asyncio.run(_go())
+
+
+def test_remove_safe_release_residue_allow_list_only(tmp_path) -> None:
+    from app.refiner_service import _remove_safe_release_residue
+
+    watch = tmp_path / "watch"
+    rel = watch / "release"
+    rel.mkdir(parents=True)
+    (rel / "junk.txt").write_text("x", encoding="utf-8")
+    (rel / "link.url").write_text("url", encoding="utf-8")
+    (rel / "archive.sfv").write_text("x", encoding="utf-8")
+    (rel / "sidecar.nfo").write_text("n", encoding="utf-8")
+    (rel / "part.r00").write_bytes(b"r")
+    (rel / "keep.xyz").write_text("u", encoding="utf-8")
+    (rel / "media.mkv").write_bytes(b"m")
+    (rel / "extra.mp4").write_bytes(b"p")
+    (rel / "subs.srt").write_text("sub", encoding="utf-8")
+    (rel / "subs.idx").write_bytes(b"idx")
+    (rel / "st.ass").write_text("[Events]", encoding="utf-8")
+    (rel / "st.ssa").write_text("[Events]", encoding="utf-8")
+    (rel / "st.sub").write_bytes(b"\x00")
+    removed = _remove_safe_release_residue(release_dir=rel, watched_root=watch)
+    assert "junk.txt" in removed
+    assert "link.url" in removed
+    assert "archive.sfv" in removed
+    assert "sidecar.nfo" in removed
+    assert "part.r00" in removed
+    assert (rel / "keep.xyz").is_file()
+    assert (rel / "media.mkv").is_file()
+    assert (rel / "extra.mp4").is_file()
+    assert (rel / "subs.srt").is_file()
+    assert (rel / "subs.idx").is_file()
+    assert (rel / "st.ass").is_file()
+    assert (rel / "st.ssa").is_file()
+    assert (rel / "st.sub").is_file()
+
+
+def test_prune_after_residue_when_only_subtitles_remain(tmp_path) -> None:
+    """Empty release dir after residue delete still prunes; preserved subtitles keep the folder."""
+    from app.refiner_service import _prune_empty_ancestors_under_watch, _remove_safe_release_residue
+
+    watch = tmp_path / "watch"
+    rel = watch / "Rel" / "nested"
+    rel.mkdir(parents=True)
+    (rel / "trash.txt").write_text("x", encoding="utf-8")
+    (rel / "en.srt").write_text("1\n", encoding="utf-8")
+    _remove_safe_release_residue(release_dir=rel, watched_root=watch)
+    assert not (rel / "trash.txt").exists()
+    assert (rel / "en.srt").exists()
+    tok = _prune_empty_ancestors_under_watch(rel, watch)
+    assert tok == ""
+    assert rel.is_dir()
+
+
+def test_prune_after_residue_when_folder_fully_junk(tmp_path) -> None:
+    from app.refiner_service import _prune_empty_ancestors_under_watch, _remove_safe_release_residue
+
+    watch = tmp_path / "watch"
+    rel = watch / "empty_after"
+    rel.mkdir(parents=True)
+    (rel / "readme.txt").write_text("x", encoding="utf-8")
+    _remove_safe_release_residue(release_dir=rel, watched_root=watch)
+    assert not any(rel.iterdir())
+    tok = _prune_empty_ancestors_under_watch(rel, watch)
+    assert tok == "removed_empty_ancestors"
+    assert not rel.exists()
+
+
+def test_prune_empty_ancestors_under_watch(tmp_path) -> None:
+    from app.refiner_service import _prune_empty_ancestors_under_watch
+
+    watch = tmp_path / "w"
+    deep = watch / "a" / "b" / "c"
+    deep.mkdir(parents=True)
+    tok = _prune_empty_ancestors_under_watch(deep, watch)
+    assert tok == "removed_empty_ancestors"
+    assert not (watch / "a" / "b" / "c").exists()
+    assert watch.is_dir()
+
+
+def test_refiner_inflight_source_path_is_suppressed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A source path already in queued/processing/finalizing is ignored for this pass."""
+    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        src = watched / "same.mkv"
+        src.write_bytes(b"x")
+
+        # Existing in-flight row from another active pass.
+        async with SessionLocal() as s:
+            s.add(
+                RefinerActivity(
+                    file_name=src.name,
+                    media_title="Processing file...",
+                    status="processing",
+                    activity_context=json.dumps({"v": 1, "source_path": str(src.resolve())}),
+                )
+            )
+            await s.commit()
+        # This test validates scan suppression behavior; skip interruption reconciliation.
+        monkeypatch.setattr(
+            "app.refiner_service._reconcile_interrupted_refiner_processing_rows_before_pass",
+            lambda: asyncio.sleep(0),
+        )
+
+        def _should_not_run(*_args, **_kwargs):
+            raise AssertionError("in-flight source should not be processed again")
+
+        monkeypatch.setattr("app.refiner_service._process_one_refiner_file_sync", _should_not_run)
+
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = False
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            result = await run_refiner_pass(session, trigger="scheduled")
+            assert result.get("ran") is False
+
+    asyncio.run(_go())
+
+
+def test_refiner_duplicate_failure_suppressed_same_path_same_reason(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    def _boom(*_a, **_k):
+        raise RuntimeError("same deterministic failure")
+
+    monkeypatch.setattr("app.refiner_service.remux_to_temp_file", _boom)
+    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        src = watched / "dup.mkv"
+        src.write_bytes(b"payload")
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = False
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            first = await run_refiner_pass(session, trigger="scheduled")
+            second = await run_refiner_pass(session, trigger="scheduled")
+            assert first.get("errors") == 1
+            # Duplicate unchanged failure is suppressed from new activity rows.
+            assert int(second.get("errors") or 0) == 0
+            rows = (
+                await session.execute(
+                    select(RefinerActivity).where(RefinerActivity.file_name == "dup.mkv")
+                )
+            ).scalars().all()
+            failed_rows = [r for r in rows if (r.status or "").strip().lower() == "failed"]
+            assert len(failed_rows) == 1
+
+    asyncio.run(_go())
+
+
+def test_refiner_failure_not_suppressed_when_reason_changes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    fail_mode = {"msg": "first failure"}
+
+    def _boom(*_a, **_k):
+        raise RuntimeError(fail_mode["msg"])
+
+    monkeypatch.setattr("app.refiner_service.remux_to_temp_file", _boom)
+    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        src = watched / "reasons.mkv"
+        src.write_bytes(b"payload")
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = False
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            await run_refiner_pass(session, trigger="scheduled")
+            fail_mode["msg"] = "different failure code path"
+            await run_refiner_pass(session, trigger="scheduled")
+            rows = (
+                await session.execute(
+                    select(RefinerActivity).where(RefinerActivity.file_name == "reasons.mkv")
+                )
+            ).scalars().all()
+            failed_rows = [r for r in rows if (r.status or "").strip().lower() == "failed"]
+            assert len(failed_rows) == 2
+
+    asyncio.run(_go())
+
+
+def test_refiner_parent_summary_uses_current_run_only(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        src = watched / "ok.mkv"
+        src.write_bytes(b"payload")
+
+        # Prior-run failure history must not bleed into current summary.
+        async with SessionLocal() as s:
+            s.add(
+                RefinerActivity(
+                    file_name="old.mkv",
+                    media_title="Old",
+                    status="failed",
+                    activity_context=json.dumps(
+                        {"v": 1, "source_path": str((watched / "old.mkv").resolve()), "reason_code": "failed_old"}
+                    ),
+                )
+            )
+            await s.commit()
+
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = True
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            result = await run_refiner_pass(session, trigger="scheduled")
+            assert result.get("ok") is True
+            parent = (
+                (
+                    await session.execute(
+                        select(ActivityLog)
+                        .where(ActivityLog.app == "refiner", ActivityLog.kind == "refiner")
+                        .order_by(ActivityLog.id.desc())
+                        .limit(1)
+                    )
+                )
+                .scalars()
+                .first()
+            )
+            assert parent is not None
+            assert "processed" in (parent.detail or "").lower()
+            assert "errors=" not in (parent.detail or "")
 
     asyncio.run(_go())

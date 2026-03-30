@@ -811,14 +811,15 @@ function applyRefinerOutcomePolish(prevMap, root) {
     if (!key) return;
     const prev = prevMap.get(key);
     const outcome = (el.getAttribute("data-refiner-outcome") || "").toLowerCase();
-    const wasProc = prev && (prev.live || prev.outcome === "processing");
+    const wasProc =
+      prev && (prev.live || prev.outcome === "processing" || prev.outcome === "finalizing");
     if (!wasProc) return;
     if (outcome === "success") {
       el.classList.add("activity-refiner-just-finished");
       window.setTimeout(() => {
         if (el.isConnected) el.classList.remove("activity-refiner-just-finished");
       }, 1200);
-    } else if (outcome === "skipped") {
+    } else if (outcome === "skipped" || outcome === "skipped_terminal_failed") {
       el.classList.add("activity-refiner-just-skipped");
       window.setTimeout(() => {
         if (el.isConnected) el.classList.remove("activity-refiner-just-skipped");

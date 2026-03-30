@@ -4,6 +4,7 @@ from app.arr_failed_import_classify import (
     FailedImportDisposition,
     radarr_import_failed_history_disposition,
     sonarr_import_failed_history_disposition,
+    terminal_cleanup_label_is_explicit_non_upgrade,
 )
 
 
@@ -86,3 +87,11 @@ def test_radarr_disposition_movie_file_corrupt_phrase() -> None:
 def test_sonarr_disposition_unknown() -> None:
     rec = {"eventType": "importFailed", "downloadId": "u", "reason": "Scheduled import retry pending"}
     assert sonarr_import_failed_history_disposition(rec) == FailedImportDisposition.UNKNOWN
+
+
+def test_terminal_cleanup_label_is_explicit_non_upgrade() -> None:
+    assert terminal_cleanup_label_is_explicit_non_upgrade("not an upgrade vs existing file") is True
+    assert terminal_cleanup_label_is_explicit_non_upgrade("not a preferred-word upgrade") is True
+    assert terminal_cleanup_label_is_explicit_non_upgrade("not a custom-format upgrade") is True
+    assert terminal_cleanup_label_is_explicit_non_upgrade("corrupt or unreadable file") is False
+    assert terminal_cleanup_label_is_explicit_non_upgrade(None) is False

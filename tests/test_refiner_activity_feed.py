@@ -112,6 +112,62 @@ def test_refiner_activity_display_row_processing_state() -> None:
     assert row["refiner_summary_bullets"]
 
 
+def test_refiner_activity_display_row_skipped_terminal_failed() -> None:
+    r = RefinerActivity(
+        file_name="blocked.mkv",
+        status="skipped_terminal_failed",
+        size_before_bytes=100,
+        size_after_bytes=100,
+        audio_tracks_before=2,
+        audio_tracks_after=2,
+        subtitle_tracks_before=0,
+        subtitle_tracks_after=0,
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+        activity_context=_ctx(
+            import_promotion_block={
+                "arr_app": "radarr",
+                "import_state": "not an upgrade vs existing file",
+                "non_upgrade": True,
+                "subtitle": "Not promoted — item classified as a failed import",
+            },
+        ),
+    )
+    row = refiner_activity_display_row(r, "UTC", datetime(2026, 1, 1, 12, 0, 1))
+    assert row["refiner_outcome_label"] == "Skipped (failed import)"
+    assert row["refiner_status"] == "skipped_terminal_failed"
+    assert row["activity_outcome"] == "skipped_import"
+    assert row["refiner_show_comparison"] is False
+    bullets = " ".join(row["refiner_summary_bullets"])
+    assert "Not promoted" in bullets
+    assert "output folder" in bullets.lower() or "Refiner" in bullets
+
+
+def test_refiner_activity_display_row_finalizing_state() -> None:
+    """Finalizing is distinct from processing (move/delete/cleanup, not remux/plan)."""
+    fn = "almost-done.mkv"
+    prov = provisional_media_title_before_probe(fn)
+    r = RefinerActivity(
+        file_name=fn,
+        media_title=prov,
+        status="finalizing",
+        size_before_bytes=100,
+        size_after_bytes=0,
+        audio_tracks_before=1,
+        audio_tracks_after=1,
+        subtitle_tracks_before=0,
+        subtitle_tracks_after=0,
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+        activity_context="",
+    )
+    row = refiner_activity_display_row(r, "UTC", datetime(2026, 1, 1, 12, 0, 7))
+    assert row["refiner_outcome_label"] == "Finalizing"
+    assert row["refiner_status"] == "finalizing"
+    assert row["activity_outcome"] == "finalizing"
+    assert row["refiner_show_comparison"] is False
+    bullets = " ".join(row["refiner_summary_bullets"]).lower()
+    assert "remux" in bullets
+
+
 def test_refiner_activity_display_row_queued_state() -> None:
     """Queued rows show FIFO backlog; no before/after affordance until the file is active."""
     fn = "waiting.mkv"
@@ -156,6 +212,25 @@ def test_refiner_processing_empty_orm_still_resolves_display_title() -> None:
     assert row["refiner_media_title"] != "—"
 
 
+def test_refiner_identifier_like_title_uses_placeholder_until_resolved() -> None:
+    r = RefinerActivity(
+        file_name="A1B2C3D4E5F678901234567890ABCDEF.mkv",
+        media_title="",
+        status="processing",
+        size_before_bytes=0,
+        size_after_bytes=0,
+        audio_tracks_before=0,
+        audio_tracks_after=0,
+        subtitle_tracks_before=0,
+        subtitle_tracks_after=0,
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+        activity_context="",
+    )
+    row = refiner_activity_display_row(r, "UTC", datetime(2026, 1, 1, 12, 0, 1))
+    assert row["refiner_media_title"] == "Processing file..."
+    assert "A1B2C3D4E5F678901234567890ABCDEF" not in row["refiner_media_title"]
+
+
 def test_refiner_completed_filename_derived_beats_ffprobe_context() -> None:
     r = RefinerActivity(
         file_name="Ugly.Pack.1990.mkv",
@@ -178,6 +253,30 @@ def test_refiner_completed_filename_derived_beats_ffprobe_context() -> None:
     row = refiner_activity_display_row(r, "UTC", datetime(2026, 1, 1, 12, 0, 2))
     assert row["refiner_media_title"] == "Ugly Pack 1990"
     assert provisional_media_title_before_probe(r.file_name) == "Ugly Pack 1990"
+
+
+def test_refiner_failed_rows_hide_compare_even_with_track_context() -> None:
+    r = RefinerActivity(
+        file_name="broken.mkv",
+        status="failed",
+        size_before_bytes=100,
+        size_after_bytes=100,
+        audio_tracks_before=2,
+        audio_tracks_after=2,
+        subtitle_tracks_before=1,
+        subtitle_tracks_after=1,
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+        activity_context=_ctx(
+            audio_before="English 2.0 AAC",
+            audio_after="English 2.0 AAC",
+            subs_before="English",
+            subs_after="English",
+            failure_reason="Output path collision.",
+        ),
+    )
+    row = refiner_activity_display_row(r, "UTC", datetime(2026, 1, 1, 12, 0, 2))
+    assert row["refiner_show_comparison"] is False
+    assert row["refiner_compare_rows"] == []
 
 
 def test_merge_activity_feed_newest_first() -> None:
@@ -310,6 +409,5 @@ def test_refiner_failed_includes_reason_block() -> None:
     row = refiner_activity_display_row(r, "UTC", datetime(2026, 1, 1, 12, 0, 1))
     assert row["refiner_outcome_label"] == "Failed"
     assert any("Output file already exists" in b for b in row["refiner_summary_bullets"])
-    assert row["refiner_show_comparison"] is True
-    fs = next(x for x in row["refiner_compare_rows"] if x["label"] == "File size")
-    assert fs["after"] == "—"
+    assert row["refiner_show_comparison"] is False
+    assert row["refiner_compare_rows"] == []

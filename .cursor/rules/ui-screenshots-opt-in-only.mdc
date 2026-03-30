@@ -1,0 +1,17 @@
+---
+description: UI screenshot capture is opt-in only — run only when the user explicitly asks
+alwaysApply: true
+---
+
+# UI screenshots — opt-in only
+
+Do **not** run Playwright screenshot generation or related e2e capture steps as part of routine tasks, “validation,” or wrap-up unless the user **explicitly** asks for screenshots (e.g. “capture screenshots,” “regen docs screenshots,” “update the screenshot zip”).
+
+**Do not run by default:**
+
+- `CAPTURE_UI_SCREENSHOTS_ZIP=1` + `pytest tests/e2e/test_ui_pages_screenshots_zip.py`
+- `REGEN_README_SCREENSHOTS=1` + `pytest tests/e2e/test_readme_screenshots.py`
+
+**When the user does ask:** run the appropriate command and point to output paths (`build/Fetcher-ui-screenshots.zip`, `docs/screenshots/`, etc.).
+
+This does **not** change CI or normal `pytest` behavior; it only guides when **you** choose to execute those optional capture flows.

@@ -9,6 +9,7 @@ from app.display_helpers import _fmt_size_bytes_si
 from app.models import RefinerActivity
 from app.refiner_activity_context import parse_activity_context
 from app.refiner_media_identity import (
+    looks_like_internal_identifier,
     resolve_activity_card_title,
     should_show_raw_source_filename,
 )
@@ -131,9 +132,15 @@ def _success_summary_bullets(
             out.append("Output written to the destination folder; source removed from the watch folder.")
     elif not ctx:
         out.append("Output written to the destination folder; source removed from the watch folder.")
+    rf = ctx.get("residue_files_removed")
+    if isinstance(rf, list) and rf:
+        out.append(
+            f"Removed {len(rf)} release residue file(s) from the source folder "
+            "(par/nfo/sfv/archives/.txt/.url, etc.); subtitle sidecars and media payloads were preserved)."
+        )
     fc = (ctx.get("folder_cleanup") or "").strip()
-    if fc == "removed_empty_folder":
-        out.append("Removed empty source subfolder under the watch path.")
+    if fc in ("removed_empty_folder", "removed_empty_ancestors"):
+        out.append("Pruned empty folder(s) under the watch path after processing.")
     return out
 
 
@@ -166,6 +173,11 @@ def build_refiner_activity_row_dict(r: RefinerActivity, tz: str, now: datetime) 
         ffprobe_refiner_title=(ctx.get("refiner_title") or None),
         ffprobe_year=(ctx.get("refiner_year") or None),
     )
+    if not display_media_title or looks_like_internal_identifier(display_media_title):
+        if st in ("processing", "finalizing"):
+            display_media_title = "Processing file..."
+        else:
+            display_media_title = "Detecting file details..."
     source_file_line: str | None = None
     raw_fn = fname if fname != "—" else ""
     if raw_fn and should_show_raw_source_filename(
@@ -195,12 +207,47 @@ def build_refiner_activity_row_dict(r: RefinerActivity, tz: str, now: datetime) 
         summary_bullets = ["This file will start after earlier items in this pass finish."]
     elif st == "processing":
         outcome_label = "Processing"
-        outcome_sub = "Inspecting, remuxing or copying, then finalizing to the output folder…"
+        outcome_sub = "Analyzing streams, planning the output, and remuxing or stream-copying to a work file if needed."
         outcome_ui = "processing"
         tone = "progress"
         summary_bullets = [
-            "This file is active — remux, move, delete, and folder cleanup are part of the same job."
+            "Remux and planning run here. Output placement and watch-folder cleanup come next (finalizing)."
         ]
+    elif st == "finalizing":
+        outcome_label = "Finalizing"
+        outcome_sub = "Writing the output file, removing the source from the watch folder, and cleaning up empty folders if applicable."
+        outcome_ui = "finalizing"
+        tone = "finalizing"
+        summary_bullets = [
+            "No further remux work — this step is move/copy, delete source, and optional folder prune."
+        ]
+    elif st == "skipped_terminal_failed":
+        outcome_label = "Skipped (failed import)"
+        ipb = ctx.get("import_promotion_block") if isinstance(ctx.get("import_promotion_block"), dict) else {}
+        outcome_sub = str(ipb.get("subtitle") or "").strip() or (
+            "Not promoted — item classified as a failed import"
+        )
+        outcome_ui = "skipped_import"
+        tone = "skip_import"
+        apply_mode = "none"
+        show_comparison = False
+        summary_bullets = [
+            outcome_sub,
+            "Refiner did not write to the output folder: the matching *arr queue row shows a terminal failed-import state "
+            "(fresh `/queue` fetch right before promotion).",
+            "Upgrade-style grabs that are still waiting for eligible files are not blocked — those look like "
+            "“waiting to import / no eligible” and are excluded from this gate.",
+        ]
+        av = str(ipb.get("arr_app") or "").strip().lower()
+        if av in ("radarr", "sonarr"):
+            summary_bullets.append(
+                f"Matched {av.title()} by `downloadId` + `outputPath` containing this file — not by filename alone."
+            )
+        sig = str(ipb.get("import_state") or "").strip()
+        if sig:
+            summary_bullets.append(f"*arr signal: {sig}.")
+        if ipb.get("non_upgrade") is True:
+            summary_bullets.append("Classified as an explicit non-upgrade rejection vs an existing library file.")
     elif st == "success":
         outcome_label = "Completed"
         apply_mode = "applied"
@@ -275,25 +322,7 @@ def build_refiner_activity_row_dict(r: RefinerActivity, tz: str, now: datetime) 
         outcome_sub = None
         outcome_ui = "failed"
         tone = "fail"
-        show_comparison = bool(
-            _norm_line(ctx.get("audio_before"))
-            or _norm_line(ctx.get("audio_after"))
-            or _norm_line(ctx.get("subs_before"))
-            or _norm_line(ctx.get("subs_after"))
-            or sb > 0
-        )
-        if show_comparison:
-            compare_rows = _compare_rows_audio_subs_size(
-                ctx=ctx,
-                sb=sb,
-                sa=sa,
-                failed=True,
-                include_audio_subs=True,
-                ab=ab,
-                aa=aa,
-                sbb=sbb,
-                sba=sba,
-            )
+        show_comparison = False
         reason = _failure_reason_display(ctx, st)
         if reason:
             first_ln = reason.splitlines()[0].strip()
