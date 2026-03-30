@@ -184,6 +184,8 @@ class RefinerActivity(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
     file_name: Mapped[str] = mapped_column(String(512), default="")
+    # Canonical display label from container tags when known (ffprobe); may be empty for legacy rows.
+    media_title: Mapped[str] = mapped_column(String(512), default="")
     # "processing" | "success" | "skipped" | "failed"
     status: Mapped[str] = mapped_column(String(16), default="failed")
     size_before_bytes: Mapped[int] = mapped_column(Integer, default=0)

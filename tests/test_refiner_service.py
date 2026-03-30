@@ -275,19 +275,21 @@ def test_rules_config_parses_dropdown_values() -> None:
     assert cfg.audio_preference_mode == "preferred_langs_quality"
 
 
-def test_refiner_schema_contract_v34_activity_context_and_trimmer_activity() -> None:
-    assert CURRENT_SCHEMA_VERSION == 34
+def test_refiner_schema_contract_v35_activity_context_media_title_and_trimmer_activity() -> None:
+    assert CURRENT_SCHEMA_VERSION == 35
     from app.models import AppSettings, RefinerActivity
 
     assert "refiner_processing_pass_generation" not in AppSettings.__annotations__
     assert "processing_pass_generation" not in RefinerActivity.__annotations__
     assert "failure_hint" not in RefinerActivity.__annotations__
     assert "activity_context" in RefinerActivity.__annotations__
+    assert "media_title" in RefinerActivity.__annotations__
     migrations_text = (Path(__file__).resolve().parents[1] / "app" / "migrations.py").read_text(
         encoding="utf-8"
     )
     assert "_migrate_033_refiner_activity_context" in migrations_text
     assert "_migrate_035_activity_log_trimmer_app_identity" in migrations_text
+    assert "_migrate_036_refiner_activity_media_title" in migrations_text
     assert "_migrate_034_forward_app_settings_schema_version" in migrations_text
     assert "_ensure_refiner_app_settings_columns" in migrations_text
     assert "refiner_processing_pass_generation" not in migrations_text

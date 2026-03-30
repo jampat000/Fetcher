@@ -3,9 +3,21 @@
 {% set pl = e.detail_preview if e.detail_preview is defined else preview_lines %}
 {% set _outcome = e.activity_outcome if e.activity_outcome is defined else 'success' %}
         {% if e.activity_type == 'refiner' %}
-        <div class="activity-row activity-row--refiner activity-row--outcome-{{ _outcome }}{% if e.refiner_status == 'processing' %} activity-row--refiner-processing{% endif %}" data-activity-app="refiner" data-activity-kind="{{ e.kind }}" data-activity-row-key="refiner-{{ e.id }}" data-refiner-outcome="{{ e.refiner_status }}" data-activity-outcome="{{ _outcome }}" {% if e.refiner_status == 'processing' %}data-refiner-live="1"{% endif %}>
+        {% set _mt = e.refiner_media_title if e.refiner_media_title is defined else (e.refiner_file_title if e.refiner_file_title is defined else e.primary_label) %}
+        {% set _ol = e.refiner_outcome_label if e.refiner_outcome_label is defined else e.refiner_primary_line %}
+        {% set _os = e.refiner_outcome_sub if e.refiner_outcome_sub is defined else None %}
+        {% set _am = e.refiner_apply_mode if e.refiner_apply_mode is defined else 'none' %}
+        {% set _show_cmp = e.refiner_show_comparison if e.refiner_show_comparison is defined else false %}
+        {% set _rows = e.refiner_compare_rows if e.refiner_compare_rows is defined else [] %}
+        {% set _bullets = e.refiner_summary_bullets if e.refiner_summary_bullets is defined else [] %}
+        {% set _notes = e.refiner_technical_notes if e.refiner_technical_notes is defined else [] %}
+        <div class="activity-row activity-row--refiner activity-row--outcome-{{ _outcome }}{% if _am == 'preview' %} activity-row--refiner-preview{% endif %}{% if e.refiner_status == 'processing' %} activity-row--refiner-processing{% endif %}" data-activity-app="refiner" data-activity-kind="{{ e.kind }}" data-activity-row-key="refiner-{{ e.id }}" data-refiner-outcome="{{ e.refiner_status }}" data-activity-outcome="{{ _outcome }}" data-refiner-apply-mode="{{ _am }}" {% if e.refiner_is_dry_run is defined and e.refiner_is_dry_run %}data-refiner-dry-run="1"{% endif %} {% if e.refiner_status == 'processing' %}data-refiner-live="1"{% endif %}>
           <div class="activity-icon icon-refiner" aria-hidden="true"><i data-lucide="sliders-horizontal"></i></div>
           <div class="activity-body activity-body--refiner-spec">
+            <div class="activity-refiner-media-title">{{ _mt }}</div>
+            {% if e.refiner_source_file_line is defined and e.refiner_source_file_line %}
+            <div class="activity-refiner-source-file">File: {{ e.refiner_source_file_line }}</div>
+            {% endif %}
             <div class="activity-refiner-top">
               <div class="activity-refiner-status-icon" aria-hidden="true">
                 {% if e.refiner_status == 'processing' %}
@@ -19,14 +31,52 @@
                 {% endif %}
               </div>
               <div class="activity-refiner-headtext">
-                <div class="activity-refiner-primary-line">{{ e.refiner_primary_line }}</div>
-                {% if e.refiner_summary_line is defined and e.refiner_summary_line %}
-                <div class="activity-refiner-summary-line">{{ e.refiner_summary_line }}</div>
+                <div class="activity-refiner-outcome-row">
+                  <span class="activity-refiner-outcome-label">{{ _ol }}</span>
+                  {% if _am == 'applied' %}
+                  <span class="activity-refiner-mode-pill activity-refiner-mode-pill--applied">Applied</span>
+                  {% elif _am == 'preview' %}
+                  <span class="activity-refiner-mode-pill activity-refiner-mode-pill--preview">Preview only</span>
+                  {% endif %}
+                </div>
+                {% if _os %}
+                <div class="activity-refiner-outcome-sub">{{ _os }}</div>
                 {% endif %}
               </div>
             </div>
-            {% if e.refiner_detail_blocks is defined and e.refiner_detail_blocks %}
-            <div class="activity-refiner-detail-blocks">
+            {% if _show_cmp and _rows | length > 0 %}
+            <div class="activity-refiner-compare" role="group" aria-label="Before and after">
+              <div class="activity-refiner-compare-head">
+                <span class="activity-refiner-compare-h activity-refiner-compare-h--before">Before</span>
+                <span class="activity-refiner-compare-h activity-refiner-compare-h--after">After</span>
+              </div>
+              {% for row in _rows %}
+              <div class="activity-refiner-compare-row">
+                <div class="activity-refiner-compare-label">{{ row.label }}</div>
+                <div class="activity-refiner-compare-cells">
+                  <div class="activity-refiner-compare-cell activity-refiner-compare-cell--before">{{ row.before }}</div>
+                  <div class="activity-refiner-compare-cell activity-refiner-compare-cell--after">{{ row.after }}</div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+            {% if _bullets | length > 0 %}
+            <ul class="activity-refiner-summary-list">
+              {% for b in _bullets %}
+              <li class="activity-refiner-summary-item">{{ b }}</li>
+              {% endfor %}
+            </ul>
+            {% endif %}
+            {% if _notes | length > 0 %}
+            <div class="activity-refiner-technical-notes">
+              {% for note in _notes %}
+              <div class="activity-refiner-technical-note">{{ note }}</div>
+              {% endfor %}
+            </div>
+            {% endif %}
+            {% if e.refiner_detail_blocks is defined and e.refiner_detail_blocks | length > 0 %}
+            <div class="activity-refiner-detail-blocks activity-refiner-detail-blocks--legacy">
               {% for block in e.refiner_detail_blocks %}
               <div class="activity-refiner-detail-block">{{ block }}</div>
               {% endfor %}
