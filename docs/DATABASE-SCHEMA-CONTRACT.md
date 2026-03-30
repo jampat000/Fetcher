@@ -4,7 +4,7 @@
 
 Fetcher upgrades **supported** older `fetcher.db` files **in place**:
 
-1. **Canonical file** — exactly one authoritative path from `FETCHER_DEV_DB_PATH`, `FETCHER_DATA_DIR`, or the default data directory (see `app/database_resolution.py`). Ambiguous multi-database layouts **refuse to start** with an explicit error (no silent switching).
+1. **Canonical file** — exactly one authoritative path from `FETCHER_DEV_DB_PATH`, `FETCHER_DATA_DIR`, or the default data directory (see `app/database_resolution.py`). **Installed Windows service:** `FetcherService.xml` sets **`FETCHER_DATA_DIR=C:\ProgramData\Fetcher`** so LocalSystem never uses **`…\systemprofile\AppData\Local\Fetcher`** as an implicit second root. Packaged **frozen** builds **ignore** a `FETCHER_DATA_DIR` that points at that LocalSystem profile path and fall back to `%ProgramData%\Fetcher`. Ambiguous multi-database layouts **refuse to start** with an explicit error (no silent switching).
 2. **Engine binding** — the SQLAlchemy engine is created when `app.db` is first imported and must use that same canonical path. If the environment selects a different file after import, startup fails with a clear message: set env vars **before** starting the process and restart.
 3. **Upgrade steps** — `Base.metadata.create_all` (creates missing tables only), then `migrate()` (ordered, idempotent `ALTER` / data backfills), then **pool dispose** and another **idempotent** `repair_refiner_app_settings_columns` pass so pooled connections cannot see a stale `app_settings` definition.
 4. **Strict validation** — Refiner checks **always** run repair again (idempotent), then assert every column in `REFINER_APP_SETTINGS_SQLITE_SPECS`. Then `app_settings.schema_version` must equal `CURRENT_SCHEMA_VERSION`.

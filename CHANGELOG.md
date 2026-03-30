@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.4] - 2026-03-30
+
+### Fixed
+
+- **Windows service / SQLite path:** Shipped **`FetcherService.xml`** now sets **`FETCHER_DATA_DIR=C:\ProgramData\Fetcher`** explicitly so the LocalSystem service account does not resolve data under **`…\systemprofile\AppData\Local\Fetcher`** (a second substantial `fetcher.db` that tripped duplicate-DB startup). **Packaged (`frozen`)** builds **ignore** `FETCHER_DATA_DIR` when it points at that LocalSystem profile tree and use **`%ProgramData%\Fetcher`** instead (logged); duplicate-DB detection is unchanged.
+
+### Added
+
+- **Tests:** `test_database_resolution.py` — packaged frozen ignores `FETCHER_DATA_DIR` under LocalSystem profile; explicit `ProgramData` path honored; unfrozen builds still honor an unusual `FETCHER_DATA_DIR`; shipped **`service/FetcherService.xml`** asserts literal **`FETCHER_DATA_DIR=C:\ProgramData\Fetcher`** (no `%LOCALAPPDATA%`).
+
+### Changed
+
+- **Documentation:** `service/README.md`, **`docs/DATABASE-SCHEMA-CONTRACT.md`** — service data root and systemprofile pitfall.
+
 ## [3.4.3] - 2026-03-30
 
 ### Fixed

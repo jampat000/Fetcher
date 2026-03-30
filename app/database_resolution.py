@@ -37,6 +37,31 @@ def _windows_program_data_fetcher_dir() -> Path:
     return Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "Fetcher"
 
 
+def _windows_local_system_profile_fetcher_dir() -> Path:
+    """``…\\systemprofile\\AppData\\Local\\Fetcher`` — where LocalSystem's LOCALAPPDATA points.
+
+    Packaged Fetcher must **not** use this as the data root (duplicate DB vs ``%ProgramData%\\Fetcher``).
+    """
+    windir = Path(os.environ.get("WINDIR", r"C:\Windows"))
+    return windir / "System32" / "config" / "systemprofile" / "AppData" / "Local" / "Fetcher"
+
+
+def _fetcher_data_dir_is_local_system_profile_fetcher(path: Path) -> bool:
+    """True if ``path`` is (under) the LocalSystem profile ``…\\Local\\Fetcher`` directory."""
+    try:
+        resolved = path.resolve()
+    except OSError:
+        resolved = path
+    trap = _windows_local_system_profile_fetcher_dir()
+    try:
+        trap_res = trap.resolve()
+    except OSError:
+        trap_res = trap
+    rp = os.path.normcase(str(resolved))
+    rt = os.path.normcase(str(trap_res))
+    return rp == rt or rp.startswith(rt + os.sep)
+
+
 def default_data_dir() -> Path:
     """Writable root for SQLite when no ``FETCHER_DATA_DIR`` / ``FETCHER_DEV_DB_PATH`` is set.
 
@@ -54,12 +79,14 @@ def default_data_dir() -> Path:
 def compute_canonical_db_path() -> tuple[Path, str]:
     """Resolve the SQLite file path from environment (no I/O beyond mkdir for writable roots).
 
-    Precedence matches historical ``db_path`` behavior:
+    Same order as :func:`app.db.db_path` (single source of truth):
 
-    1. ``FETCHER_DEV_DB_PATH`` — full path to the database file (dev/tests/Docker).
-    2. ``FETCHER_DATA_DIR`` — directory containing ``fetcher.db``.
-    3. ``default_data_dir()`` / ``fetcher.db`` — packaged Windows uses ``%ProgramData%\\Fetcher``;
-       dev/other uses ``%LOCALAPPDATA%\\Fetcher``-style layout.
+    1. ``FETCHER_DEV_DB_PATH`` — full path to the DB file (dev/tests/Docker; **not** set by shipped WinSW).
+    2. ``FETCHER_DATA_DIR`` — directory containing ``fetcher.db``. Shipped service pins
+       ``C:\\ProgramData\\Fetcher``. **Windows + frozen:** if this resolves under LocalSystem
+       ``…\\systemprofile\\AppData\\Local\\Fetcher``, it is **ignored** (one ``warning``) and step 3 runs.
+    3. ``default_data_dir()`` / ``fetcher.db`` — frozen Windows: ``%ProgramData%\\Fetcher`` only;
+       never ``Path.home()``/systemprofile for frozen. Unfrozen: ``~/AppData/Local/Fetcher``-style.
     """
     override = (os.environ.get("FETCHER_DEV_DB_PATH") or "").strip()
     if override:
@@ -72,6 +99,7 @@ def compute_canonical_db_path() -> tuple[Path, str]:
         return p, "FETCHER_DEV_DB_PATH (explicit database file)"
 
     data_dir = (os.environ.get("FETCHER_DATA_DIR") or "").strip()
+    ignored_local_system_profile_data_dir = False
     if data_dir:
         root = Path(data_dir).expanduser()
         try:
@@ -79,9 +107,30 @@ def compute_canonical_db_path() -> tuple[Path, str]:
         except OSError:
             root = Path(data_dir).expanduser()
         root.mkdir(parents=True, exist_ok=True)
-        return root / "fetcher.db", "FETCHER_DATA_DIR (directory contains fetcher.db)"
+        # WinSW / legacy configs sometimes set FETCHER_DATA_DIR=%LOCALAPPDATA%\Fetcher, which for the
+        # service account expands to systemprofile — a second DB next to the real ProgramData file.
+        if (
+            sys.platform == "win32"
+            and getattr(sys, "frozen", False)
+            and _fetcher_data_dir_is_local_system_profile_fetcher(root)
+        ):
+            logger.warning(
+                "FETCHER_DATA_DIR points at LocalSystem profile path (%s); ignoring for packaged "
+                "Windows — using %%ProgramData%%\\Fetcher. Shipped WinSW sets FETCHER_DATA_DIR to "
+                "C:\\ProgramData\\Fetcher explicitly.",
+                root,
+            )
+            ignored_local_system_profile_data_dir = True
+        else:
+            return root / "fetcher.db", "FETCHER_DATA_DIR (directory contains fetcher.db)"
 
     base = default_data_dir()
+    if ignored_local_system_profile_data_dir:
+        return (
+            base / "fetcher.db",
+            "default_data_dir() / fetcher.db (ignored FETCHER_DATA_DIR: LocalSystem profile path; "
+            "canonical packaged data root is %ProgramData%\\Fetcher)",
+        )
     return base / "fetcher.db", "default_data_dir() / fetcher.db (packaged Windows: ProgramData\\Fetcher)"
 
 

@@ -13,9 +13,9 @@
        the process environment and breaks the service when the machine variable is unset.
        Packaged Fetcher loads or creates a stable secret under %ProgramData%\Fetcher\machine-jwt-secret.
        Optional: set machine-level FETCHER_JWT_SECRET to override that file (inherited by the service). -->
-  <!-- Optional: override data folder (default is %ProgramData%\Fetcher). Set machine FETCHER_DATA_DIR and uncomment:
-  <env name="FETCHER_DATA_DIR" value="%FETCHER_DATA_DIR%"/>
-  -->
+  <!-- Force data root: LocalSystem's LOCALAPPDATA is …\systemprofile\… — without this, %LOCALAPPDATA%\Fetcher
+       would create a second fetcher.db and trip duplicate-DB startup policy vs ProgramData. -->
+  <env name="FETCHER_DATA_DIR" value="C:\ProgramData\Fetcher"/>
 
   <log mode="roll-by-size">
     <sizeThreshold>10240</sizeThreshold>

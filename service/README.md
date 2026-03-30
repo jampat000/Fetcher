@@ -45,23 +45,15 @@ Add `<env name="FETCHER_DATA_ENCRYPTION_KEY" value="..."/>` next to the JWT entr
 
 ## SQLite data directory (settings, activity, etc.)
 
-By default, **packaged** Fetcher on Windows uses **`%ProgramData%\Fetcher\fetcher.db`**. Set machine env **`FETCHER_DATA_DIR`** to a folder if you want the database elsewhere (that folder must contain **`fetcher.db`**). There is **no** automatic copy from other profile locations—copy **`fetcher.db`** (and **`-wal`** / **`-shm`** if present) manually while Fetcher is **stopped** when moving data.
+**Shipped `FetcherService.xml`** sets **`FETCHER_DATA_DIR=C:\ProgramData\Fetcher`** explicitly. The Windows **LocalSystem** account’s **`LOCALAPPDATA`** resolves under **`…\system32\config\systemprofile\…`**; without a fixed data dir, a **second** `fetcher.db` could appear there and **duplicate-DB startup policy** would refuse to start. Do not replace this with **`%LOCALAPPDATA%\Fetcher`** in XML.
 
-To use a different folder explicitly, set a **machine** environment variable and restart the service:
+To use a **different** folder, change the `<env>` value (or set a **machine** env and mirror it in WinSW), restart the service, and keep a **single** substantial `fetcher.db` (see **`docs/UPGRADE-AND-DATABASE.md`**). There is **no** automatic copy between locations.
 
 ```powershell
-[Environment]::SetEnvironmentVariable("FETCHER_DATA_DIR","C:\\ProgramData\\Fetcher","Machine")
+[Environment]::SetEnvironmentVariable("FETCHER_DATA_DIR","D:\\FetcherData","Machine")
 ```
 
-Then copy your existing **`fetcher.db`** into that folder (with Fetcher **stopped**), or point **`FETCHER_DATA_DIR`** at the folder that already contains **`fetcher.db`**.
-
-Add to **`winsw.xml`** next to the other `<env>` entries:
-
-```xml
-<env name="FETCHER_DATA_DIR" value="C:\ProgramData\Fetcher"/>
-```
-
-Startup logs include **`SQLite database path:`** with the resolved file.
+Startup logs include the resolved database path and reason string.
 
 ## Listen address (LAN vs localhost)
 

@@ -142,6 +142,93 @@ def test_windows_unfrozen_skips_legacy_checks_even_if_localappdata_has_db(
     assert not res.skipped_policy
 
 
+def test_frozen_windows_ignores_fetcher_data_dir_under_local_system_profile(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    r"""Service-style LOCALAPPDATA under systemprofile\...\Fetcher must not become canonical (frozen only)."""
+    monkeypatch.setattr(sys, "platform", "win32", raising=False)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.delenv("FETCHER_DEV_DB_PATH", raising=False)
+
+    windir = tmp_path / "Windows"
+    bad_root = (
+        windir
+        / "System32"
+        / "config"
+        / "systemprofile"
+        / "AppData"
+        / "Local"
+        / "Fetcher"
+    )
+    bad_root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("WINDIR", str(windir))
+    monkeypatch.setenv("FETCHER_DATA_DIR", str(bad_root))
+
+    pd = tmp_path / "ProgramDataRoot"
+    monkeypatch.setenv("PROGRAMDATA", str(pd))
+
+    p, reason = compute_canonical_db_path()
+    assert p == pd / "Fetcher" / "fetcher.db"
+    assert "ignored" in reason.lower() or "LocalSystem" in reason
+
+
+def test_frozen_windows_explicit_programdata_fetcher_data_dir_respected(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(sys, "platform", "win32", raising=False)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.delenv("FETCHER_DEV_DB_PATH", raising=False)
+
+    pd_fetcher = tmp_path / "ProgramData" / "Fetcher"
+    pd_fetcher.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("FETCHER_DATA_DIR", str(pd_fetcher))
+
+    p, reason = compute_canonical_db_path()
+    assert p == pd_fetcher.resolve() / "fetcher.db"
+    assert "FETCHER_DATA_DIR" in reason
+
+
+def test_unfrozen_windows_does_not_ignore_systemprofile_fetcher_data_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Source/tests: odd FETCHER_DATA_DIR is honored (ignore rule is packaged frozen only)."""
+    monkeypatch.setattr(sys, "platform", "win32", raising=False)
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    monkeypatch.delenv("FETCHER_DEV_DB_PATH", raising=False)
+
+    windir = tmp_path / "Windows"
+    bad_root = (
+        windir
+        / "System32"
+        / "config"
+        / "systemprofile"
+        / "AppData"
+        / "Local"
+        / "Fetcher"
+    )
+    bad_root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("WINDIR", str(windir))
+    monkeypatch.setenv("FETCHER_DATA_DIR", str(bad_root))
+
+    p, reason = compute_canonical_db_path()
+    assert p == bad_root.resolve() / "fetcher.db"
+    assert "FETCHER_DATA_DIR" in reason
+
+
+def test_shipped_fetcher_service_xml_pins_programdata_fetcher_data_dir() -> None:
+    """Regression: WinSW child must get literal ProgramData root (not %LOCALAPPDATA% in env value)."""
+    xml_path = Path(__file__).resolve().parents[1] / "service" / "FetcherService.xml"
+    text = xml_path.read_text(encoding="utf-8")
+    env_lines = [
+        ln
+        for ln in text.splitlines()
+        if "<env" in ln and 'name="FETCHER_DATA_DIR"' in ln
+    ]
+    assert len(env_lines) == 1
+    assert 'value="C:\\ProgramData\\Fetcher"' in env_lines[0]
+    assert "%LOCALAPPDATA%" not in env_lines[0]
+
+
 def test_non_windows_no_alternates_no_raise(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     if sys.platform == "win32":
         pytest.skip("non-Windows behavior")
