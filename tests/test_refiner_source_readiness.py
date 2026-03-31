@@ -12,6 +12,7 @@ from app.refiner_source_readiness import (
     RefinerQueueSnapshot,
     decide_refiner_readiness,
     fetch_refiner_queue_snapshot,
+    iter_queue_path_strings,
     queue_record_upstream_active,
     refiner_file_level_gate,
     upstream_analyze_path,
@@ -24,6 +25,11 @@ def test_queue_record_upstream_active_status_and_sizeleft() -> None:
     assert queue_record_upstream_active({"status": "completed", "sizeleft": 100}) is True
     assert queue_record_upstream_active({"status": "completed", "sizeleft": 0}) is False
     assert queue_record_upstream_active({"status": "failed", "sizeleft": 0}) is False
+
+
+def test_queue_record_upstream_active_honors_sizeLeft_camelcase() -> None:
+    """*arr queue JSON uses ``sizeLeft`` (Radarr OpenAPI / Servarr)."""
+    assert queue_record_upstream_active({"status": "completed", "sizeLeft": 100, "sizeleft": 0}) is True
 
 
 def test_file_gate_accepts_stable_nonempty_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -45,10 +51,72 @@ def test_upstream_analyze_path_skipped_when_authority_not_useful(tmp_path: Path)
     assert upstream_blocks_path(f, snap) == (False, "", "")
 
 
+def test_iter_queue_path_strings_radarr_joins_movie_path_and_moviefile_relative(tmp_path: Path) -> None:
+    film = tmp_path / "Film Title"
+    film.mkdir()
+    rec = {
+        "movie": {"path": str(film.resolve()), "rootFolderPath": str(tmp_path.resolve())},
+        "movieFile": {"relativePath": "Film.Title.2024.mkv"},
+    }
+    paths = iter_queue_path_strings(rec)
+    assert paths
+    assert any("Film.Title.2024.mkv" in p for p in paths)
+
+
+def test_upstream_radarr_blocks_movie_folder_prefix_when_file_in_subpath(tmp_path: Path) -> None:
+    """Radarr queue often omits ``outputPath`` but includes ``movie.path`` (folder) while the client writes inside it."""
+    movie_dir = tmp_path / "Example Movie (2024)"
+    movie_dir.mkdir()
+    f = movie_dir / "release.1080p.mkv"
+    f.write_bytes(b"x" * 120)
+    rec = {
+        "status": "downloading",
+        "sizeLeft": 0,
+        "movie": {"path": str(movie_dir.resolve())},
+    }
+    snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+    blocked, rc, _msg, diag = upstream_analyze_path(f, snap)
+    assert blocked is True
+    assert rc == "radarr_queue_active_download"
+    assert diag["radarr_active_path_samples"]
+
+
+def test_upstream_radarr_blocks_moviefile_path_field(tmp_path: Path) -> None:
+    f = tmp_path / "standalone.mkv"
+    f.write_bytes(b"x" * 60)
+    rec = {
+        "status": "downloading",
+        "sizeLeft": 1,
+        "movieFile": {
+            "path": str(f.resolve()),
+            "relativePath": "standalone.mkv",
+        },
+    }
+    snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+    assert upstream_blocks_path(f, snap)[0] is True
+
+
+def test_upstream_sonarr_blocks_episode_file_path(tmp_path: Path) -> None:
+    f = tmp_path / "show.episode.mkv"
+    f.write_bytes(b"x" * 70)
+    rec = {
+        "status": "downloading",
+        "sizeLeft": 0,
+        "episode": {
+            "series": {"path": str(tmp_path.resolve()), "title": "Show"},
+            "episodeFile": {"path": str(f.resolve())},
+        },
+    }
+    snap = RefinerQueueSnapshot(False, True, False, True, (), (rec,))
+    blocked, rc, _m, diag = upstream_analyze_path(f, snap)
+    assert blocked is True
+    assert rc == "sonarr_queue_active_download"
+    assert diag["sonarr_active_path_samples"]
+
+
 def test_upstream_blocks_when_path_matches_active_radarr_row(tmp_path: Path) -> None:
     f = tmp_path / "Movie.mkv"
     f.write_bytes(b"x" * 100)
-    key = str(f.resolve()).casefold()
     rec = {
         "status": "downloading",
         "sizeleft": 0,

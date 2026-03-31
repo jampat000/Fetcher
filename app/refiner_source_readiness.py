@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -83,7 +84,10 @@ def _norm_status(raw: object) -> str:
 
 
 def _size_left_bytes(rec: dict[str, Any]) -> int:
-    raw = rec.get("sizeleft")
+    # Radarr/Sonarr JSON uses camelCase ``sizeLeft``; older payloads may use ``sizeleft``.
+    raw = rec.get("sizeLeft")
+    if raw is None:
+        raw = rec.get("sizeleft")
     if isinstance(raw, (int, float)):
         return max(0, int(raw))
     if isinstance(raw, str) and raw.strip().isdigit():
@@ -99,32 +103,77 @@ def queue_record_upstream_active(rec: dict[str, Any]) -> bool:
     return st in _BLOCKING_QUEUE_STATUSES
 
 
+def _nonempty_str(val: object) -> str | None:
+    if isinstance(val, str):
+        t = val.strip()
+        return t if t else None
+    return None
+
+
+def _dedupe_append(paths: list[str], s: str | None) -> None:
+    if s and s not in paths:
+        paths.append(s)
+
+
 def iter_queue_path_strings(rec: dict[str, Any]) -> list[str]:
-    """Collect filesystem paths from a queue record (shape varies by *arr version)."""
+    """Filesystem path candidates from *arr ``GET /api/v3/queue`` records (Radarr QueueResource, Sonarr)."""
     paths: list[str] = []
-    for key in ("outputPath", "sourcePath", "path"):
-        v = rec.get(key)
-        if isinstance(v, str) and v.strip():
-            paths.append(v.strip())
-    movie = rec.get("movie")
-    if isinstance(movie, dict):
-        mp = movie.get("path")
-        if isinstance(mp, str) and mp.strip():
-            paths.append(mp.strip())
-    movie_file = rec.get("movieFile")
-    if isinstance(movie_file, dict):
-        for key in ("path", "relativePath"):
-            v = movie_file.get(key)
-            if isinstance(v, str) and v.strip():
-                paths.append(v.strip())
-    episode = rec.get("episode")
-    if isinstance(episode, dict):
+    if not isinstance(rec, dict):
+        return paths
+
+    movie = rec.get("movie") if isinstance(rec.get("movie"), dict) else None
+    episode = rec.get("episode") if isinstance(rec.get("episode"), dict) else None
+
+    for key in (
+        "outputPath",
+        "sourcePath",
+        "path",
+        "downloadClientOutputPath",
+        "targetPath",
+    ):
+        _dedupe_append(paths, _nonempty_str(rec.get(key)))
+
+    if movie:
+        for key in ("path", "folderName", "folder", "rootFolderPath"):
+            _dedupe_append(paths, _nonempty_str(movie.get(key)))
+
+    mf = rec.get("movieFile")
+    if isinstance(mf, dict):
+        _dedupe_append(paths, _nonempty_str(mf.get("path")))
+        _dedupe_append(paths, _nonempty_str(mf.get("originalFilePath")))
+        rel = _nonempty_str(mf.get("relativePath"))
+        if rel and movie:
+            for root_key in ("path", "rootFolderPath"):
+                root = _nonempty_str(movie.get(root_key))
+                if root:
+                    try:
+                        combined = str((Path(root) / rel).resolve())
+                    except (OSError, ValueError):
+                        combined = str(Path(root) / rel)
+                    _dedupe_append(paths, combined)
+        elif rel:
+            _dedupe_append(paths, rel)
+
+    if episode:
+        series = episode.get("series")
+        if isinstance(series, dict):
+            for key in ("path", "rootFolderPath"):
+                _dedupe_append(paths, _nonempty_str(series.get(key)))
         ef = episode.get("episodeFile")
         if isinstance(ef, dict):
             for key in ("path", "relativePath"):
-                v = ef.get(key)
-                if isinstance(v, str) and v.strip():
-                    paths.append(v.strip())
+                _dedupe_append(paths, _nonempty_str(ef.get(key)))
+            rel2 = _nonempty_str(ef.get("relativePath"))
+            if rel2 and isinstance(series, dict):
+                for root_key in ("path", "rootFolderPath"):
+                    root = _nonempty_str(series.get(root_key))
+                    if root:
+                        try:
+                            combined = str((Path(root) / rel2).resolve())
+                        except (OSError, ValueError):
+                            combined = str(Path(root) / rel2)
+                        _dedupe_append(paths, combined)
+
     return paths
 
 
@@ -135,13 +184,22 @@ def _resolved_key(p: Path) -> str:
         return str(p).casefold()
 
 
+def _path_key_matches_candidate(file_key: str, queue_path: str) -> bool:
+    """Resolved equality, or ``file_key`` is a file under ``queue_path`` (folder from API)."""
+    try:
+        q_key = _resolved_key(Path(queue_path))
+    except OSError:
+        q_key = str(Path(queue_path)).casefold()
+    if not q_key:
+        return False
+    if file_key == q_key:
+        return True
+    return file_key.startswith(q_key + "\\") or file_key.startswith(q_key + "/")
+
+
 def path_matches_queue_record(file_key: str, rec: dict[str, Any]) -> bool:
     for s in iter_queue_path_strings(rec):
-        try:
-            q_key = _resolved_key(Path(s))
-        except OSError:
-            q_key = str(s).casefold()
-        if file_key == q_key:
+        if _path_key_matches_candidate(file_key, s):
             return True
     return False
 
@@ -174,11 +232,14 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
         diag["upstream_scan_skipped"] = True
         return False, "", "", diag
 
+    radarr_queue_samples_logged = 0
+
     def _collect_for_app(
         records: tuple[dict[str, Any], ...],
         *,
         app: str,
     ) -> tuple[bool, str, str] | None:
+        nonlocal radarr_queue_samples_logged
         active_samples: list[str] = []
         inactive_match = False
         active_count = 0
@@ -189,6 +250,16 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
             active = queue_record_upstream_active(rec)
             if active:
                 active_count += 1
+                if (
+                    app == "radarr"
+                    and radarr_queue_samples_logged < 3
+                    and os.environ.get("FETCHER_REFINER_QUEUE_SAMPLE_LOG") == "1"
+                ):
+                    logger.warning(
+                        "REFINER_QUEUE_SAMPLE: %s",
+                        json.dumps(rec, ensure_ascii=False, default=str)[:2000],
+                    )
+                    radarr_queue_samples_logged += 1
                 for ps in iter_queue_path_strings(rec):
                     if len(active_samples) < 4:
                         active_samples.append(ps[:160] + ("…" if len(ps) > 160 else ""))

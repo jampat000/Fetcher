@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.20] - 2026-03-31
+
+### Fixed
+
+- **Refiner:** Authority-first queue blocking now extracts path candidates from real Arr queue payload shapes (`outputPath`, queue row paths, nested movie/episode file paths, and folder roots), honors camelCase `sizeLeft`, and matches candidate files against queue **files or folders** so active downloads are blocked consistently.
+- **Refiner diagnostics:** optional raw sample row log `REFINER_QUEUE_SAMPLE` is explicitly gated by `FETCHER_REFINER_QUEUE_SAMPLE_LOG=1` (off by default).
+
 ## [3.4.19] - 2026-03-31
 
 ### Fixed (diagnostic visibility)
