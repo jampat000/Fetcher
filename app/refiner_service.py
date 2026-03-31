@@ -991,6 +991,7 @@ async def run_refiner_pass(
 ) -> dict[str, Any]:
     """Run Refiner over configured paths. Serialised with an internal lock."""
     async with _refiner_lock:
+        logger.warning("REFINER_DIAGNOSTIC_BOOT: refiner pass started")
         t_start = utc_now_naive()
         row = (await session.execute(select(AppSettings).order_by(AppSettings.id.asc()).limit(1))).scalars().first()
         if not row or not row.refiner_enabled:

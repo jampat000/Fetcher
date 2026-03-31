@@ -286,7 +286,9 @@ def log_refiner_readiness_diagnostic(
     }
     if extra:
         payload["extra"] = extra
-    logger.info("Refiner readiness diagnostic %s", json.dumps(payload, ensure_ascii=True))
+    # WARNING: default FETCHER_LOG_LEVEL is WARNING (see app.log_sanitize.configure_fetcher_logging);
+    # INFO would not appear in fetcher.log unless FETCHER_LOG_LEVEL=INFO.
+    logger.warning("Refiner readiness diagnostic %s", json.dumps(payload, ensure_ascii=True))
 
 
 def refiner_file_level_gate(path: Path, *, strict: bool) -> tuple[bool, str]:
@@ -384,7 +386,7 @@ async def decide_refiner_readiness(
         strict = True
     blocked, rc, msg, up_diag = upstream_analyze_path(path, snapshot)
     if blocked:
-        logger.info("Refiner readiness [%s]: upstream block for %s (%s)", gate_tag, path.name, rc)
+        logger.warning("Refiner readiness [%s]: upstream block for %s (%s)", gate_tag, path.name, rc)
         log_refiner_readiness_diagnostic(
             gate_tag=gate_tag,
             path=path,
@@ -399,7 +401,7 @@ async def decide_refiner_readiness(
         return RefinerReadinessDecision(False, rc, msg, strict_file_fallback=strict)
     ok, why = refiner_file_level_gate(path, strict=strict)
     if not ok:
-        logger.info("Refiner readiness [%s]: file gate failed for %s — %s", gate_tag, path.name, why)
+        logger.warning("Refiner readiness [%s]: file gate failed for %s — %s", gate_tag, path.name, why)
         rc2 = "skipped_final_readiness_gate" if gate_tag == "final" else "skipped_readiness"
         log_refiner_readiness_diagnostic(
             gate_tag=gate_tag,

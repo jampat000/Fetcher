@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.19] - 2026-03-31
+
+### Fixed (diagnostic visibility)
+
+- **Refiner:** Readiness **diagnostic** lines are emitted at **WARNING** (same default as `fetcher.log`) so traces appear **without** `FETCHER_LOG_LEVEL=INFO`. **Boot marker:** `REFINER_DIAGNOSTIC_BOOT: refiner pass started` at each pass. No change to readiness rules.
+
 ## [3.4.18] - 2026-03-31
 
 ### Added (diagnostic build only)
