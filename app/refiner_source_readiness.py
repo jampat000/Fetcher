@@ -13,7 +13,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -232,14 +231,14 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
         diag["upstream_scan_skipped"] = True
         return False, "", "", diag
 
-    radarr_queue_samples_logged = 0
+    radarr_active_rows_logged = 0
 
     def _collect_for_app(
         records: tuple[dict[str, Any], ...],
         *,
         app: str,
     ) -> tuple[bool, str, str] | None:
-        nonlocal radarr_queue_samples_logged
+        nonlocal radarr_active_rows_logged
         active_samples: list[str] = []
         inactive_match = False
         active_count = 0
@@ -250,16 +249,12 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
             active = queue_record_upstream_active(rec)
             if active:
                 active_count += 1
-                if (
-                    app == "radarr"
-                    and radarr_queue_samples_logged < 3
-                    and os.environ.get("FETCHER_REFINER_QUEUE_SAMPLE_LOG") == "1"
-                ):
+                if app == "radarr" and radarr_active_rows_logged < 2:
                     logger.warning(
-                        "REFINER_QUEUE_SAMPLE: %s",
-                        json.dumps(rec, ensure_ascii=False, default=str)[:2000],
+                        "REFINER_ACTIVE_RADARR_ROW: %s",
+                        json.dumps(rec, ensure_ascii=False, default=str)[:4000],
                     )
-                    radarr_queue_samples_logged += 1
+                    radarr_active_rows_logged += 1
                 for ps in iter_queue_path_strings(rec):
                     if len(active_samples) < 4:
                         active_samples.append(ps[:160] + ("…" if len(ps) > 160 else ""))

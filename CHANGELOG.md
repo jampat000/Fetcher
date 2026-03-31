@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.21] - 2026-03-31
+
+### Added (diagnostic build only)
+
+- **Refiner:** For live authority-first investigation, logs the first 1-2 active Radarr queue rows at **WARNING** with prefix `REFINER_ACTIVE_RADARR_ROW:` (safe JSON serialization with truncation). This is diagnosis-only; readiness policy/behavior is unchanged.
+
 ## [3.4.20] - 2026-03-31
 
 ### Fixed
