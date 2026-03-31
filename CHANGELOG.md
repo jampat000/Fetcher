@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.13] - 2026-03-31
+
+### Changed
+
+- **Refiner compare panel (Activity log):** Replaced the flat before/after grid with a compact **decision-summary** layout: prominent selected/kept audio and final file size, explicit subtitle outcomes (including “None kept” / removed lists), and multiset-based removed track lists when probe lines use the canonical ` · ` join. File size shows **Final** plus optional **↓ … saved (~%)** when smaller than the source.
+- **Compatibility:** Older rows without `refiner_compare_sections` still render via the legacy two-column grid.
+
+### Added
+
+- `app/refiner_compare_present.py` — presentation helpers for compare sections and enriched compare rows (`change`, `size_delta`).
+- Tests: `tests/test_refiner_compare_panel.py`; template expectations updated in `tests/test_refiner_activity_card_template.py`.
+
 ## [3.4.12] - 2026-03-31
 
 ### Fixed

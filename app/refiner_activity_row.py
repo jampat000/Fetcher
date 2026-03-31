@@ -8,6 +8,10 @@ from typing import Any, Literal
 from app.display_helpers import _fmt_size_bytes_si
 from app.models import RefinerActivity
 from app.refiner_activity_context import parse_activity_context
+from app.refiner_compare_present import (
+    build_refiner_compare_sections,
+    enrich_compare_row,
+)
 from app.refiner_media_identity import (
     looks_like_internal_identifier,
     resolve_activity_card_title,
@@ -189,7 +193,8 @@ def build_refiner_activity_row_dict(r: RefinerActivity, tz: str, now: datetime) 
         source_file_line = raw_fn
     dry = bool(ctx.get("dry_run"))
 
-    compare_rows: list[dict[str, str]] = []
+    compare_rows: list[dict[str, Any]] = []
+    compare_sections: list[dict[str, Any]] = []
     summary_bullets: list[str] = []
     technical_notes: list[str] = []
     outcome_label = "Failed"
@@ -254,7 +259,19 @@ def build_refiner_activity_row_dict(r: RefinerActivity, tz: str, now: datetime) 
         outcome_ui = "success"
         tone = "ok"
         show_comparison = True
-        compare_rows = _compare_rows_audio_subs_size(
+        raw_rows = _compare_rows_audio_subs_size(
+            ctx=ctx,
+            sb=sb,
+            sa=sa,
+            failed=False,
+            include_audio_subs=True,
+            ab=ab,
+            aa=aa,
+            sbb=sbb,
+            sba=sba,
+        )
+        compare_rows = [enrich_compare_row(dict(r), sb=sb, sa=sa) for r in raw_rows]
+        compare_sections = build_refiner_compare_sections(
             ctx=ctx,
             sb=sb,
             sa=sa,
@@ -294,7 +311,19 @@ def build_refiner_activity_row_dict(r: RefinerActivity, tz: str, now: datetime) 
                 outcome_ui = "skipped"
                 tone = "skip"
                 show_comparison = True
-                compare_rows = _compare_rows_audio_subs_size(
+                raw_rows = _compare_rows_audio_subs_size(
+                    ctx=ctx,
+                    sb=sb,
+                    sa=sa,
+                    failed=False,
+                    include_audio_subs=True,
+                    ab=ab,
+                    aa=aa,
+                    sbb=sbb,
+                    sba=sba,
+                )
+                compare_rows = [enrich_compare_row(dict(r), sb=sb, sa=sa) for r in raw_rows]
+                compare_sections = build_refiner_compare_sections(
                     ctx=ctx,
                     sb=sb,
                     sa=sa,
@@ -369,6 +398,7 @@ def build_refiner_activity_row_dict(r: RefinerActivity, tz: str, now: datetime) 
         "refiner_apply_mode": apply_mode,
         "refiner_show_comparison": show_comparison,
         "refiner_compare_rows": compare_rows,
+        "refiner_compare_sections": compare_sections,
         "refiner_summary_bullets": summary_bullets,
         "refiner_technical_notes": technical_notes,
         # Back-compat for tests / callers expecting the old keys:

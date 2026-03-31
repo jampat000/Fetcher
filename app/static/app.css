@@ -1800,6 +1800,110 @@ h2.gc-title,
   padding-right: 8px;
   margin-right: 2px;
 }
+/* Decision-summary panel (semantic sections; replaces flat grid when refiner_compare_sections is present). */
+.activity-refiner-compare-panel--summary {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px 14px 14px;
+}
+.activity-refiner-compare-section {
+  margin: 0;
+  padding: 0 0 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.activity-refiner-compare-section:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.activity-refiner-compare-section-title {
+  margin: 0 0 8px;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text2);
+}
+.activity-refiner-compare-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.activity-refiner-compare-block--primary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.activity-refiner-compare-block--secondary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 2px;
+}
+.activity-refiner-compare-kicker {
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--text2);
+  letter-spacing: 0.02em;
+}
+.activity-refiner-compare-kicker--secondary {
+  font-weight: 600;
+  opacity: 0.92;
+}
+.activity-refiner-compare-primary-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.activity-refiner-compare-primary-line {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+.activity-refiner-compare-section--unchanged .activity-refiner-compare-primary-line {
+  font-weight: 550;
+  color: var(--text2);
+}
+.activity-refiner-compare-itemlist {
+  margin: 2px 0 0;
+  padding-left: 1.1em;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(226, 232, 240, 0.88);
+  font-weight: 450;
+}
+.activity-refiner-compare-item {
+  margin: 2px 0;
+}
+.activity-refiner-compare-muted {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text2);
+  font-weight: 450;
+}
+.activity-refiner-compare-note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text2);
+  font-weight: 450;
+  opacity: 0.9;
+}
+.activity-refiner-compare-section--file_size .activity-refiner-compare-primary-line {
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+.activity-refiner-compare-section--file_size .activity-refiner-compare-itemlist {
+  list-style: none;
+  padding-left: 0;
+  margin-top: 4px;
+  color: rgba(160, 210, 170, 0.92);
+  font-weight: 500;
+}
 .activity-refiner-status-svg--queued {
   color: var(--text2);
   opacity: 0.9;

@@ -77,7 +77,8 @@ def test_refiner_card_renders_filename_derived_title_before_outcome(fname: str, 
     assert "Completed" in html
     assert "Applied" in html
     assert "Before / after detail" in html
-    assert "Before" in html and "After" in html
+    assert "activity-refiner-compare-panel--summary" in html
+    assert "activity-refiner-compare-section" in html
 
 
 def test_refiner_card_filename_fallback_without_metadata() -> None:
@@ -121,11 +122,10 @@ def test_refiner_card_shows_before_after_when_comparison_enabled() -> None:
     html = _render_refiner_card(r)
     assert html.find("activity-refiner-summary-list") < html.find("activity-refiner-compare-details")
     assert "activity-refiner-compare-panel" in html
-    assert "activity-refiner-compare-grid" in html
-    pos_b = html.find("activity-refiner-compare-colhead--before")
-    pos_a = html.find("activity-refiner-compare-colhead--after")
-    assert pos_b != -1 and pos_a != -1 and pos_b < pos_a
-    assert "Before" in html and "After" in html
+    assert "activity-refiner-compare-panel--summary" in html
+    assert "activity-refiner-compare-section--audio" in html
+    assert "activity-refiner-compare-section--subtitles" in html
+    assert "activity-refiner-compare-section--file_size" in html
     assert "Audio" in html
     assert "Subtitles" in html
     assert "File size" in html
