@@ -1,4 +1,4 @@
-"""``app_settings.schema_version`` must equal ``CURRENT_SCHEMA_VERSION``."""
+"""``app_settings.schema_version`` must be >= ``CURRENT_SCHEMA_VERSION`` (newer DB allowed)."""
 
 from __future__ import annotations
 
@@ -62,7 +62,7 @@ def test_validate_schema_version_rejects_lower(tmp_path: Path) -> None:
     async def run() -> None:
         engine = create_async_engine(f"sqlite+aiosqlite:///{db.as_posix()}")
         try:
-            with pytest.raises(RuntimeError, match="exactly|requires"):
+            with pytest.raises(RuntimeError, match="too old|at least"):
                 await validate_app_settings_schema_version(engine)
         finally:
             await engine.dispose()
@@ -70,16 +70,15 @@ def test_validate_schema_version_rejects_lower(tmp_path: Path) -> None:
     asyncio.run(run())
 
 
-def test_validate_schema_version_rejects_higher(tmp_path: Path) -> None:
-    wrong = int(CURRENT_SCHEMA_VERSION) + 7
+def test_validate_schema_version_accepts_higher(tmp_path: Path) -> None:
+    newer = int(CURRENT_SCHEMA_VERSION) + 7
     db = tmp_path / "high.sqlite"
-    _write_minimal_app_settings(db, wrong)
+    _write_minimal_app_settings(db, newer)
 
     async def run() -> None:
         engine = create_async_engine(f"sqlite+aiosqlite:///{db.as_posix()}")
         try:
-            with pytest.raises(RuntimeError, match="exactly|requires"):
-                await validate_app_settings_schema_version(engine)
+            await validate_app_settings_schema_version(engine)
         finally:
             await engine.dispose()
 
@@ -138,9 +137,9 @@ def test_subprocess_startup_succeeds_with_matching_schema_version(tmp_path: Path
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
-def test_subprocess_startup_fails_on_schema_version_too_high(tmp_path: Path) -> None:
+def test_subprocess_startup_succeeds_on_schema_version_higher_than_build(tmp_path: Path) -> None:
     db = tmp_path / "startup_high.sqlite"
-    wrong = int(CURRENT_SCHEMA_VERSION) + 5
+    newer = int(CURRENT_SCHEMA_VERSION) + 5
     repo_root = Path(__file__).resolve().parents[1]
     runner = tmp_path / "_startup_high.py"
     runner.write_text(
@@ -163,7 +162,7 @@ def test_subprocess_startup_fails_on_schema_version_too_high(tmp_path: Path) -> 
                 await migrate(engine)
                 async with SessionLocal() as session:
                     row = await _get_or_create_settings(session)
-                    row.schema_version = {wrong}
+                    row.schema_version = {newer}
                     await session.commit()
 
             asyncio.run(tamper())
@@ -171,14 +170,9 @@ def test_subprocess_startup_fails_on_schema_version_too_high(tmp_path: Path) -> 
             from fastapi.testclient import TestClient
             from app.main import app
 
-            try:
-                with TestClient(app):
-                    pass
-            except RuntimeError as e:
-                if "schema" in str(e).lower() or "version" in str(e).lower():
-                    sys.exit(0)
-                raise
-            sys.exit(1)
+            with TestClient(app) as client:
+                r = client.get("/healthz")
+            sys.exit(0 if r.status_code == 200 else 1)
             """
         ),
         encoding="utf-8",

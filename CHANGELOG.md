@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.16] - 2026-03-31
+
+### Fixed
+
+- **Startup / database:** Schema validation now requires `app_settings.schema_version` **≥** this build’s minimum (`CURRENT_SCHEMA_VERSION`), not bitwise equality. A database already migrated by a **newer** build (higher stored version) **starts successfully** again; only **too-old** databases fail, with messaging that refers to **minimum version** and **upgrade** (not “exactly”).
+
 ## [3.4.15] - 2026-03-31
 
 ### Added

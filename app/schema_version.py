@@ -1,4 +1,4 @@
-"""Single integer stored on ``app_settings.schema_version`` — must match this build exactly."""
+"""Single integer stored on ``app_settings.schema_version`` — migrations bump it; startup requires >= :data:`CURRENT_SCHEMA_VERSION`."""
 
 from __future__ import annotations
 
