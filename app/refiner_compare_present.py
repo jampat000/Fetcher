@@ -9,6 +9,9 @@ from app.display_helpers import _fmt_size_bytes_si
 
 _JOIN_SEP = " · "
 
+# Max distinct removed labels before "+ N more" (grouped rows, not raw bullets).
+MAX_REMOVED_GROUPS_VISIBLE = 4
+
 CompareVariant = Literal["changed", "unchanged", "empty", "failed"]
 
 
@@ -35,6 +38,57 @@ def split_joined_display_line(val: object) -> list[str]:
 def _multiset_subtract(before: list[str], after: list[str]) -> list[str]:
     rem = Counter(before) - Counter(after)
     return list(rem.elements())
+
+
+def group_ordered_counts(items: list[str]) -> list[tuple[str, int]]:
+    """First-seen order; merge identical stripped labels with running counts."""
+    ordered: list[str] = []
+    index: dict[str, int] = {}
+    counts: list[int] = []
+    for raw in items:
+        label = raw.strip()
+        if not label:
+            continue
+        if label not in index:
+            index[label] = len(ordered)
+            ordered.append(label)
+            counts.append(0)
+        counts[index[label]] += 1
+    return [(ordered[i], counts[i]) for i in range(len(ordered))]
+
+
+def format_grouped_removal_line(label: str, count: int) -> str:
+    if count <= 1:
+        return label
+    return f"{label} ({count})"
+
+
+def _is_synthetic_removed_placeholder(line: str) -> bool:
+    t = line.lower()
+    return "not in activity" in t or "languages not in activity" in t or "details not in activity" in t
+
+
+def build_summarized_removed_items(
+    raw_items: list[str],
+    *,
+    max_groups: int = MAX_REMOVED_GROUPS_VISIBLE,
+) -> tuple[list[str], int, list[str]]:
+    """Return (visible grouped lines, hidden track count, full grouped lines for expand).
+
+    When the list is a single synthetic placeholder, grouping/summarization is skipped.
+    """
+    if not raw_items:
+        return [], 0, []
+    if len(raw_items) == 1 and _is_synthetic_removed_placeholder(raw_items[0]):
+        return [raw_items[0].strip()], 0, []
+    groups = group_ordered_counts(raw_items)
+    full_lines = [format_grouped_removal_line(lab, c) for lab, c in groups]
+    if len(groups) <= max_groups:
+        return full_lines, 0, []
+    visible_g = groups[:max_groups]
+    visible = [format_grouped_removal_line(lab, c) for lab, c in visible_g]
+    hidden_tracks = sum(c for _, c in groups[max_groups:])
+    return visible, hidden_tracks, full_lines
 
 
 def _fallback_track_line(raw_line: str, count: int, *, audio: bool) -> str:
@@ -151,26 +205,31 @@ def build_refiner_compare_sections(
                 primary_label = "Kept"
             primary_lines = after_items if after_items else ([af] if not aa_n else [])
             if not primary_lines:
-                if aa == 0:
-                    primary_lines = ["None kept"]
+                if aa == 0 and ab > 0:
+                    primary_lines = ["All audio removed"]
+                elif aa == 0:
+                    primary_lines = ["No audio in output"]
                 elif aa > 0:
                     primary_lines = [f"{aa} audio track(s)"]
 
             sec_heading: str | None = None
             sec_items: list[str] = []
+            sec_more = 0
+            sec_expand: list[str] = []
             if removed:
                 n = len(removed)
                 sec_heading = f"Removed ({n} track{'s' if n != 1 else ''})"
-                sec_items = removed
+                sec_items, sec_more, sec_expand = build_summarized_removed_items(removed)
             elif variant == "changed" and ab > aa and not removed and before_items:
                 n = ab - aa
                 if n > 0:
                     sec_heading = f"Removed ({n} track{'s' if n != 1 else ''})"
-                    sec_items = _multiset_subtract(before_items, after_items) or before_items
+                    raw_rm = _multiset_subtract(before_items, after_items) or before_items
+                    sec_items, sec_more, sec_expand = build_summarized_removed_items(raw_rm)
 
             note: str | None = None
             if variant == "unchanged":
-                note = "Same layout as source"
+                note = "No changes needed."
             elif ab == aa and bf != af:
                 note = "Layout updated (same track count)"
 
@@ -183,6 +242,8 @@ def build_refiner_compare_sections(
                     "primary_lines": primary_lines,
                     "secondary_heading": sec_heading,
                     "secondary_items": sec_items,
+                    "secondary_more_tracks": sec_more,
+                    "secondary_expand_items": sec_expand,
                     "note": note,
                 }
             )
@@ -209,29 +270,34 @@ def build_refiner_compare_sections(
             if not before_sub and sbb > sba:
                 removed_s = [f"{sbb - sba} track(s) (languages not in activity payload)"]
 
-            primary_label_s = "Kept" if after_sub else "Result"
+            primary_label_s = "Kept" if after_sub else "Outcome"
             primary_lines_s: list[str]
             if after_sub:
                 primary_lines_s = after_sub
+            elif sba == 0 and sbb > 0:
+                primary_lines_s = ["All subtitles removed"]
             elif sba == 0:
-                primary_lines_s = ["None kept"]
+                primary_lines_s = ["No subtitles in output"]
             else:
                 primary_lines_s = [f"{sba} subtitle track(s)"]
 
             sec_h: str | None = None
             sec_it: list[str] = []
+            sec_more_s = 0
+            sec_expand_s: list[str] = []
             if removed_s:
                 n = len(removed_s)
                 sec_h = f"Removed ({n} track{'s' if n != 1 else ''})"
-                sec_it = removed_s
+                sec_it, sec_more_s, sec_expand_s = build_summarized_removed_items(removed_s)
             elif sba < sbb and not removed_s and before_sub:
                 n = sbb - sba
                 sec_h = f"Removed ({n} track{'s' if n != 1 else ''})"
-                sec_it = _multiset_subtract(before_sub, after_sub) or before_sub
+                raw_rm = _multiset_subtract(before_sub, after_sub) or before_sub
+                sec_it, sec_more_s, sec_expand_s = build_summarized_removed_items(raw_rm)
 
             note_s: str | None = None
             if variant_s == "unchanged":
-                note_s = "Unchanged from source"
+                note_s = "No changes needed."
 
             sections.append(
                 {
@@ -242,6 +308,8 @@ def build_refiner_compare_sections(
                     "primary_lines": primary_lines_s,
                     "secondary_heading": sec_h,
                     "secondary_items": sec_it,
+                    "secondary_more_tracks": sec_more_s,
+                    "secondary_expand_items": sec_expand_s,
                     "note": note_s,
                 }
             )

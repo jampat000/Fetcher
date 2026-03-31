@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.14] - 2026-03-31
+
+### Changed
+
+- **Refiner compare panel — large-list polish:** Removed subtitle/audio lines are **grouped with counts** (e.g. `French (2)`). Long removals show a **compact default** (first N distinct labels), a **`+ M more`** hint for remaining track count, and a nested **Show full list** `<details>` with scroll-bounded lists. Wording updates: e.g. **All subtitles removed**, **No changes needed.** for unchanged streams.
+
 ## [3.4.13] - 2026-03-31
 
 ### Changed

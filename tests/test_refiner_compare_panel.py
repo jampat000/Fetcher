@@ -11,8 +11,11 @@ from jinja2 import ChoiceLoader, Environment, FileSystemLoader
 from app.models import RefinerActivity
 from app.refiner_activity_row import build_refiner_activity_row_dict
 from app.refiner_compare_present import (
+    MAX_REMOVED_GROUPS_VISIBLE,
     build_refiner_compare_sections,
+    build_summarized_removed_items,
     compare_row_change_state,
+    group_ordered_counts,
     is_absent_compare_token,
     split_joined_display_line,
 )
@@ -61,6 +64,34 @@ def test_split_joined_display_line_falls_back_to_bare_middle_dot() -> None:
 
 def test_split_joined_single_line_unchanged() -> None:
     assert split_joined_display_line("English 5.1 DTS") == ["English 5.1 DTS"]
+
+
+def test_group_ordered_counts_merges_duplicates_preserves_order() -> None:
+    g = group_ordered_counts(["French", "French", "Spanish", "Spanish", "Arabic"])
+    assert g == [("French", 2), ("Spanish", 2), ("Arabic", 1)]
+
+
+def test_build_summarized_removed_items_short_list_no_expand() -> None:
+    vis, more, full = build_summarized_removed_items(["English", "French"])
+    assert vis == ["English", "French"]
+    assert more == 0
+    assert full == []
+
+
+def test_build_summarized_removed_items_groups_duplicates() -> None:
+    vis, more, full = build_summarized_removed_items(["French", "French", "Spanish"])
+    assert vis == ["French (2)", "Spanish"]
+    assert more == 0
+    assert full == []
+
+
+def test_build_summarized_removed_items_long_list_summary_and_expand() -> None:
+    langs = [f"Lang{i}" for i in range(MAX_REMOVED_GROUPS_VISIBLE + 3)]
+    vis, more, full = build_summarized_removed_items(langs)
+    assert len(vis) == MAX_REMOVED_GROUPS_VISIBLE
+    assert more == 3
+    assert len(full) == len(langs)
+    assert langs[-1] in full
 
 
 def test_compare_row_change_state_file_size_unchanged_vs_changed() -> None:
@@ -125,6 +156,31 @@ def test_success_compare_rows_include_change_and_size_delta() -> None:
     assert sz["size_delta"].startswith("Δ")
 
 
+def test_compare_sections_audio_removed_groups_duplicate_codecs() -> None:
+    ctx = {
+        "audio_before": "English 2.0 FLAC · English 2.0 FLAC · English 5.1 DTS",
+        "audio_after": "English 5.1 DTS",
+        "subs_before": "",
+        "subs_after": "",
+    }
+    secs = build_refiner_compare_sections(
+        ctx=ctx,
+        sb=1,
+        sa=1,
+        failed=False,
+        include_audio_subs=True,
+        ab=3,
+        aa=1,
+        sbb=0,
+        sba=0,
+    )
+    audio = next(s for s in secs if s["kind"] == "audio")
+    assert audio["secondary_heading"] == "Removed (2 tracks)"
+    assert audio["secondary_items"] == ["English 2.0 FLAC (2)"]
+    assert audio["secondary_more_tracks"] == 0
+    assert audio["secondary_expand_items"] == []
+
+
 def test_compare_sections_multi_audio_removed_list() -> None:
     ctx = {
         "audio_before": "English 2.0 FLAC · English 2.0 AC-3 · English 5.1 DTS",
@@ -147,7 +203,8 @@ def test_compare_sections_multi_audio_removed_list() -> None:
     assert audio["primary_label"] == "Selected"
     assert "English 5.1 DTS" in audio["primary_lines"]
     assert audio["secondary_heading"] == "Removed (2 tracks)"
-    assert len(audio["secondary_items"]) == 2
+    assert set(audio["secondary_items"]) == {"English 2.0 FLAC", "English 2.0 AC-3"}
+    assert audio["secondary_more_tracks"] == 0
 
 
 def test_compare_sections_subtitles_explicit_removed_none_kept() -> None:
@@ -169,9 +226,38 @@ def test_compare_sections_subtitles_explicit_removed_none_kept() -> None:
         sba=0,
     )
     sub = next(s for s in secs if s["kind"] == "subtitles")
-    assert "None kept" in sub["primary_lines"]
+    assert "All subtitles removed" in sub["primary_lines"]
     assert sub["secondary_heading"] == "Removed (2 tracks)"
     assert "English" in sub["secondary_items"] and "Spanish" in sub["secondary_items"]
+    assert sub["secondary_more_tracks"] == 0
+    assert sub["secondary_expand_items"] == []
+
+
+def test_compare_sections_subtitles_long_removal_summary_and_expand_payload() -> None:
+    langs = [f"L{i}" for i in range(MAX_REMOVED_GROUPS_VISIBLE + 5)]
+    blob = " · ".join(langs)
+    ctx = {
+        "audio_before": "",
+        "audio_after": "",
+        "subs_before": blob,
+        "subs_after": "",
+    }
+    secs = build_refiner_compare_sections(
+        ctx=ctx,
+        sb=1,
+        sa=1,
+        failed=False,
+        include_audio_subs=True,
+        ab=1,
+        aa=1,
+        sbb=len(langs),
+        sba=0,
+    )
+    sub = next(s for s in secs if s["kind"] == "subtitles")
+    assert sub["secondary_heading"] == f"Removed ({len(langs)} tracks)"
+    assert len(sub["secondary_items"]) == MAX_REMOVED_GROUPS_VISIBLE
+    assert sub["secondary_more_tracks"] == 5
+    assert len(sub["secondary_expand_items"]) == len(langs)
 
 
 def test_compare_sections_file_size_final_and_saved() -> None:
@@ -219,6 +305,29 @@ def test_compare_sections_minimal_payload_safe() -> None:
     assert any(s["kind"] == "file_size" for s in secs)
 
 
+def test_compare_sections_unchanged_audio_reassuring_note() -> None:
+    ctx = {
+        "audio_before": "English 5.1 DTS",
+        "audio_after": "English 5.1 DTS",
+        "subs_before": "",
+        "subs_after": "",
+    }
+    secs = build_refiner_compare_sections(
+        ctx=ctx,
+        sb=100,
+        sa=100,
+        failed=False,
+        include_audio_subs=True,
+        ab=1,
+        aa=1,
+        sbb=0,
+        sba=0,
+    )
+    audio = next(s for s in secs if s["kind"] == "audio")
+    assert audio["variant"] == "unchanged"
+    assert audio["note"] == "No changes needed."
+
+
 def test_compare_rows_safe_when_context_strings_missing() -> None:
     r = RefinerActivity(
         file_name="y.mkv",
@@ -255,6 +364,33 @@ def _render_refiner_card(r: RefinerActivity) -> str:
     return tpl.render(e=erow)
 
 
+def test_template_long_removed_subtitles_shows_more_and_full_list_details() -> None:
+    langs = [f"L{i}" for i in range(MAX_REMOVED_GROUPS_VISIBLE + 3)]
+    r = RefinerActivity(
+        file_name="many-subs.mkv",
+        status="success",
+        size_before_bytes=100_000,
+        size_after_bytes=90_000,
+        audio_tracks_before=1,
+        audio_tracks_after=1,
+        subtitle_tracks_before=len(langs),
+        subtitle_tracks_after=0,
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+        activity_context=_ctx(
+            audio_before="Eng",
+            audio_after="Eng",
+            subs_before=" · ".join(langs),
+            subs_after="",
+            finalized=True,
+        ),
+    )
+    html = _render_refiner_card(r)
+    assert "All subtitles removed" in html
+    assert "+ 3 more" in html
+    assert "Show full list" in html
+    assert "activity-refiner-compare-expand" in html
+
+
 def test_template_renders_decision_summary_panel() -> None:
     r = RefinerActivity(
         file_name="z.mkv",
@@ -279,7 +415,7 @@ def test_template_renders_decision_summary_panel() -> None:
     assert "activity-refiner-compare-section" in html
     assert "activity-refiner-compare-section--subtitles" in html
     assert "Removed (1 track" in html
-    assert "None kept" in html
+    assert "All subtitles removed" in html
     assert "activity-refiner-compare-section--file_size" in html
     assert "Final" in html
     assert "saved" in html.lower()

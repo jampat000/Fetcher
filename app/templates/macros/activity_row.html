@@ -75,13 +75,26 @@
                       </div>
                     </div>
                     {% if sec.secondary_heading and sec.secondary_items | length > 0 %}
-                    <div class="activity-refiner-compare-block activity-refiner-compare-block--secondary">
+                    <div class="activity-refiner-compare-block activity-refiner-compare-block--secondary{% if sec.kind == 'audio' or sec.kind == 'subtitles' %} activity-refiner-compare-block--removals{% endif %}">
                       <span class="activity-refiner-compare-kicker activity-refiner-compare-kicker--secondary">{{ sec.secondary_heading }}</span>
-                      <ul class="activity-refiner-compare-itemlist">
+                      <ul class="activity-refiner-compare-itemlist{% if sec.kind == 'audio' or sec.kind == 'subtitles' %} activity-refiner-compare-itemlist--removals{% endif %}">
                         {% for it in sec.secondary_items %}
                         <li class="activity-refiner-compare-item">{{ it }}</li>
                         {% endfor %}
                       </ul>
+                      {% if (sec.kind == 'audio' or sec.kind == 'subtitles') and sec.secondary_more_tracks | default(0) > 0 %}
+                      <p class="activity-refiner-compare-more-hint">+ {{ sec.secondary_more_tracks }} more</p>
+                      {% endif %}
+                      {% if (sec.kind == 'audio' or sec.kind == 'subtitles') and sec.secondary_expand_items is defined and sec.secondary_expand_items | length > 0 %}
+                      <details class="activity-refiner-compare-expand">
+                        <summary class="activity-refiner-compare-expand-summary">Show full list</summary>
+                        <ul class="activity-refiner-compare-itemlist activity-refiner-compare-itemlist--expanded">
+                          {% for it in sec.secondary_expand_items %}
+                          <li class="activity-refiner-compare-item">{{ it }}</li>
+                          {% endfor %}
+                        </ul>
+                      </details>
+                      {% endif %}
                     </div>
                     {% endif %}
                     {% if sec.secondary_line is defined and sec.secondary_line %}
