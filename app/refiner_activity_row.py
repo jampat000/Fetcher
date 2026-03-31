@@ -271,6 +271,7 @@ def build_refiner_activity_row_dict(r: RefinerActivity, tz: str, now: datetime) 
         outcome_label = "Failed"
         outcome_sub = class_hint if class_hint else None
         if failure_oc is RefinerOutcomeClass.BLOCKED_WAITING:
+            outcome_label = "Waiting"
             outcome_ui = "waiting"
             tone = "skip"
         else:

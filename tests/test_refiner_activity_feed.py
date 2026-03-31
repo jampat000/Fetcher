@@ -289,3 +289,25 @@ def test_refiner_failed_includes_reason_block() -> None:
     assert row["refiner_show_comparison"] is True
     fs = next(x for x in row["refiner_compare_rows"] if x["label"] == "File size")
     assert fs["after"] == "—"
+
+
+def test_refiner_upstream_wait_reason_renders_waiting_not_failed() -> None:
+    r = RefinerActivity(
+        file_name="waiter.mkv",
+        status="failed",
+        size_before_bytes=100,
+        size_after_bytes=100,
+        audio_tracks_before=1,
+        audio_tracks_after=1,
+        subtitle_tracks_before=0,
+        subtitle_tracks_after=0,
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+        activity_context=_ctx(
+            failure_reason="Radarr still reports this path in the active download queue — waiting until the download finishes.",
+            reason_code="radarr_queue_active_download_title",
+        ),
+    )
+    row = refiner_activity_display_row(r, "UTC", datetime(2026, 1, 1, 12, 0, 1))
+    assert row["refiner_outcome_label"] == "Waiting"
+    assert row["activity_outcome"] == "waiting"
+    assert row["refiner_outcome_class"] == "blocked_waiting"

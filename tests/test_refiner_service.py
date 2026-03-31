@@ -12,6 +12,7 @@ from sqlalchemy import delete, select
 
 from app.db import SessionLocal, _get_or_create_settings
 from app.models import JobRunLog, RefinerActivity
+from app.refiner_activity_context import parse_activity_context
 from app.time_util import utc_now_naive
 from app.refiner_service import (
     _finalize_output_file,
@@ -852,3 +853,67 @@ def test_refiner_pass_ffprobe_fail_reclassified_when_upstream_active(
             assert "radarr_queue_active_download" in (act.activity_context or "")
 
     asyncio.run(_go())
+
+
+def test_refiner_waiting_upstream_repeat_dedupes_same_candidate_reason(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_fetch(_row):  # noqa: ANN001
+        return RefinerQueueSnapshot(
+            True,
+            False,
+            True,
+            False,
+            (
+                {
+                    "status": "paused",
+                    "sizeleft": 8_000_000,
+                    "title": "Movie.Name.2026.1080p",
+                },
+            ),
+            (),
+        )
+
+    monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", fake_fetch)
+    probe_calls: list[Path] = []
+    monkeypatch.setattr(
+        "app.refiner_service.ffprobe_json",
+        lambda p: (probe_calls.append(p), _fake_probe_multi_audio())[1],
+    )
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        src = watched / "Movie.Name.2026.1080p.mkv"
+        src.write_bytes(b"x" * 500)
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = True
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            await run_refiner_pass(session, trigger="scheduled")
+            await run_refiner_pass(session, trigger="scheduled")
+            rows = (
+                (
+                    await session.execute(
+                        select(RefinerActivity)
+                        .where(RefinerActivity.file_name == "Movie.Name.2026.1080p.mkv")
+                        .order_by(RefinerActivity.id.desc())
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert len(rows) == 1
+            ctx = parse_activity_context(rows[0].activity_context)
+            assert ctx.get("reason_code") == "radarr_queue_active_download_title"
+            assert int(ctx.get("wait_repeat_count") or 0) >= 2
+            assert str(ctx.get("wait_last_seen_at") or "").strip()
+
+    asyncio.run(_go())
+    assert probe_calls == []

@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import SessionLocal, db_path
 from app.log_sanitize import redact_sensitive_text
-from app.refiner_activity_context import dumps_activity_context
+from app.refiner_activity_context import dumps_activity_context, parse_activity_context
 from app.refiner_errors import failure_hint_from_exception, format_refiner_failure_for_operator
 from app.models import ActivityLog, AppSettings, JobRunLog, RefinerActivity
 from app.schedule import in_window
@@ -45,6 +45,7 @@ from app.refiner_track_display import (
 from app.refiner_source_readiness import (
     RefinerReadinessDecision,
     decide_refiner_readiness,
+    derive_title_fallback_candidate,
     fetch_refiner_queue_snapshot,
     ffprobe_failure_hint_is_read_analyze,
     log_refiner_readiness_diagnostic,
@@ -54,6 +55,14 @@ from app.refiner_source_readiness import (
 logger = logging.getLogger(__name__)
 
 _refiner_lock = asyncio.Lock()
+_UPSTREAM_WAIT_REASON_CODES: frozenset[str] = frozenset(
+    {
+        "radarr_queue_active_download",
+        "sonarr_queue_active_download",
+        "radarr_queue_active_download_title",
+        "sonarr_queue_active_download_title",
+    }
+)
 
 
 def _activity_snapshot(
@@ -430,7 +439,44 @@ async def _persist_refiner_activity_safe(meta: dict[str, Any]) -> None:
             st = "failed"
         ptm = meta.get("processing_time_ms")
         ptm_i = int(ptm) if ptm is not None else None
+        ctx_raw = str(meta.get("activity_context") or "")[:120_000]
+        ctx_new = parse_activity_context(ctx_raw)
+        reason_code = str(ctx_new.get("reason_code") or "").strip().lower()
+        failure_new = str(ctx_new.get("failure_reason") or "").strip()
         async with SessionLocal() as session:
+            if st == "failed" and reason_code in _UPSTREAM_WAIT_REASON_CODES and fn:
+                prior = (
+                    (
+                        await session.execute(
+                            select(RefinerActivity)
+                            .where(RefinerActivity.file_name == fn, RefinerActivity.status == "failed")
+                            .order_by(RefinerActivity.id.desc())
+                            .limit(1)
+                        )
+                    )
+                    .scalars()
+                    .first()
+                )
+                if prior is not None:
+                    prev_ctx = parse_activity_context(prior.activity_context)
+                    prev_rc = str(prev_ctx.get("reason_code") or "").strip().lower()
+                    prev_failure = str(prev_ctx.get("failure_reason") or "").strip()
+                    if prev_rc == reason_code and prev_failure == failure_new:
+                        repeats = int(prev_ctx.get("wait_repeat_count") or 1) + 1
+                        prev_ctx["wait_repeat_count"] = repeats
+                        prev_ctx["wait_last_seen_at"] = utc_now_naive().isoformat()
+                        await session.execute(
+                            update(RefinerActivity)
+                            .where(RefinerActivity.id == prior.id)
+                            .values(
+                                created_at=utc_now_naive(),
+                                media_title=mt,
+                                processing_time_ms=ptm_i,
+                                activity_context=dumps_activity_context(prev_ctx),
+                            )
+                        )
+                        await session.commit()
+                        return
             session.add(
                 RefinerActivity(
                     file_name=fn,
@@ -443,7 +489,7 @@ async def _persist_refiner_activity_safe(meta: dict[str, Any]) -> None:
                     subtitle_tracks_before=int(meta.get("subtitle_tracks_before") or 0),
                     subtitle_tracks_after=int(meta.get("subtitle_tracks_after") or 0),
                     processing_time_ms=ptm_i,
-                    activity_context=str(meta.get("activity_context") or "")[:120_000],
+                    activity_context=ctx_raw,
                 )
             )
             await session.commit()
@@ -520,6 +566,9 @@ def _readiness_skip_meta(fp: Path, decision: RefinerReadinessDecision, t0: float
     sb = _file_size_bytes(fp)
     msg = (decision.operator_message or "").strip() or "Source not ready yet."
     meta = _failure_activity_meta(fp.name, size_before=sb, audio_before=0, subs_before=0, t0=t0)
+    title_raw, title_src = derive_title_fallback_candidate(fp)
+    if title_src == "parent_folder" and title_raw.strip():
+        meta["media_title"] = title_raw[:512]
     meta["failure_hint"] = msg
     meta["activity_context"] = _activity_snapshot(
         failure_reason=msg[:8000],

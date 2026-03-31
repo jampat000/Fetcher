@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.25] - 2026-03-31
+
+### Fixed
+
+- **Refiner Activity:** Upstream-active queue waits now render as **Waiting** (blocked/waiting semantics) instead of **Failed**, with guidance that this is timing/source state and automatic retries continue.
+- **Refiner Activity dedupe:** Repeated identical upstream-active waiting outcomes for the same candidate/reason now update the existing activity row (`wait_repeat_count`, `wait_last_seen_at`) instead of inserting duplicate rows every pass.
+- **Refiner display label:** Waiting rows can use the already-derived parent-folder release identity when it is more useful than a noisy source filename.
+
 ## [3.4.24] - 2026-03-31
 
 ### Fixed
