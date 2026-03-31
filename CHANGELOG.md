@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.10] - 2026-03-31
+
+### Fixed
+
+- **Refiner active downloads:** Re-check source readiness immediately before each file moves from queued to processing (closes time-of-queue vs time-of-use gaps). Final `check_source_readiness` gate at the start of per-file processing returns `skipped_readiness` when the file is no longer safe. When Sonarr/Radarr are configured, skip if their download queue still shows an active grab for the resolved media path (fail-open if the queue API cannot be read). Stronger file-level heuristics (incomplete-name patterns, longer quiet window, multi-sample stability after exclusive read) remain in `refiner_source_readiness`.
+- **In-app upgrade:** Normalize `v`-prefixed versions when comparing live vs target in settings so post-upgrade reload runs. `POST /api/updates/apply` returns a stripped `target_version` for the UI. Windows installer falls back to `sc start Fetcher` if WinSW restart/start does not bring the service up.
+
+### Added
+
+- `app/refiner_arr_download_guard.py` — optional *arr queue correlation for “still downloading.”
+- Tests: `tests/test_refiner_arr_download_guard.py`; coverage for queue recheck, final gate, and apply `target_version` normalization.
+
 ## [3.4.9] - 2026-03-31
 
 ### Fixed

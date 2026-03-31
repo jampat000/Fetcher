@@ -11,13 +11,17 @@ from pathlib import Path
 import pytest
 
 from app.db import SessionLocal, _get_or_create_settings
+from collections import defaultdict
+
 from app.refiner_source_readiness import (
     REFINER_MIN_SILENCE_AFTER_MTIME_SEC,
-    REFINER_STABILITY_INTERVAL_SEC,
+    REFINER_STABILITY_EXTRA_SAMPLES,
+    REFINER_STABILITY_SAMPLE_INTERVAL_SEC,
     SourceReadinessResult,
     check_source_readiness,
     clear_readiness_log_throttle_for_tests,
     log_readiness_skip_throttled,
+    path_looks_like_incomplete_download,
 )
 from app.refiner_service import run_refiner_pass
 
@@ -62,8 +66,8 @@ def test_readiness_stable_old_file(tmp_path: Path) -> None:
     elapsed = time.perf_counter() - t0
     assert r.ready
     assert r.code == "ready"
-    # One stability interval, not a long wait
-    assert elapsed < REFINER_STABILITY_INTERVAL_SEC + 0.35
+    max_sleep = float(REFINER_STABILITY_SAMPLE_INTERVAL_SEC) * int(REFINER_STABILITY_EXTRA_SAMPLES)
+    assert elapsed < max_sleep + 0.75
 
 
 def test_readiness_unstable_when_size_changes(tmp_path: Path) -> None:
@@ -73,7 +77,7 @@ def test_readiness_unstable_when_size_changes(tmp_path: Path) -> None:
 
     def _grow() -> None:
         barrier.wait()
-        time.sleep(REFINER_STABILITY_INTERVAL_SEC * 0.35)
+        time.sleep(REFINER_STABILITY_SAMPLE_INTERVAL_SEC * 0.35)
         with open(p, "ab", buffering=0) as f:
             f.write(b"more-bytes-added")
 
@@ -184,6 +188,85 @@ def test_run_refiner_pass_skips_not_ready_without_activity_rows(
     asyncio.run(_go())
 
 
+def test_path_looks_like_incomplete_download_suffix(tmp_path: Path) -> None:
+    p = tmp_path / "x.mkv.part"
+    p.write_bytes(b"a")
+    assert path_looks_like_incomplete_download(p) is True
+
+
+def test_path_looks_like_incomplete_qbittorrent_sidecar(tmp_path: Path) -> None:
+    p = tmp_path / "movie.mkv"
+    p.write_bytes(b"a")
+    side = tmp_path / "movie.mkv.!qB"
+    side.write_bytes(b"1")
+    assert path_looks_like_incomplete_download(p) is True
+
+
+def test_run_refiner_rechecks_readiness_immediately_before_processing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Second readiness call per file (pre-process) must run — catches stale FIFO queue state."""
+    from sqlalchemy import delete, select
+
+    from app.models import RefinerActivity
+
+    clear_readiness_log_throttle_for_tests()
+
+    watched = tmp_path / "in"
+    out = tmp_path / "out"
+    watched.mkdir()
+    out.mkdir()
+    a = watched / "a.mkv"
+    b = watched / "b.mkv"
+    a.write_bytes(b"a" * 3000)
+    b.write_bytes(b"b" * 3000)
+    old = time.time() - 120
+    os.utime(a, (old, old))
+    os.utime(b, (old, old))
+
+    calls: defaultdict[str, int] = defaultdict(int)
+
+    def _checker(p: Path) -> SourceReadinessResult:
+        calls[p.name] += 1
+        if p.name == "b.mkv" and calls[p.name] >= 2:
+            return SourceReadinessResult(False, "not_ready_too_fresh", "deferred recheck")
+        return SourceReadinessResult(True, "ready", "")
+
+    monkeypatch.setattr("app.refiner_service.check_source_readiness", _checker)
+    monkeypatch.setattr(
+        "app.refiner_service.ffprobe_json",
+        lambda _p: {
+            "streams": [
+                {"index": 0, "codec_type": "video"},
+                {"index": 1, "codec_type": "audio", "tags": {"language": "eng"}, "disposition": {}},
+            ]
+        },
+    )
+    monkeypatch.setattr("app.refiner_service.is_remux_required", lambda *_a, **_k: False)
+
+    async def _go() -> None:
+        async with SessionLocal() as session:
+            await session.execute(delete(RefinerActivity))
+            await session.commit()
+            row = await _get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = True
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(out)
+            await session.commit()
+            await run_refiner_pass(session, trigger="scheduled")
+            rows_b = (
+                await session.execute(select(RefinerActivity).where(RefinerActivity.file_name == "b.mkv"))
+            ).scalars().all()
+            assert len(rows_b) == 1
+            assert (rows_b[0].status or "").strip().lower() == "skipped"
+
+    asyncio.run(_go())
+    assert calls["b.mkv"] >= 2
+
+
 def test_min_silence_constant_is_documented() -> None:
-    assert REFINER_MIN_SILENCE_AFTER_MTIME_SEC >= 10.0
-    assert REFINER_STABILITY_INTERVAL_SEC <= 0.5
+    assert REFINER_MIN_SILENCE_AFTER_MTIME_SEC >= 45.0
+    assert REFINER_STABILITY_SAMPLE_INTERVAL_SEC >= 1.0
+    assert REFINER_STABILITY_EXTRA_SAMPLES >= 1

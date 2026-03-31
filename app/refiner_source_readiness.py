@@ -12,14 +12,64 @@ from typing import Final
 logger = logging.getLogger(__name__)
 
 # Must be this many seconds since last content modification before lock/stability checks.
-REFINER_MIN_SILENCE_AFTER_MTIME_SEC: Final[float] = 15.0
-# Size / mtime must match across this delay (seconds).
-REFINER_STABILITY_INTERVAL_SEC: Final[float] = 0.2
+# Torrent/usenet clients often pause between writes; 15s was too aggressive for production.
+REFINER_MIN_SILENCE_AFTER_MTIME_SEC: Final[float] = 60.0
+# After exclusive read, require this many matching (size,mtime) samples spaced by this interval.
+REFINER_STABILITY_EXTRA_SAMPLES: Final[int] = 2
+REFINER_STABILITY_SAMPLE_INTERVAL_SEC: Final[float] = 1.5
+# Back-compat alias (tests): one “stability window” duration order-of-magnitude.
+REFINER_STABILITY_INTERVAL_SEC: Final[float] = REFINER_STABILITY_SAMPLE_INTERVAL_SEC
 
 # Log at most once per path+code within this window (scheduler tick spam control).
 READINESS_LOG_THROTTLE_SEC: Final[float] = 75.0
 
 _last_readiness_log: dict[str, float] = {}
+
+# Conservative: refuse obvious in-progress client filenames / sidecars (not a substitute for *arr queue).
+_INCOMPLETE_NAME_SUFFIXES: Final[tuple[str, ...]] = (
+    ".part",
+    ".partial",
+    ".download",
+    ".downloading",
+    ".!ut",
+    ".!qb",
+    ".bc!",
+    ".tmp",
+    ".temp",
+    ".aria2",
+    ".ftnh",
+)
+_INCOMPLETE_NAME_SUBSTRINGS: Final[tuple[str, ...]] = (
+    "__incomplete__",
+    "_unpack_",
+    "~incomplete~",
+)
+
+
+def path_looks_like_incomplete_download(path: Path) -> bool:
+    """True when path name or a same-folder sidecar indicates a client still assembling the release."""
+    name_lower = path.name.lower()
+    for suf in _INCOMPLETE_NAME_SUFFIXES:
+        if name_lower.endswith(suf):
+            return True
+    for frag in _INCOMPLETE_NAME_SUBSTRINGS:
+        if frag in name_lower:
+            return True
+    try:
+        parent = path.parent
+        stem = path.name
+        if parent.is_dir():
+            for sibling in parent.iterdir():
+                if not sibling.is_file():
+                    continue
+                sn = sibling.name
+                if sn.startswith(stem) and ".!qb" in sn.lower():
+                    return True
+                if sn.startswith(stem) and sn.endswith(".part"):
+                    return True
+    except OSError:
+        pass
+    return False
 
 
 @dataclass(frozen=True)
@@ -134,6 +184,12 @@ def check_source_readiness(path: Path) -> SourceReadinessResult:
             "not_ready_missing",
             "Source is missing or not a regular file.",
         )
+    if path_looks_like_incomplete_download(p):
+        return SourceReadinessResult(
+            False,
+            "not_ready_incomplete_marker",
+            "File name or folder indicates an incomplete download — skipping until the client finishes.",
+        )
     pair0 = _stat_pair(p)
     if pair0 is None:
         return SourceReadinessResult(
@@ -172,27 +228,29 @@ def check_source_readiness(path: Path) -> SourceReadinessResult:
             "Source file is in use or locked — skipping until it is released.",
         )
 
-    s1 = _stat_pair(p)
-    if s1 is None:
+    prev = _stat_pair(p)
+    if prev is None:
         return SourceReadinessResult(
             False,
             "not_ready_missing",
             "Could not re-read file metadata before stability check.",
         )
-    time.sleep(REFINER_STABILITY_INTERVAL_SEC)
-    s2 = _stat_pair(p)
-    if s2 is None:
-        return SourceReadinessResult(
-            False,
-            "not_ready_unstable",
-            "File metadata became unreadable during stability check.",
-        )
-    if s1 != s2:
-        return SourceReadinessResult(
-            False,
-            "not_ready_unstable",
-            "Source file size or timestamp changed while checking — still being written.",
-        )
+    for _ in range(int(REFINER_STABILITY_EXTRA_SAMPLES)):
+        time.sleep(float(REFINER_STABILITY_SAMPLE_INTERVAL_SEC))
+        cur = _stat_pair(p)
+        if cur is None:
+            return SourceReadinessResult(
+                False,
+                "not_ready_unstable",
+                "File metadata became unreadable during stability check.",
+            )
+        if cur != prev:
+            return SourceReadinessResult(
+                False,
+                "not_ready_unstable",
+                "Source file size or timestamp changed while checking — still being written.",
+            )
+        prev = cur
 
     return SourceReadinessResult(True, "ready", "")
 
@@ -218,6 +276,8 @@ def log_readiness_skip_throttled(path: Path, result: SourceReadinessResult) -> N
         msg = "source still settling after recent write, skipping"
     elif result.code == "not_ready_missing":
         msg = "source not ready (missing or unreadable), skipping"
+    elif result.code == "not_ready_incomplete_marker":
+        msg = "source looks like an incomplete download (name/sidecar), skipping"
     else:
         msg = "source not ready, skipping"
     logger.info("Refiner: %s — %s", msg, path.name)

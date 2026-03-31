@@ -67,9 +67,11 @@ var
   ResultCode: Integer;
   AppDir: String;
   WinswPath: String;
+  ScExe: String;
 begin
   AppDir := ExpandConstant('{app}');
   WinswPath := AppDir + '\winsw.exe';
+  ScExe := ExpandConstant('{sys}\sc.exe');
   if not FileExists(WinswPath) then
     Exit;
   if FetcherServiceRegistered then
@@ -77,11 +79,15 @@ begin
     Exec(WinswPath, 'restart', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
     if ResultCode <> 0 then
       Exec(WinswPath, 'start', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    if ResultCode <> 0 then
+      Exec(ScExe, 'start Fetcher', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end
   else
   begin
     Exec(WinswPath, 'install', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
     Exec(WinswPath, 'start', AppDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    if ResultCode <> 0 then
+      Exec(ScExe, 'start Fetcher', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;
 end;
 

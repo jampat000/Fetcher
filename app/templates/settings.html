@@ -566,6 +566,15 @@
           return String(v == null ? "" : v).trim();
         }
 
+        /** Match ``VERSION`` / ``get_app_version()`` vs GitHub tag strings (``v3.4.0`` vs ``3.4.0``). */
+        function normVerForCompare(v) {
+          var s = normVer(v);
+          if (s.length > 1 && (s.charAt(0) === "v" || s.charAt(0) === "V") && (s.charAt(1).match(/\d/) || s.charAt(1) === ".")) {
+            return s.slice(1).trim();
+          }
+          return s;
+        }
+
         /** Poll /healthz until the service reports the new version (or any change), then reload the page. */
         function watchUpgradeThenReload(previousVersion, targetVersion) {
           var healthzUrl = "/healthz";
@@ -573,8 +582,8 @@
           var maxMs = 6 * 60 * 1000;
           /* Slightly slower than 2s — fewer /healthz hits while the service restarts. */
           var intervalMs = 3000;
-          var prev = normVer(previousVersion);
-          var tgt = normVer(targetVersion);
+          var prev = normVerForCompare(previousVersion);
+          var tgt = normVerForCompare(targetVersion);
           function doneWaiting() {
             if (applyBtn) {
               applyBtn.disabled = false;
@@ -601,8 +610,8 @@
                   setTimeout(tick, intervalMs);
                   return;
                 }
-                var v = normVer(res.j.version);
-                if (tgt && v === tgt) {
+                var v = normVerForCompare(res.j.version);
+                if (tgt && v && v === tgt) {
                   window.location.reload();
                   return;
                 }

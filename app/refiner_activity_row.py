@@ -267,56 +267,75 @@ def build_refiner_activity_row_dict(r: RefinerActivity, tz: str, now: datetime) 
         )
         summary_bullets = _success_summary_bullets(ctx, ab, aa, sbb, sba, sb, sa)
     elif st == "skipped":
-        projected = _metrics_differ(sb, sa, ab, aa, sbb, sba) or _ctx_lines_differ(ctx)
-        if dry and projected:
-            outcome_label = "Dry run"
-            outcome_sub = "Changes identified · preview only; no file changes applied."
-            apply_mode = "preview"
+        rc_skip = str(ctx.get("reason_code") or "").strip().lower()
+        if rc_skip in (
+            "skipped_queue_recheck",
+            "skipped_final_readiness_gate",
+            "radarr_queue_active_download",
+            "sonarr_queue_active_download",
+        ):
+            outcome_label = "Not ready yet"
+            outcome_sub = "Skipped so Refiner does not touch a file that may still be downloading."
             outcome_ui = "skipped"
             tone = "skip"
-            show_comparison = True
-            compare_rows = _compare_rows_audio_subs_size(
-                ctx=ctx,
-                sb=sb,
-                sa=sa,
-                failed=False,
-                include_audio_subs=True,
-                ab=ab,
-                aa=aa,
-                sbb=sbb,
-                sba=sba,
-            )
-            summary_bullets = [
-                "Dry run: source file was not modified.",
-                "Before / After shows the remux Refiner would apply if dry run were off.",
-            ]
-        elif dry and not projected:
-            outcome_label = "Dry run"
-            outcome_sub = "No changes would be applied with current rules."
-            apply_mode = "preview"
-            outcome_ui = "skipped"
-            tone = "skip"
-            show_comparison = False
-            nc = ctx.get("no_change_bullets")
-            if isinstance(nc, list) and nc:
-                summary_bullets = [str(x).strip() for x in nc if str(x).strip()]
-                summary_bullets.insert(0, "Dry run: no file changes.")
-            else:
-                summary_bullets = ["Dry run: rules would leave this file unchanged."]
-        else:
-            outcome_label = "No changes required"
-            outcome_sub = None
             apply_mode = "none"
-            outcome_ui = "skipped"
-            tone = "skip"
             show_comparison = False
             nc = ctx.get("no_change_bullets")
             if isinstance(nc, list) and nc:
                 summary_bullets = [str(x).strip() for x in nc if str(x).strip()]
             else:
-                summary_bullets = ["Remux not required; file already matches your rules."]
-        if ctx.get("commentary_removed") and dry:
-            technical_notes.append("Commentary would be affected per rules (see comparison).")
+                summary_bullets = [outcome_sub]
+        else:
+            projected = _metrics_differ(sb, sa, ab, aa, sbb, sba) or _ctx_lines_differ(ctx)
+            if dry and projected:
+                outcome_label = "Dry run"
+                outcome_sub = "Changes identified · preview only; no file changes applied."
+                apply_mode = "preview"
+                outcome_ui = "skipped"
+                tone = "skip"
+                show_comparison = True
+                compare_rows = _compare_rows_audio_subs_size(
+                    ctx=ctx,
+                    sb=sb,
+                    sa=sa,
+                    failed=False,
+                    include_audio_subs=True,
+                    ab=ab,
+                    aa=aa,
+                    sbb=sbb,
+                    sba=sba,
+                )
+                summary_bullets = [
+                    "Dry run: source file was not modified.",
+                    "Before / After shows the remux Refiner would apply if dry run were off.",
+                ]
+            elif dry and not projected:
+                outcome_label = "Dry run"
+                outcome_sub = "No changes would be applied with current rules."
+                apply_mode = "preview"
+                outcome_ui = "skipped"
+                tone = "skip"
+                show_comparison = False
+                nc = ctx.get("no_change_bullets")
+                if isinstance(nc, list) and nc:
+                    summary_bullets = [str(x).strip() for x in nc if str(x).strip()]
+                    summary_bullets.insert(0, "Dry run: no file changes.")
+                else:
+                    summary_bullets = ["Dry run: rules would leave this file unchanged."]
+            else:
+                outcome_label = "No changes required"
+                outcome_sub = None
+                apply_mode = "none"
+                outcome_ui = "skipped"
+                tone = "skip"
+                show_comparison = False
+                nc = ctx.get("no_change_bullets")
+                if isinstance(nc, list) and nc:
+                    summary_bullets = [str(x).strip() for x in nc if str(x).strip()]
+                else:
+                    summary_bullets = ["Remux not required; file already matches your rules."]
+            if ctx.get("commentary_removed") and dry:
+                technical_notes.append("Commentary would be affected per rules (see comparison).")
     else:
         outcome_label = "Failed"
         outcome_sub = None

@@ -481,9 +481,16 @@ async def api_updates_apply() -> dict[str, Any]:
     finally:
         _apply_lock.release()
 
+    def _strip_version_prefix(raw: object) -> str:
+        t = str(raw or "").strip()
+        if len(t) > 1 and t[0].lower() == "v" and (t[1].isdigit() or t[1] == "."):
+            return t[1:].strip()
+        return t
+
+    tv_norm = _strip_version_prefix(target_version) if target_version else ""
     return {
         "ok": True,
         "message": "Installer started. The Fetcher service will stop briefly during upgrade, then start again.",
         "previous_version": previous_version,
-        "target_version": target_version,
+        "target_version": tv_norm or target_version,
     }

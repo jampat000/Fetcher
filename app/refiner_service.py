@@ -32,6 +32,7 @@ from app.refiner_media_identity import (
     resolve_activity_card_title,
 )
 from app.refiner_mux import ffprobe_json, remux_to_temp_file
+from app.refiner_arr_download_guard import refiner_path_blocked_by_arr_active_download
 from app.refiner_promotion_gate import PromotionGateSyncResult, refiner_promotion_precheck
 from app.refiner_source_readiness import check_source_readiness, log_readiness_skip_throttled
 from app.refiner_rules import (
@@ -827,6 +828,43 @@ async def _reconcile_interrupted_refiner_processing_rows_before_pass() -> None:
     )
 
 
+def _deferred_readiness_skip_meta(
+    fp: Path,
+    *,
+    reason_code: str,
+    operator_note: str,
+    t0: float,
+) -> dict[str, Any]:
+    """Terminal ``skipped`` row when a queued file fails a pre-process or *arr-queue readiness recheck."""
+    sb = 0
+    try:
+        if fp.is_file():
+            sb = _file_size_bytes(fp)
+    except Exception:
+        pass
+    src = _norm_source_path_for_identity(fp)[:4000]
+    note = (operator_note or "").strip()[:500] or reason_code
+    ctx = _activity_snapshot(
+        reason_code=reason_code,
+        source_path=src,
+        no_change_bullets=[note],
+    )
+    return {
+        "file_name": fp.name,
+        "media_title": provisional_media_title_before_probe(fp.name)[:512],
+        "status": "skipped",
+        "size_before_bytes": sb,
+        "size_after_bytes": sb,
+        "audio_tracks_before": 0,
+        "audio_tracks_after": 0,
+        "subtitle_tracks_before": 0,
+        "subtitle_tracks_after": 0,
+        "processing_time_ms": int((time.perf_counter() - t0) * 1000),
+        "activity_context": ctx,
+        "source_path": src,
+    }
+
+
 def _failure_activity_meta(
     fname: str,
     *,
@@ -934,6 +972,29 @@ def _process_one_refiner_file_sync(
         else:
             d["activity_context"] = ""
         return d
+
+    _gate0 = check_source_readiness(path)
+    if not _gate0.ready:
+        sb_gate = 0
+        try:
+            if path.is_file():
+                sb_gate = _file_size_bytes(path)
+        except Exception:
+            pass
+        return "skipped_readiness", pack(
+            "skipped",
+            sb_gate,
+            sb_gate,
+            0,
+            0,
+            0,
+            0,
+            activity_context=_activity_snapshot(
+                reason_code="skipped_final_readiness_gate",
+                source_path=_norm_source_path_for_identity(path)[:4000],
+                no_change_bullets=[(_gate0.operator_message or _gate0.code).strip()[:500]],
+            ),
+        )
 
     if not path.is_file():
         logger.warning("Refiner: source is missing or not a regular file — %s", path)
@@ -1605,6 +1666,45 @@ async def run_refiner_pass(
             return _notify
 
         for fp, act_id in job_rows:
+            t_precheck = time.perf_counter()
+            rr2 = await asyncio.to_thread(check_source_readiness, fp)
+            if not rr2.ready:
+                log_readiness_skip_throttled(fp, rr2)
+                if act_id is not None:
+                    await _update_refiner_activity_row(
+                        int(act_id),
+                        _deferred_readiness_skip_meta(
+                            fp,
+                            reason_code="skipped_queue_recheck",
+                            operator_note=rr2.operator_message or rr2.code,
+                            t0=t_precheck,
+                        ),
+                    )
+                noop_c += 1
+                continue
+            if prom_bridge and (prom_bridge.sonarr is not None or prom_bridge.radarr is not None):
+                blocked_ad, ad_rc = await refiner_path_blocked_by_arr_active_download(
+                    fp,
+                    sonarr_client=prom_bridge.sonarr,
+                    radarr_client=prom_bridge.radarr,
+                )
+                if blocked_ad:
+                    if act_id is not None:
+                        await _update_refiner_activity_row(
+                            int(act_id),
+                            _deferred_readiness_skip_meta(
+                                fp,
+                                reason_code=ad_rc,
+                                operator_note=(
+                                    "Sonarr/Radarr download queue still reports an active download "
+                                    "for this file — Refiner will retry on a later pass."
+                                ),
+                                t0=t_precheck,
+                            ),
+                        )
+                    noop_c += 1
+                    continue
+
             t_job = time.perf_counter()
             await _set_refiner_pass_job_status(act_id, "processing")
             status: str = "error"
@@ -1709,6 +1809,8 @@ async def run_refiner_pass(
                 ok_c += 1
             elif status == "dry_run":
                 dry_c += 1
+            elif status == "skipped_readiness":
+                noop_c += 1
             elif status == "blocked_import":
                 import_blocked_c += 1
                 r = _reason_from_meta_for_parent(meta)

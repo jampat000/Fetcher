@@ -279,3 +279,27 @@ def test_api_updates_apply_success_returns_version_hints_for_ui_reload(monkeypat
     assert body["previous_version"] == "1.0.0"
     assert body["target_version"] == "9.9.9"
     assert launched, "installer should be launched"
+
+
+def test_api_updates_apply_strips_v_prefix_from_target_version(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _fake_check() -> dict[str, Any]:
+        return {
+            "ok": True,
+            "update_available": True,
+            "download_url": "https://github.com/jampat000/Fetcher/releases/download/v3.5.0/FetcherSetup.exe",
+            "latest_version": "v3.5.0",
+        }
+
+    monkeypatch.setattr("app.updates.sys", types.SimpleNamespace(platform="win32", frozen=True))
+    monkeypatch.setattr("app.updates._compute_updates_check_payload", _fake_check)
+
+    async def _fake_dl(_url: str, dest: Any) -> None:
+        dest.write_bytes(b"x" * (600 * 1024))
+
+    monkeypatch.setattr("app.updates._download_installer", _fake_dl)
+    monkeypatch.setattr("app.updates._launch_installer_detached", lambda _p: None)
+
+    with _build_client(monkeypatch) as client:
+        r = client.post("/api/updates/apply")
+    assert r.status_code == 200
+    assert r.json()["target_version"] == "3.5.0"

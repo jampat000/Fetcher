@@ -719,6 +719,7 @@ def test_enter_finalizing_runs_before_finalize_output_no_remux(monkeypatch: pyte
     output.mkdir()
     f = watched / "one.mkv"
     f.write_bytes(b"body")
+    _age_refiner_watch_source(f)
     work = tmp_path / "work"
     cfg = RefinerRulesConfig(
         primary_audio_lang="eng",
@@ -755,6 +756,7 @@ def test_dry_run_does_not_invoke_enter_finalizing(monkeypatch: pytest.MonkeyPatc
     output.mkdir()
     f = watched / "one.mkv"
     f.write_bytes(b"body")
+    _age_refiner_watch_source(f)
     cfg = RefinerRulesConfig(
         primary_audio_lang="eng",
         secondary_audio_lang="",
@@ -828,6 +830,7 @@ def test_finalize_failure_after_enter_finalizing_returns_failed(monkeypatch: pyt
     output.mkdir()
     f = watched / "bad.mkv"
     f.write_bytes(b"body")
+    _age_refiner_watch_source(f)
     cfg = RefinerRulesConfig(
         primary_audio_lang="eng",
         secondary_audio_lang="",
@@ -1064,6 +1067,7 @@ def test_sync_promotion_gate_runs_without_nameerror(monkeypatch: pytest.MonkeyPa
     work.mkdir()
     f = watched / "gate.mkv"
     f.write_bytes(b"payload")
+    _age_refiner_watch_source(f)
 
     loop = asyncio.new_event_loop()
     bridge = importlib.import_module("app.refiner_service").RefinerPromotionBridge(
