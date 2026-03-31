@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.22] - 2026-03-31
+
+### Fixed
+
+- **Refiner:** Preserve path-based authority matching, then fall back to **release-title** matching only when active Arr queue rows expose no usable filesystem path fields. This blocks active downloads in usenet/SABnzbd-style payloads where queue rows carry title + `sizeLeft` / tracked state but omit paths.
+- **Refiner diagnostics:** readiness diagnostics now include `active_queue_title_samples_radarr` / `active_queue_title_samples_sonarr`, `title_fallback_used_*`, and `upstream_block_match_kind` (`path` vs `title`) for clear operator traceability.
+- **Refiner classification:** reason-code mapping treats title-based active-download blocks as **waiting** (`radarr_queue_active_download_title`, `sonarr_queue_active_download_title`).
 ## [3.4.21] - 2026-03-31
 
 ### Added (diagnostic build only)
@@ -1381,3 +1388,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [2.0.2]: https://github.com/jampat000/Fetcher/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/jampat000/Fetcher/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/jampat000/Fetcher/compare/v1.0.44...v2.0.0
+

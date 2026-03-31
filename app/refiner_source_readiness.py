@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -196,6 +197,46 @@ def _path_key_matches_candidate(file_key: str, queue_path: str) -> bool:
     return file_key.startswith(q_key + "\\") or file_key.startswith(q_key + "/")
 
 
+_TITLE_EXT_RE = re.compile(r"\.(mkv|mp4|m4v|avi|mov|wmv|ts|m2ts|webm)$", re.IGNORECASE)
+_TITLE_SEP_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _normalize_releaseish_title(raw: object) -> str:
+    t = str(raw or "").strip().casefold()
+    if not t:
+        return ""
+    t = _TITLE_EXT_RE.sub("", t)
+    t = _TITLE_SEP_RE.sub(" ", t)
+    t = " ".join(t.split())
+    return t
+
+
+def _queue_row_title_candidates(rec: dict[str, Any]) -> list[str]:
+    out: list[str] = []
+    for key in ("title", "sourceTitle", "releaseTitle"):
+        v = rec.get(key)
+        if isinstance(v, str) and v.strip() and v.strip() not in out:
+            out.append(v.strip())
+    return out
+
+
+def _title_fallback_match(candidate_stem_norm: str, rec: dict[str, Any]) -> tuple[bool, str]:
+    if not candidate_stem_norm:
+        return False, ""
+    for raw in _queue_row_title_candidates(rec):
+        t_norm = _normalize_releaseish_title(raw)
+        if not t_norm:
+            continue
+        # Conservative release-name matching only.
+        if t_norm == candidate_stem_norm:
+            return True, raw
+        if candidate_stem_norm.startswith(t_norm):
+            return True, raw
+        if t_norm.startswith(candidate_stem_norm):
+            return True, raw
+    return False, ""
+
+
 def path_matches_queue_record(file_key: str, rec: dict[str, Any]) -> bool:
     for s in iter_queue_path_strings(rec):
         if _path_key_matches_candidate(file_key, s):
@@ -206,6 +247,7 @@ def path_matches_queue_record(file_key: str, rec: dict[str, Any]) -> bool:
 def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool, str, str, dict[str, Any]]:
     """Same blocking rules as historical ``upstream_blocks_path``, plus a diagnostic dict for live tracing."""
     file_key = _resolved_key(path)
+    candidate_stem_norm = _normalize_releaseish_title(path.stem)
     diag: dict[str, Any] = {
         "gate_context": "upstream_analyze",
         "candidate_resolved": file_key,
@@ -220,8 +262,13 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
         "sonarr_upstream_active_rows": 0,
         "radarr_active_path_samples": [],
         "sonarr_active_path_samples": [],
+        "active_queue_title_samples_radarr": [],
+        "active_queue_title_samples_sonarr": [],
         "inactive_path_match_radarr": False,
         "inactive_path_match_sonarr": False,
+        "title_fallback_used_radarr": False,
+        "title_fallback_used_sonarr": False,
+        "upstream_block_match_kind": "",
         "upstream_blocked": False,
         "upstream_block_reason_code": "",
         "upstream_scan_skipped": False,
@@ -231,59 +278,73 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
         diag["upstream_scan_skipped"] = True
         return False, "", "", diag
 
-    radarr_active_rows_logged = 0
-
     def _collect_for_app(
         records: tuple[dict[str, Any], ...],
         *,
         app: str,
     ) -> tuple[bool, str, str] | None:
-        nonlocal radarr_active_rows_logged
         active_samples: list[str] = []
+        active_title_samples: list[str] = []
         inactive_match = False
+        title_fallback_used = False
         active_count = 0
         for rec in records:
             if not isinstance(rec, dict):
                 continue
-            matched = path_matches_queue_record(file_key, rec)
             active = queue_record_upstream_active(rec)
+            q_paths = iter_queue_path_strings(rec)
+            path_matched = any(_path_key_matches_candidate(file_key, qp) for qp in q_paths)
+            title_matched = False
+            title_raw = ""
+            if active and not q_paths:
+                title_matched, title_raw = _title_fallback_match(candidate_stem_norm, rec)
+                if title_matched:
+                    title_fallback_used = True
             if active:
                 active_count += 1
-                if app == "radarr" and radarr_active_rows_logged < 2:
-                    logger.warning(
-                        "REFINER_ACTIVE_RADARR_ROW: %s",
-                        json.dumps(rec, ensure_ascii=False, default=str)[:4000],
-                    )
-                    radarr_active_rows_logged += 1
-                for ps in iter_queue_path_strings(rec):
+                for ps in q_paths:
                     if len(active_samples) < 4:
                         active_samples.append(ps[:160] + ("…" if len(ps) > 160 else ""))
-            elif matched:
+                if title_raw and len(active_title_samples) < 4:
+                    active_title_samples.append(title_raw[:160] + ("…" if len(title_raw) > 160 else ""))
+            elif path_matched:
                 inactive_match = True
-            if active and matched:
+            if active and (path_matched or title_matched):
                 if app == "radarr":
                     diag["radarr_upstream_active_rows"] = active_count
                     diag["radarr_active_path_samples"] = active_samples
+                    diag["active_queue_title_samples_radarr"] = active_title_samples
                     diag["inactive_path_match_radarr"] = inactive_match
+                    diag["title_fallback_used_radarr"] = title_fallback_used
                 else:
                     diag["sonarr_upstream_active_rows"] = active_count
                     diag["sonarr_active_path_samples"] = active_samples
+                    diag["active_queue_title_samples_sonarr"] = active_title_samples
                     diag["inactive_path_match_sonarr"] = inactive_match
+                    diag["title_fallback_used_sonarr"] = title_fallback_used
                 msg = (
                     "Radarr still reports this path in the active download queue — waiting until the download finishes."
                     if app == "radarr"
                     else "Sonarr still reports this path in the active download queue — waiting until the download finishes."
                 )
-                rc = "radarr_queue_active_download" if app == "radarr" else "sonarr_queue_active_download"
+                if app == "radarr":
+                    rc = "radarr_queue_active_download_title" if title_matched and not path_matched else "radarr_queue_active_download"
+                else:
+                    rc = "sonarr_queue_active_download_title" if title_matched and not path_matched else "sonarr_queue_active_download"
+                diag["upstream_block_match_kind"] = "title" if title_matched and not path_matched else "path"
                 return True, rc, msg
         if app == "radarr":
             diag["radarr_upstream_active_rows"] = active_count
             diag["radarr_active_path_samples"] = active_samples
+            diag["active_queue_title_samples_radarr"] = active_title_samples
             diag["inactive_path_match_radarr"] = inactive_match
+            diag["title_fallback_used_radarr"] = title_fallback_used
         else:
             diag["sonarr_upstream_active_rows"] = active_count
             diag["sonarr_active_path_samples"] = active_samples
+            diag["active_queue_title_samples_sonarr"] = active_title_samples
             diag["inactive_path_match_sonarr"] = inactive_match
+            diag["title_fallback_used_sonarr"] = title_fallback_used
         return None
 
     hit = _collect_for_app(snap.radarr_records, app="radarr")
@@ -343,8 +404,13 @@ def log_refiner_readiness_diagnostic(
         "upstream_active_rows_sonarr": up_diag.get("sonarr_upstream_active_rows"),
         "active_queue_path_samples_radarr": up_diag.get("radarr_active_path_samples"),
         "active_queue_path_samples_sonarr": up_diag.get("sonarr_active_path_samples"),
+        "active_queue_title_samples_radarr": up_diag.get("active_queue_title_samples_radarr"),
+        "active_queue_title_samples_sonarr": up_diag.get("active_queue_title_samples_sonarr"),
         "inactive_path_match_radarr": up_diag.get("inactive_path_match_radarr"),
         "inactive_path_match_sonarr": up_diag.get("inactive_path_match_sonarr"),
+        "title_fallback_used_radarr": up_diag.get("title_fallback_used_radarr"),
+        "title_fallback_used_sonarr": up_diag.get("title_fallback_used_sonarr"),
+        "upstream_block_match_kind": up_diag.get("upstream_block_match_kind") or "",
         "file_gate_ok": file_gate_ok,
         "file_gate_detail": (file_gate_detail or "")[:300],
         "decision_proceed": decision_proceed,

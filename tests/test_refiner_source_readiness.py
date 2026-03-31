@@ -96,6 +96,61 @@ def test_upstream_radarr_blocks_moviefile_path_field(tmp_path: Path) -> None:
     assert upstream_blocks_path(f, snap)[0] is True
 
 
+def test_upstream_radarr_title_fallback_blocks_when_no_paths_live_shape(tmp_path: Path) -> None:
+    """Live Radarr queue shape: active row with title + sizeleft/tracked state, but no usable filesystem paths."""
+    f = tmp_path / "Atlas.2024.1080p.WEB-DL.mkv"
+    f.write_bytes(b"x" * 80)
+    rec = {
+        "status": "paused",
+        "trackedDownloadState": "downloading",
+        "sizeleft": 5_000_000,
+        "title": "Atlas.2024.1080p.WEB-DL",
+    }
+    snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+    blocked, rc, _m, diag = upstream_analyze_path(f, snap)
+    assert blocked is True
+    assert rc == "radarr_queue_active_download_title"
+    assert diag["upstream_block_match_kind"] == "title"
+    assert diag["radarr_active_path_samples"] == []
+    assert diag["active_queue_title_samples_radarr"]
+    assert diag["title_fallback_used_radarr"] is True
+
+
+def test_upstream_radarr_title_fallback_no_match_does_not_block(tmp_path: Path) -> None:
+    f = tmp_path / "Different.Movie.2021.mkv"
+    f.write_bytes(b"x" * 80)
+    rec = {
+        "status": "paused",
+        "trackedDownloadState": "downloading",
+        "sizeleft": 9_000_000,
+        "title": "Some.Other.Release.2024.1080p.WEB-DL",
+    }
+    snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+    blocked, rc, _m, diag = upstream_analyze_path(f, snap)
+    assert blocked is False
+    assert rc == ""
+    assert diag["radarr_active_path_samples"] == []
+    assert diag["title_fallback_used_radarr"] is False
+    assert diag["upstream_block_match_kind"] == ""
+
+
+def test_upstream_radarr_does_not_use_title_fallback_when_paths_present(tmp_path: Path) -> None:
+    """Title fallback applies only when queue row has no path candidates."""
+    f = tmp_path / "movie-file.mkv"
+    f.write_bytes(b"x" * 80)
+    rec = {
+        "status": "paused",
+        "sizeleft": 10_000_000,
+        "title": "movie file",
+        "outputPath": str((tmp_path / "some-other-file.mkv").resolve()),
+    }
+    snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+    blocked, rc, _m, diag = upstream_analyze_path(f, snap)
+    assert blocked is False
+    assert rc == ""
+    assert diag["title_fallback_used_radarr"] is False
+
+
 def test_upstream_sonarr_blocks_episode_file_path(tmp_path: Path) -> None:
     f = tmp_path / "show.episode.mkv"
     f.write_bytes(b"x" * 70)

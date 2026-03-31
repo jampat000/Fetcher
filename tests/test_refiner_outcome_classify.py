@@ -35,6 +35,14 @@ def test_reason_code_readiness_is_blocked_waiting() -> None:
     assert auto is True
 
 
+def test_reason_code_title_readiness_is_blocked_waiting() -> None:
+    ctx = {"reason_code": "radarr_queue_active_download_title", "failure_reason": ""}
+    oc, hint, auto = classify_refiner_activity_context(ctx, status="failed")
+    assert oc is RefinerOutcomeClass.BLOCKED_WAITING
+    assert "Waiting on source" in hint or "timing" in hint
+    assert auto is True
+
+
 def test_source_disappeared_blocked_waiting_not_hard_failure_semantics() -> None:
     oc, hint = classify_failure_message("Source file disappeared from the watch folder before remux could start.")
     assert oc is RefinerOutcomeClass.BLOCKED_WAITING

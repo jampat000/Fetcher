@@ -24,6 +24,8 @@ _REASON_CODE_BLOCKED: frozenset[str] = frozenset(
         "skipped_readiness",
         "radarr_queue_active_download",
         "sonarr_queue_active_download",
+        "radarr_queue_active_download_title",
+        "sonarr_queue_active_download_title",
         "no_ready_sources",
     }
 )
