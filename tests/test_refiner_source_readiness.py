@@ -116,6 +116,21 @@ def test_upstream_radarr_title_fallback_blocks_when_no_paths_live_shape(tmp_path
     assert diag["title_fallback_used_radarr"] is True
 
 
+def test_upstream_radarr_title_fallback_prefix_case_blocks(tmp_path: Path) -> None:
+    f = tmp_path / "Release.Name.2025.PROPER.1080p.mkv"
+    f.write_bytes(b"x" * 80)
+    rec = {
+        "status": "paused",
+        "sizeleft": 5_000_000,
+        "title": "Release.Name.2025",
+    }
+    snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+    blocked, rc, _m, diag = upstream_analyze_path(f, snap)
+    assert blocked is True
+    assert rc == "radarr_queue_active_download_title"
+    assert diag["title_fallback_match_norm_prefix_radarr"] is True
+
+
 def test_upstream_radarr_title_fallback_no_match_does_not_block(tmp_path: Path) -> None:
     f = tmp_path / "Different.Movie.2021.mkv"
     f.write_bytes(b"x" * 80)
@@ -134,6 +149,25 @@ def test_upstream_radarr_title_fallback_no_match_does_not_block(tmp_path: Path) 
     assert diag["upstream_block_match_kind"] == ""
 
 
+def test_upstream_radarr_junk_extracted_paths_still_trigger_title_fallback(tmp_path: Path) -> None:
+    f = tmp_path / "Live.Release.2025.1080p.mkv"
+    f.write_bytes(b"x" * 80)
+    rec = {
+        "status": "paused",
+        "sizeleft": 7_000_000,
+        "title": "Live.Release.2025.1080p",
+        "movie": {"folderName": "Live.Release.2025.1080p"},  # non-path token (no slash)
+        "movieFile": {"relativePath": "Live.Release.2025.1080p.mkv"},  # bare filename only
+    }
+    snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+    blocked, rc, _m, diag = upstream_analyze_path(f, snap)
+    assert blocked is True
+    assert rc == "radarr_queue_active_download_title"
+    assert diag["radarr_active_usable_path_count"] == 0
+    assert diag["title_fallback_entered_radarr"] is True
+    assert diag["title_fallback_used_radarr"] is True
+
+
 def test_upstream_radarr_does_not_use_title_fallback_when_paths_present(tmp_path: Path) -> None:
     """Title fallback applies only when queue row has no path candidates."""
     f = tmp_path / "movie-file.mkv"
@@ -149,6 +183,39 @@ def test_upstream_radarr_does_not_use_title_fallback_when_paths_present(tmp_path
     assert blocked is False
     assert rc == ""
     assert diag["title_fallback_used_radarr"] is False
+
+
+def test_upstream_radarr_inactive_pathless_row_does_not_block(tmp_path: Path) -> None:
+    f = tmp_path / "active.name.mkv"
+    f.write_bytes(b"x" * 80)
+    rec = {
+        "status": "completed",
+        "sizeleft": 0,
+        "title": "active.name",
+    }
+    snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+    blocked, rc, _m, diag = upstream_analyze_path(f, snap)
+    assert blocked is False
+    assert rc == ""
+    assert diag["title_fallback_entered_radarr"] is False
+
+
+def test_upstream_radarr_title_match_uses_candidate_stem_not_full_path(tmp_path: Path) -> None:
+    deep = tmp_path / "Some Folder" / "Nested"
+    deep.mkdir(parents=True)
+    f = deep / "The.Movie.2026.2160p.HDR.mkv"
+    f.write_bytes(b"x" * 80)
+    rec = {
+        "status": "paused",
+        "sizeleft": 1_000_000,
+        "title": "The.Movie.2026.2160p.HDR",
+    }
+    snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+    blocked, rc, _m, diag = upstream_analyze_path(f, snap)
+    assert blocked is True
+    assert rc == "radarr_queue_active_download_title"
+    assert diag["candidate_stem"] == "The.Movie.2026.2160p.HDR"
+    assert "Some Folder" not in (diag.get("candidate_stem_norm") or "")
 
 
 def test_upstream_sonarr_blocks_episode_file_path(tmp_path: Path) -> None:

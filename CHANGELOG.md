@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.23] - 2026-03-31
+
+### Fixed
+
+- **Refiner:** Active-download authority blocking now uses title-based fallback whenever an active Arr queue row has **zero usable filesystem path candidates** (not just a non-empty raw path field collection). Path matching remains primary when usable paths are present.
+- **Refiner diagnostics:** readiness payload now includes fallback proof fields (`active_usable_path_count_*`, `title_fallback_entered_*`, candidate stem, queue title, normalized match booleans, and final `upstream_block_match_kind`) so operators can verify exactly why a row blocked or proceeded.
+
 ## [3.4.22] - 2026-03-31
 
 ### Fixed
