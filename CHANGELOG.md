@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.24] - 2026-03-31
+
+### Fixed
+
+- **Refiner:** For active Arr rows with no usable filesystem paths, title-fallback candidate identity is now derived from **file stem first**, then conservatively falls back to the **parent folder name** when the file stem is not release-like (usenet/SAB layouts where the folder carries release identity). Matching remains strict (normalized equality/prefix only).
+- **Refiner diagnostics:** added explicit title-fallback candidate proof fields (`title_fallback_candidate_title_*`, `title_fallback_candidate_title_norm_*`, `title_fallback_candidate_source_*`) so logs show whether fallback matched using `file_stem` or `parent_folder`.
+
 ## [3.4.23] - 2026-03-31
 
 ### Fixed

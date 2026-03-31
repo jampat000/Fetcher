@@ -11,6 +11,7 @@ from app.models import AppSettings
 from app.refiner_source_readiness import (
     RefinerQueueSnapshot,
     decide_refiner_readiness,
+    derive_title_fallback_candidate,
     fetch_refiner_queue_snapshot,
     iter_queue_path_strings,
     queue_record_upstream_active,
@@ -114,6 +115,7 @@ def test_upstream_radarr_title_fallback_blocks_when_no_paths_live_shape(tmp_path
     assert diag["radarr_active_path_samples"] == []
     assert diag["active_queue_title_samples_radarr"]
     assert diag["title_fallback_used_radarr"] is True
+    assert diag["title_fallback_candidate_source_radarr"] == "file_stem"
 
 
 def test_upstream_radarr_title_fallback_prefix_case_blocks(tmp_path: Path) -> None:
@@ -131,6 +133,25 @@ def test_upstream_radarr_title_fallback_prefix_case_blocks(tmp_path: Path) -> No
     assert diag["title_fallback_match_norm_prefix_radarr"] is True
 
 
+def test_upstream_radarr_parent_folder_fallback_when_file_stem_not_release_like(tmp_path: Path) -> None:
+    rel = tmp_path / "Movie.Name.2026.1080p.WEB-DL-GROUP"
+    rel.mkdir()
+    f = rel / "sample.mkv"
+    f.write_bytes(b"x" * 80)
+    rec = {
+        "status": "paused",
+        "sizeleft": 5_000_000,
+        "title": "Movie.Name.2026.1080p.WEB-DL-GROUP",
+    }
+    snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+    blocked, rc, _m, diag = upstream_analyze_path(f, snap)
+    assert blocked is True
+    assert rc == "radarr_queue_active_download_title"
+    assert diag["title_fallback_entered_radarr"] is True
+    assert diag["title_fallback_candidate_source_radarr"] == "parent_folder"
+    assert diag["upstream_block_match_kind"] == "title"
+
+
 def test_upstream_radarr_title_fallback_no_match_does_not_block(tmp_path: Path) -> None:
     f = tmp_path / "Different.Movie.2021.mkv"
     f.write_bytes(b"x" * 80)
@@ -146,6 +167,25 @@ def test_upstream_radarr_title_fallback_no_match_does_not_block(tmp_path: Path) 
     assert rc == ""
     assert diag["radarr_active_path_samples"] == []
     assert diag["title_fallback_used_radarr"] is False
+    assert diag["upstream_block_match_kind"] == ""
+
+
+def test_upstream_radarr_non_matching_parent_folder_does_not_block(tmp_path: Path) -> None:
+    rel = tmp_path / "Wrong.Release.2021"
+    rel.mkdir()
+    f = rel / "sample.mkv"
+    f.write_bytes(b"x" * 80)
+    rec = {
+        "status": "paused",
+        "sizeleft": 5_000_000,
+        "title": "Movie.Name.2026.1080p.WEB-DL-GROUP",
+    }
+    snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+    blocked, rc, _m, diag = upstream_analyze_path(f, snap)
+    assert blocked is False
+    assert rc == ""
+    assert diag["title_fallback_entered_radarr"] is True
+    assert diag["title_fallback_candidate_source_radarr"] == "parent_folder"
     assert diag["upstream_block_match_kind"] == ""
 
 
@@ -185,6 +225,24 @@ def test_upstream_radarr_does_not_use_title_fallback_when_paths_present(tmp_path
     assert diag["title_fallback_used_radarr"] is False
 
 
+def test_title_fallback_candidate_derivation_prefers_file_stem_when_release_like(tmp_path: Path) -> None:
+    p = tmp_path / "Any Parent" / "Movie.Name.2027.2160p.HDR.mkv"
+    p.parent.mkdir(parents=True)
+    p.write_bytes(b"x")
+    title, src = derive_title_fallback_candidate(p)
+    assert src == "file_stem"
+    assert title == "Movie.Name.2027.2160p.HDR"
+
+
+def test_title_fallback_candidate_derivation_uses_parent_when_stem_not_release_like(tmp_path: Path) -> None:
+    p = tmp_path / "Movie.Name.2027.2160p.HDR" / "sample.mkv"
+    p.parent.mkdir(parents=True)
+    p.write_bytes(b"x")
+    title, src = derive_title_fallback_candidate(p)
+    assert src == "parent_folder"
+    assert title == "Movie.Name.2027.2160p.HDR"
+
+
 def test_upstream_radarr_inactive_pathless_row_does_not_block(tmp_path: Path) -> None:
     f = tmp_path / "active.name.mkv"
     f.write_bytes(b"x" * 80)
@@ -214,7 +272,8 @@ def test_upstream_radarr_title_match_uses_candidate_stem_not_full_path(tmp_path:
     blocked, rc, _m, diag = upstream_analyze_path(f, snap)
     assert blocked is True
     assert rc == "radarr_queue_active_download_title"
-    assert diag["candidate_stem"] == "The.Movie.2026.2160p.HDR"
+    assert diag["title_fallback_candidate_title_radarr"] == "The.Movie.2026.2160p.HDR"
+    assert diag["title_fallback_candidate_source_radarr"] == "file_stem"
     assert "Some Folder" not in (diag.get("candidate_stem_norm") or "")
 
 

@@ -212,6 +212,33 @@ def _normalize_releaseish_title(raw: object) -> str:
     return t
 
 
+def _looks_release_like_title(raw: object) -> bool:
+    n = _normalize_releaseish_title(raw)
+    if len(n) < 6:
+        return False
+    toks = n.split()
+    if len(toks) < 2:
+        return False
+    # Very short/generic stems are poor release identity; require at least one digit
+    # (year/season/resolution/group token) to reduce accidental matches.
+    return any(ch.isdigit() for ch in n)
+
+
+def derive_title_fallback_candidate(path: Path) -> tuple[str, str]:
+    """
+    Candidate title identity for title fallback matching.
+    Priority: file stem, then parent folder when stem is not release-like.
+    Returns (raw_candidate_title, source).
+    """
+    stem = (path.stem or "").strip()
+    if _looks_release_like_title(stem):
+        return stem, "file_stem"
+    parent = (path.parent.name or "").strip()
+    if _looks_release_like_title(parent):
+        return parent, "parent_folder"
+    return stem, "file_stem"
+
+
 def _queue_row_title_candidates(rec: dict[str, Any]) -> list[str]:
     out: list[str] = []
     for key in ("title", "sourceTitle", "releaseTitle"):
@@ -263,12 +290,16 @@ def path_matches_queue_record(file_key: str, rec: dict[str, Any]) -> bool:
 def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool, str, str, dict[str, Any]]:
     """Same blocking rules as historical ``upstream_blocks_path``, plus a diagnostic dict for live tracing."""
     file_key = _resolved_key(path)
-    candidate_stem_norm = _normalize_releaseish_title(path.stem)
+    candidate_title_raw, candidate_title_source = derive_title_fallback_candidate(path)
+    candidate_stem_norm = _normalize_releaseish_title(candidate_title_raw)
     diag: dict[str, Any] = {
         "gate_context": "upstream_analyze",
         "candidate_resolved": file_key,
         "candidate_stem": path.stem,
-        "candidate_stem_norm": candidate_stem_norm,
+        "candidate_stem_norm": _normalize_releaseish_title(path.stem),
+        "title_fallback_candidate_title": candidate_title_raw,
+        "title_fallback_candidate_title_norm": candidate_stem_norm,
+        "title_fallback_candidate_source": candidate_title_source,
         "radarr_configured": snap.radarr_configured,
         "sonarr_configured": snap.sonarr_configured,
         "radarr_fetch_succeeded": snap.radarr_fetch_succeeded,
@@ -294,6 +325,12 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
         "title_fallback_queue_title_sonarr": "",
         "title_fallback_queue_title_norm_radarr": "",
         "title_fallback_queue_title_norm_sonarr": "",
+        "title_fallback_candidate_title_radarr": "",
+        "title_fallback_candidate_title_sonarr": "",
+        "title_fallback_candidate_title_norm_radarr": "",
+        "title_fallback_candidate_title_norm_sonarr": "",
+        "title_fallback_candidate_source_radarr": "",
+        "title_fallback_candidate_source_sonarr": "",
         "title_fallback_match_norm_equal_radarr": False,
         "title_fallback_match_norm_prefix_radarr": False,
         "title_fallback_match_norm_equal_sonarr": False,
@@ -367,6 +404,9 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
                     diag["title_fallback_entered_radarr"] = title_fallback_entered
                     diag["title_fallback_queue_title_radarr"] = title_fallback_queue_title
                     diag["title_fallback_queue_title_norm_radarr"] = title_fallback_queue_title_norm
+                    diag["title_fallback_candidate_title_radarr"] = candidate_title_raw
+                    diag["title_fallback_candidate_title_norm_radarr"] = candidate_stem_norm
+                    diag["title_fallback_candidate_source_radarr"] = candidate_title_source
                     diag["title_fallback_match_norm_equal_radarr"] = title_fallback_norm_equal
                     diag["title_fallback_match_norm_prefix_radarr"] = title_fallback_norm_prefix
                 else:
@@ -379,6 +419,9 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
                     diag["title_fallback_entered_sonarr"] = title_fallback_entered
                     diag["title_fallback_queue_title_sonarr"] = title_fallback_queue_title
                     diag["title_fallback_queue_title_norm_sonarr"] = title_fallback_queue_title_norm
+                    diag["title_fallback_candidate_title_sonarr"] = candidate_title_raw
+                    diag["title_fallback_candidate_title_norm_sonarr"] = candidate_stem_norm
+                    diag["title_fallback_candidate_source_sonarr"] = candidate_title_source
                     diag["title_fallback_match_norm_equal_sonarr"] = title_fallback_norm_equal
                     diag["title_fallback_match_norm_prefix_sonarr"] = title_fallback_norm_prefix
                 msg = (
@@ -402,6 +445,9 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
             diag["title_fallback_entered_radarr"] = title_fallback_entered
             diag["title_fallback_queue_title_radarr"] = title_fallback_queue_title
             diag["title_fallback_queue_title_norm_radarr"] = title_fallback_queue_title_norm
+            diag["title_fallback_candidate_title_radarr"] = candidate_title_raw
+            diag["title_fallback_candidate_title_norm_radarr"] = candidate_stem_norm
+            diag["title_fallback_candidate_source_radarr"] = candidate_title_source
             diag["title_fallback_match_norm_equal_radarr"] = title_fallback_norm_equal
             diag["title_fallback_match_norm_prefix_radarr"] = title_fallback_norm_prefix
         else:
@@ -414,6 +460,9 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
             diag["title_fallback_entered_sonarr"] = title_fallback_entered
             diag["title_fallback_queue_title_sonarr"] = title_fallback_queue_title
             diag["title_fallback_queue_title_norm_sonarr"] = title_fallback_queue_title_norm
+            diag["title_fallback_candidate_title_sonarr"] = candidate_title_raw
+            diag["title_fallback_candidate_title_norm_sonarr"] = candidate_stem_norm
+            diag["title_fallback_candidate_source_sonarr"] = candidate_title_source
             diag["title_fallback_match_norm_equal_sonarr"] = title_fallback_norm_equal
             diag["title_fallback_match_norm_prefix_sonarr"] = title_fallback_norm_prefix
         return None
@@ -489,6 +538,12 @@ def log_refiner_readiness_diagnostic(
         "title_fallback_queue_title_sonarr": up_diag.get("title_fallback_queue_title_sonarr"),
         "title_fallback_queue_title_norm_radarr": up_diag.get("title_fallback_queue_title_norm_radarr"),
         "title_fallback_queue_title_norm_sonarr": up_diag.get("title_fallback_queue_title_norm_sonarr"),
+        "title_fallback_candidate_title_radarr": up_diag.get("title_fallback_candidate_title_radarr"),
+        "title_fallback_candidate_title_sonarr": up_diag.get("title_fallback_candidate_title_sonarr"),
+        "title_fallback_candidate_title_norm_radarr": up_diag.get("title_fallback_candidate_title_norm_radarr"),
+        "title_fallback_candidate_title_norm_sonarr": up_diag.get("title_fallback_candidate_title_norm_sonarr"),
+        "title_fallback_candidate_source_radarr": up_diag.get("title_fallback_candidate_source_radarr"),
+        "title_fallback_candidate_source_sonarr": up_diag.get("title_fallback_candidate_source_sonarr"),
         "title_fallback_match_norm_equal_radarr": up_diag.get("title_fallback_match_norm_equal_radarr"),
         "title_fallback_match_norm_prefix_radarr": up_diag.get("title_fallback_match_norm_prefix_radarr"),
         "title_fallback_match_norm_equal_sonarr": up_diag.get("title_fallback_match_norm_equal_sonarr"),
