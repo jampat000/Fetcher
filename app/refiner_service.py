@@ -9,7 +9,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Literal
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import SessionLocal, db_path
@@ -406,7 +406,56 @@ async def _update_refiner_activity_row(row_id: int, meta: dict[str, Any]) -> Non
             st = "failed"
         ptm = meta.get("processing_time_ms")
         ptm_i = int(ptm) if ptm is not None else None
+        ctx_raw = str(meta.get("activity_context") or "")[:120_000]
+        ctx_new = parse_activity_context(ctx_raw)
+        reason_code = str(ctx_new.get("reason_code") or "").strip().lower()
+        failure_new = str(ctx_new.get("failure_reason") or "").strip()
         async with SessionLocal() as session:
+            if st == "failed" and reason_code in _UPSTREAM_WAIT_REASON_CODES and fn:
+                prior = (
+                    (
+                        await session.execute(
+                            select(RefinerActivity)
+                            .where(
+                                RefinerActivity.file_name == fn,
+                                RefinerActivity.status == "failed",
+                                RefinerActivity.id != row_id,
+                            )
+                            .order_by(RefinerActivity.id.desc())
+                            .limit(1)
+                        )
+                    )
+                    .scalars()
+                    .first()
+                )
+                if prior is not None:
+                    prev_ctx = parse_activity_context(prior.activity_context)
+                    prev_rc = str(prev_ctx.get("reason_code") or "").strip().lower()
+                    prev_failure = str(prev_ctx.get("failure_reason") or "").strip()
+                    if prev_rc == reason_code and prev_failure == failure_new:
+                        repeats = int(prev_ctx.get("wait_repeat_count") or 1) + 1
+                        prev_ctx["wait_repeat_count"] = repeats
+                        prev_ctx["wait_last_seen_at"] = utc_now_naive().isoformat()
+                        await session.execute(
+                            update(RefinerActivity)
+                            .where(RefinerActivity.id == prior.id)
+                            .values(
+                                created_at=utc_now_naive(),
+                                media_title=mt,
+                                status="failed",
+                                size_before_bytes=int(meta.get("size_before_bytes") or 0),
+                                size_after_bytes=int(meta.get("size_after_bytes") or 0),
+                                audio_tracks_before=int(meta.get("audio_tracks_before") or 0),
+                                audio_tracks_after=int(meta.get("audio_tracks_after") or 0),
+                                subtitle_tracks_before=int(meta.get("subtitle_tracks_before") or 0),
+                                subtitle_tracks_after=int(meta.get("subtitle_tracks_after") or 0),
+                                processing_time_ms=ptm_i,
+                                activity_context=dumps_activity_context(prev_ctx),
+                            )
+                        )
+                        await session.execute(delete(RefinerActivity).where(RefinerActivity.id == row_id))
+                        await session.commit()
+                        return
             await session.execute(
                 update(RefinerActivity)
                 .where(RefinerActivity.id == row_id)
@@ -421,7 +470,7 @@ async def _update_refiner_activity_row(row_id: int, meta: dict[str, Any]) -> Non
                     subtitle_tracks_before=int(meta.get("subtitle_tracks_before") or 0),
                     subtitle_tracks_after=int(meta.get("subtitle_tracks_after") or 0),
                     processing_time_ms=ptm_i,
-                    activity_context=str(meta.get("activity_context") or "")[:120_000],
+                    activity_context=ctx_raw,
                 )
             )
             await session.commit()
@@ -1120,9 +1169,10 @@ async def run_refiner_pass(
             await session.commit()
             return {"ok": True, "ran": False, "reason": "no_files"}
         dry = bool(row.refiner_dry_run)
-        ok_c = dry_c = err_c = 0
+        ok_c = dry_c = err_c = wait_c = 0
         noop_c = 0  # log field unchanged=0 (no in-place “skipped” live passes without pipeline finalize)
         failure_notes: list[str] = []
+        waiting_notes: list[str] = []
         for fp in files:
             t_job = time.perf_counter()
             snap_pre = await fetch_refiner_queue_snapshot(row)
@@ -1130,14 +1180,18 @@ async def run_refiner_pass(
             if not d0.proceed:
                 meta0 = _readiness_skip_meta(fp, d0, t_job)
                 await _persist_refiner_activity_safe(meta0)
-                err_c += 1
-                failure_notes.append(
-                    format_per_file_job_log_line(
-                        fp.name,
-                        str(meta0.get("failure_hint") or ""),
-                        reason_code=str(meta0.get("_refiner_reason_code") or ""),
-                    )
+                rc0 = str(meta0.get("_refiner_reason_code") or "").strip().lower()
+                line0 = format_per_file_job_log_line(
+                    fp.name,
+                    str(meta0.get("failure_hint") or ""),
+                    reason_code=rc0,
                 )
+                if rc0 in _UPSTREAM_WAIT_REASON_CODES:
+                    wait_c += 1
+                    waiting_notes.append(line0)
+                else:
+                    err_c += 1
+                    failure_notes.append(line0)
                 continue
 
             act_id = await _insert_refiner_processing_row(fp.name)
@@ -1223,17 +1277,26 @@ async def run_refiner_pass(
             elif status == "dry_run":
                 dry_c += 1
             else:
-                err_c += 1
                 hint = (meta or {}).get("failure_hint") or "Processing failed."
-                rc_note = str((meta or {}).get("_refiner_reason_code") or "")
-                failure_notes.append(format_per_file_job_log_line(fp.name, str(hint), reason_code=rc_note))
+                rc_note = str((meta or {}).get("_refiner_reason_code") or "").strip().lower()
+                line_e = format_per_file_job_log_line(fp.name, str(hint), reason_code=rc_note)
+                if rc_note in _UPSTREAM_WAIT_REASON_CODES:
+                    wait_c += 1
+                    waiting_notes.append(line_e)
+                else:
+                    err_c += 1
+                    failure_notes.append(line_e)
         row.refiner_last_run_at = utc_now_naive()
         row.updated_at = utc_now_naive()
         detail = (
             f"Refiner ({trigger}): processed={ok_c} unchanged={noop_c} "
-            f"dry_run_items={dry_c} errors={err_c}"
+            f"dry_run_items={dry_c} waiting={wait_c} errors={err_c}"
         )
         job_lines = [detail]
+        if waiting_notes:
+            job_lines.append("Per-file upstream waits:")
+            for note in waiting_notes[:25]:
+                job_lines.append(f"  · {note.replace(chr(10), ' — ')}")
         if failure_notes:
             job_lines.append("Per-file failures:")
             for note in failure_notes[:25]:
@@ -1250,7 +1313,7 @@ async def run_refiner_pass(
             ActivityLog(
                 app="refiner",
                 kind="refiner",
-                status="ok" if err_c == 0 else "failed",
+                status="failed" if err_c > 0 else "ok",
                 count=ok_c,
                 detail=detail,
             )
@@ -1262,5 +1325,6 @@ async def run_refiner_pass(
             "remuxed": ok_c,
             "unchanged": noop_c,
             "dry_run_items": dry_c,
+            "waiting": wait_c,
             "errors": err_c,
         }

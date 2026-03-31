@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.5.1] - 2026-04-01
+
+### Fixed
+
+- **Refiner Activity (aggregate):** scheduled batch summaries no longer treat Arr upstream-active waits as failures. Batch lines include `waiting=N` separately from `errors=N`; `ActivityLog` stays `ok` when there are waits but zero true failures; primary label is **Refiner waiting** when the pass had only waits, and **Refiner completed** when there were refinements without errors (waits called out in the humanized detail).
+- **Refiner Activity (per-file dedupe):** final-gate upstream waits that finalize an in-pass “processing” row now merge into the prior per-file wait row (same file + reason + message) instead of leaving a duplicate row each scheduled run.
+
 ## [3.5.0] - 2026-03-31
 
 ### Fixed

@@ -130,10 +130,23 @@ def filter_activity_display_for_search(rows: list[dict[str, Any]], q: str | None
         return list(rows)
     return [r for r in rows if activity_row_matches_search(r, needle)]
 _ACTIVITY_LOG_LEGACY_MORE = re.compile(r"^\+\d+ more$")
+# ``waiting=`` was added in v3.5.1; older rows omit it (treated as 0).
 _REFINER_BATCH_LOG = re.compile(
-    r"Refiner\s*\(([^)]*)\):\s*processed=(\d+)\s+unchanged=(\d+)\s+dry_run_items=(\d+)\s+errors=(\d+)",
+    r"Refiner\s*\(([^)]*)\):\s*processed=(\d+)\s+unchanged=(\d+)\s+dry_run_items=(\d+)\s+(?:waiting=(\d+)\s+)?errors=(\d+)",
     re.I | re.DOTALL,
 )
+
+
+def parse_refiner_batch_activity_detail(detail: str) -> tuple[str, int, int, int, int, int] | None:
+    """Return (trigger, processed, unchanged, dry_run, waiting, errors) or None if not a batch summary line."""
+    m = _REFINER_BATCH_LOG.search((detail or "").replace("\n", " ").strip())
+    if not m:
+        return None
+    trigger = (m.group(1) or "scheduled").strip()
+    proc, noop, dry = (int(m.group(i)) for i in range(2, 5))
+    wait = int(m.group(5) or 0)
+    err = int(m.group(6))
+    return trigger, proc, noop, dry, wait, err
 
 
 def activity_log_title_lines(detail: str) -> list[str]:
@@ -247,11 +260,23 @@ def _activity_log_domain_and_icon(e: ActivityLog) -> tuple[str, str]:
 
 
 def _activity_log_outcome_class(e: ActivityLog) -> str:
-    """Map log row to outcome styling: success | processing | skipped | failed."""
+    """Map log row to outcome styling: success | processing | skipped | failed | waiting."""
     app = (getattr(e, "app", "") or "").strip().lower()
     kind = (getattr(e, "kind", "") or "").strip().lower()
     status = (getattr(e, "status", "") or "ok").strip().lower()
     count = int(getattr(e, "count", 0) or 0)
+    if kind == "refiner" and app == "refiner":
+        parsed = parse_refiner_batch_activity_detail(getattr(e, "detail", "") or "")
+        if parsed is not None:
+            _trigger, proc, noop, dry, wait, err = parsed
+            if err > 0:
+                return "failed"
+            if wait > 0 and proc + noop + dry == 0:
+                return "waiting"
+            if proc > 0 or dry > 0:
+                return "success"
+            return "skipped"
+        return "failed" if status == "failed" else ("success" if count > 0 else "skipped")
     if kind == "error" or status == "failed":
         return "failed"
     if kind == "trimmed":
@@ -260,8 +285,6 @@ def _activity_log_outcome_class(e: ActivityLog) -> str:
         return "success" if count > 0 else "skipped"
     if kind == "cleanup":
         return "success" if count > 0 else "skipped"
-    if kind == "refiner" and app == "refiner":
-        return "failed" if status == "failed" else ("success" if count > 0 else "skipped")
     if status == "failed":
         return "failed"
     return "success"
@@ -275,17 +298,19 @@ def _activity_primary_label(e: ActivityLog) -> str:
     if kind == "error":
         return "Run error"
     if kind == "refiner" and app == "refiner":
-        if status == "failed":
-            return "Refiner failed"
-        m = _REFINER_BATCH_LOG.search((getattr(e, "detail", "") or "").replace("\n", " ").strip())
-        if not m:
-            if count > 0:
+        parsed = parse_refiner_batch_activity_detail(getattr(e, "detail", "") or "")
+        if parsed is not None:
+            _trigger, proc, noop, dry, wait, err = parsed
+            if err > 0:
+                return "Refiner failed"
+            if wait > 0 and proc + noop + dry == 0:
+                return "Refiner waiting"
+            if proc > 0 or dry > 0:
                 return "Refiner completed"
             return "Refiner skipped"
-        proc, noop, dry, err = (int(m.group(2)), int(m.group(3)), int(m.group(4)), int(m.group(5)))
-        if err:
+        if status == "failed":
             return "Refiner failed"
-        if proc:
+        if count > 0:
             return "Refiner completed"
         return "Refiner skipped"
     if status == "failed":
@@ -318,11 +343,10 @@ def _activity_detail_fallback_line(e: ActivityLog) -> str:
 
 def _humanize_refiner_batch_log_detail(detail: str) -> list[str] | None:
     """Turn canonical Refiner batch log text into one summary line (display-only)."""
-    m = _REFINER_BATCH_LOG.search((detail or "").replace("\n", " ").strip())
-    if not m:
+    parsed = parse_refiner_batch_activity_detail(detail or "")
+    if parsed is None:
         return None
-    trigger = (m.group(1) or "scheduled").strip()
-    proc, noop, dry, err = (int(m.group(i)) for i in range(2, 6))
+    trigger, proc, noop, dry, wait, err = parsed
     bits: list[str] = []
     if proc:
         bits.append(f"{proc} refined")
@@ -330,6 +354,8 @@ def _humanize_refiner_batch_log_detail(detail: str) -> list[str] | None:
         bits.append(f"{noop} unchanged")
     if dry:
         bits.append(f"{dry} dry run")
+    if wait:
+        bits.append(f"{wait} waiting on upstream")
     if err:
         bits.append(f"{err} failed")
     head = " · ".join(bits) if bits else "No file actions"
