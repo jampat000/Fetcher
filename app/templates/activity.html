@@ -12,12 +12,18 @@
   <div class="card gc">
     <div class="gc-title">Activity</div>
     <div class="hint">Fetcher searches, <strong>Trimmer</strong>, and per-file <strong>Refiner</strong> results. Times in your chosen timezone. Entries with <strong>+N more</strong> store the full detail — click the row or the control to expand.</div>
+    <div id="activity-feed-hub" class="activity-feed-hub" data-fetcher-activity-hub="1" data-fetcher-pill-delegation="1">
     <div class="activity-filters" role="tablist" aria-label="Filter by app">
-      <span class="pill active" data-pill-filter="all" role="tab" tabindex="0">All</span>
-      <span class="pill" data-pill-filter="sonarr" role="tab" tabindex="0">TV</span>
-      <span class="pill" data-pill-filter="radarr" role="tab" tabindex="0">Movies</span>
-      <span class="pill" data-pill-filter="trimmer" role="tab" tabindex="0">Trimmer</span>
-      <span class="pill" data-pill-filter="refiner" role="tab" tabindex="0">Refiner</span>
+      <span class="pill{% if activity_tab == 'all' %} active{% endif %}" data-pill-filter="all" role="tab" tabindex="0">All</span>
+      <span class="pill{% if activity_tab == 'sonarr' %} active{% endif %}" data-pill-filter="sonarr" role="tab" tabindex="0">TV</span>
+      <span class="pill{% if activity_tab == 'radarr' %} active{% endif %}" data-pill-filter="radarr" role="tab" tabindex="0">Movies</span>
+      <span class="pill{% if activity_tab == 'trimmer' %} active{% endif %}" data-pill-filter="trimmer" role="tab" tabindex="0">Trimmer</span>
+      <span class="pill{% if activity_tab == 'refiner' %} active{% endif %}" data-pill-filter="refiner" role="tab" tabindex="0">Refiner</span>
+    </div>
+    <div class="activity-search-row">
+      <input type="search" id="activity-search-input" class="activity-search-input" name="q" autocomplete="off" placeholder="Search activity" aria-label="Search activity" value="{{ activity_search_q }}" />
+      <button type="button" class="btn ghost activity-search-clear" id="activity-search-clear" title="Clear search" {% if not activity_search_q %}hidden{% endif %}>Clear</button>
+    </div>
     </div>
     <div class="section" id="activity-live-root">
       {% if activity %}

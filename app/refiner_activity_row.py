@@ -12,6 +12,7 @@ from app.refiner_media_identity import (
     resolve_activity_card_title,
     should_show_raw_source_filename,
 )
+from app.refiner_outcome_classify import RefinerOutcomeClass, classify_refiner_activity_context
 
 ApplyMode = Literal["applied", "preview", "none"]
 
@@ -186,6 +187,8 @@ def build_refiner_activity_row_dict(r: RefinerActivity, tz: str, now: datetime) 
     outcome_ui = "failed"
     tone = "fail"
     show_comparison = False
+    failure_class: RefinerOutcomeClass | None = None
+    failure_suggests_retry = False
 
     if st == "processing":
         outcome_label = "Processing"
@@ -263,10 +266,16 @@ def build_refiner_activity_row_dict(r: RefinerActivity, tz: str, now: datetime) 
         if ctx.get("commentary_removed") and dry:
             technical_notes.append("Commentary would be affected per rules (see comparison).")
     else:
+        failure_oc, class_hint, failure_suggests_retry = classify_refiner_activity_context(ctx, status=st)
+        failure_class = failure_oc
         outcome_label = "Failed"
-        outcome_sub = None
-        outcome_ui = "failed"
-        tone = "fail"
+        outcome_sub = class_hint if class_hint else None
+        if failure_oc is RefinerOutcomeClass.BLOCKED_WAITING:
+            outcome_ui = "waiting"
+            tone = "skip"
+        else:
+            outcome_ui = "failed"
+            tone = "fail"
         show_comparison = bool(
             _norm_line(ctx.get("audio_before"))
             or _norm_line(ctx.get("audio_after"))
@@ -329,4 +338,10 @@ def build_refiner_activity_row_dict(r: RefinerActivity, tz: str, now: datetime) 
         "refiner_file_title": display_media_title,
         "refiner_is_dry_run": dry,
     }
+    if failure_class is not None:
+        row["refiner_outcome_class"] = failure_class.value
+        row["refiner_suggests_auto_retry"] = failure_suggests_retry
+    else:
+        row["refiner_outcome_class"] = ""
+        row["refiner_suggests_auto_retry"] = False
     return row

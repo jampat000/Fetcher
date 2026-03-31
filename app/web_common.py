@@ -28,6 +28,107 @@ logger = logging.getLogger(__name__)
 
 # Activity list shows 5 title lines + “+N more”; full list is stored in ``ActivityLog.detail``.
 ACTIVITY_DETAIL_PREVIEW_LINES = 5
+
+# Tab scope for Activity page filtering (canonical keys, aligned with ``data-pill-filter``).
+ACTIVITY_TAB_ALL_ONLY = "all_only"
+ACTIVITY_TAB_SONARR = "sonarr"
+ACTIVITY_TAB_RADARR = "radarr"
+ACTIVITY_TAB_TRIMMER = "trimmer"
+ACTIVITY_TAB_REFINER = "refiner"
+
+
+def activity_log_tab_scope(e: ActivityLog) -> str:
+    """Classify an ``ActivityLog`` row for Activity tab filtering (server + ``data-activity-tab-scope``)."""
+    app = (getattr(e, "app", "") or "").strip().lower()
+    kind = (getattr(e, "kind", "") or "").strip().lower()
+    if app == "sonarr":
+        return ACTIVITY_TAB_SONARR
+    if app == "radarr":
+        return ACTIVITY_TAB_RADARR
+    if app == "trimmer":
+        return ACTIVITY_TAB_TRIMMER
+    if app == "refiner" and kind == "refiner":
+        return ACTIVITY_TAB_REFINER
+    return ACTIVITY_TAB_ALL_ONLY
+
+
+def normalize_activity_tab_query(raw: str | None) -> str:
+    """Normalize URL/query ``app`` to a pill key: ``all`` | ``sonarr`` | ``radarr`` | ``trimmer`` | ``refiner``."""
+    s = (raw or "").strip().lower()
+    if s in ("", "all"):
+        return "all"
+    if s in ("sonarr", "tv"):
+        return "sonarr"
+    if s in ("radarr", "movies", "movie"):
+        return "radarr"
+    if s == "trimmer":
+        return "trimmer"
+    if s == "refiner":
+        return "refiner"
+    return "all"
+
+
+def filter_activity_display_for_tab(rows: list[dict[str, Any]], tab: str) -> list[dict[str, Any]]:
+    """Keep rows for the selected Activity tab (``all`` shows every row, including ``all_only``)."""
+    t = (tab or "").strip().lower()
+    if t in ("", "all"):
+        return list(rows)
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        scope = (r.get("activity_tab_scope") or "").strip().lower()
+        if scope == t:
+            out.append(r)
+    return out
+
+
+def normalize_activity_search_query(q: str | None) -> str:
+    return (q or "").strip().lower()
+
+
+def _activity_row_search_blob(row: dict[str, Any]) -> str:
+    """Flat text for substring search over operator-visible activity fields (no regex / indexing)."""
+    parts: list[str] = []
+
+    def add(v: object) -> None:
+        if isinstance(v, str) and v.strip():
+            parts.append(v.strip())
+        elif isinstance(v, list):
+            for x in v:
+                add(x)
+        elif isinstance(v, dict):
+            for x in v.values():
+                add(x)
+
+    add(row.get("primary_label"))
+    add(row.get("detail_lines"))
+    add(row.get("app"))
+    add(row.get("kind"))
+    add(row.get("refiner_media_title"))
+    add(row.get("refiner_file_title"))
+    add(row.get("refiner_source_file_line"))
+    add(row.get("refiner_outcome_label"))
+    add(row.get("refiner_outcome_sub"))
+    add(row.get("refiner_primary_line"))
+    add(row.get("refiner_summary_line"))
+    add(row.get("refiner_summary_bullets"))
+    add(row.get("refiner_technical_notes"))
+    add(row.get("refiner_compare_rows"))
+    add(row.get("refiner_detail_blocks"))
+    return " ".join(parts)
+
+
+def activity_row_matches_search(row: dict[str, Any], needle: str) -> bool:
+    if not needle:
+        return True
+    hay = _activity_row_search_blob(row).lower()
+    return needle in hay
+
+
+def filter_activity_display_for_search(rows: list[dict[str, Any]], q: str | None) -> list[dict[str, Any]]:
+    needle = normalize_activity_search_query(q)
+    if not needle:
+        return list(rows)
+    return [r for r in rows if activity_row_matches_search(r, needle)]
 _ACTIVITY_LOG_LEGACY_MORE = re.compile(r"^\+\d+ more$")
 _REFINER_BATCH_LOG = re.compile(
     r"Refiner\s*\(([^)]*)\):\s*processed=(\d+)\s+unchanged=(\d+)\s+dry_run_items=(\d+)\s+errors=(\d+)",
@@ -232,7 +333,10 @@ def _humanize_refiner_batch_log_detail(detail: str) -> list[str] | None:
     if err:
         bits.append(f"{err} failed")
     head = " · ".join(bits) if bits else "No file actions"
-    return [f"{head} · {trigger}"]
+    lines = [f"{head} · {trigger}"]
+    if err > 0:
+        lines.append("Open per-file rows for retry vs manual-action guidance.")
+    return lines
 
 
 def _activity_timestamp_fields(created_at: datetime, tz: str, now: datetime) -> dict[str, str]:
@@ -281,6 +385,7 @@ def activity_display_row(e: ActivityLog, tz: str, *, now: datetime | None = None
         "activity_domain": domain,
         "activity_lucide": lucide_name,
         "activity_outcome": _activity_log_outcome_class(e),
+        "activity_tab_scope": activity_log_tab_scope(e),
     }
     row.update(_activity_timestamp_fields(e.created_at, tz, tnow))
     return row
@@ -290,6 +395,7 @@ def refiner_activity_display_row(r: RefinerActivity, tz: str, now: datetime) -> 
     from app.refiner_activity_row import build_refiner_activity_row_dict
 
     row = build_refiner_activity_row_dict(r, tz, now)
+    row["activity_tab_scope"] = ACTIVITY_TAB_REFINER
     row.update(_activity_timestamp_fields(r.created_at, tz, now))
     return row
 

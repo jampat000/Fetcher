@@ -19,6 +19,7 @@ from app.refiner_errors import failure_hint_from_exception, format_refiner_failu
 from app.models import ActivityLog, AppSettings, JobRunLog, RefinerActivity
 from app.schedule import in_window
 from app.time_util import utc_now_naive
+from app.refiner_outcome_classify import format_per_file_job_log_line
 from app.refiner_media_identity import (
     MediaIdentity,
     provisional_media_title_before_probe,
@@ -56,6 +57,7 @@ def _activity_snapshot(
     subs_after: str = "",
     commentary_removed: bool = False,
     failure_reason: str = "",
+    reason_code: str = "",
     dry_run: bool = False,
     finalized: bool = False,
     source_removed: bool = False,
@@ -76,6 +78,9 @@ def _activity_snapshot(
         "folder_cleanup": (folder_cleanup or "").strip()[:200],
         "pipeline_no_remux": bool(pipeline_no_remux),
     }
+    rc = (reason_code or "").strip()
+    if rc:
+        payload["reason_code"] = rc[:128]
     if no_change_bullets:
         payload["no_change_bullets"] = [str(x).strip()[:500] for x in no_change_bullets if str(x).strip()][:8]
     idn = ident or {}
@@ -1094,7 +1099,7 @@ async def run_refiner_pass(
             else:
                 err_c += 1
                 hint = (meta or {}).get("failure_hint") or "Processing failed."
-                failure_notes.append(f"{fp.name}: {hint}")
+                failure_notes.append(format_per_file_job_log_line(fp.name, str(hint)))
         row.refiner_last_run_at = utc_now_naive()
         row.updated_at = utc_now_naive()
         detail = (

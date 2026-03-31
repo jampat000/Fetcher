@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.15] - 2026-03-31
+
+### Added
+
+- **Activity:** Server-backed **search/filter** (`GET /activity` query params `app` + `q`) within the selected tab; URL sync; immediate refresh and debounced input; live polling stays scoped; **stale in-flight response** guard; row tab markers (`activity_tab_scope` / `data-activity-tab-scope`).
+- **Refiner:** Operator-visible **failure classification** (retryable / blocked / manual / permanent) integrated into activity context and cards (`refiner_outcome_classify`).
+
+### Removed
+
+- Accidental **cancel-pass** API/latch coupling (no dead HTTP endpoint or unused latch).
+
 ## [3.4.2] - 2026-03-30
 
 ### Fixed

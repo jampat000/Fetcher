@@ -231,10 +231,14 @@ def test_activity_js_supports_app_query_deep_link() -> None:
     i1 = js.index("function initSettingsPageCollapses", i0)
     block = js[i0:i1]
     assert "applyActivityPillFilter" in block
-    assert 'raw === "refiner"' in block
-    assert 'else if (raw === "trimmer")' in block
-    assert 'filterKey = "trimmer"' in block
-    assert 'raw === "emby"' not in block
+    assert "applyActivityPillFilterFromLocationOrDom" in block
+    i_lo = js.index("function applyActivityPillFilterFromLocationOrDom")
+    i_hi = js.index("function installActivityFeedClickDelegationOnce", i_lo)
+    deep_link = js[i_lo:i_hi]
+    assert '"refiner"' in deep_link
+    assert '"trimmer"' in deep_link
+    assert "emby" not in deep_link
+    assert 'raw === "emby"' not in js
 
 
 def test_activity_page_accepts_app_query(monkeypatch: pytest.MonkeyPatch) -> None:

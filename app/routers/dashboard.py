@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Mapping
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,9 +31,12 @@ from app.ui_templates import templates
 from app.web_common import (
     ACTIVITY_DETAIL_PREVIEW_LINES,
     dedupe_job_run_logs_for_display,
+    filter_activity_display_for_search,
+    filter_activity_display_for_tab,
     is_setup_complete,
     merge_activity_feed,
     movie_credit_types_summary,
+    normalize_activity_tab_query,
     user_visible_job_run_message,
 )
 
@@ -261,7 +264,12 @@ async def logs_file(name: str, _request: Request) -> PlainTextResponse:
 
 
 @router.get("/activity", response_class=HTMLResponse)
-async def activity_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
+async def activity_page(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    app: str | None = Query(None),
+    q: str | None = Query(None),
+) -> HTMLResponse:
     settings = await _get_or_create_settings(session)
     show_setup_wizard = not is_setup_complete(settings)
     tz = settings.timezone or "UTC"
@@ -274,7 +282,10 @@ async def activity_page(request: Request, session: AsyncSession = Depends(get_se
         (await session.execute(select(RefinerActivity).order_by(desc(RefinerActivity.id)).limit(200)))
         .scalars().all()
     )
-    activity_display = merge_activity_feed(activity_logs, refiner_logs, tz, now, limit=200)
+    merged = merge_activity_feed(activity_logs, refiner_logs, tz, now, limit=200)
+    tab_key = normalize_activity_tab_query(app)
+    scoped = filter_activity_display_for_tab(merged, tab_key)
+    activity_display = filter_activity_display_for_search(scoped, q)
     return templates.TemplateResponse(
         request,
         "activity.html",
@@ -285,6 +296,8 @@ async def activity_page(request: Request, session: AsyncSession = Depends(get_se
             "subtitle": "What Fetcher grabbed",
             "activity": activity_display,
             "activity_detail_preview": ACTIVITY_DETAIL_PREVIEW_LINES,
+            "activity_tab": tab_key,
+            "activity_search_q": (q or "") if q is not None else "",
             "now": now,
             "now_local": _now_local(tz),
             "timezone": tz,

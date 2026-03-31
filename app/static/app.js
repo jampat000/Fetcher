@@ -3,6 +3,23 @@ function qs(name) {
   return u.searchParams.get(name);
 }
 
+/** Monotonic token so older activity-feed HTTP responses cannot overwrite the DOM after tab/search changes. */
+let fetcherActivityFeedLatestToken = 0;
+function fetcherBumpActivityFeedLatestToken() {
+  fetcherActivityFeedLatestToken += 1;
+  return fetcherActivityFeedLatestToken;
+}
+function fetcherPeekActivityFeedLatestToken() {
+  return fetcherActivityFeedLatestToken;
+}
+
+let fetcherActivityLivePrevKeys = new Set();
+let fetcherActivityLivePrevRefiner = new Map();
+let fetcherActivityLivePrevCompareOpen = new Set();
+
+let fetcherActivitySearchTimer = null;
+let fetcherActivityPillDelegationInstalled = false;
+
 function showToast(text) {
   const el = document.getElementById("toast");
   if (!el) return;
@@ -249,10 +266,44 @@ function initActivityDetailExpand() {
   });
 }
 
+function activityRowTabScope(row) {
+  if (!row || !row.getAttribute) return "";
+  return (row.getAttribute("data-activity-tab-scope") || "").trim();
+}
+
+function currentActivityPillFilterFromDom() {
+  const active = document.querySelector("#activity-feed-hub [data-pill-filter].active");
+  if (!active) return "all";
+  return active.getAttribute("data-pill-filter") || "all";
+}
+
+function activityFeedPollUrl() {
+  const u = new URL("/activity", window.location.origin);
+  const tab = currentActivityPillFilterFromDom();
+  if (tab && tab !== "all") u.searchParams.set("app", tab);
+  const input = document.getElementById("activity-search-input");
+  const q = input ? String(input.value || "").trim() : "";
+  if (q) u.searchParams.set("q", q);
+  return u.pathname + u.search;
+}
+
+function syncActivityPageUrlWithState() {
+  if (!document.getElementById("activity-feed-hub")) return;
+  const tab = currentActivityPillFilterFromDom();
+  const input = document.getElementById("activity-search-input");
+  const q = input ? String(input.value || "").trim() : "";
+  const u = new URL(window.location.href);
+  if (tab === "all") u.searchParams.delete("app");
+  else u.searchParams.set("app", tab);
+  if (q) u.searchParams.set("q", q);
+  else u.searchParams.delete("q");
+  history.replaceState(null, "", u.pathname + u.search);
+}
+
 function applyActivityPillFilter(filter) {
   const f = filter || "all";
-  document.querySelectorAll("[data-pill-filter]").forEach((p) => p.classList.remove("active"));
-  const pill = document.querySelector(`[data-pill-filter="${f}"]`);
+  document.querySelectorAll("#activity-feed-hub [data-pill-filter]").forEach((p) => p.classList.remove("active"));
+  const pill = document.querySelector(`#activity-feed-hub [data-pill-filter="${f}"]`);
   if (pill) pill.classList.add("active");
   document.querySelectorAll(".activity-row[data-activity-app]").forEach((row) => {
     if (f === "all") {
@@ -269,19 +320,160 @@ function applyActivityPillFilter(filter) {
   });
 }
 
-function initActivityFilterPills() {
-  document.querySelectorAll("[data-pill-filter]").forEach((pill) => {
-    pill.addEventListener("click", () => {
-      const filter = pill.getAttribute("data-pill-filter") || "all";
-      applyActivityPillFilter(filter);
-    });
-  });
+function applyActivityPillFilterFromLocationOrDom() {
   const sp = new URLSearchParams(window.location.search);
   const raw = (sp.get("app") || "").trim().toLowerCase();
-  let filterKey = null;
-  if (raw === "refiner") filterKey = "refiner";
-  else if (raw === "trimmer") filterKey = "trimmer";
-  if (filterKey) applyActivityPillFilter(filterKey);
+  const allowed = new Set(["all", "sonarr", "radarr", "trimmer", "refiner"]);
+  const key = allowed.has(raw) ? raw : "all";
+  applyActivityPillFilter(key);
+}
+
+function installActivityFeedClickDelegationOnce(hub) {
+  if (!hub || fetcherActivityPillDelegationInstalled) return;
+  if (!(hub.dataset.fetcherPillDelegation === "1")) return;
+  fetcherActivityPillDelegationInstalled = true;
+  hub.addEventListener("click", (ev) => {
+    if (ev.target.closest(".activity-refiner-compare-details")) return;
+    const pill = ev.target.closest("[data-pill-filter]");
+    if (!pill) return;
+    ev.preventDefault();
+    const f = pill.getAttribute("data-pill-filter") || "all";
+    applyActivityPillFilter(f);
+    fetcherRunActivityPageFetch({ bump: true });
+  });
+  document.addEventListener(
+    "click",
+    (ev) => {
+      const live = document.getElementById("activity-live-root");
+      if (!live || !live.contains(ev.target)) return;
+      if (ev.target.closest(".activity-refiner-compare-details")) return;
+      if (ev.target.closest(".activity-detail-toggle")) return;
+    },
+    true,
+  );
+}
+
+function snapshotRefinerCompareDetailsOpen(root) {
+  const set = new Set();
+  if (!root || !root.querySelectorAll) return set;
+  root.querySelectorAll("details.activity-refiner-compare-details[open]").forEach((det) => {
+    const row = det.closest(".activity-row[data-activity-row-key]");
+    if (!row) return;
+    const k = row.getAttribute("data-activity-row-key");
+    if (k) set.add(k);
+  });
+  return set;
+}
+
+function restoreRefinerCompareDetailsOpen(root, openKeys) {
+  if (!root || !openKeys || openKeys.size === 0) return;
+  root.querySelectorAll('.activity-row[data-activity-row-key^="refiner-"]').forEach((row) => {
+    const k = row.getAttribute("data-activity-row-key");
+    if (!k || !openKeys.has(k)) return;
+    const det = row.querySelector("details.activity-refiner-compare-details");
+    if (det) det.open = true;
+  });
+}
+
+function fetcherActivityPageBeforeSwap(el) {
+  fetcherActivityLivePrevKeys = snapshotActivityRowKeys(el);
+  fetcherActivityLivePrevRefiner = snapshotRefinerRows(el);
+  fetcherActivityLivePrevCompareOpen = snapshotRefinerCompareDetailsOpen(el);
+}
+
+function fetcherActivityPageAfterSwap() {
+  const actRoot = document.querySelector("#activity-live-root");
+  initActivityFilterPills();
+  initActivityDetailExpand();
+  installActivityFeedClickDelegationOnce(document.getElementById("activity-feed-hub"));
+  polishActivityRowsAfterLiveSwap(actRoot, fetcherActivityLivePrevKeys);
+  restoreRefinerCompareDetailsOpen(actRoot, fetcherActivityLivePrevCompareOpen);
+  applyRefinerOutcomePolish(fetcherActivityLivePrevRefiner, actRoot);
+  refreshActivityRelativeTimes(actRoot);
+  if (actRoot && actRoot.querySelector("[data-refiner-live='1']")) {
+    if (typeof window.fetcherLiveTilesPollNow === "function") window.fetcherLiveTilesPollNow();
+  }
+}
+
+function fetcherRunActivityPageFetch(opts) {
+  if (!document.getElementById("activity-live-root") || !document.getElementById("activity-feed-hub")) {
+    return Promise.resolve();
+  }
+  const bump = !opts || opts.bump !== false;
+  if (bump) fetcherBumpActivityFeedLatestToken();
+  const token = fetcherPeekActivityFeedLatestToken();
+  syncActivityPageUrlWithState();
+  const input = document.getElementById("activity-search-input");
+  if (input) input.disabled = true;
+  const url = activityFeedPollUrl();
+  return replaceLiveRegionFromUrl(
+    "#activity-live-root",
+    "#activity-live-root",
+    url,
+    () => {
+      fetcherActivityPageAfterSwap();
+      const inp = document.getElementById("activity-search-input");
+      if (inp) inp.disabled = false;
+      const cb = document.getElementById("activity-search-clear");
+      if (cb) cb.hidden = !String((inp && inp.value) || "").trim();
+    },
+    fetcherActivityPageBeforeSwap,
+    () => token === fetcherPeekActivityFeedLatestToken(),
+  ).finally(() => {
+    const inp = document.getElementById("activity-search-input");
+    if (inp) inp.disabled = false;
+  });
+}
+
+function initActivityFilterPills() {
+  const hub = document.getElementById("activity-feed-hub");
+  installActivityFeedClickDelegationOnce(hub);
+  applyActivityPillFilterFromLocationOrDom();
+  applyActivityPillFilter(currentActivityPillFilterFromDom());
+}
+
+function initActivityPageSearchControls() {
+  const input = document.getElementById("activity-search-input");
+  const clearBtn = document.getElementById("activity-search-clear");
+  const hub = document.getElementById("activity-feed-hub");
+  if (!input || !hub) return;
+
+  function setClearVisible() {
+    if (!clearBtn) return;
+    clearBtn.hidden = !String(input.value || "").trim();
+  }
+
+  function scheduleSearchFetch() {
+    if (fetcherActivitySearchTimer !== null) {
+      window.clearTimeout(fetcherActivitySearchTimer);
+      fetcherActivitySearchTimer = null;
+    }
+    fetcherActivitySearchTimer = window.setTimeout(() => {
+      fetcherActivitySearchTimer = null;
+      fetcherRunActivityPageFetch({ bump: true });
+    }, 320);
+  }
+
+  input.addEventListener("input", () => {
+    setClearVisible();
+    scheduleSearchFetch();
+  });
+  input.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter") return;
+    ev.preventDefault();
+    if (fetcherActivitySearchTimer !== null) {
+      window.clearTimeout(fetcherActivitySearchTimer);
+      fetcherActivitySearchTimer = null;
+    }
+    fetcherRunActivityPageFetch({ bump: true });
+  });
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      input.value = "";
+      setClearVisible();
+      fetcherRunActivityPageFetch({ bump: true });
+    });
+  }
 }
 
 function initSettingsPageCollapses() {
@@ -642,7 +834,7 @@ function startDashboardStatusPolling() {
   });
 }
 
-function replaceLiveRegionFromUrl(targetSelector, sourceSelector, url, afterSwap, beforeSwap) {
+function replaceLiveRegionFromUrl(targetSelector, sourceSelector, url, afterSwap, beforeSwap, applyIfCurrent) {
   if (!document.querySelector(targetSelector)) return Promise.resolve();
   return fetch(url, {
     method: "GET",
@@ -653,6 +845,7 @@ function replaceLiveRegionFromUrl(targetSelector, sourceSelector, url, afterSwap
     .then((r) => (r.ok ? r.text() : null))
     .then((html) => {
       if (!html) return;
+      if (typeof applyIfCurrent === "function" && !applyIfCurrent()) return;
       const doc = new DOMParser().parseFromString(html, "text/html");
       const src = doc.querySelector(sourceSelector);
       if (!src) return;
@@ -796,8 +989,7 @@ function startLiveTilePolling() {
   let pollWantSoon = false;
   let dashPrevKeys = new Set();
   let dashPrevRefiner = new Map();
-  let actPrevKeys = new Set();
-  let actPrevRefiner = new Map();
+  let dashPrevCompareOpen = new Set();
   let relativeTimeTimer = null;
 
   const refinerLiveInDom = () => {
@@ -854,6 +1046,7 @@ function startLiveTilePolling() {
             const dashRoot = document.querySelector("#dashboard-activity-live-root");
             initActivityDetailExpand();
             polishActivityRowsAfterLiveSwap(dashRoot, dashPrevKeys);
+            restoreRefinerCompareDetailsOpen(dashRoot, dashPrevCompareOpen);
             applyRefinerOutcomePolish(dashPrevRefiner, dashRoot);
             refreshActivityRelativeTimes(dashRoot);
             if (dashRoot && dashRoot.querySelector("[data-refiner-live='1']")) pollWantSoon = true;
@@ -861,29 +1054,31 @@ function startLiveTilePolling() {
           (el) => {
             dashPrevKeys = snapshotActivityRowKeys(el);
             dashPrevRefiner = snapshotRefinerRows(el);
+            dashPrevCompareOpen = snapshotRefinerCompareDetailsOpen(el);
           }
         )
       );
     }
     if (isActivityPage) {
+      const pollToken = fetcherPeekActivityFeedLatestToken();
       tasks.push(
         replaceLiveRegionFromUrl(
-          "#activity-live-root",
-          "#activity-live-root",
-          "/activity",
-          () => {
+            "#activity-live-root",
+            "#activity-live-root",
+            activityFeedPollUrl(),
+            () => {
             const actRoot = document.querySelector("#activity-live-root");
             initActivityFilterPills();
             initActivityDetailExpand();
-            polishActivityRowsAfterLiveSwap(actRoot, actPrevKeys);
-            applyRefinerOutcomePolish(actPrevRefiner, actRoot);
+            installActivityFeedClickDelegationOnce(document.getElementById("activity-feed-hub"));
+            polishActivityRowsAfterLiveSwap(actRoot, fetcherActivityLivePrevKeys);
+            restoreRefinerCompareDetailsOpen(actRoot, fetcherActivityLivePrevCompareOpen);
+            applyRefinerOutcomePolish(fetcherActivityLivePrevRefiner, actRoot);
             refreshActivityRelativeTimes(actRoot);
             if (actRoot && actRoot.querySelector("[data-refiner-live='1']")) pollWantSoon = true;
           },
-          (el) => {
-            actPrevKeys = snapshotActivityRowKeys(el);
-            actPrevRefiner = snapshotRefinerRows(el);
-          }
+          fetcherActivityPageBeforeSwap,
+          () => pollToken === fetcherPeekActivityFeedLatestToken()
         )
       );
     }
@@ -2099,6 +2294,7 @@ window.addEventListener("DOMContentLoaded", () => {
   bindRevealButtons();
   bindDashboardDismissibles();
   initActivityFilterPills();
+  initActivityPageSearchControls();
   initActivityDetailExpand();
   refreshActivityLucideIcons(document.body);
   initSettingsTabs();
