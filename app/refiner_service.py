@@ -47,7 +47,8 @@ from app.refiner_source_readiness import (
     decide_refiner_readiness,
     fetch_refiner_queue_snapshot,
     ffprobe_failure_hint_is_read_analyze,
-    upstream_blocks_path,
+    log_refiner_readiness_diagnostic,
+    upstream_analyze_path,
 )
 
 logger = logging.getLogger(__name__)
@@ -1104,14 +1105,33 @@ async def run_refiner_pass(
                     fh0 = str((meta or {}).get("failure_hint") or "")
                     if status == "error" and ffprobe_failure_hint_is_read_analyze(fh0):
                         snap_post = await fetch_refiner_queue_snapshot(row)
-                        blocked, rc_up, msg_up = upstream_blocks_path(fp, snap_post)
-                        if blocked and meta is not None:
+                        blocked, rc_up, msg_up, up_diag_post = upstream_analyze_path(fp, snap_post)
+                        strict_post = bool(
+                            snap_post.authority_configured and not snap_post.authority_useful
+                        )
+                        relabeled = bool(blocked and meta is not None)
+                        if relabeled:
                             meta["failure_hint"] = msg_up
                             meta["activity_context"] = _activity_snapshot(
                                 failure_reason=msg_up[:8000],
                                 reason_code=rc_up,
                             )
                             meta["_refiner_reason_code"] = rc_up
+                        log_refiner_readiness_diagnostic(
+                            gate_tag="post_ffprobe",
+                            path=fp,
+                            snap=snap_post,
+                            up_diag=up_diag_post,
+                            strict_file_fallback=strict_post,
+                            decision_proceed=not blocked,
+                            decision_reason_code=rc_up if blocked else "",
+                            file_gate_ok=None,
+                            file_gate_detail="",
+                            extra={
+                                "ffprobe_ran_before_upstream_recheck": True,
+                                "outcome_relabeled_to_queue_wait": relabeled,
+                            },
+                        )
             except Exception:
                 logger.exception(
                     "Refiner: unexpected failure for %s (thread error, cancellation, or timeout)",

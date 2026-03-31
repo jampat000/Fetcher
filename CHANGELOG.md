@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.18] - 2026-03-31
+
+### Added (diagnostic build only)
+
+- **Refiner:** Structured **INFO** logging for **authority-first readiness** (`grep` for **`Refiner readiness diagnostic`**): initial gate, final gate, and post-**ffprobe** upstream recheck. **No readiness rule changes** — traceability for live diagnosis when files are processed during active downloads. Downgrade or remove these lines after root cause is confirmed.
+
 ## [3.4.17] - 2026-03-31
 
 ### Changed

@@ -14,6 +14,7 @@ from app.refiner_source_readiness import (
     fetch_refiner_queue_snapshot,
     queue_record_upstream_active,
     refiner_file_level_gate,
+    upstream_analyze_path,
     upstream_blocks_path,
 )
 
@@ -34,6 +35,16 @@ def test_file_gate_accepts_stable_nonempty_file(tmp_path: Path, monkeypatch: pyt
     assert why == ""
 
 
+def test_upstream_analyze_path_skipped_when_authority_not_useful(tmp_path: Path) -> None:
+    f = tmp_path / "solo.mkv"
+    f.write_bytes(b"x" * 30)
+    snap = RefinerQueueSnapshot(False, False, False, False, (), ())
+    blocked, rc, msg, diag = upstream_analyze_path(f, snap)
+    assert (blocked, rc, msg) == (False, "", "")
+    assert diag["upstream_scan_skipped"] is True
+    assert upstream_blocks_path(f, snap) == (False, "", "")
+
+
 def test_upstream_blocks_when_path_matches_active_radarr_row(tmp_path: Path) -> None:
     f = tmp_path / "Movie.mkv"
     f.write_bytes(b"x" * 100)
@@ -47,6 +58,11 @@ def test_upstream_blocks_when_path_matches_active_radarr_row(tmp_path: Path) -> 
     blocked, rc, _msg = upstream_blocks_path(f, snap)
     assert blocked is True
     assert rc == "radarr_queue_active_download"
+    _b2, _r2, _m2, diag = upstream_analyze_path(f, snap)
+    assert _b2 is True and _r2 == rc
+    assert diag["upstream_blocked"] is True
+    assert diag["radarr_upstream_active_rows"] >= 1
+    assert isinstance(diag.get("candidate_resolved"), str) and len(diag["candidate_resolved"]) > 0
 
 
 def test_decide_authority_blocks_before_file_gate(tmp_path: Path) -> None:
