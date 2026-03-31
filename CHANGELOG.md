@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.17] - 2026-03-31
+
+### Changed
+
+- **Refiner:** **Authority-first readiness** before processing: fetch **Sonarr/Radarr** download **queue** snapshots, treat **active** queue rows (by path + status / `sizeleft`) as **not ready**, then apply a **conservative file-level** gate (size/mtime stability; stricter when *arr queue fetch fails but *arr is configured).
+- **Refiner:** **Final gate** repeats the same authority-first decision immediately before `ffprobe`/processing to narrow TOCTOU windows.
+- **Refiner:** After **`ffprobe`/read failures**, a **fresh queue snapshot** can **relabel** outcomes as **waiting** (`radarr_queue_active_download` / `sonarr_queue_active_download`) when the path is still an active download in *arr.
+- **Refiner:** Per-file **job log** lines use optional **`reason_code`** so **`[waiting]`** matches *arr-blocked cases, not only free-text heuristics.
+
 ## [3.4.16] - 2026-03-31
 
 ### Fixed

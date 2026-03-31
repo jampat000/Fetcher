@@ -158,10 +158,14 @@ def job_log_class_label(oc: RefinerOutcomeClass) -> str:
     return "permanent"
 
 
-def format_per_file_job_log_line(file_name: str, failure_hint: str) -> str:
+def format_per_file_job_log_line(file_name: str, failure_hint: str, *, reason_code: str = "") -> str:
     """Single line for JobRunLog aggregation (classification tag, then hint)."""
     hint = (failure_hint or "").strip() or "Processing failed."
-    oc, _, _ = classify_refiner_activity_context({"failure_reason": hint}, status="failed")
+    ctx: dict[str, Any] = {"failure_reason": hint}
+    rc = (reason_code or "").strip()
+    if rc:
+        ctx["reason_code"] = rc
+    oc, _, _ = classify_refiner_activity_context(ctx, status="failed")
     label = job_log_class_label(oc)
     one_line = hint.replace("\n", " — ").strip()
     return f"{file_name} [{label}] {one_line}"

@@ -15,6 +15,7 @@ _REFINER_CORE_PY = [
     _REPO_ROOT / "app" / "refiner_rules.py",
     _REPO_ROOT / "app" / "refiner_errors.py",
     _REPO_ROOT / "app" / "refiner_readiness.py",
+    _REPO_ROOT / "app" / "refiner_source_readiness.py",
     _REPO_ROOT / "app" / "refiner_watch_config.py",
     _REPO_ROOT / "app" / "routers" / "refiner.py",
     _REPO_ROOT / "app" / "scheduler.py",

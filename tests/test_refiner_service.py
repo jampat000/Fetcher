@@ -22,6 +22,7 @@ from app.refiner_service import (
     reconcile_refiner_processing_rows_on_worker_boot,
     run_refiner_pass,
 )
+from app.refiner_source_readiness import RefinerQueueSnapshot
 from app.schema_version import CURRENT_SCHEMA_VERSION
 
 
@@ -670,5 +671,184 @@ def test_live_run_refuses_overwrite_existing_destination(monkeypatch: pytest.Mon
             )
             assert act is not None
             assert act.status == "failed"
+
+    asyncio.run(_go())
+
+
+def test_refiner_pass_final_gate_blocks_when_queue_turns_active(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    probe_calls: list[Path] = []
+
+    def _probe(p: Path):
+        probe_calls.append(p)
+        return _fake_probe_multi_audio()
+
+    monkeypatch.setattr("app.refiner_service.ffprobe_json", _probe)
+    phase = {"n": 0}
+
+    async def phased_fetch(_row):  # noqa: ANN001
+        watched = Path(_row.refiner_watched_folder or "")
+        files = sorted(watched.rglob("*.mkv"))
+        p = str(files[0].resolve()) if files else ""
+        phase["n"] += 1
+        if phase["n"] == 1:
+            return RefinerQueueSnapshot(False, False, False, False, (), ())
+        rec = {"status": "downloading", "sizeleft": 0, "outputPath": p}
+        return RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+
+    monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", phased_fetch)
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        (watched / "late.mkv").write_bytes(b"x" * 400)
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = True
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            await run_refiner_pass(session, trigger="scheduled")
+            act = (
+                (
+                    await session.execute(
+                        select(RefinerActivity).where(RefinerActivity.file_name == "late.mkv").order_by(RefinerActivity.id.desc())
+                    )
+                )
+                .scalars()
+                .first()
+            )
+            assert act is not None
+            assert "radarr_queue_active_download" in (act.activity_context or "")
+
+    asyncio.run(_go())
+    assert probe_calls == []
+
+
+def test_refiner_pass_skips_probe_when_radarr_queue_active(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    probe_calls: list[Path] = []
+
+    def _probe(p: Path):
+        probe_calls.append(p)
+        return _fake_probe_multi_audio()
+
+    monkeypatch.setattr("app.refiner_service.ffprobe_json", _probe)
+
+    async def fake_fetch(_row):  # noqa: ANN001
+        w = Path(_row.refiner_watched_folder or "")
+        files = sorted(w.rglob("*.mkv"))
+        p = str(files[0].resolve()) if files else ""
+        rec = {"status": "downloading", "sizeleft": 0, "outputPath": p}
+        return RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+
+    monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", fake_fetch)
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        src = watched / "hold.mkv"
+        src.write_bytes(b"x" * 400)
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = True
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            r = await run_refiner_pass(session, trigger="scheduled")
+        assert probe_calls == []
+        assert int(r.get("errors") or 0) >= 1
+
+    asyncio.run(_go())
+
+
+def test_refiner_pass_queue_snapshot_fetched_twice_before_probe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fetch_calls = 0
+
+    async def counting_fetch(_row):  # noqa: ANN001
+        nonlocal fetch_calls
+        fetch_calls += 1
+        return RefinerQueueSnapshot(False, False, False, False, (), ())
+
+    monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", counting_fetch)
+    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        (watched / "one.mkv").write_bytes(b"x" * 300)
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = True
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            await run_refiner_pass(session, trigger="scheduled")
+
+    asyncio.run(_go())
+    assert fetch_calls == 2
+
+
+def test_refiner_pass_ffprobe_fail_reclassified_when_upstream_active(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.refiner_service.ffprobe_json",
+        lambda _p: (_ for _ in ()).throw(RuntimeError("probe failed")),
+    )
+    phase = {"n": 0}
+
+    async def phased_fetch(_row):  # noqa: ANN001
+        watched = Path(_row.refiner_watched_folder or "")
+        files = sorted(watched.rglob("*.mkv"))
+        p = str(files[0].resolve()) if files else ""
+        phase["n"] += 1
+        if phase["n"] <= 2:
+            return RefinerQueueSnapshot(False, False, False, False, (), ())
+        rec = {"status": "downloading", "sizeleft": 0, "outputPath": p}
+        return RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+
+    monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", phased_fetch)
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        (watched / "bad.mkv").write_bytes(b"x" * 300)
+        async with SessionLocal() as session:
+            row = await _get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = True
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            await run_refiner_pass(session, trigger="scheduled")
+            act = (
+                (
+                    await session.execute(
+                        select(RefinerActivity).where(RefinerActivity.file_name == "bad.mkv").order_by(RefinerActivity.id.desc())
+                    )
+                )
+                .scalars()
+                .first()
+            )
+            assert act is not None
+            assert "radarr_queue_active_download" in (act.activity_context or "")
 
     asyncio.run(_go())

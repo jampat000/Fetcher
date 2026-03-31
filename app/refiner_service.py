@@ -42,6 +42,13 @@ from app.refiner_track_display import (
     subtitle_after_line_from_plan,
     subtitle_before_line_from_probe,
 )
+from app.refiner_source_readiness import (
+    RefinerReadinessDecision,
+    decide_refiner_readiness,
+    fetch_refiner_queue_snapshot,
+    ffprobe_failure_hint_is_read_analyze,
+    upstream_blocks_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -508,6 +515,19 @@ def _failure_activity_meta(
     }
 
 
+def _readiness_skip_meta(fp: Path, decision: RefinerReadinessDecision, t0: float) -> dict[str, Any]:
+    sb = _file_size_bytes(fp)
+    msg = (decision.operator_message or "").strip() or "Source not ready yet."
+    meta = _failure_activity_meta(fp.name, size_before=sb, audio_before=0, subs_before=0, t0=t0)
+    meta["failure_hint"] = msg
+    meta["activity_context"] = _activity_snapshot(
+        failure_reason=msg[:8000],
+        reason_code=decision.reason_code,
+    )
+    meta["_refiner_reason_code"] = decision.reason_code
+    return meta
+
+
 def _process_one_refiner_file_sync(
     path: Path,
     cfg: RefinerRulesConfig,
@@ -586,11 +606,15 @@ def _process_one_refiner_file_sync(
             path.name,
             e,
         )
-        fh = (
-            failure_hint_from_exception(e)
-            if isinstance(e, OSError)
-            else f"Could not read or analyze the file. Reason: {e}"
-        )
+        if isinstance(e, OSError):
+            fh = failure_hint_from_exception(e)
+        else:
+            detail = str(e).strip()
+            compact = detail.replace(" ", "")
+            if not detail or detail in ("{}", "[]", "None", "null") or compact in ("{}", "[]"):
+                fh = "Could not read or analyze the file."
+            else:
+                fh = f"Could not read or analyze the file. Reason: {detail[:2000]}"
         return "error", pack(
             "failed",
             sb0,
@@ -1050,13 +1074,44 @@ async def run_refiner_pass(
         failure_notes: list[str] = []
         for fp in files:
             t_job = time.perf_counter()
+            snap_pre = await fetch_refiner_queue_snapshot(row)
+            d0 = await decide_refiner_readiness(fp, row, snapshot=snap_pre, gate_tag="initial")
+            if not d0.proceed:
+                meta0 = _readiness_skip_meta(fp, d0, t_job)
+                await _persist_refiner_activity_safe(meta0)
+                err_c += 1
+                failure_notes.append(
+                    format_per_file_job_log_line(
+                        fp.name,
+                        str(meta0.get("failure_hint") or ""),
+                        reason_code=str(meta0.get("_refiner_reason_code") or ""),
+                    )
+                )
+                continue
+
             act_id = await _insert_refiner_processing_row(fp.name)
             status: str = "error"
             meta: dict[str, Any] | None = None
             try:
-                status, meta = await asyncio.to_thread(
-                    _process_one_refiner_file_sync, fp, cfg, dry, watched_root, output_root, work_dir
-                )
+                snap_final = await fetch_refiner_queue_snapshot(row)
+                d1 = await decide_refiner_readiness(fp, row, snapshot=snap_final, gate_tag="final")
+                if not d1.proceed:
+                    meta = _readiness_skip_meta(fp, d1, t_job)
+                else:
+                    status, meta = await asyncio.to_thread(
+                        _process_one_refiner_file_sync, fp, cfg, dry, watched_root, output_root, work_dir
+                    )
+                    fh0 = str((meta or {}).get("failure_hint") or "")
+                    if status == "error" and ffprobe_failure_hint_is_read_analyze(fh0):
+                        snap_post = await fetch_refiner_queue_snapshot(row)
+                        blocked, rc_up, msg_up = upstream_blocks_path(fp, snap_post)
+                        if blocked and meta is not None:
+                            meta["failure_hint"] = msg_up
+                            meta["activity_context"] = _activity_snapshot(
+                                failure_reason=msg_up[:8000],
+                                reason_code=rc_up,
+                            )
+                            meta["_refiner_reason_code"] = rc_up
             except Exception:
                 logger.exception(
                     "Refiner: unexpected failure for %s (thread error, cancellation, or timeout)",
@@ -1074,6 +1129,7 @@ async def run_refiner_pass(
                     "Unexpected error during processing (thread, timeout, or cancellation). "
                     "See the Fetcher log file for the full traceback."
                 )
+                meta.setdefault("_refiner_reason_code", "")
             finally:
                 if meta is None:
                     sb_f = 0
@@ -1099,7 +1155,8 @@ async def run_refiner_pass(
             else:
                 err_c += 1
                 hint = (meta or {}).get("failure_hint") or "Processing failed."
-                failure_notes.append(format_per_file_job_log_line(fp.name, str(hint)))
+                rc_note = str((meta or {}).get("_refiner_reason_code") or "")
+                failure_notes.append(format_per_file_job_log_line(fp.name, str(hint), reason_code=rc_note))
         row.refiner_last_run_at = utc_now_naive()
         row.updated_at = utc_now_naive()
         detail = (

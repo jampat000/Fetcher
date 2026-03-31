@@ -69,6 +69,15 @@ def test_job_log_line_prefixes_with_class() -> None:
     assert line.startswith("a.mkv [manual]")
 
 
+def test_job_log_line_uses_reason_code_for_classification() -> None:
+    line = format_per_file_job_log_line(
+        "x.mkv",
+        "Could not read or analyze the file.",
+        reason_code="radarr_queue_active_download",
+    )
+    assert line.startswith("x.mkv [waiting]")
+
+
 def test_activity_row_failed_includes_outcome_class_and_sub() -> None:
     r = RefinerActivity(
         file_name="bad.mkv",
