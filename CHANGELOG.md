@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-03-31
+
+### Fixed
+
+- **Refiner readiness (active downloads):** authority-first blocking is now stable across real Arr queue payloads. Path matching stays primary; title fallback activates only when active rows have zero usable path candidates, with candidate identity derived from file stem and parent folder (when stem is non-release-like).
+- **Refiner Activity semantics:** upstream-active Arr queue waits now render as **Waiting** (not **Failed**) with blocked/waiting guidance that retries happen automatically.
+- **Refiner Activity dedupe:** repeated identical waiting states for the same candidate/reason now update the existing row (`wait_repeat_count`, `wait_last_seen_at`) instead of generating duplicate rows every scheduler pass.
+- **Refiner diagnostics:** readiness diagnostics retain proof fields for path/title match decisions and fallback candidate source, enabling clear runtime verification without changing blocking policy.
+
 ## [3.4.25] - 2026-03-31
 
 ### Fixed
