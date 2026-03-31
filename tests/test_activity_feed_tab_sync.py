@@ -168,10 +168,11 @@ def test_activity_page_trimmer_tab_excludes_refiner_while_processing(monkeypatch
 def test_activity_js_live_poll_uses_scoped_feed_url() -> None:
     js = Path("app/static/app.js").read_text(encoding="utf-8")
     assert "function activityFeedPollUrl" in js
-    i = js.index('replaceLiveRegionFromUrl(\n            "#activity-live-root"')
-    block = js[i : i + 450]
-    assert "activityFeedPollUrl()," in block or "activityFeedPollUrl()" in block
-    assert ',\n            "/activity",' not in block
+    i = js.index("const genAtFetchStart = fetcherActivityFeedScopeGeneration")
+    block = js[i : i + 280]
+    assert "swapActivityLiveRootFromFetch" in block
+    assert "activityFeedPollUrl()" in block
+    assert "genAtFetchStart" in block
 
 
 def test_activity_js_syncs_url_on_pill_filter() -> None:
@@ -181,7 +182,11 @@ def test_activity_js_syncs_url_on_pill_filter() -> None:
     i1 = js.index("function applyActivityPillFilterFromUrl", i0)
     block = js[i0:i1]
     assert "syncActivityTabUrl" in block
-    assert "#activity-feed-pills" in block
+    assert "setActivityFeedPillsVisual" in block
+    i2 = js.index("function setActivityFeedPillsVisual(filter)")
+    i3 = js.index("function applyActivityPillFilter(filter)", i2)
+    vis = js[i2:i3]
+    assert "#activity-feed-pills" in vis
 
 
 def test_activity_js_deep_link_covers_tv_movies() -> None:
@@ -261,6 +266,28 @@ def test_activity_template_emits_tab_scope_attributes(monkeypatch: pytest.Monkey
         r = client.get("/activity")
     assert r.status_code == 200
     assert 'data-activity-tab-scope="sonarr"' in r.text
+
+
+def test_activity_js_immediate_tab_fetch_on_pill_click() -> None:
+    js = Path("app/static/app.js").read_text(encoding="utf-8")
+    assert "function swapActivityLiveRootFromFetch" in js
+    assert "fetcherActivityFeedScopeGeneration" in js
+    assert "function activityFeedUrlForFilter" in js
+    i = js.index('hub.addEventListener("click"')
+    block = js[i : i + 900]
+    assert "activity-live-root" in block
+    assert "fetcherActivityFeedScopeGeneration +=" in block or "fetcherActivityFeedScopeGeneration+=" in block
+    assert "swapActivityLiveRootFromFetch" in block
+    assert "activityFeedUrlForFilter" in block
+
+
+def test_activity_js_stale_swap_guard_in_replace_live_region() -> None:
+    js = Path("app/static/app.js").read_text(encoding="utf-8")
+    i = js.index("function replaceLiveRegionFromUrl(")
+    i1 = js.index("function formatActivityRelativeFromIso", i)
+    block = js[i:i1]
+    assert "scopeGenAtStart" in block
+    assert "fetcherActivityFeedScopeGeneration" in block
 
 
 def test_macro_includes_tab_scope_for_trimmer_log() -> None:

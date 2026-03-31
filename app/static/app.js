@@ -338,12 +338,26 @@ function activityFeedPollUrl() {
   }
 }
 
-function applyActivityPillFilter(filter) {
+/** Bumped on Activity pill click so in-flight polls / prior fetches cannot overwrite a newer tab selection. */
+let fetcherActivityFeedScopeGeneration = 0;
+
+function activityFeedUrlForFilter(filter) {
+  const f = (filter || "all").toString().trim().toLowerCase();
+  if (!f || f === "all") return "/activity";
+  return `/activity?${new URLSearchParams({ app: f }).toString()}`;
+}
+
+function setActivityFeedPillsVisual(filter) {
   const f = filter || "all";
-  syncActivityTabUrl(f);
   document.querySelectorAll("#activity-feed-pills [data-pill-filter]").forEach((p) => p.classList.remove("active"));
   const pill = document.querySelector(`#activity-feed-pills [data-pill-filter="${f}"]`);
   if (pill) pill.classList.add("active");
+}
+
+function applyActivityPillFilter(filter) {
+  const f = filter || "all";
+  syncActivityTabUrl(f);
+  setActivityFeedPillsVisual(f);
   document.querySelectorAll(".activity-row[data-activity-app]").forEach((row) => {
     if (f === "all") {
       row.classList.remove("hidden-filter");
@@ -382,6 +396,18 @@ function initActivityFilterPills() {
     const pill = ev.target.closest("[data-pill-filter]");
     if (!pill || !hub.contains(pill)) return;
     const filter = pill.getAttribute("data-pill-filter") || "all";
+    if (document.getElementById("activity-live-root")) {
+      fetcherActivityFeedScopeGeneration += 1;
+      const g = fetcherActivityFeedScopeGeneration;
+      syncActivityTabUrl(filter);
+      setActivityFeedPillsVisual(filter);
+      swapActivityLiveRootFromFetch(activityFeedUrlForFilter(filter), g, {
+        after: () => {
+          if (typeof window.fetcherLiveTilesPollNow === "function") window.fetcherLiveTilesPollNow();
+        },
+      });
+      return;
+    }
     applyActivityPillFilter(filter);
   });
   applyActivityPillFilterFromUrl();
@@ -745,7 +771,7 @@ function startDashboardStatusPolling() {
   });
 }
 
-function replaceLiveRegionFromUrl(targetSelector, sourceSelector, url, afterSwap, beforeSwap) {
+function replaceLiveRegionFromUrl(targetSelector, sourceSelector, url, afterSwap, beforeSwap, scopeGenAtStart) {
   if (!document.querySelector(targetSelector)) return Promise.resolve();
   return fetch(url, {
     method: "GET",
@@ -756,16 +782,53 @@ function replaceLiveRegionFromUrl(targetSelector, sourceSelector, url, afterSwap
     .then((r) => (r.ok ? r.text() : null))
     .then((html) => {
       if (!html) return;
+      if (scopeGenAtStart !== undefined && scopeGenAtStart !== fetcherActivityFeedScopeGeneration) return;
       const doc = new DOMParser().parseFromString(html, "text/html");
       const src = doc.querySelector(sourceSelector);
       if (!src) return;
+      if (scopeGenAtStart !== undefined && scopeGenAtStart !== fetcherActivityFeedScopeGeneration) return;
       const liveTarget = document.querySelector(targetSelector);
       if (!liveTarget) return;
       if (typeof beforeSwap === "function") beforeSwap(liveTarget);
+      if (scopeGenAtStart !== undefined && scopeGenAtStart !== fetcherActivityFeedScopeGeneration) return;
       liveTarget.outerHTML = src.outerHTML;
+      if (scopeGenAtStart !== undefined && scopeGenAtStart !== fetcherActivityFeedScopeGeneration) return;
       if (typeof afterSwap === "function") afterSwap();
     })
     .catch(() => {});
+}
+
+/**
+ * Replace ``#activity-live-root`` from a scoped ``/activity?app=`` fetch.
+ * ``scopeGenAtStart`` must match ``fetcherActivityFeedScopeGeneration`` when the response is applied (stale guard).
+ * ``opts.after(actRoot)`` runs after polish (optional).
+ */
+function swapActivityLiveRootFromFetch(url, scopeGenAtStart, opts) {
+  let capturedRefinerCompareOpen = null;
+  let prevKeysForPolish = new Set();
+  let prevRefForPolish = new Map();
+  const afterExtra = opts && typeof opts.after === "function" ? opts.after : null;
+  return replaceLiveRegionFromUrl(
+    "#activity-live-root",
+    "#activity-live-root",
+    url,
+    () => {
+      const actRoot = document.querySelector("#activity-live-root");
+      restoreRefinerCompareDetailsOpen(actRoot, capturedRefinerCompareOpen);
+      capturedRefinerCompareOpen = null;
+      initActivityFilterPills();
+      polishActivityRowsAfterLiveSwap(actRoot, prevKeysForPolish);
+      applyRefinerOutcomePolish(prevRefForPolish, actRoot);
+      refreshActivityRelativeTimes(actRoot);
+      if (afterExtra) afterExtra(actRoot);
+    },
+    (el) => {
+      capturedRefinerCompareOpen = snapshotRefinerCompareDetailsOpen(el);
+      prevKeysForPolish = snapshotActivityRowKeys(el);
+      prevRefForPolish = snapshotRefinerRows(el);
+    },
+    scopeGenAtStart
+  );
 }
 
 /** Match ``activity_relative_time`` in ``display_helpers`` (UTC calendar tail). */
@@ -900,8 +963,6 @@ function startLiveTilePolling() {
   let pollWantSoon = false;
   let dashPrevKeys = new Set();
   let dashPrevRefiner = new Map();
-  let actPrevKeys = new Set();
-  let actPrevRefiner = new Map();
   let relativeTimeTimer = null;
 
   const refinerLiveInDom = () => {
@@ -975,30 +1036,13 @@ function startLiveTilePolling() {
       );
     }
     if (isActivityPage) {
+      const genAtFetchStart = fetcherActivityFeedScopeGeneration;
       tasks.push(
-        (() => {
-          let capturedRefinerCompareOpen = null;
-          return replaceLiveRegionFromUrl(
-            "#activity-live-root",
-            "#activity-live-root",
-            activityFeedPollUrl(),
-            () => {
-              const actRoot = document.querySelector("#activity-live-root");
-              restoreRefinerCompareDetailsOpen(actRoot, capturedRefinerCompareOpen);
-              capturedRefinerCompareOpen = null;
-              initActivityFilterPills();
-              polishActivityRowsAfterLiveSwap(actRoot, actPrevKeys);
-              applyRefinerOutcomePolish(actPrevRefiner, actRoot);
-              refreshActivityRelativeTimes(actRoot);
-              if (actRoot && actRoot.querySelector("[data-refiner-live='1']")) pollWantSoon = true;
-            },
-            (el) => {
-              capturedRefinerCompareOpen = snapshotRefinerCompareDetailsOpen(el);
-              actPrevKeys = snapshotActivityRowKeys(el);
-              actPrevRefiner = snapshotRefinerRows(el);
-            }
-          );
-        })()
+        swapActivityLiveRootFromFetch(activityFeedPollUrl(), genAtFetchStart, {
+          after: (actRoot) => {
+            if (actRoot && actRoot.querySelector("[data-refiner-live='1']")) pollWantSoon = true;
+          },
+        })
       );
     }
     if (isLogsPage) {

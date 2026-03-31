@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.12] - 2026-03-31
+
+### Fixed
+
+- **Activity tab immediate refresh:** Pill clicks now fetch scoped `/activity?app=` HTML right away (shared `swapActivityLiveRootFromFetch` with the live poll). A generation counter drops stale in-flight responses so rapid tab changes or overlapping poll/click fetches cannot overwrite the wrong tab. Polling remains background freshness; switching tabs no longer waits for the next poll interval.
+
 ## [3.4.11] - 2026-03-31
 
 ### Fixed
