@@ -234,6 +234,7 @@ def test_activity_js_supports_app_query_deep_link() -> None:
     assert 'raw === "refiner"' in block
     assert 'else if (raw === "trimmer")' in block
     assert 'filterKey = "trimmer"' in block
+    assert 'filterKey = "all"' in block
     assert 'raw === "emby"' not in block
     assert "activity-feed-pills" in block
 

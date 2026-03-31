@@ -297,10 +297,52 @@ function restoreRefinerCompareDetailsOpen(root, openKeys) {
   });
 }
 
+function syncActivityTabUrl(filter) {
+  const f = filter || "all";
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    if (f === "all") {
+      sp.delete("app");
+    } else {
+      sp.set("app", f);
+    }
+    const q = sp.toString();
+    const next = `${window.location.pathname}${q ? `?${q}` : ""}${window.location.hash || ""}`;
+    window.history.replaceState(null, "", next);
+  } catch (_e) {
+    /* ignore */
+  }
+}
+
+function currentActivityPillFilterFromDom() {
+  const hub = document.getElementById("activity-feed-pills");
+  if (!hub) return "all";
+  const active = hub.querySelector("[data-pill-filter].active");
+  const raw = active && active.getAttribute("data-pill-filter");
+  return raw || "all";
+}
+
+function activityRowTabScope(row) {
+  if (!row || !row.getAttribute) return "";
+  return (row.getAttribute("data-activity-tab-scope") || "").trim();
+}
+
+function activityFeedPollUrl() {
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    const app = (sp.get("app") || "").trim().toLowerCase();
+    if (!app || app === "all") return "/activity";
+    return `/activity?${new URLSearchParams({ app }).toString()}`;
+  } catch (_e) {
+    return "/activity";
+  }
+}
+
 function applyActivityPillFilter(filter) {
   const f = filter || "all";
-  document.querySelectorAll("[data-pill-filter]").forEach((p) => p.classList.remove("active"));
-  const pill = document.querySelector(`[data-pill-filter="${f}"]`);
+  syncActivityTabUrl(f);
+  document.querySelectorAll("#activity-feed-pills [data-pill-filter]").forEach((p) => p.classList.remove("active"));
+  const pill = document.querySelector(`#activity-feed-pills [data-pill-filter="${f}"]`);
   if (pill) pill.classList.add("active");
   document.querySelectorAll(".activity-row[data-activity-app]").forEach((row) => {
     if (f === "all") {
@@ -320,10 +362,12 @@ function applyActivityPillFilter(filter) {
 function applyActivityPillFilterFromUrl() {
   const sp = new URLSearchParams(window.location.search);
   const raw = (sp.get("app") || "").trim().toLowerCase();
-  let filterKey = null;
+  let filterKey = "all";
   if (raw === "refiner") filterKey = "refiner";
   else if (raw === "trimmer") filterKey = "trimmer";
-  if (filterKey) applyActivityPillFilter(filterKey);
+  else if (raw === "sonarr" || raw === "tv") filterKey = "sonarr";
+  else if (raw === "radarr" || raw === "movies" || raw === "movie") filterKey = "radarr";
+  applyActivityPillFilter(filterKey);
 }
 
 function initActivityFilterPills() {
@@ -937,7 +981,7 @@ function startLiveTilePolling() {
           return replaceLiveRegionFromUrl(
             "#activity-live-root",
             "#activity-live-root",
-            "/activity",
+            activityFeedPollUrl(),
             () => {
               const actRoot = document.querySelector("#activity-live-root");
               restoreRefinerCompareDetailsOpen(actRoot, capturedRefinerCompareOpen);

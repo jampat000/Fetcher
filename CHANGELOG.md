@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.11] - 2026-03-31
+
+### Fixed
+
+- **Activity tab sync under live polling:** Live refresh now requests `/activity` with the current `?app=` scope so Refiner-heavy polls no longer overwrite the feed when another tab is selected. Pill clicks update the URL via `replaceState`; server-side `normalize_activity_tab_query` + `filter_activity_display_for_tab` keep HTML aligned with the active tab; rows expose `data-activity-tab-scope` for consistent classification.
+
 ## [3.4.10] - 2026-03-31
 
 ### Fixed

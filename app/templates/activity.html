@@ -12,12 +12,13 @@
   <div class="card gc">
     <div class="gc-title">Activity</div>
     <div class="hint">Fetcher searches, <strong>Trimmer</strong>, and per-file <strong>Refiner</strong> results. Times in your chosen timezone. Entries with <strong>+N more</strong> store the full detail — click the row or the control to expand.</div>
+    {% set _feed_tab = activity_feed_tab|default('all') %}
     <div class="activity-filters" id="activity-feed-pills" role="tablist" aria-label="Filter by app">
-      <span class="pill active" data-pill-filter="all" role="tab" tabindex="0">All</span>
-      <span class="pill" data-pill-filter="sonarr" role="tab" tabindex="0">TV</span>
-      <span class="pill" data-pill-filter="radarr" role="tab" tabindex="0">Movies</span>
-      <span class="pill" data-pill-filter="trimmer" role="tab" tabindex="0">Trimmer</span>
-      <span class="pill" data-pill-filter="refiner" role="tab" tabindex="0">Refiner</span>
+      <span class="pill{% if _feed_tab == 'all' %} active{% endif %}" data-pill-filter="all" role="tab" tabindex="0">All</span>
+      <span class="pill{% if _feed_tab == 'sonarr' %} active{% endif %}" data-pill-filter="sonarr" role="tab" tabindex="0">TV</span>
+      <span class="pill{% if _feed_tab == 'radarr' %} active{% endif %}" data-pill-filter="radarr" role="tab" tabindex="0">Movies</span>
+      <span class="pill{% if _feed_tab == 'trimmer' %} active{% endif %}" data-pill-filter="trimmer" role="tab" tabindex="0">Trimmer</span>
+      <span class="pill{% if _feed_tab == 'refiner' %} active{% endif %}" data-pill-filter="refiner" role="tab" tabindex="0">Refiner</span>
     </div>
     <div class="section" id="activity-live-root">
       {% if activity %}

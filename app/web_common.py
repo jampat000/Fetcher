@@ -28,6 +28,55 @@ logger = logging.getLogger(__name__)
 
 # Activity list shows 5 title lines + “+N more”; full list is stored in ``ActivityLog.detail``.
 ACTIVITY_DETAIL_PREVIEW_LINES = 5
+
+# Activity page tabs: row dict key ``activity_tab_scope`` (HTML ``data-activity-tab-scope``).
+ACTIVITY_TAB_ALL_ONLY = "all_only"
+ACTIVITY_TAB_SONARR = "sonarr"
+ACTIVITY_TAB_RADARR = "radarr"
+ACTIVITY_TAB_TRIMMER = "trimmer"
+ACTIVITY_TAB_REFINER = "refiner"
+
+
+def activity_log_tab_scope(e: ActivityLog) -> str:
+    """Which Activity page pill owns this log row. Service/misc rows are *All* only."""
+    app = (getattr(e, "app", "") or "").strip().lower()
+    kind = (getattr(e, "kind", "") or "").strip().lower()
+    if app == "sonarr":
+        return ACTIVITY_TAB_SONARR
+    if app == "radarr":
+        return ACTIVITY_TAB_RADARR
+    if app == "trimmer":
+        return ACTIVITY_TAB_TRIMMER
+    if app == "refiner" and kind == "refiner":
+        return ACTIVITY_TAB_REFINER
+    return ACTIVITY_TAB_ALL_ONLY
+
+
+def normalize_activity_tab_query(raw: str | None) -> str:
+    """Canonical tab id for ``?app=`` (all | sonarr | radarr | trimmer | refiner)."""
+    s = (raw or "").strip().lower()
+    aliases = {"tv": ACTIVITY_TAB_SONARR, "movies": ACTIVITY_TAB_RADARR, "movie": ACTIVITY_TAB_RADARR}
+    s = aliases.get(s, s)
+    if s in ("", "all"):
+        return "all"
+    if s in (ACTIVITY_TAB_SONARR, ACTIVITY_TAB_RADARR, ACTIVITY_TAB_TRIMMER, ACTIVITY_TAB_REFINER):
+        return s
+    return "all"
+
+
+def filter_activity_display_for_tab(rows: list[dict[str, Any]], tab: str) -> list[dict[str, Any]]:
+    """Filter merged feed rows for Activity page scope. *All* includes ``all_only`` service rows."""
+    if tab == "all":
+        return list(rows)
+    want = {
+        "sonarr": ACTIVITY_TAB_SONARR,
+        "radarr": ACTIVITY_TAB_RADARR,
+        "trimmer": ACTIVITY_TAB_TRIMMER,
+        "refiner": ACTIVITY_TAB_REFINER,
+    }.get(tab)
+    if want is None:
+        return list(rows)
+    return [r for r in rows if r.get("activity_tab_scope") == want]
 _ACTIVITY_LOG_LEGACY_MORE = re.compile(r"^\+\d+ more$")
 _REFINER_BATCH_LOG = re.compile(
     r"Refiner\s*\(([^)]*)\):\s*processed=(\d+)\s+unchanged=(\d+)\s+dry_run_items=(\d+)\s+errors=(\d+)",
@@ -281,6 +330,7 @@ def activity_display_row(e: ActivityLog, tz: str, *, now: datetime | None = None
         "activity_domain": domain,
         "activity_lucide": lucide_name,
         "activity_outcome": _activity_log_outcome_class(e),
+        "activity_tab_scope": activity_log_tab_scope(e),
     }
     row.update(_activity_timestamp_fields(e.created_at, tz, tnow))
     return row
@@ -290,6 +340,7 @@ def refiner_activity_display_row(r: RefinerActivity, tz: str, now: datetime) -> 
     from app.refiner_activity_row import build_refiner_activity_row_dict
 
     row = build_refiner_activity_row_dict(r, tz, now)
+    row["activity_tab_scope"] = ACTIVITY_TAB_REFINER
     row.update(_activity_timestamp_fields(r.created_at, tz, now))
     return row
 
