@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.7.13 — 2026-04-01
+
+### Improved
+
+- Add strict ffprobe file validation and diagnostics to ensure correct file is probed and prevent empty-output probe failures.
+
 ## 3.7.12 — 2026-04-01
 
 ### Fixed

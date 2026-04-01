@@ -52,6 +52,36 @@ def resolve_ffprobe_ffmpeg() -> tuple[str, str]:
 
 def ffprobe_json(path: Path, *, timeout_s: int = 120) -> dict[str, Any]:
     ffprobe, _ = resolve_ffprobe_ffmpeg()
+    try:
+        resolved_path = str(path.resolve())
+    except OSError:
+        resolved_path = str(path)
+    exists = bool(path.exists())
+    is_file = bool(path.is_file())
+    try:
+        st = path.stat()
+        f_size = int(st.st_size)
+        f_mtime = float(st.st_mtime)
+    except OSError:
+        f_size = -1
+        f_mtime = 0.0
+    logger.warning(
+        "REFINER_FFPROBE_FILE_STATE: %s",
+        json.dumps(
+            {
+                "path": str(path),
+                "resolved_path": resolved_path,
+                "exists": exists,
+                "is_file": is_file,
+                "size_bytes": f_size,
+                "suffix": _clip_probe_text(path.suffix, max_chars=64),
+                "mtime_epoch": f_mtime,
+            },
+            ensure_ascii=True,
+        ),
+    )
+    if (not exists) or (not is_file) or f_size == 0:
+        raise RuntimeError("file missing or empty at probe time")
     argv = [
         ffprobe,
         "-v",
@@ -68,30 +98,6 @@ def ffprobe_json(path: Path, *, timeout_s: int = 120) -> dict[str, Any]:
             {
                 "path": str(path),
                 "argv": [_clip_probe_text(a, max_chars=256) for a in argv],
-            },
-            ensure_ascii=True,
-        ),
-    )
-    try:
-        resolved_path = str(path.resolve())
-    except OSError:
-        resolved_path = str(path)
-    try:
-        st = path.stat()
-        f_size = int(st.st_size)
-        f_mtime = float(st.st_mtime)
-    except OSError:
-        f_size = -1
-        f_mtime = 0.0
-    logger.warning(
-        "REFINER_FFPROBE_FILE_STATE: %s",
-        json.dumps(
-            {
-                "path": str(path),
-                "resolved_path": resolved_path,
-                "exists": bool(path.exists()),
-                "size_bytes": f_size,
-                "mtime_epoch": f_mtime,
             },
             ensure_ascii=True,
         ),
@@ -118,13 +124,13 @@ def ffprobe_json(path: Path, *, timeout_s: int = 120) -> dict[str, Any]:
         raise RuntimeError((r.stderr or r.stdout or "").strip() or "ffprobe failed")
     raw = r.stdout
     if not isinstance(raw, str) or not raw.strip():
-        raise RuntimeError("ffprobe returned empty probe output")
+        raise RuntimeError("ffprobe returned invalid or empty output")
     try:
         parsed = json.loads(raw)
     except Exception as e:
-        raise RuntimeError("ffprobe returned invalid JSON output") from e
+        raise RuntimeError("ffprobe returned invalid or empty output") from e
     if not isinstance(parsed, dict):
-        raise RuntimeError("ffprobe returned invalid probe payload")
+        raise RuntimeError("ffprobe returned invalid or empty output")
     return parsed
 
 
