@@ -6,7 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## 3.6.1 — 2026-04-01
+## 3.7.0 — 2026-04-01
+
+Minor release (feature scope); use **v3.7.0** instead of the briefly published **v3.6.1** tag.
 
 ### Added
 
