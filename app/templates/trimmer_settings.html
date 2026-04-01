@@ -82,7 +82,7 @@
 
       <label>Emby API key</label>
       <div class="control">
-        <input class="password" id="emby_api_key" type="password" name="emby_api_key" value="{{ settings.emby_api_key }}" placeholder="X-Emby-Token" autocomplete="off" />
+        <input class="password" id="emby_api_key" type="password" name="emby_api_key" value="{{ template_emby_api_key }}" placeholder="X-Emby-Token" autocomplete="off" />
         <button class="icon-btn" data-reveal="emby_api_key" type="button">Show</button>
       </div>
       <div class="small">Create this key in Emby Dashboard → Advanced → API keys.</div>
@@ -123,6 +123,10 @@
         <div class="row schedule-time-row">
           {{ schedule_time_select("emby_schedule_start", "Start time", emby_schedule_start_hhmm, schedule_time_choices, emby_start_orphan) }}
           {{ schedule_time_select("emby_schedule_end", "End time", emby_schedule_end_hhmm, schedule_time_choices, emby_end_orphan) }}
+        </div>
+        <div class="small settings-field-hint schedule-midnight-hint" id="trimmer-midnight-hint" hidden>
+          Overnight window detected. Enable both the start day and the next day
+          (e.g. Fri + Sat) to cover the full window.
         </div>
         <div class="small settings-field-hint">Limits runs to the selected days and times.</div>
         <div class="row row-schedule-pair">

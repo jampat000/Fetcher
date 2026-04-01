@@ -4,9 +4,12 @@ import asyncio
 import logging
 from typing import cast
 
+import json as _json
+
 import httpx
-from fastapi import APIRouter, Depends
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse, StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.arr_client import (
@@ -19,7 +22,7 @@ from app.arr_client import (
 )
 from app.branding import APP_NAME
 from app.db import SessionLocal, get_or_create_settings, get_session
-from app.models import ActivityLog
+from app.models import ActivityLog, AppSettings
 from app.resolvers.api_keys import resolve_setup_api_key
 from app.resolvers.api_keys import resolve_radarr_api_key, resolve_sonarr_api_key
 from app.schemas import ArrSearchNowIn, SetupConnTestIn, SetupEmbyTestIn
@@ -320,3 +323,40 @@ async def api_dashboard_status(
     settings = await get_or_create_settings(session)
     tz = settings.timezone or "UTC"
     return JSONResponse(await build_dashboard_status(session, tz))
+
+
+@router.get("/api/dashboard/stream", dependencies=AUTH_API_DEPS)
+async def api_dashboard_stream(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    from app.scheduler import wait_dashboard_changed
+
+    async def event_generator():
+        yield "event: ping\ndata: {}\n\n"
+        while True:
+            if await request.is_disconnected():
+                break
+            try:
+                await wait_dashboard_changed(timeout=29.0)
+            except Exception:
+                break
+            if await request.is_disconnected():
+                break
+            try:
+                row = (
+                    (await session.execute(select(AppSettings).order_by(AppSettings.id.asc()).limit(1)))
+                    .scalars()
+                    .first()
+                )
+                tz = (row.timezone or "UTC") if row else "UTC"
+                payload = await build_dashboard_status(session, tz)
+                yield f"data: {_json.dumps(payload, default=str)}\n\n"
+            except Exception:
+                pass
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

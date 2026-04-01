@@ -37,6 +37,7 @@ from app.web_common import (
     merge_activity_feed,
     movie_credit_types_summary,
     normalize_activity_tab_query,
+    sidebar_health_dots,
     user_visible_job_run_message,
 )
 
@@ -54,6 +55,9 @@ def _automation_view_for_template(settings: Any, dash_status: Mapping[str, Any])
         "last_sonarr_run": dash_status["last_sonarr_run"],
         "last_radarr_run": dash_status["last_radarr_run"],
         "last_trimmer_run": dash_status["last_trimmer_run"],
+        "last_refiner_run": dash_status.get(
+            "last_refiner_run", {"time_local": "", "ok": None, "relative": "", "time_iso": ""}
+        ),
         "next_sonarr_tick_local": dash_status["next_sonarr_tick_local"],
         "next_radarr_tick_local": dash_status["next_radarr_tick_local"],
         "next_trimmer_tick_local": dash_status["next_trimmer_tick_local"],
@@ -64,10 +68,15 @@ def _automation_view_for_template(settings: Any, dash_status: Mapping[str, Any])
         "radarr_enabled": bool(settings.radarr_enabled),
         "refiner_enabled": bool(settings.refiner_enabled),
         "emby_enabled": bool(settings.emby_enabled),
-        "refiner_last_run_at": settings.refiner_last_run_at,
         "sonarr_automation_sub": dash_status["sonarr_automation_sub"],
         "radarr_automation_sub": dash_status["radarr_automation_sub"],
         "trimmer_automation_sub": dash_status["trimmer_automation_sub"],
+        "sonarr_sparkline": dash_status.get("sonarr_sparkline", []),
+        "radarr_sparkline": dash_status.get("radarr_sparkline", []),
+        "refiner_sparkline": dash_status.get("refiner_sparkline", []),
+        "trimmer_sparkline": dash_status.get("trimmer_sparkline", []),
+        "refiner_live_total": dash_status.get("refiner_live_total", 0),
+        "refiner_live_done": dash_status.get("refiner_live_done", 0),
     }
 
 
@@ -199,6 +208,7 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
             "now_local": now_local(tz),
             "timezone": tz,
             "csrf_token": await get_csrf_token_for_template(request, session),
+            "sidebar_health": sidebar_health_dots(snapshots),
         },
     )
 
@@ -220,6 +230,15 @@ async def logs_page(request: Request, session: AsyncSession = Depends(get_sessio
         }
         for r in logs
     ]
+    try:
+        _logs_dir = resolved_logs_dir()
+        log_files = sorted(
+            [f.name for f in _logs_dir.iterdir() if f.is_file() and f.suffix in (".log",)],
+            reverse=True,
+        )
+    except OSError:
+        log_files = []
+    snaps_logs = await fetch_latest_app_snapshots(session)
     return templates.TemplateResponse(
         request,
         "logs.html",
@@ -229,16 +248,18 @@ async def logs_page(request: Request, session: AsyncSession = Depends(get_sessio
             "title": f"{APP_NAME} — Logs",
             "subtitle": "Service run history",
             "logs": logs_display,
+            "log_files": log_files,
             "now": utc_now_naive(),
             "now_local": now_local(tz),
             "timezone": tz,
             "csrf_token": await get_csrf_token_for_template(request, session),
             "show_setup_wizard": show_setup_wizard,
+            "sidebar_health": sidebar_health_dots(snaps_logs),
         },
     )
 
 
-@router.get("/logs/file", response_class=PlainTextResponse)
+@router.get("/logs/file", response_class=PlainTextResponse, dependencies=AUTH_DEPS)
 async def logs_file(name: str, _request: Request) -> PlainTextResponse:
     """Read a log file only when it resolves under the designated logs directory."""
     logs_root = resolved_logs_dir()
@@ -286,6 +307,7 @@ async def activity_page(
     tab_key = normalize_activity_tab_query(app)
     scoped = filter_activity_display_for_tab(merged, tab_key)
     activity_display = filter_activity_display_for_search(scoped, q)
+    snaps_act = await fetch_latest_app_snapshots(session)
     return templates.TemplateResponse(
         request,
         "activity.html",
@@ -303,5 +325,6 @@ async def activity_page(
             "timezone": tz,
             "csrf_token": await get_csrf_token_for_template(request, session),
             "show_setup_wizard": show_setup_wizard,
+            "sidebar_health": sidebar_health_dots(snaps_act),
         },
     )

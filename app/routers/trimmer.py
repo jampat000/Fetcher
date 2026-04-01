@@ -46,6 +46,7 @@ from app.web_common import (
     movie_credit_types_summary,
     schedule_days_csv_from_named_day_checks,
     schedule_weekdays_selected_dict,
+    sidebar_health_dots,
     trimmer_settings_redirect_url,
     trimmer_settings_test_redirect_url,
     try_commit_and_reschedule,
@@ -139,8 +140,9 @@ def build_trimmer_recent_activity_summary(settings: AppSettings, *, now: datetim
 async def trimmer_settings_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await get_or_create_settings(session)
     show_setup_wizard = not is_setup_complete(settings)
-    settings.emby_api_key = resolve_emby_api_key(settings)
-    emby_snap = (await fetch_latest_app_snapshots(session)).get("emby")
+    template_emby_api_key = resolve_emby_api_key(settings)
+    snaps_trimmer_settings = await fetch_latest_app_snapshots(session)
+    emby_snap = snaps_trimmer_settings.get("emby")
     tz = settings.timezone or "UTC"
     time_choices = schedule_time_dropdown_choices(step_minutes=30)
     time_choice_keys = {v for v, _ in time_choices}
@@ -181,6 +183,8 @@ async def trimmer_settings_page(request: Request, session: AsyncSession = Depend
             ),
             "csrf_token": await get_csrf_token_for_template(request, session),
             "show_setup_wizard": show_setup_wizard,
+            "template_emby_api_key": template_emby_api_key,
+            "sidebar_health": sidebar_health_dots(snaps_trimmer_settings),
         },
     )
 
@@ -200,6 +204,7 @@ async def trimmer_page(request: Request, session: AsyncSession = Depends(get_ses
 
     now = utc_now_naive()
     trimmer_recent_activity_summary = build_trimmer_recent_activity_summary(settings, now=now)
+    snaps_trimmer = await fetch_latest_app_snapshots(session)
 
     return templates.TemplateResponse(
         request,
@@ -238,6 +243,7 @@ async def trimmer_page(request: Request, session: AsyncSession = Depends(get_ses
             "show_setup_wizard": show_setup_wizard,
             "trimmer_overview": build_trimmer_overview_config(settings),
             "trimmer_recent_activity_summary": trimmer_recent_activity_summary,
+            "sidebar_health": sidebar_health_dots(snaps_trimmer),
         },
     )
 

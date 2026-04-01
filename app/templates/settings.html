@@ -22,9 +22,9 @@
 {% endif %}
 {%- endmacro %}
 {% macro arr_connection_hints() %}
-      <div class="hint">Use <span class="kbd">http://</span> for direct Sonarr, Radarr, and Emby connections.</div>
+      <div class="hint">Use <span class="kbd">http://</span> for direct Sonarr and Radarr connections on this page.</div>
       {% if show_setup_wizard %}
-      <p class="hint">Run the <a class="ink-link" href="/setup"><strong>setup wizard</strong></a> to connect Sonarr, Radarr, and Emby and test each connection.</p>
+      <p class="hint">Run the <a class="ink-link" href="/setup"><strong>setup wizard</strong></a> to connect Sonarr, Radarr, and (optionally) your media server. Media server URL and API key for Trimmer live under <a class="ink-link" href="/trimmer/settings"><strong>Trimmer settings</strong></a>.</p>
       {% endif %}
 {% endmacro %}
 {% block content %}
@@ -137,7 +137,7 @@
               <div class="settings-arr-connection-field">
                 <label for="sonarr_api_key">Sonarr API key</label>
                 <div class="settings-arr-connection-secret-wrap">
-                  <input class="password settings-arr-connection-secret-input" id="sonarr_api_key" type="password" name="sonarr_api_key" value="{{ settings.sonarr_api_key }}" placeholder="X-Api-Key" />
+                  <input class="password settings-arr-connection-secret-input" id="sonarr_api_key" type="password" name="sonarr_api_key" value="{{ template_sonarr_api_key }}" placeholder="X-Api-Key" />
                   <button class="icon-btn settings-arr-connection-reveal" data-reveal="sonarr_api_key" type="button">Show</button>
                 </div>
               </div>
@@ -188,6 +188,10 @@
                 <div class="row schedule-time-row">
                   {{ schedule_time_select("sonarr_schedule_start", "Start time", sonarr_schedule_start_hhmm, schedule_time_choices, sonarr_start_orphan) }}
                   {{ schedule_time_select("sonarr_schedule_end", "End time", sonarr_schedule_end_hhmm, schedule_time_choices, sonarr_end_orphan) }}
+                </div>
+                <div class="small settings-field-hint schedule-midnight-hint" id="sonarr-midnight-hint" hidden>
+                  Overnight window detected. Enable both the start day and the next day
+                  (e.g. Fri + Sat) to cover the full window.
                 </div>
                 <div class="small settings-field-hint">Limits runs to the selected days and times.</div>
                 <div class="row">
@@ -248,7 +252,7 @@
               <div class="settings-arr-connection-field">
                 <label for="radarr_api_key">Radarr API key</label>
                 <div class="settings-arr-connection-secret-wrap">
-                  <input class="password settings-arr-connection-secret-input" id="radarr_api_key" type="password" name="radarr_api_key" value="{{ settings.radarr_api_key }}" placeholder="X-Api-Key" />
+                  <input class="password settings-arr-connection-secret-input" id="radarr_api_key" type="password" name="radarr_api_key" value="{{ template_radarr_api_key }}" placeholder="X-Api-Key" />
                   <button class="icon-btn settings-arr-connection-reveal" data-reveal="radarr_api_key" type="button">Show</button>
                 </div>
               </div>
@@ -299,6 +303,10 @@
                 <div class="row schedule-time-row">
                   {{ schedule_time_select("radarr_schedule_start", "Start time", radarr_schedule_start_hhmm, schedule_time_choices, radarr_start_orphan) }}
                   {{ schedule_time_select("radarr_schedule_end", "End time", radarr_schedule_end_hhmm, schedule_time_choices, radarr_end_orphan) }}
+                </div>
+                <div class="small settings-field-hint schedule-midnight-hint" id="radarr-midnight-hint" hidden>
+                  Overnight window detected. Enable both the start day and the next day
+                  (e.g. Fri + Sat) to cover the full window.
                 </div>
                 <div class="small settings-field-hint">Limits runs to the selected days and times.</div>
                 <div class="row">
@@ -425,7 +433,7 @@
   <div class="gc-title">Global operations</div>
   <div class="card backup-restore-card gc">
     <div class="gc-title">Backup &amp; restore</div>
-    <p class="hint backup-restore-lead">Backs up all Fetcher and Trimmer settings to one file. Keep this file private because it contains API keys.</p>
+    <p class="hint backup-restore-lead">Backs up all Fetcher and Trimmer settings to one file. Keep this file private because it contains API keys. This backup includes your password hash and session credentials — store it securely.</p>
 
     <div class="backup-panels">
       <div class="backup-panel backup-panel-download">
@@ -728,7 +736,14 @@
                 var installedBefore = normVer(data.current_version);
                 applyBtn.disabled = true;
                 applyBtn.textContent = "Starting…";
-                fetch(applyUrl, { method: "POST", headers: { Accept: "application/json" }, cache: "no-store" })
+                fetch(applyUrl, {
+                  method: "POST",
+                  headers: {
+                    Accept: "application/json",
+                    "X-CSRF-Token": typeof getCSRFToken === "function" ? getCSRFToken() : ""
+                  },
+                  cache: "no-store"
+                })
                   .then(function (r) {
                     return r.json().then(function (j) {
                       return { ok: r.ok, body: j };

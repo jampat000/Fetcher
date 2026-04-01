@@ -19,7 +19,7 @@ from app.display_helpers import (
     _relative_phrase_past,
     _relative_phrase_until,
 )
-from app.models import ActivityLog, AppSettings, AppSnapshot, JobRunLog
+from app.models import ActivityLog, AppSettings, AppSnapshot, JobRunLog, RefinerActivity
 from app.resolvers.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
 from app.scheduler import compute_job_intervals_minutes, scheduler
 from app.service_logic import _radarr_missing_total_including_unreleased, _sonarr_missing_total_including_unreleased
@@ -216,6 +216,25 @@ def _fetcher_phase_for_dashboard(
     )
 
 
+async def _sparkline_for_app(session: AsyncSession, app: str) -> list[bool | None]:
+    rows = (
+        (
+            await session.execute(
+                select(JobRunLog.ok)
+                .where(JobRunLog.app == app, JobRunLog.finished_at.isnot(None))
+                .order_by(desc(JobRunLog.id))
+                .limit(7)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    result = [bool(r) for r in rows]
+    while len(result) < 7:
+        result.append(None)
+    return list(reversed(result))
+
+
 async def _fetch_live_arr_totals(session: AsyncSession, out: dict[str, Any], settings: AppSettings) -> None:
     live = await fetch_live_dashboard_queue_totals(settings)
     if "sonarr_missing" in live:
@@ -262,6 +281,8 @@ async def build_dashboard_status(
     next_trimmer_dt = next_runs.get("trimmer")
     settings = await get_or_create_settings(session)
     snaps = snapshots if snapshots is not None else await fetch_latest_app_snapshots(session)
+    refiner_pass_total = int(getattr(settings, "refiner_current_pass_total", 0) or 0)
+    refiner_pass_done = int(getattr(settings, "refiner_current_pass_done", 0) or 0)
 
     def _latest_snapshot_for(app_name: str) -> AppSnapshot | None:
         snap = snaps.get(app_name)
@@ -308,6 +329,25 @@ async def build_dashboard_status(
     last_sonarr = _last_from(settings.sonarr_last_run_at, _latest_snapshot_for("sonarr"))
     last_radarr = _last_from(settings.radarr_last_run_at, _latest_snapshot_for("radarr"))
     last_trimmer = _last_from(settings.emby_last_run_at, _latest_snapshot_for("emby"))
+    last_refiner = _last_from(settings.refiner_last_run_at, None)
+    # Derive ok bool from most recent RefinerActivity status
+    _last_ra_status = (
+        (
+            await session.execute(
+                select(RefinerActivity.status).order_by(desc(RefinerActivity.id)).limit(1)
+            )
+        )
+        .scalar_one_or_none()
+    )
+    if _last_ra_status == "success":
+        last_refiner["ok"] = True
+    elif _last_ra_status == "failed":
+        last_refiner["ok"] = False
+    # skipped/processing/None leaves ok=None (no pill rendered)
+    if settings.refiner_last_run_at:
+        last_refiner["time_iso"] = settings.refiner_last_run_at.isoformat()
+    else:
+        last_refiner["time_iso"] = ""
 
     # If scheduler next-run is unavailable in this process, keep useful per-app timing by estimating from last+interval.
     if not next_sonarr_dt and settings.sonarr_enabled and last_sonarr["time_local"]:
@@ -384,11 +424,16 @@ async def build_dashboard_status(
         sonarr_upgrades = out["sonarr_upgrades"]
         radarr_missing = out["radarr_missing"]
         radarr_upgrades = out["radarr_upgrades"]
+    sonarr_spark = await _sparkline_for_app(session, "sonarr")
+    radarr_spark = await _sparkline_for_app(session, "radarr")
+    refiner_spark = await _sparkline_for_app(session, "refiner")
+    trimmer_spark = await _sparkline_for_app(session, "trimmer")
     return {
         "last_run": last_run_display,
         "last_sonarr_run": last_sonarr,
         "last_radarr_run": last_radarr,
         "last_trimmer_run": last_trimmer,
+        "last_refiner_run": last_refiner,
         "latest_system_event": latest_system_event,
         "next_sonarr_tick_local": next_sonarr_local,
         "next_radarr_tick_local": next_radarr_local,
@@ -409,6 +454,12 @@ async def build_dashboard_status(
         "emby_matched": int(emby_snap.missing_total) if emby_snap else 0,
         "trimmer_connection_type": conn_type,
         "trimmer_connection_status": conn_status,
+        "sonarr_sparkline": sonarr_spark,
+        "radarr_sparkline": radarr_spark,
+        "refiner_sparkline": refiner_spark,
+        "trimmer_sparkline": trimmer_spark,
+        "refiner_live_total": refiner_pass_total,
+        "refiner_live_done": refiner_pass_done,
     }
 
 

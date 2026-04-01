@@ -24,6 +24,20 @@
     {% else %}
     <p class="small muted" id="logs-live-root">No runs yet. It will populate after scheduled cycles.</p>
     {% endif %}
+    {% if log_files %}
+    <div style="margin-top: 1.5rem;">
+      <div class="gc-title" style="margin-bottom: 0.5rem;">Log files</div>
+      <div class="hint" style="margin-bottom: 0.75rem;">
+        Raw rotating log files from this machine.
+      </div>
+      {% for fname in log_files %}
+      <div style="margin-bottom: 0.25rem;">
+        <a class="ink-link" href="/logs/file?name={{ fname | urlencode }}"
+           target="_blank" rel="noopener">{{ fname }}</a>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

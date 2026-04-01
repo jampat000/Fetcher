@@ -35,6 +35,7 @@ from app.web_common import (
     is_setup_complete,
     schedule_days_csv_from_named_day_checks,
     schedule_weekdays_selected_dict,
+    sidebar_health_dots,
     try_commit_and_reschedule,
 )
 
@@ -55,8 +56,8 @@ _SETTINGS_POST_SAVE_SCOPES = frozenset({"global", "sonarr", "radarr"})
 async def settings_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await get_or_create_settings(session)
     show_setup_wizard = not is_setup_complete(settings)
-    settings.sonarr_api_key = resolve_sonarr_api_key(settings)
-    settings.radarr_api_key = resolve_radarr_api_key(settings)
+    template_sonarr_api_key = resolve_sonarr_api_key(settings)
+    template_radarr_api_key = resolve_radarr_api_key(settings)
     snaps = await fetch_latest_app_snapshots(session)
     sonarr_snap = snaps.get("sonarr")
     radarr_snap = snaps.get("radarr")
@@ -105,6 +106,9 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
             "radarr_end_orphan": time_select_orphan(re, time_choice_keys, fallback_display="11:59 PM"),
             "csrf_token": await get_csrf_token_for_template(request, session),
             "show_setup_wizard": show_setup_wizard,
+            "template_sonarr_api_key": template_sonarr_api_key,
+            "template_radarr_api_key": template_radarr_api_key,
+            "sidebar_health": sidebar_health_dots(snaps),
         },
     )
     # Simple Browser / embedded WebViews often cache HTML; force reload of Settings.

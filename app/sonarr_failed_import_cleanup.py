@@ -157,6 +157,16 @@ async def run_sonarr_failed_import_queue_cleanup(
                     actions.append(
                         f"Sonarr: Failed import removal failed{suffix}: {format_http_error_detail(exc2)}"
                     )
+                    session.add(
+                        ActivityLog(
+                            job_run_id=job_run_id,
+                            app="sonarr",
+                            kind="cleanup",
+                            status="failed",
+                            count=0,
+                            detail=f"Failed import removal failed: {title or 'item'} — {format_http_error_detail(exc2)}",
+                        )
+                    )
                     logger.warning(
                         "Sonarr failed-import cleanup: delete fallback failed for queue id=%s: %s",
                         target_qid,
@@ -245,6 +255,16 @@ async def run_sonarr_failed_import_queue_cleanup(
                 actions.append(
                     f"Sonarr: Failed import removal failed{suffix}: {format_http_error_detail(exc2)}"
                 )
+                session.add(
+                    ActivityLog(
+                        job_run_id=job_run_id,
+                        app="sonarr",
+                        kind="cleanup",
+                        status="failed",
+                        count=0,
+                        detail=f"Failed import removal failed: {label or 'item'} — {format_http_error_detail(exc2)}",
+                    )
+                )
                 logger.warning(
                     "Sonarr failed-import cleanup: queue-signal delete fallback failed for queue id=%s: %s",
                     qid,
@@ -278,6 +298,12 @@ async def run_sonarr_failed_import_queue_cleanup(
                 blocklist_applied=blocklist_mode == "requested",
                 label=lab,
             )
+        )
+
+    if ineligible > 0:
+        logger.info(
+            "Sonarr failed-import cleanup: %d item(s) ineligible (no terminal signal) — skipped",
+            ineligible,
         )
 
     logger.info(

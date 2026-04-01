@@ -8,20 +8,23 @@ import sys
 
 from typing import Annotated
 
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_csrf_token_for_template
 from app.branding import APP_NAME, APP_TAGLINE
-from app.db import get_or_create_settings, db_path, get_session
+from app.db import get_or_create_settings, db_path, fetch_latest_app_snapshots, get_session
 from app.display_helpers import (
     normalize_hhmm,
     now_local,
     time_select_orphan,
     activity_relative_time,
+    _fmt_size_bytes_si,
 )
 from app.schedule import normalize_schedule_days_csv
 from app.schedule import schedule_time_dropdown_choices
@@ -47,6 +50,7 @@ from app.ui_templates import templates
 from app.models import RefinerActivity
 from app.web_common import (
     is_setup_complete,
+    sidebar_health_dots,
     refiner_settings_redirect_url,
     schedule_days_csv_from_named_day_checks,
     schedule_weekdays_selected_dict,
@@ -211,6 +215,30 @@ async def refiner_overview_page(request: Request, session: AsyncSession = Depend
         refiner_recent_activity_summary = f"Last scan {activity_relative_time(settings.refiner_last_run_at, now)}"
     else:
         refiner_recent_activity_summary = "No runs yet"
+    cutoff_30d = utc_now_naive() - timedelta(days=30)
+    _stats = (
+        await session.execute(
+            select(
+                func.count().label("total"),
+                func.sum(case((RefinerActivity.status == "success", 1), else_=0)).label("success_count"),
+                func.sum(
+                    case(
+                        (
+                            RefinerActivity.status == "success",
+                            RefinerActivity.size_before_bytes - RefinerActivity.size_after_bytes,
+                        ),
+                        else_=0,
+                    )
+                ).label("bytes_saved"),
+            ).where(RefinerActivity.created_at >= cutoff_30d)
+        )
+    ).one()
+    total_30d = int(_stats.total or 0)
+    success_30d = int(_stats.success_count or 0)
+    bytes_saved_30d = max(0, int(_stats.bytes_saved or 0))
+    success_rate_30d = f"{round(success_30d / total_30d * 100)}%" if total_30d > 0 else "—"
+    bytes_saved_display = _fmt_size_bytes_si(bytes_saved_30d) if bytes_saved_30d > 0 else "—"
+    snaps_ref_overview = await fetch_latest_app_snapshots(session)
     return templates.TemplateResponse(
         request,
         "refiner.html",
@@ -227,6 +255,13 @@ async def refiner_overview_page(request: Request, session: AsyncSession = Depend
             "refiner_state": rs,
             "refiner_overview": build_refiner_overview_config(settings, rs),
             "refiner_recent_activity_summary": refiner_recent_activity_summary,
+            "refiner_stats_30d": {
+                "total": total_30d,
+                "success": success_30d,
+                "bytes_saved": bytes_saved_display,
+                "success_rate": success_rate_30d,
+            },
+            "sidebar_health": sidebar_health_dots(snaps_ref_overview),
         },
     )
 
@@ -241,6 +276,7 @@ async def refiner_settings_page(request: Request, session: AsyncSession = Depend
     schedule_days_norm = normalize_schedule_days_csv(settings.refiner_schedule_days or "")
     schedule_start_hhmm = normalize_hhmm(settings.refiner_schedule_start, "00:00")
     schedule_end_hhmm = normalize_hhmm(settings.refiner_schedule_end, "23:59")
+    snaps_ref_settings = await fetch_latest_app_snapshots(session)
     return templates.TemplateResponse(
         request,
         "refiner_settings.html",
@@ -273,6 +309,7 @@ async def refiner_settings_page(request: Request, session: AsyncSession = Depend
             "csrf_token": await get_csrf_token_for_template(request, session),
             "show_setup_wizard": show_setup_wizard,
             "refiner_state": get_refiner_state(settings),
+            "sidebar_health": sidebar_health_dots(snaps_ref_settings),
         },
     )
 

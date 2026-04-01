@@ -56,6 +56,28 @@
       </section>
 
       <section class="overview-section refiner-overview-section">
+        <div class="overview-section-heading">Last 30 days</div>
+        <div class="overview-kv-stack">
+          <div class="overview-kv-row">
+            <div class="label">Files processed</div>
+            <div class="value">{{ refiner_stats_30d.total }}</div>
+          </div>
+          <div class="overview-kv-row">
+            <div class="label">Succeeded</div>
+            <div class="value">{{ refiner_stats_30d.success }}</div>
+          </div>
+          <div class="overview-kv-row">
+            <div class="label">Success rate</div>
+            <div class="value">{{ refiner_stats_30d.success_rate }}</div>
+          </div>
+          <div class="overview-kv-row">
+            <div class="label">Space saved</div>
+            <div class="value{% if refiner_stats_30d.bytes_saved != '—' %} mode-safe{% endif %}">{{ refiner_stats_30d.bytes_saved }}</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="overview-section refiner-overview-section">
         <div class="overview-section-heading">Folders</div>
         <div class="overview-kv-stack">
           <div class="overview-kv-row">

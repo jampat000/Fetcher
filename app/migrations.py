@@ -17,6 +17,15 @@ async def _column_names_sqlite(conn: AsyncConnection, *, table: str) -> set[str]
     return {str(row[0]) for row in res.fetchall() if row[0] is not None}
 
 
+async def _sqlite_table_exists(engine: AsyncEngine, *, name: str) -> bool:
+    async with engine.connect() as conn:
+        res = await conn.execute(
+            text("SELECT 1 FROM sqlite_master WHERE type='table' AND name=:n"),
+            {"n": name},
+        )
+        return res.first() is not None
+
+
 async def _has_column(engine: AsyncEngine, *, table: str, column: str) -> bool:
     async with engine.connect() as conn:
         names = await _column_names_sqlite(conn, table=table)
@@ -583,6 +592,28 @@ async def _migrate_032_app_settings_schema_version(engine: AsyncEngine) -> None:
         )
 
 
+# NOTE: Migration numbers 026-028 and 031 were reserved during development
+# but never shipped. These gaps are intentional — adding them now would serve
+# no purpose. The chain is fully idempotent via _has_column() guards.
+
+
+async def _migrate_037_job_run_log_app_column(engine: AsyncEngine) -> None:
+    """Track which service (sonarr/radarr/trimmer/refiner) produced each run log row."""
+    if not await _sqlite_table_exists(engine, name="job_run_log"):
+        return
+    if not await _has_column(engine, table="job_run_log", column="app"):
+        await _add_column(engine, table="job_run_log", ddl="app VARCHAR(16) NOT NULL DEFAULT ''")
+
+
+async def _migrate_038_refiner_pass_progress(engine: AsyncEngine) -> None:
+    """Transient Refiner pass progress for live dashboard tile."""
+    table = "app_settings"
+    if not await _has_column(engine, table=table, column="refiner_current_pass_total"):
+        await _add_column(engine, table=table, ddl="refiner_current_pass_total INTEGER NOT NULL DEFAULT 0")
+    if not await _has_column(engine, table=table, column="refiner_current_pass_done"):
+        await _add_column(engine, table=table, ddl="refiner_current_pass_done INTEGER NOT NULL DEFAULT 0")
+
+
 async def migrate(engine: AsyncEngine) -> None:
     await _migrate_001_sonarr_per_app_columns(engine)
     await _migrate_002_radarr_per_app_columns(engine)
@@ -616,6 +647,8 @@ async def migrate(engine: AsyncEngine) -> None:
     await _migrate_035_activity_log_trimmer_app_identity(engine)
     await _migrate_036_refiner_activity_media_title(engine)
     await _migrate_034_forward_app_settings_schema_version(engine)
+    await _migrate_037_job_run_log_app_column(engine)
+    await _migrate_038_refiner_pass_progress(engine)
     await repair_refiner_app_settings_columns(engine)
 
     logger.info(

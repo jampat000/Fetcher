@@ -14,6 +14,8 @@ from app.paths import BASE_DIR
 
 logger = logging.getLogger(__name__)
 
+REFINER_FFMPEG_TIMEOUT_S: int = 3600
+
 
 def resolve_ffprobe_ffmpeg() -> tuple[str, str]:
     # Prefer bundled tools for packaged builds, then PATH.
@@ -62,7 +64,7 @@ def ffprobe_json(path: Path, *, timeout_s: int = 120) -> dict[str, Any]:
     return json.loads(r.stdout)
 
 
-def validate_remux_output(path: Path) -> None:
+def validate_remux_output(path: Path, *, expected_audio: int = 0) -> None:
     data = ffprobe_json(path)
     streams = data.get("streams") or []
     if not isinstance(streams, list):
@@ -73,6 +75,10 @@ def validate_remux_output(path: Path) -> None:
             n_audio += 1
     if n_audio < 1:
         raise RuntimeError("validation failed: output has no audio stream")
+    if expected_audio > 0 and n_audio != expected_audio:
+        raise RuntimeError(
+            f"validation failed: expected {expected_audio} audio stream(s), got {n_audio}"
+        )
 
 
 def build_ffmpeg_argv(*, ffmpeg_bin: str, src: Path, dst: Path, plan: RemuxPlan) -> list[str]:
@@ -97,7 +103,7 @@ def build_ffmpeg_argv(*, ffmpeg_bin: str, src: Path, dst: Path, plan: RemuxPlan)
     return args
 
 
-def run_ffmpeg(argv: list[str], *, timeout_s: int | None = 3600) -> None:
+def run_ffmpeg(argv: list[str], *, timeout_s: int | None = REFINER_FFMPEG_TIMEOUT_S) -> None:
     r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout_s)
     if r.returncode != 0:
         msg = (r.stderr or r.stdout or "").strip()
@@ -119,7 +125,7 @@ def remux_to_temp_file(*, src: Path, work_dir: Path, plan: RemuxPlan) -> Path:
         argv = build_ffmpeg_argv(ffmpeg_bin=ffmpeg_bin, src=src, dst=tmp_path, plan=plan)
         logger.debug("Refiner: ffmpeg %s", " ".join(argv[:8]) + " ...")
         run_ffmpeg(argv)
-        validate_remux_output(tmp_path)
+        validate_remux_output(tmp_path, expected_audio=len(plan.audio))
     except Exception:
         try:
             if tmp_path.is_file():

@@ -214,6 +214,14 @@ def build_refiner_activity_row_dict(r: RefinerActivity, tz: str, now: datetime) 
             sba=sba,
         )
         summary_bullets = _success_summary_bullets(ctx, ab, aa, sbb, sba, sb, sa)
+        ptm = int(r.processing_time_ms or 0)
+        if ptm > 0:
+            if ptm < 60_000:
+                pt_str = f"{ptm / 1000:.1f}s"
+            else:
+                _m, _s = divmod(ptm // 1000, 60)
+                pt_str = f"{_m}m {_s}s"
+            technical_notes.append(f"Processing time: {pt_str}")
     elif st == "skipped":
         projected = _metrics_differ(sb, sa, ab, aa, sbb, sba) or _ctx_lines_differ(ctx)
         if dry and projected:

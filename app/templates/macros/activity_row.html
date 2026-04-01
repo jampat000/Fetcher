@@ -14,7 +14,7 @@
         <div class="activity-row activity-row--refiner activity-row--outcome-{{ _outcome }}{% if _am == 'preview' %} activity-row--refiner-preview{% endif %}{% if e.refiner_status == 'processing' %} activity-row--refiner-processing{% endif %}" data-activity-app="refiner" data-activity-tab-scope="{{ e.activity_tab_scope }}" data-activity-kind="{{ e.kind }}" data-activity-row-key="refiner-{{ e.id }}" data-refiner-outcome="{{ e.refiner_status }}" data-activity-outcome="{{ _outcome }}" data-refiner-apply-mode="{{ _am }}" {% if e.refiner_outcome_class is defined and e.refiner_outcome_class %}data-refiner-outcome-class="{{ e.refiner_outcome_class }}"{% endif %} {% if e.refiner_is_dry_run is defined and e.refiner_is_dry_run %}data-refiner-dry-run="1"{% endif %} {% if e.refiner_status == 'processing' %}data-refiner-live="1"{% endif %}>
           <div class="activity-icon icon-refiner" aria-hidden="true"><i data-lucide="sliders-horizontal"></i></div>
           <div class="activity-body activity-body--refiner-spec">
-            <div class="activity-refiner-media-title">{{ _mt }}</div>
+            <div class="activity-refiner-media-title activity-refiner-media-title--with-film"><i data-lucide="film" class="rfn-film-icon rfn-film-icon--title" aria-hidden="true"></i><span class="activity-refiner-media-title-text">{{ _mt }}</span></div>
             {% if e.refiner_source_file_line is defined and e.refiner_source_file_line %}
             <div class="activity-refiner-source-file">File: {{ e.refiner_source_file_line }}</div>
             {% endif %}
@@ -54,24 +54,85 @@
             </ul>
             {% endif %}
             {% if _show_cmp and _rows | length > 0 %}
-            <details class="activity-refiner-compare-details"{% if _outcome == 'success' %} open{% endif %}>
-              <summary class="activity-refiner-compare-summary">Before / after detail</summary>
-              <div class="activity-refiner-compare activity-refiner-compare--nested" role="group" aria-label="Before and after">
-                <div class="activity-refiner-compare-head">
-                  <span class="activity-refiner-compare-h activity-refiner-compare-h--before">Before</span>
-                  <span class="activity-refiner-compare-h activity-refiner-compare-h--after">After</span>
-                </div>
-                {% for row in _rows %}
-                <div class="activity-refiner-compare-row">
-                  <div class="activity-refiner-compare-label">{{ row.label }}</div>
-                  <div class="activity-refiner-compare-cells">
-                    <div class="activity-refiner-compare-cell activity-refiner-compare-cell--before">{{ row.before }}</div>
-                    <div class="activity-refiner-compare-cell activity-refiner-compare-cell--after">{{ row.after }}</div>
+            {% set _fs_rows = _rows | selectattr('label', 'equalto', 'File size') | list %}
+            {% set _sz_sr = _fs_rows[0] if _fs_rows else none %}
+            {% if _outcome == 'success' %}
+            {% set ns_saved = namespace(text='') %}
+            {% for b in _bullets %}
+              {% set _bt = b|string %}
+              {% if not ns_saved.text and _bt.startswith('File size reduced by ') %}
+                {% set _rest = _bt[21:]|trim %}
+                {% if _rest.endswith('.') %}
+                  {% set ns_saved.text = _rest[:-1]|trim %}
+                {% else %}
+                  {% set ns_saved.text = _rest %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+            <div class="rfn-compare-success-wrap activity-refiner-compare-details" role="region" aria-label="Before and after comparison">
+              <span class="rfn-compare-summary-visually-hidden">Before / after detail</span>
+              {% if _sz_sr and _sz_sr.after != _sz_sr.before and _sz_sr.after != '—' %}
+              <div class="rfn-size-delta-badge rfn-size-delta-badge--premium" role="status">
+                <span class="rfn-size-delta-main">↓ {{ _sz_sr.before }} → {{ _sz_sr.after }}</span>
+                {% if ns_saved.text %}
+                <span class="rfn-size-delta-saved">(saved {{ ns_saved.text }})</span>
+                {% endif %}
+              </div>
+              {% endif %}
+              <div class="rfn-compare-card rfn-compare-card--success activity-refiner-compare" role="group" aria-label="Before and after">
+                <div class="rfn-compare-inner rfn-compare-inner--success">
+                  <div class="rfn-compare-col rfn-compare-col--success-before">
+                    <div class="rfn-compare-col-head rfn-compare-col-head--premium">Before</div>
+                    {% for row in _rows %}
+                    <div class="rfn-compare-line rfn-compare-line--premium">
+                      <span class="rfn-compare-line-label">{{ row.label }}</span>
+                      <span class="rfn-compare-line-val">{{ row.before }}</span>
+                    </div>
+                    {% endfor %}
+                  </div>
+                  <div class="rfn-compare-arrow-col" aria-hidden="true">
+                    <i data-lucide="arrow-right" class="rfn-compare-arrow-icon"></i>
+                  </div>
+                  <div class="rfn-compare-col rfn-compare-col--success-after">
+                    <div class="rfn-compare-col-head rfn-compare-col-head--premium">After</div>
+                    {% for row in _rows %}
+                    <div class="rfn-compare-line rfn-compare-line--premium">
+                      <span class="rfn-compare-line-label">{{ row.label }}</span>
+                      <span class="rfn-compare-line-val rfn-compare-line-val--after">{{ row.after }}</span>
+                    </div>
+                    {% endfor %}
                   </div>
                 </div>
-                {% endfor %}
+              </div>
+            </div>
+            {% else %}
+            <details class="activity-refiner-compare-details">
+              <summary class="activity-refiner-compare-summary">Before / after detail</summary>
+              <div class="rfn-compare-card rfn-compare-card--in-details" role="group" aria-label="Before and after">
+                <div class="rfn-compare-inner">
+                  <div class="rfn-compare-col rfn-compare-col--before">
+                    <div class="rfn-compare-col-head">Before</div>
+                    {% for row in _rows %}
+                    <div class="rfn-compare-line">
+                      <span class="rfn-compare-line-label">{{ row.label }}</span>
+                      <span class="rfn-compare-line-val">{{ row.before }}</span>
+                    </div>
+                    {% endfor %}
+                  </div>
+                  <div class="rfn-compare-arrow" aria-hidden="true">→</div>
+                  <div class="rfn-compare-col rfn-compare-col--after">
+                    <div class="rfn-compare-col-head">After</div>
+                    {% for row in _rows %}
+                    <div class="rfn-compare-line">
+                      <span class="rfn-compare-line-label">{{ row.label }}</span>
+                      <span class="rfn-compare-line-val rfn-compare-line-val--after">{{ row.after }}</span>
+                    </div>
+                    {% endfor %}
+                  </div>
+                </div>
               </div>
             </details>
+            {% endif %}
             {% endif %}
             {% if _notes | length > 0 %}
             <div class="activity-refiner-technical-notes">

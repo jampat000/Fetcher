@@ -22,7 +22,7 @@ from app.branding import APP_NAME, APP_TAGLINE
 from app.db import get_session
 from app.rate_limit import limiter
 from app.ui_templates import templates
-from app.web_common import is_setup_complete
+from app.web_common import is_setup_complete, sidebar_health_dots
 
 router = APIRouter()
 
@@ -59,6 +59,7 @@ async def login_get(
             "error": (error or "").strip(),
             "login_next": login_next,
             "show_setup_wizard": show_setup_wizard,
+            "sidebar_health": sidebar_health_dots({}),
         },
     )
 
@@ -120,6 +121,7 @@ async def login_post(
             "error": result.message,
             "login_next": next_dest,
             "show_setup_wizard": show_setup_wizard,
+            "sidebar_health": sidebar_health_dots({}),
         },
     )
 

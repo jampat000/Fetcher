@@ -38,6 +38,7 @@ from app.refiner_pipeline import (
     _process_one_refiner_file_sync,
     _readiness_skip_meta,
 )
+from app.refiner_mux import REFINER_FFMPEG_TIMEOUT_S
 from app.refiner_outcome_classify import format_per_file_job_log_line
 from app.refiner_rules import (
     RefinerRulesConfig,
@@ -159,6 +160,7 @@ async def run_refiner_pass(
                     message=_refiner_job_log_text(
                         "Refiner: primary audio language is required — choose a language in Refiner settings (Audio)."
                     ),
+                    app="refiner",
                 )
             )
             await session.commit()
@@ -174,6 +176,7 @@ async def run_refiner_pass(
                     message=_refiner_job_log_text(
                         "Refiner: watched folder and output folder must both be configured when Refiner is enabled."
                     ),
+                    app="refiner",
                 )
             )
             await session.commit()
@@ -188,6 +191,7 @@ async def run_refiner_pass(
                     message=_refiner_job_log_text(
                         f"Refiner: watched folder is missing or not a directory: {watched_root}"
                     ),
+                    app="refiner",
                 )
             )
             await session.commit()
@@ -202,6 +206,7 @@ async def run_refiner_pass(
                     message=_refiner_job_log_text(
                         f"Refiner: output folder is missing or not a directory: {output_root}"
                     ),
+                    app="refiner",
                 )
             )
             await session.commit()
@@ -211,7 +216,7 @@ async def run_refiner_pass(
         # Clean orphaned temp files from prior crashed/failed remux passes
         if work_dir.is_dir():
             import time as _time_mod
-            _stale_cutoff = _time_mod.time() - 3600  # 1 hour
+            _stale_cutoff = _time_mod.time() - REFINER_FFMPEG_TIMEOUT_S
             try:
                 for _wf in work_dir.iterdir():
                     if _wf.is_file() and ".refiner." in _wf.name:
@@ -231,10 +236,14 @@ async def run_refiner_pass(
                     finished_at=utc_now_naive(),
                     ok=True,
                     message=_refiner_job_log_text("Refiner: watched folder has no supported media files."),
+                    app="refiner",
                 )
             )
             await session.commit()
             return {"ok": True, "ran": False, "reason": "no_files"}
+        row.refiner_current_pass_total = len(files)
+        row.refiner_current_pass_done = 0
+        await session.commit()
         dry = bool(row.refiner_dry_run)
         ok_c = dry_c = err_c = wait_c = 0
         noop_c = 0  # log field unchanged=0 (no in-place “skipped” live passes without pipeline finalize)
@@ -259,6 +268,11 @@ async def run_refiner_pass(
                 else:
                     err_c += 1
                     failure_notes.append(line0)
+                row.refiner_current_pass_done += 1
+                try:
+                    await session.commit()
+                except Exception:
+                    pass
                 continue
 
             act_id = await _insert_refiner_processing_row(fp.name)
@@ -353,6 +367,13 @@ async def run_refiner_pass(
                 else:
                     err_c += 1
                     failure_notes.append(line_e)
+            row.refiner_current_pass_done += 1
+            try:
+                await session.commit()
+            except Exception:
+                pass
+        row.refiner_current_pass_total = 0
+        row.refiner_current_pass_done = 0
         row.refiner_last_run_at = utc_now_naive()
         row.updated_at = utc_now_naive()
         detail = (
@@ -374,6 +395,7 @@ async def run_refiner_pass(
                 finished_at=utc_now_naive(),
                 ok=(err_c == 0),
                 message=_refiner_job_log_text("\n".join(job_lines)),
+                app="refiner",
             )
         )
         session.add(
@@ -386,6 +408,12 @@ async def run_refiner_pass(
             )
         )
         await session.commit()
+        try:
+            from app.scheduler import notify_dashboard_changed
+
+            notify_dashboard_changed()
+        except Exception:
+            pass
         return {
             "ok": err_c == 0,
             "ran": True,

@@ -120,6 +120,8 @@ class AppSettings(Base):
     refiner_schedule_start: Mapped[str] = mapped_column(String(5), default="00:00")
     refiner_schedule_end: Mapped[str] = mapped_column(String(5), default="23:59")
     refiner_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    refiner_current_pass_total: Mapped[int] = mapped_column(Integer, default=0)
+    refiner_current_pass_done: Mapped[int] = mapped_column(Integer, default=0)
 
     # Web UI authentication (bcrypt password hash; TimestampSigner session secret)
     auth_username: Mapped[str] = mapped_column(Text, default="admin")
@@ -145,6 +147,7 @@ class JobRunLog(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     ok: Mapped[bool] = mapped_column(Boolean, default=False)
     message: Mapped[str] = mapped_column(Text, default="")
+    app: Mapped[str] = mapped_column(String(16), default="")
 
 
 class AppSnapshot(Base):

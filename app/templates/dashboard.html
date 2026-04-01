@@ -1,6 +1,23 @@
 {% extends "layout.html" %}
 {% from "macros/arr_panel.html" import arr_panel %}
 {% from "macros/activity_row.html" import activity_row %}
+{%- macro automation_sparkline_block(automation_view, app_slug, tile_title) -%}
+{%- set _key = app_slug ~ '_sparkline' -%}
+{%- set _spark = automation_view.get(_key, []) -%}
+{%- if _spark is defined and _spark|length > 0 -%}
+        <div class="dash-sparkline-wrap">
+          <div class="dash-sparkline-row">
+            <span class="dash-sparkline-label small muted">Last 7 runs</span>
+            <div class="dash-sparkline" role="img" aria-label="Last 7 {{ tile_title }} automation runs: oldest left, newest right. Green succeeded, red failed, faint empty slot." id="dash-sparkline-{{ app_slug }}">
+              {%- for dot in _spark -%}
+              <span class="dash-spark-dot {% if dot is none %}dash-spark-dot--none{% elif dot %}dash-spark-dot--ok{% else %}dash-spark-dot--fail{% endif %}" aria-hidden="true"></span>
+              {%- endfor -%}
+            </div>
+          </div>
+        </div>
+        <div class="dash-automation-card-divider" aria-hidden="true"></div>
+{%- endif -%}
+{%- endmacro -%}
 {% block content %}
 <div class="wrap">
   <div class="page-head">
@@ -97,6 +114,7 @@
             <dd class="dash-summary-meta-dd automation-card-subline">{% if av.sonarr_enabled %}<span id="dash-next-sonarr-tick">{% if av.next_sonarr_tick_local %}{{ av.next_sonarr_tick_local }}{% else %}<span class="muted automation-value-pending">Scheduled</span>{% endif %}</span>{% if av.next_sonarr_relative %} <span class="small muted" id="dash-next-sonarr-rel">({{ av.next_sonarr_relative }})</span>{% endif %}{% else %}<span class="automation-off-state"><span class="automation-off-state__primary">Automation off</span><span class="automation-off-state__hint">Enable in settings</span></span>{% endif %}</dd>
           </div>
         </dl>
+        {{ automation_sparkline_block(av, "sonarr", "Sonarr") }}
         <div class="dash-summary-tile-footer automation-tile-footer">
           <div class="automation-footer-note dash-summary-tile-hint small muted automation-app-hint" id="dash-sonarr-hint"{% if not av.sonarr_automation_sub %} hidden{% endif %}>{{ av.sonarr_automation_sub }}</div>
         </div>
@@ -119,6 +137,7 @@
             <dd class="dash-summary-meta-dd automation-card-subline">{% if av.radarr_enabled %}<span id="dash-next-radarr-tick">{% if av.next_radarr_tick_local %}{{ av.next_radarr_tick_local }}{% else %}<span class="muted automation-value-pending">Scheduled</span>{% endif %}</span>{% if av.next_radarr_relative %} <span class="small muted" id="dash-next-radarr-rel">({{ av.next_radarr_relative }})</span>{% endif %}{% else %}<span class="automation-off-state"><span class="automation-off-state__primary">Automation off</span><span class="automation-off-state__hint">Enable in settings</span></span>{% endif %}</dd>
           </div>
         </dl>
+        {{ automation_sparkline_block(av, "radarr", "Radarr") }}
         <div class="dash-summary-tile-footer automation-tile-footer">
           <div class="automation-footer-note dash-summary-tile-hint small muted automation-app-hint" id="dash-radarr-hint"{% if not av.radarr_automation_sub %} hidden{% endif %}>{{ av.radarr_automation_sub }}</div>
         </div>
@@ -130,8 +149,18 @@
           <div class="dash-summary-meta-row">
             <dt>Last run</dt>
             <dd class="dash-summary-meta-dd" id="dash-last-refiner-run">
-              {% if av.refiner_last_run_at %}
-                <span class="dash-summary-run-line"><strong class="dash-summary-time-emphasis">{{ av.refiner_last_run_at.strftime('%d-%m-%Y %I:%M %p') }}</strong></span>
+              {% if av.last_refiner_run.time_local %}
+                <span class="dash-summary-run-line">
+                  <strong class="dash-summary-time-emphasis" id="dash-last-refiner-rel">
+                    {{ av.last_refiner_run.relative }}</strong>
+                  <span class="small muted dash-summary-run-clock">
+                    · {{ av.last_refiner_run.time_local }}</span>
+                </span>
+                {% if av.last_refiner_run.ok is sameas true %}
+                  <span class="status-pill status-pill-ok">Succeeded</span>
+                {% elif av.last_refiner_run.ok is sameas false %}
+                  <span class="status-pill status-pill-fail">Failed</span>
+                {% endif %}
               {% else %}
                 <span class="dash-summary-empty-state">Not yet run</span>
               {% endif %}
@@ -142,7 +171,12 @@
             <dd class="dash-summary-meta-dd automation-card-subline">{% if av.refiner_enabled %}<span id="dash-next-refiner-tick"><span class="muted automation-value-pending">Scheduled</span></span>{% else %}<span class="automation-off-state"><span class="automation-off-state__primary">Automation off</span><span class="automation-off-state__hint">Enable in settings</span></span>{% endif %}</dd>
           </div>
         </dl>
+        {{ automation_sparkline_block(av, "refiner", "Refiner") }}
         <div class="dash-summary-tile-footer automation-tile-footer">
+          <div id="dash-refiner-live-progress" {% if not av.refiner_live_total %}hidden{% endif %}
+               class="automation-footer-note small">
+            Remuxing {{ av.refiner_live_done }} of {{ av.refiner_live_total }} files…
+          </div>
           <div class="automation-footer-note dash-summary-tile-hint small muted automation-app-hint" id="dash-refiner-hint" hidden></div>
           {%- if not av.refiner_enabled -%}<a class="ink-link automation-footer-action" href="/refiner/settings">Refiner settings</a>{%- endif -%}
         </div>
@@ -165,6 +199,7 @@
             <dd class="dash-summary-meta-dd automation-card-subline">{% if av.emby_enabled %}<span id="dash-next-trimmer-tick">{% if av.next_trimmer_tick_local %}{{ av.next_trimmer_tick_local }}{% else %}<span class="muted automation-value-pending">Scheduled</span>{% endif %}</span>{% if av.next_trimmer_relative %} <span class="small muted" id="dash-next-trimmer-rel">({{ av.next_trimmer_relative }})</span>{% endif %}{% else %}<span class="automation-off-state"><span class="automation-off-state__primary">Automation off</span><span class="automation-off-state__hint">Enable in settings</span></span>{% endif %}</dd>
           </div>
         </dl>
+        {{ automation_sparkline_block(av, "trimmer", "Trimmer") }}
         <div class="dash-summary-tile-footer automation-tile-footer">
           <div class="automation-footer-note dash-summary-tile-hint small muted automation-app-hint" id="dash-trimmer-hint"{% if not av.trimmer_automation_sub %} hidden{% endif %}>{{ av.trimmer_automation_sub }}</div>
           {%- if not av.emby_enabled -%}<a class="ink-link automation-footer-action" href="/trimmer/settings">Trimmer settings</a>{%- endif -%}
