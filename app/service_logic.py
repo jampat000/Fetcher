@@ -1116,37 +1116,34 @@ def _detail_from_labels(labels: list[str]) -> str:
 
 
 def _activity_missing_no_search_detail(*, app: str, reason: str, candidates: int | None = None) -> str:
-    """Two-line Activity detail for missing search when nothing was queued (manual actions only)."""
+    """User-facing Activity detail only (manual actions); internal counts stay in JobRunLog actions."""
+    del candidates  # retained for signature stability; do not surface upstream totals in Activity
     is_tv = app == "sonarr"
-    media = "TV" if is_tv else "Movies"
     label = "episodes" if is_tv else "movies"
     if reason == "retry_delay":
-        c = int(candidates or 0)
-        user = (
-            f"No missing search was started. All {c} monitored missing {label} "
-            f"are still inside Fetcher’s retry wait period."
+        return (
+            "All eligible items are still waiting for retry delay to expire.\n"
+            "Fetcher will try again automatically."
         )
-        tech = f"Technical · {media} · candidates={c}; skipped due to retry delay."
-        return f"{user}\n{tech}"
-    user = f"No missing search was started — there are no eligible missing {label} for Fetcher to queue right now."
-    tech = f"Technical · {media} · wanted queue empty or nothing matched filters."
-    return f"{user}\n{tech}"
+    return (
+        f"No {label} are eligible for a missing search right now.\n"
+        "Fetcher will try again automatically."
+    )
 
 
 def _activity_upgrade_manual_blocked_detail(*, app: str, reason: str) -> str:
-    """Two-line Activity detail for manual upgrade search when nothing was queued."""
-    media = "TV" if app == "sonarr" else "Movies"
+    """User-facing Activity detail only for manual upgrade when nothing was queued."""
+    is_tv = app == "sonarr"
     if reason == "retry_delay":
-        user = (
-            "No upgrade search was started — everything in the cutoff queue is still inside "
-            "Fetcher’s retry wait period."
+        return (
+            "All eligible items are still waiting for retry delay to expire.\n"
+            "Fetcher will try again automatically."
         )
-        tech = f"Technical · {media} · skipped due to retry delay."
-        return f"{user}\n{tech}"
-    unit = "episodes" if app == "sonarr" else "movies"
-    user = f"No upgrade search was started — no {unit} need a cutoff upgrade search right now."
-    tech = f"Technical · {media} · cutoff-unmet queue empty."
-    return f"{user}\n{tech}"
+    unit = "episodes" if is_tv else "movies"
+    return (
+        f"No {unit} are eligible for an upgrade search right now.\n"
+        "Fetcher will try again automatically."
+    )
 
 
 def _sanitize_log_text(text: str | None) -> str:

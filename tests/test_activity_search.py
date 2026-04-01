@@ -25,7 +25,7 @@ def test_normalize_activity_tab_query_aliases() -> None:
 
 def test_filter_activity_display_for_search_case_insensitive_substring() -> None:
     rows: list[dict] = [
-        {"primary_label": "TV · Missing search · 2 episodes", "detail_lines": ["Show Alpha"], "activity_tab_scope": "sonarr"},
+        {"primary_label": "TV · Missing search · 2 episodes searched", "detail_lines": ["Show Alpha"], "activity_tab_scope": "sonarr"},
         {"primary_label": "Other", "detail_lines": [], "activity_tab_scope": "sonarr"},
     ]
     out = filter_activity_display_for_search(rows, "alpha")

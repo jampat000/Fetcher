@@ -1,4 +1,19 @@
 {# Shared dashboard + activity list row. ``e``: primary_label, time_local, app, kind, count, detail_lines (list[str]). #}
+{% macro rfn_compare_stream_val(row, col) %}
+{% set pk = 'before' if col == 'before' else 'after' %}
+{% set fk = 'before_full' if col == 'before' else 'after_full' %}
+{% set preview = row[pk] %}
+{% set full = row[fk] if fk in row else none %}
+{% if row.label != 'File size' and full is not none and full != preview %}
+<details class="rfn-compare-val-details">
+  <summary class="rfn-compare-val-summary"><span class="rfn-compare-val-preview-text">{{ preview }}</span><span class="rfn-compare-val-toggle" aria-hidden="true"></span></summary>
+  <div class="rfn-compare-val-expanded">{{ full }}</div>
+</details>
+{% else %}
+{{ preview }}
+{% endif %}
+{% endmacro %}
+
 {% macro activity_row(e, preview_lines) %}
 {% set pl = e.detail_preview if e.detail_preview is defined else preview_lines %}
 {% set _outcome = e.activity_outcome if e.activity_outcome is defined else 'success' %}
@@ -84,9 +99,9 @@
                   <div class="rfn-compare-col rfn-compare-col--success-before">
                     <div class="rfn-compare-col-head rfn-compare-col-head--premium">Before</div>
                     {% for row in _rows %}
-                    <div class="rfn-compare-line rfn-compare-line--premium{% if row.label == 'Subtitles' %} rfn-compare-line--subs{% endif %}">
+                    <div class="rfn-compare-line rfn-compare-line--premium{% if row.label in ['Audio', 'Subtitles'] %} rfn-compare-line--stream{% endif %}">
                       <span class="rfn-compare-line-label">{{ row.label }}</span>
-                      <span class="rfn-compare-line-val">{{ row.before }}</span>
+                      <span class="rfn-compare-line-val">{{ rfn_compare_stream_val(row, 'before') }}</span>
                     </div>
                     {% endfor %}
                   </div>
@@ -96,9 +111,9 @@
                   <div class="rfn-compare-col rfn-compare-col--success-after">
                     <div class="rfn-compare-col-head rfn-compare-col-head--premium">After</div>
                     {% for row in _rows %}
-                    <div class="rfn-compare-line rfn-compare-line--premium{% if row.label == 'Subtitles' %} rfn-compare-line--subs{% endif %}">
+                    <div class="rfn-compare-line rfn-compare-line--premium{% if row.label in ['Audio', 'Subtitles'] %} rfn-compare-line--stream{% endif %}">
                       <span class="rfn-compare-line-label">{{ row.label }}</span>
-                      <span class="rfn-compare-line-val rfn-compare-line-val--after">{{ row.after }}</span>
+                      <span class="rfn-compare-line-val rfn-compare-line-val--after">{{ rfn_compare_stream_val(row, 'after') }}</span>
                     </div>
                     {% endfor %}
                   </div>
@@ -113,9 +128,9 @@
                   <div class="rfn-compare-col rfn-compare-col--before">
                     <div class="rfn-compare-col-head">Before</div>
                     {% for row in _rows %}
-                    <div class="rfn-compare-line{% if row.label == 'Subtitles' %} rfn-compare-line--subs{% endif %}">
+                    <div class="rfn-compare-line{% if row.label in ['Audio', 'Subtitles'] %} rfn-compare-line--stream{% endif %}">
                       <span class="rfn-compare-line-label">{{ row.label }}</span>
-                      <span class="rfn-compare-line-val">{{ row.before }}</span>
+                      <span class="rfn-compare-line-val">{{ rfn_compare_stream_val(row, 'before') }}</span>
                     </div>
                     {% endfor %}
                   </div>
@@ -123,9 +138,9 @@
                   <div class="rfn-compare-col rfn-compare-col--after">
                     <div class="rfn-compare-col-head">After</div>
                     {% for row in _rows %}
-                    <div class="rfn-compare-line{% if row.label == 'Subtitles' %} rfn-compare-line--subs{% endif %}">
+                    <div class="rfn-compare-line{% if row.label in ['Audio', 'Subtitles'] %} rfn-compare-line--stream{% endif %}">
                       <span class="rfn-compare-line-label">{{ row.label }}</span>
-                      <span class="rfn-compare-line-val rfn-compare-line-val--after">{{ row.after }}</span>
+                      <span class="rfn-compare-line-val rfn-compare-line-val--after">{{ rfn_compare_stream_val(row, 'after') }}</span>
                     </div>
                     {% endfor %}
                   </div>

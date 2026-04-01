@@ -4558,16 +4558,60 @@ form[action="/trimmer/settings/cleaner"] .card.gc .toggle-label {
   font-weight: 650;
 }
 
-/* Refiner compare — subtitle cells stay compact even if context carried long lists */
-.rfn-compare-line--subs .rfn-compare-line-val {
-  max-width: min(38ch, 100%);
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
-  word-break: break-word;
+/* Refiner compare — audio/subtitle cells: preview + optional expand */
+.rfn-compare-line--stream .rfn-compare-line-val {
+  max-width: min(40ch, 100%);
   text-align: right;
+  word-break: break-word;
+}
+
+.rfn-compare-val-details {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  text-align: right;
+}
+
+.rfn-compare-val-summary {
+  cursor: pointer;
+  list-style: none;
+  display: inline-block;
+  max-width: 100%;
+  text-align: right;
+  color: var(--text2);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.rfn-compare-val-summary::-webkit-details-marker {
+  display: none;
+}
+
+.rfn-compare-val-preview-text {
+  color: var(--text);
+  font-weight: 550;
+}
+
+.rfn-compare-val-toggle::after {
+  content: " · Show all";
+  font-weight: 600;
+  color: rgba(147, 197, 253, 0.95);
+}
+
+.rfn-compare-val-details[open] .rfn-compare-val-toggle::after {
+  content: " · Show less";
+}
+
+.rfn-compare-val-expanded {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: right;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(226, 232, 240, 0.95);
 }
 
 .rfn-compare-line-label {

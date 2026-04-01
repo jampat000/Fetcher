@@ -22,7 +22,7 @@ def test_humanize_legacy_missing_no_eligible_returns_none_when_count_positive() 
     )
 
 
-def test_humanize_legacy_missing_retry_delay_sonarr() -> None:
+def test_humanize_legacy_missing_retry_delay_sonarr_no_internal_counts() -> None:
     lines = _humanize_legacy_arr_search_detail_lines(
         "sonarr",
         "missing",
@@ -30,10 +30,10 @@ def test_humanize_legacy_missing_retry_delay_sonarr() -> None:
         0,
     )
     assert lines is not None
-    assert "No missing search was started" in lines[0]
-    assert "4" in lines[0]
-    assert "episodes" in lines[0]
-    assert "Technical · TV" in lines[1]
+    assert lines[0] == "All eligible items are still waiting for retry delay to expire."
+    assert lines[1] == "Fetcher will try again automatically."
+    assert "candidates" not in "\n".join(lines).lower()
+    assert "Technical" not in "\n".join(lines)
 
 
 def test_humanize_legacy_missing_retry_delay_radarr() -> None:
@@ -44,8 +44,7 @@ def test_humanize_legacy_missing_retry_delay_radarr() -> None:
         0,
     )
     assert lines is not None
-    assert "movies" in lines[0]
-    assert "Technical · Movies" in lines[1]
+    assert "Fetcher will try again automatically." in lines[1]
 
 
 def test_activity_display_row_missing_primary_label_tv_and_movies() -> None:
@@ -68,11 +67,13 @@ def test_activity_display_row_missing_primary_label_tv_and_movies() -> None:
         count=1,
         detail="M",
     )
-    assert activity_display_row(son, "UTC")["primary_label"] == "TV · Missing search · 3 episodes"
-    assert activity_display_row(rad, "UTC")["primary_label"] == "Movies · Missing search · 1 movie"
+    assert activity_display_row(son, "UTC")["primary_label"] == "TV · Missing search · 3 episodes searched"
+    assert activity_display_row(rad, "UTC")["primary_label"] == "Movies · Missing search · 1 movie searched"
+    son_row = activity_display_row(son, "UTC")
+    assert son_row["detail_lines"][0] == "Started a missing search for 3 episodes."
 
 
-def test_activity_display_row_upgrade_zero_uses_product_label() -> None:
+def test_activity_display_row_upgrade_zero_uses_product_copy() -> None:
     ts = datetime(2026, 1, 1, 12, 0, 0)
     e = ActivityLog(
         id=1,
@@ -85,8 +86,8 @@ def test_activity_display_row_upgrade_zero_uses_product_label() -> None:
     )
     row = activity_display_row(e, "UTC")
     assert row["primary_label"] == "TV · Upgrade search · No search started"
-    assert "No upgrade search was started" in row["detail_lines"][0]
-    assert "retry wait period" in row["detail_lines"][0].lower()
+    assert row["detail_lines"][0] == "All eligible items are still waiting for retry delay to expire."
+    assert row["detail_lines"][1] == "Fetcher will try again automatically."
 
 
 def test_activity_display_row_missing_legacy_humanized_in_ui() -> None:
@@ -106,8 +107,30 @@ def test_activity_display_row_missing_legacy_humanized_in_ui() -> None:
     )
     row = activity_display_row(e, "UTC")
     assert row["primary_label"] == "Movies · Missing search · No search started"
-    assert "No missing search was started" in row["detail_lines"][0]
-    assert "eligible missing" in row["detail_lines"][0]
+    assert "No movies are eligible for a missing search right now." in row["detail_lines"][0]
+    assert "Technical" not in "\n".join(row["detail_lines"])
+
+
+def test_activity_display_row_scrubs_midrelease_monitored_missing_wording() -> None:
+    ts = datetime(2026, 1, 1, 12, 0, 0)
+    e = ActivityLog(
+        id=1,
+        job_run_id=1,
+        created_at=ts,
+        app="sonarr",
+        kind="missing",
+        count=0,
+        detail=(
+            "No missing search was started. All 48 monitored missing episodes are still inside "
+            "Fetcher’s retry wait period.\n"
+            "Technical · TV · candidates=48; skipped due to retry delay."
+        ),
+    )
+    row = activity_display_row(e, "UTC")
+    assert "48" not in "\n".join(row["detail_lines"])
+    assert "monitored missing" not in "\n".join(row["detail_lines"]).lower()
+    assert "Technical" not in "\n".join(row["detail_lines"])
+    assert row["detail_lines"][0] == "All eligible items are still waiting for retry delay to expire."
 
 
 @pytest.mark.parametrize(
@@ -142,4 +165,4 @@ def test_activity_display_row_upgrade_no_candidates_parity(
     )
     row = activity_display_row(e, "UTC")
     assert needle in row["detail_lines"][0]
-    assert "cutoff upgrade" in row["detail_lines"][0].lower()
+    assert "eligible for an upgrade search" in row["detail_lines"][0].lower()

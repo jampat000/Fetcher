@@ -31,8 +31,8 @@ def _display(val: object, *, empty: str = "—") -> str:
     return n if n else empty
 
 
-def compact_subtitle_line_for_compare(val: object) -> str:
-    """Shorten long ·-separated subtitle lists so Refiner compare cards stay balanced and scannable."""
+def compact_stream_line_for_compare(val: object) -> str:
+    """Shorten long ·-separated audio/subtitle lists for compact compare previews."""
     n = _norm_line(val)
     if not n:
         return "—"
@@ -47,6 +47,65 @@ def compact_subtitle_line_for_compare(val: object) -> str:
     head = sep.join(parts[:3])
     extra = len(parts) - 3
     return f"{len(parts)} tracks — {head} (+{extra} more)"
+
+
+def compact_subtitle_line_for_compare(val: object) -> str:
+    """Backward-compatible name for :func:`compact_stream_line_for_compare`."""
+    return compact_stream_line_for_compare(val)
+
+
+def _stream_cell_preview_and_full(
+    ctx: dict[str, Any],
+    ctx_key: str,
+    *,
+    is_after: bool,
+    tracks_here: int,
+    tracks_before: int,
+    tracks_after: int,
+) -> tuple[str, str | None]:
+    """Preview (possibly compact) and optional full text for expand-in-place compare cells."""
+    rn = _norm_line(ctx.get(ctx_key))
+    if rn:
+        full = _display(ctx.get(ctx_key))
+        prev = compact_stream_line_for_compare(ctx.get(ctx_key))
+        if prev == full:
+            return prev, None
+        return prev, full
+    if is_after:
+        if tracks_before > tracks_after and tracks_after == 0:
+            return "Removed", None
+        if tracks_here > 0:
+            return f"{tracks_here} track(s)", None
+        return "None", None
+    if tracks_here > 0:
+        return f"{tracks_here} track(s)", None
+    return "None", None
+
+
+def _stream_compare_row(label: str, ctx: dict[str, Any], tb: int, ta: int) -> dict[str, Any]:
+    """One Audio or Subtitles row with optional before_full/after_full for <details> expansion."""
+    b_prev, b_full = _stream_cell_preview_and_full(
+        ctx,
+        "audio_before" if label == "Audio" else "subs_before",
+        is_after=False,
+        tracks_here=tb,
+        tracks_before=tb,
+        tracks_after=ta,
+    )
+    a_prev, a_full = _stream_cell_preview_and_full(
+        ctx,
+        "audio_after" if label == "Audio" else "subs_after",
+        is_after=True,
+        tracks_here=ta,
+        tracks_before=tb,
+        tracks_after=ta,
+    )
+    row: dict[str, Any] = {"label": label, "before": b_prev, "after": a_prev}
+    if b_full is not None:
+        row["before_full"] = b_full
+    if a_full is not None:
+        row["after_full"] = a_full
+    return row
 
 
 def _ctx_lines_differ(ctx: dict[str, Any]) -> bool:
@@ -89,24 +148,12 @@ def _compare_rows_audio_subs_size(
     if include_audio_subs:
         ab_raw = _norm_line(ctx.get("audio_before"))
         aa_raw = _norm_line(ctx.get("audio_after"))
-        ab_line = _display(ctx.get("audio_before"))
-        aa_line = _display(ctx.get("audio_after"))
         if ab_raw or aa_raw or ab != aa:
-            bf = ab_line if ab_raw else (f"{ab} track(s)" if ab else "—")
-            af = aa_line if aa_raw else (f"{aa} track(s)" if aa else "—")
-            rows.append({"label": "Audio", "before": bf, "after": af})
+            rows.append(_stream_compare_row("Audio", ctx, ab, aa))
         sb_raw = _norm_line(ctx.get("subs_before"))
         sa_raw = _norm_line(ctx.get("subs_after"))
-        sb_line = _display(ctx.get("subs_before"))
-        sa_line = _display(ctx.get("subs_after"))
         if sb_raw or sa_raw or sbb != sba:
-            rows.append(
-                {
-                    "label": "Subtitles",
-                    "before": compact_subtitle_line_for_compare(ctx.get("subs_before")),
-                    "after": compact_subtitle_line_for_compare(ctx.get("subs_after")),
-                }
-            )
+            rows.append(_stream_compare_row("Subtitles", ctx, sbb, sba))
     bsz = _fmt_size_bytes_si(sb)
     if failed:
         rows.append({"label": "File size", "before": bsz, "after": "—"})

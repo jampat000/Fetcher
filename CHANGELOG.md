@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.7.2 — 2026-04-01
+
+### Improved
+
+- **Activity — Refiner compare:** Audio and Subtitles cells show a compact preview by default; inline **Show all / Show less** (`<details>`) reveals the full stream list without leaving the card. Empty stream states use **None** / **Removed** instead of bare dashes where appropriate. File size row unchanged.
+- **Activity — Sonarr/Radarr:** Missing/upgrade rows no longer show a **Technical** line or raw upstream candidate counts. Copy describes retry delay, eligibility, and automatic retries; successful searches add a clear **Started a … search for N …** headline and primary labels end with **searched** for the action count. Legacy and mid-release stored rows are scrubbed/humanized in the UI to the same standard.
+
+### Tests
+
+- Added coverage for expandable stream compare rows and Arr search display/scrub behavior.
+
 ## 3.7.1 — 2026-04-01
 
 ### Improved

@@ -641,8 +641,9 @@ def test_run_once_manual_sonarr_missing_all_retry_delay_writes_friendly_activity
     assert act is not None
     assert act.kind == "missing"
     assert act.count == 0
-    assert "No missing search was started" in (act.detail or "")
-    assert "retry wait period" in (act.detail or "").lower()
+    assert "retry delay" in (act.detail or "").lower()
+    assert "Fetcher will try again automatically." in (act.detail or "")
+    assert "monitored missing" not in (act.detail or "").lower()
 
 
 def test_run_once_radarr_manual_upgrade_success_activity_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -776,7 +777,7 @@ def test_run_once_manual_sonarr_missing_no_results_writes_activity(monkeypatch: 
     assert act.app == "sonarr"
     assert act.kind == "missing"
     assert act.count == 0
-    assert "No missing search was started" in (act.detail or "")
+    assert "No episodes are eligible for a missing search right now." in (act.detail or "")
     assert asyncio.run(_activity_count_for("sonarr", "missing")) == 1
 
 
@@ -822,7 +823,7 @@ def test_run_once_manual_radarr_missing_no_results_writes_activity(monkeypatch: 
     assert act.app == "radarr"
     assert act.kind == "missing"
     assert act.count == 0
-    assert "No missing search was started" in (act.detail or "")
+    assert "No movies are eligible for a missing search right now." in (act.detail or "")
     assert asyncio.run(_activity_count_for("radarr", "missing")) == 1
 
 
