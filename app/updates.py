@@ -18,7 +18,7 @@ from urllib.parse import unquote
 import httpx
 from fastapi import APIRouter, Depends, Query
 
-from app.auth import require_auth
+from app.auth import require_auth, require_csrf
 from packaging.version import InvalidVersion, Version
 from starlette.responses import JSONResponse
 
@@ -434,7 +434,7 @@ async def api_updates_check(refresh: str | None = Query(None)) -> JSONResponse:
     return _no_store_json(await _compute_updates_check_payload())
 
 
-@router.post("/apply")
+@router.post("/apply", dependencies=[Depends(require_csrf)])
 async def api_updates_apply() -> dict[str, Any]:
     if not _platform_ok():
         return {"ok": False, "error": "In-app upgrade is only supported on Windows."}

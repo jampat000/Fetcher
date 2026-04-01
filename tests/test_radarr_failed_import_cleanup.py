@@ -521,7 +521,9 @@ async def _run_delete_failure() -> None:
     assert any("failed import removal failed" in a.lower() for a in actions)
     async with SessionLocal() as session:
         n = (await session.execute(select(ActivityLog))).scalars().all()
-        assert len(n) == 0
+        assert len(n) == 1
+        assert n[0].status == "failed"
+        assert "Failed import removal failed" in (n[0].detail or "")
 
 
 class _FakeNonUpgradeQueueOnlyClient(_FakeRadarrClient):

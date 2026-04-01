@@ -37,6 +37,24 @@ ACTIVITY_TAB_TRIMMER = "trimmer"
 ACTIVITY_TAB_REFINER = "refiner"
 
 
+def sidebar_health_dots(snapshots: dict[str, Any]) -> dict[str, str]:
+    """Return ``ok``, ``fail``, or ``unknown`` per integration snapshot.
+
+    Keys: ``sonarr``, ``radarr``, ``emby`` (media server; Trimmer/Refiner). Layout uses
+    only ``sonarr`` + ``radarr`` next to **Settings**; **Refiner** / **Trimmer** use ``emby``.
+    """
+    result: dict[str, str] = {}
+    for app in ("sonarr", "radarr", "emby"):
+        snap = snapshots.get(app)
+        if snap is None:
+            result[app] = "unknown"
+        elif bool(getattr(snap, "ok", False)):
+            result[app] = "ok"
+        else:
+            result[app] = "fail"
+    return result
+
+
 def activity_log_tab_scope(e: ActivityLog) -> str:
     """Classify an ``ActivityLog`` row for Activity tab filtering (server + ``data-activity-tab-scope``)."""
     app = (getattr(e, "app", "") or "").strip().lower()

@@ -643,6 +643,31 @@ function applyDashboardAutomationHints(data) {
   setHint("dash-trimmer-hint", data.trimmer_automation_sub);
 }
 
+function renderDashboardAutomationSparkline(elId, spark) {
+  const el = document.getElementById(elId);
+  if (!el || !Array.isArray(spark)) return;
+  el.innerHTML = spark
+    .map((dot) => {
+      const cls =
+        dot === null || dot === undefined
+          ? "dash-spark-dot dash-spark-dot--none"
+          : dot
+            ? "dash-spark-dot dash-spark-dot--ok"
+            : "dash-spark-dot dash-spark-dot--fail";
+      return `<span class="${cls}" aria-hidden="true"></span>`;
+    })
+    .join("");
+}
+
+function applyDashboardAutomationSparklines(data) {
+  if (!data) return;
+  ["sonarr", "radarr", "refiner", "trimmer"].forEach((app) => {
+    const key = `${app}_sparkline`;
+    if (!Array.isArray(data[key])) return;
+    renderDashboardAutomationSparkline(`dash-sparkline-${app}`, data[key]);
+  });
+}
+
 function applyDashboardAutomationStatus(data) {
   if (!data) return;
   applyDashboardFetcherPhase(data);
@@ -721,6 +746,37 @@ function applyDashboardAutomationStatus(data) {
       lastTrimmer.innerHTML = `<span class="dash-summary-run-line"><strong class="dash-summary-time-emphasis" id="dash-last-trimmer-rel">${rel}</strong><span class="small muted dash-summary-run-clock"> · ${escapeHtml(r.time_local)}</span></span>${ok}`;
     } else lastTrimmer.innerHTML = '<span class="dash-summary-empty-state">Not yet run</span>';
   }
+  const lastRefiner = document.getElementById("dash-last-refiner-run");
+  if (lastRefiner) {
+    const r = data.last_refiner_run || {};
+    if (r.time_local) {
+      const ok =
+        r.ok === true
+          ? ' <span class="status-pill status-pill-ok">Succeeded</span>'
+          : r.ok === false
+            ? ' <span class="status-pill status-pill-fail">Failed</span>'
+            : "";
+      lastRefiner.innerHTML =
+        `<span class="dash-summary-run-line"><strong class="dash-summary-time-emphasis" ` +
+        `id="dash-last-refiner-rel">${escapeHtml(r.relative || r.time_local)}</strong>` +
+        `<span class="small muted dash-summary-run-clock"> · ${escapeHtml(r.time_local)}</span>` +
+        `</span>${ok}`;
+    } else {
+      lastRefiner.innerHTML = '<span class="dash-summary-empty-state">Not yet run</span>';
+    }
+  }
+  const refinerProgress = document.getElementById("dash-refiner-live-progress");
+  if (refinerProgress) {
+    const total = data.refiner_live_total || 0;
+    const done = data.refiner_live_done || 0;
+    if (total > 0) {
+      refinerProgress.textContent = `Remuxing ${done} of ${total} files\u2026`;
+      refinerProgress.hidden = false;
+    } else {
+      refinerProgress.hidden = true;
+    }
+  }
+  applyDashboardAutomationSparklines(data);
 }
 
 function applyDashboardStatusPayload(data) {
@@ -797,13 +853,26 @@ function startDashboardStatusPolling() {
   let intervalMs = baseIntervalMs;
   let lastPayloadHash = "";
   let timerId = null;
+  let sseActive = false;
+  let lastKnownRefinerRunIso = "";
+
   const pollAutomation = () => {
     if (document.visibilityState === "hidden") return;
     fetchDashboardStatusJson()
       .then((data) => {
         if (data) {
           applyDashboardAutomationStatus(data);
-          var hash = JSON.stringify([data.fetcher_phase, data.last_sonarr_run, data.last_radarr_run, data.last_trimmer_run]);
+          var hash = JSON.stringify([
+            data.fetcher_phase,
+            data.last_sonarr_run,
+            data.last_radarr_run,
+            data.last_trimmer_run,
+            data.last_refiner_run,
+            data.sonarr_sparkline,
+            data.radarr_sparkline,
+            data.refiner_sparkline,
+            data.trimmer_sparkline,
+          ]);
           if (hash === lastPayloadHash) {
             intervalMs = Math.min(intervalMs * 2, 60000);
           } else {
@@ -829,8 +898,57 @@ function startDashboardStatusPolling() {
       clearTimeout(timerId);
       timerId = null;
     }
-    timerId = window.setTimeout(pollAutomation, intervalMs);
+    timerId = window.setTimeout(pollAutomation, sseActive ? 60000 : intervalMs);
   };
+
+  if (typeof EventSource !== "undefined") {
+    const es = new EventSource("/api/dashboard/stream");
+
+    es.addEventListener("ping", function () {
+      sseActive = true;
+    });
+
+    es.onmessage = function (event) {
+      sseActive = true;
+      try {
+        const data = JSON.parse(event.data);
+        if (data) {
+          applyDashboardStatusPayload(data);
+          intervalMs = baseIntervalMs;
+          lastPayloadHash = JSON.stringify([
+            data.fetcher_phase,
+            data.last_sonarr_run,
+            data.last_radarr_run,
+            data.last_trimmer_run,
+            data.last_refiner_run,
+            data.sonarr_sparkline,
+            data.radarr_sparkline,
+            data.refiner_sparkline,
+            data.trimmer_sparkline,
+          ]);
+          if (typeof window.fetcherLiveTilesPollNow === "function") {
+            window.fetcherLiveTilesPollNow();
+          }
+          if (data.last_refiner_run && data.last_refiner_run.ok === true) {
+            const curIso =
+              data.last_refiner_run.time_iso || data.last_refiner_run.time_local || "";
+            if (curIso && curIso !== lastKnownRefinerRunIso) {
+              lastKnownRefinerRunIso = curIso;
+              if (typeof showToast === "function") {
+                showToast("Refiner complete — check Activity for details.");
+              }
+            }
+          }
+        }
+      } catch (_e) {}
+    };
+
+    es.onerror = function () {
+      sseActive = false;
+      es.close();
+    };
+  }
+
   pollAutomation();
   arm();
   document.addEventListener("visibilitychange", () => {
@@ -2292,6 +2410,14 @@ function initTrimmerSettingsSectionTabs() {
   });
 }
 
+function updateMidnightHint(startSel, endSel, hintId) {
+  const hint = document.getElementById(hintId);
+  if (!hint) return;
+  const s = startSel ? startSel.value : "";
+  const e = endSel ? endSel.value : "";
+  hint.hidden = !(s && e && s > e);
+}
+
 window.addEventListener("DOMContentLoaded", () => {
   injectMeshAndNoise();
   bindInternalLinksTargetTop();
@@ -2312,6 +2438,23 @@ window.addEventListener("DOMContentLoaded", () => {
   initSettingsTabs();
   initTrimmerSettingsSectionTabs();
   initSettingsPageCollapses();
+
+  const sonStart = document.getElementById("fld_sonarr_schedule_start");
+  const sonEnd = document.getElementById("fld_sonarr_schedule_end");
+  const radStart = document.getElementById("fld_radarr_schedule_start");
+  const radEnd = document.getElementById("fld_radarr_schedule_end");
+  const embStart = document.getElementById("fld_emby_schedule_start");
+  const embEnd = document.getElementById("fld_emby_schedule_end");
+  function wireMidnightPair(s, e, hid) {
+    if (!s || !e) return;
+    const upd = () => updateMidnightHint(s, e, hid);
+    s.addEventListener("change", upd);
+    e.addEventListener("change", upd);
+    upd();
+  }
+  wireMidnightPair(sonStart, sonEnd, "sonarr-midnight-hint");
+  wireMidnightPair(radStart, radEnd, "radarr-midnight-hint");
+  wireMidnightPair(embStart, embEnd, "trimmer-midnight-hint");
 
   staggerClass(".hero-stat", 0, 60, "anim-in");
   staggerClass(".card.gc, .gc.card", 0, 80, "anim-in");

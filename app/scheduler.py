@@ -20,6 +20,21 @@ from app.time_util import utc_now_naive
 
 logger = logging.getLogger(__name__)
 
+_dashboard_changed: asyncio.Event = asyncio.Event()
+
+
+def notify_dashboard_changed() -> None:
+    global _dashboard_changed
+    _dashboard_changed.set()
+    _dashboard_changed = asyncio.Event()
+
+
+async def wait_dashboard_changed(timeout: float = 29.0) -> None:
+    try:
+        await asyncio.wait_for(_dashboard_changed.wait(), timeout=timeout)
+    except asyncio.TimeoutError:
+        pass
+
 
 def _sonarr_configured(settings: AppSettings) -> bool:
     return bool(
@@ -101,6 +116,10 @@ class ServiceScheduler:
         async with self._run_lock:
             async with SessionLocal() as session:
                 await run_once(session, scheduled_scope=scope)
+            try:
+                notify_dashboard_changed()
+            except Exception:
+                pass
 
     async def _job_sonarr(self) -> None:
         await self._run_scope("sonarr")

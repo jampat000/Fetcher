@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.7.0 — 2026-04-01
+
+Minor release (feature scope); use **v3.7.0** instead of the briefly published **v3.6.1** tag.
+
+### Added
+
+- Self-hosted Lucide bundle (`lucide.min.js`) for offline-friendly icons.
+- Dashboard Refiner tile shows live pass progress when a scheduled pass is active.
+
+### Fixed
+
+- SQLite migration chain: restore `job_run_log.app` and Refiner pass-progress columns with a safe guard when `job_run_log` is missing; document intentional gaps in migration numbering.
+
+### Improved
+
+- Refiner Activity success rows: inline before/after comparison card (no `<details>`), prominent size-delta badge with saved-size hint from summary bullets, Lucide arrow between columns.
+- Dashboard status polling and automation card hints refined (backoff, timeouts, layout).
+- Sonarr/Radarr failed-import cleanup and related tests updated.
+
 ## 3.6.0 — 2026-04-01
 
 ### Security

@@ -200,10 +200,12 @@ async def require_csrf(request: Request, session: AsyncSession = Depends(get_ses
         raw_tok = raw_tok[0] if raw_tok else ""
     token = (raw_tok or "").strip()
     if not verify_csrf_token(token, secret, username):
-        raise HTTPException(
-            status_code=403,
-            detail="Invalid or expired CSRF token. Please reload the page and try again.",
-        )
+        header_tok = (request.headers.get("X-CSRF-Token") or "").strip()
+        if not (header_tok and verify_csrf_token(header_tok, secret, username)):
+            raise HTTPException(
+                status_code=403,
+                detail="Invalid or expired CSRF token. Please reload the page and try again.",
+            )
 
 
 def attach_session_cookie(

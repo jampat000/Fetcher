@@ -70,7 +70,7 @@
       <input class="input" id="sonarr_url" name="sonarr_url" type="text" value="{{ settings.sonarr_url }}" placeholder="http://localhost:8989" inputmode="url" autocomplete="off" autocorrect="off" spellcheck="false" data-fetcher-integration-url="1" readonly onfocus="this.removeAttribute('readonly');" />
       <label for="sonarr_api_key">Sonarr API key — proves Fetcher is allowed to use the Sonarr API</label>
       <div class="control">
-        <input class="password" id="sonarr_api_key" name="sonarr_api_key" type="password" value="{{ settings.sonarr_api_key }}" placeholder="X-Api-Key" autocomplete="off" data-fetcher-integration-secret="1" readonly onfocus="this.removeAttribute('readonly');" />
+        <input class="password" id="sonarr_api_key" name="sonarr_api_key" type="password" value="{{ template_sonarr_api_key }}" placeholder="X-Api-Key" autocomplete="off" data-fetcher-integration-secret="1" readonly onfocus="this.removeAttribute('readonly');" />
         <button class="icon-btn" data-reveal="sonarr_api_key" type="button">Show</button>
       </div>
       <div class="setup-wizard-buttons">
@@ -86,7 +86,7 @@
       <input class="input" id="radarr_url" name="radarr_url" type="text" value="{{ settings.radarr_url }}" placeholder="http://localhost:7878" inputmode="url" autocomplete="off" autocorrect="off" spellcheck="false" data-fetcher-integration-url="1" readonly onfocus="this.removeAttribute('readonly');" />
       <label for="radarr_api_key">Radarr API key — proves Fetcher is allowed to use the Radarr API</label>
       <div class="control">
-        <input class="password" id="radarr_api_key" name="radarr_api_key" type="password" value="{{ settings.radarr_api_key }}" placeholder="X-Api-Key" autocomplete="off" data-fetcher-integration-secret="1" readonly onfocus="this.removeAttribute('readonly');" />
+        <input class="password" id="radarr_api_key" name="radarr_api_key" type="password" value="{{ template_radarr_api_key }}" placeholder="X-Api-Key" autocomplete="off" data-fetcher-integration-secret="1" readonly onfocus="this.removeAttribute('readonly');" />
         <button class="icon-btn" data-reveal="radarr_api_key" type="button">Show</button>
       </div>
       <div class="setup-wizard-buttons">
@@ -102,7 +102,7 @@
       <input class="input" id="emby_url" name="emby_url" type="text" value="{{ settings.emby_url }}" placeholder="http://localhost:8096" inputmode="url" autocomplete="off" autocorrect="off" spellcheck="false" data-fetcher-integration-url="1" readonly onfocus="this.removeAttribute('readonly');" />
       <label for="emby_api_key">Emby API key — from Dashboard → Advanced → API Keys (not your login password)</label>
       <div class="control">
-        <input class="password" id="emby_api_key" name="emby_api_key" type="password" value="{{ settings.emby_api_key }}" placeholder="API key" autocomplete="off" data-fetcher-integration-secret="1" readonly onfocus="this.removeAttribute('readonly');" />
+        <input class="password" id="emby_api_key" name="emby_api_key" type="password" value="{{ template_emby_api_key }}" placeholder="API key" autocomplete="off" data-fetcher-integration-secret="1" readonly onfocus="this.removeAttribute('readonly');" />
         <button class="icon-btn" data-reveal="emby_api_key" type="button">Show</button>
       </div>
       <label for="emby_user_id">Emby user ID (optional) — only if your server requires requests scoped to one user’s libraries</label>

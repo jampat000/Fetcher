@@ -57,15 +57,31 @@
           <a href="/settings" class="sidebar-link {% if request.url.path == '/settings' %}active{% endif %}">
             <i data-lucide="settings" class="sidebar-icon"></i>
             <span>Settings</span>
+            {% if sidebar_health is defined %}
+            <span class="sidebar-health-dots" aria-hidden="true">
+              <span class="sidebar-health-dot sidebar-health-dot--{{ sidebar_health.get('sonarr', 'unknown') }}" title="Sonarr connection"></span>
+              <span class="sidebar-health-dot sidebar-health-dot--{{ sidebar_health.get('radarr', 'unknown') }}" title="Radarr connection"></span>
+            </span>
+            {% endif %}
           </a>
           <div class="sidebar-divider" aria-hidden="true"></div>
           <a href="/refiner" class="sidebar-link {% if request.url.path in ['/refiner', '/refiner/settings'] %}active{% endif %}">
             <i data-lucide="sliders-horizontal" class="sidebar-icon"></i>
             <span>Refiner</span>
+            {% if sidebar_health is defined %}
+            <span class="sidebar-health-dots sidebar-health-dots--solo" aria-hidden="true">
+              <span class="sidebar-health-dot sidebar-health-dot--{{ sidebar_health.get('emby', 'unknown') }}" title="Media server reachability (Emby)"></span>
+            </span>
+            {% endif %}
           </a>
           <a href="/trimmer" class="sidebar-link {% if request.url.path in ['/trimmer', '/trimmer/settings'] %}active{% endif %}">
             <i data-lucide="sparkles" class="sidebar-icon"></i>
             <span>Trimmer</span>
+            {% if sidebar_health is defined %}
+            <span class="sidebar-health-dots sidebar-health-dots--solo" aria-hidden="true">
+              <span class="sidebar-health-dot sidebar-health-dot--{{ sidebar_health.get('emby', 'unknown') }}" title="Media server reachability (Emby)"></span>
+            </span>
+            {% endif %}
           </a>
           <div class="sidebar-divider" aria-hidden="true"></div>
           <a href="/logout" class="sidebar-link">
@@ -93,7 +109,7 @@
       }
     </script>
     <script src="/static/app.js?v={{ app_version|default('1', true) }}"></script>
-    <script src="https://cdn.jsdelivr.net/npm/lucide@0.383.0/dist/umd/lucide.min.js" integrity="sha384-wHFvAtjmgnkA2PJcMsDaCgdipf7X7YV44X/igbLHpvGiq6T5/PvFKl93grpvtbQT" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="/static/lucide.min.js?v={{ app_version|default('1', true) }}"></script>
     <script>
       lucide.createIcons();
     </script>

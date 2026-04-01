@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import attach_session_cookie, get_csrf_token_for_template, hash_password, require_csrf
 from app.branding import APP_NAME, APP_TAGLINE
 from app.constants import _TIMEZONE_CHOICES
-from app.db import get_or_create_settings, get_session
+from app.db import get_or_create_settings, fetch_latest_app_snapshots, get_session
 from app.form_helpers import _normalize_base_url, _resolve_timezone_name
 from app.resolvers.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
 from app.security_utils import encrypt_secret_for_storage
@@ -26,6 +26,7 @@ from app.web_common import (
     settings_looks_like_existing_fetcher_install,
     setup_wizard_step_title,
     is_setup_complete,
+    sidebar_health_dots,
     try_commit_and_reschedule,
 )
 
@@ -51,9 +52,9 @@ async def setup_wizard_page(
     step: int, request: Request, session: AsyncSession = Depends(get_session)
 ) -> HTMLResponse | RedirectResponse:
     settings = await get_or_create_settings(session)
-    settings.sonarr_api_key = resolve_sonarr_api_key(settings)
-    settings.radarr_api_key = resolve_radarr_api_key(settings)
-    settings.emby_api_key = resolve_emby_api_key(settings)
+    template_sonarr_api_key = resolve_sonarr_api_key(settings)
+    template_radarr_api_key = resolve_radarr_api_key(settings)
+    template_emby_api_key = resolve_emby_api_key(settings)
     if not (settings.auth_password_hash or "").strip():
         if step != 0:
             return RedirectResponse("/setup/0", status_code=302)
@@ -75,6 +76,7 @@ async def setup_wizard_page(
         )
     else:
         setup_account_intro = ""
+    snaps_setup = await fetch_latest_app_snapshots(session)
     return templates.TemplateResponse(
         request,
         "setup_wizard.html",
@@ -97,6 +99,10 @@ async def setup_wizard_page(
             "setup_account_intro": setup_account_intro,
             "csrf_token": await get_csrf_token_for_template(request, session),
             "show_setup_wizard": show_setup_wizard,
+            "template_sonarr_api_key": template_sonarr_api_key,
+            "template_radarr_api_key": template_radarr_api_key,
+            "template_emby_api_key": template_emby_api_key,
+            "sidebar_health": sidebar_health_dots(snaps_setup),
         },
     )
 

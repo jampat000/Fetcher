@@ -1902,7 +1902,8 @@ async def _run_once_inner(
     settings = await get_or_create_settings(session)
     await prune_old_records(session, settings)
 
-    log = JobRunLog(started_at=utc_now_naive(), ok=False, message="")
+    _log_app = scheduled_scope if scheduled_scope != "all" else "fetcher"
+    log = JobRunLog(started_at=utc_now_naive(), ok=False, message="", app=_log_app)
     session.add(log)
     _sanitize_pending_log_rows(session)
     await session.commit()
