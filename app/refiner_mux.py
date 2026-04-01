@@ -61,7 +61,16 @@ def ffprobe_json(path: Path, *, timeout_s: int = 120) -> dict[str, Any]:
     )
     if r.returncode != 0:
         raise RuntimeError((r.stderr or r.stdout or "").strip() or "ffprobe failed")
-    return json.loads(r.stdout)
+    raw = r.stdout
+    if not isinstance(raw, str) or not raw.strip():
+        raise RuntimeError("ffprobe returned empty probe output")
+    try:
+        parsed = json.loads(raw)
+    except Exception as e:
+        raise RuntimeError("ffprobe returned invalid JSON output") from e
+    if not isinstance(parsed, dict):
+        raise RuntimeError("ffprobe returned invalid probe payload")
+    return parsed
 
 
 def validate_remux_output(path: Path, *, expected_audio: int = 0) -> None:

@@ -133,6 +133,68 @@ def test_upstream_radarr_title_fallback_prefix_case_blocks(tmp_path: Path) -> No
     assert diag["title_fallback_match_norm_prefix_radarr"] is True
 
 
+def test_upstream_radarr_title_fallback_blocks_when_match_not_first_active_row(tmp_path: Path) -> None:
+    f = tmp_path / "Target.Movie.2026.1080p.WEB-DL.mkv"
+    f.write_bytes(b"x" * 80)
+    rows: list[dict] = [
+        {"status": "paused", "sizeleft": 7_000_000, "title": "Other.Movie.2026.1080p.WEB-DL"},
+        {"status": "paused", "sizeleft": 7_000_000, "title": "Target.Movie.2026.1080p.WEB-DL"},
+        {"status": "paused", "sizeleft": 7_000_000, "title": "Unrelated.Title.2026.1080p"},
+    ]
+    snap = RefinerQueueSnapshot(True, False, True, False, tuple(rows), ())
+    blocked, rc, _m, diag = upstream_analyze_path(f, snap)
+    assert blocked is True
+    assert rc == "radarr_queue_active_download_title"
+    assert diag["title_fallback_match_row_index_radarr"] == 1
+    assert "Target.Movie.2026.1080p.WEB-DL" in (diag.get("title_fallback_match_title_radarr") or "")
+
+
+def test_upstream_radarr_title_fallback_large_active_scan_keeps_correct_match(tmp_path: Path) -> None:
+    f = tmp_path / "Big.Queue.Target.2027.2160p.HDR.mkv"
+    f.write_bytes(b"x" * 80)
+    rows: list[dict] = []
+    for i in range(140):
+        rows.append(
+            {
+                "status": "paused",
+                "sizeleft": 1_000_000 + i,
+                "title": f"Noise.Release.{i}.2027.1080p",
+            }
+        )
+    # Match appears late and via movie.title fallback extraction.
+    rows.append(
+        {
+            "status": "paused",
+            "sizeleft": 2_000_000,
+            "movie": {"title": "Big Queue Target 2027 2160p HDR"},
+        }
+    )
+    rows.append({"status": "paused", "sizeleft": 2_000_001, "title": "Tail.Noise.2027.1080p"})
+    snap = RefinerQueueSnapshot(True, False, True, False, tuple(rows), ())
+    blocked, rc, _m, diag = upstream_analyze_path(f, snap)
+    assert blocked is True
+    assert rc == "radarr_queue_active_download_title"
+    assert diag["title_fallback_match_row_index_radarr"] == 140
+    assert "Big Queue Target 2027 2160p HDR" in (diag.get("title_fallback_match_title_radarr") or "")
+    assert len(diag.get("title_fallback_titles_considered_radarr") or []) > 0
+
+
+def test_upstream_radarr_title_fallback_stops_after_first_match(tmp_path: Path) -> None:
+    f = tmp_path / "Stop.Early.Target.2028.1080p.mkv"
+    f.write_bytes(b"x" * 80)
+    rows: list[dict] = [
+        {"status": "paused", "sizeleft": 3_000_000, "title": "Stop.Early.Target.2028.1080p"},
+        {"status": "paused", "sizeleft": 3_100_000, "title": "Second.Possible.Match.2028.1080p"},
+        {"status": "paused", "sizeleft": 3_200_000, "title": "Third.Possible.Match.2028.1080p"},
+    ]
+    snap = RefinerQueueSnapshot(True, False, True, False, tuple(rows), ())
+    blocked, rc, _m, diag = upstream_analyze_path(f, snap)
+    assert blocked is True
+    assert rc == "radarr_queue_active_download_title"
+    # If scanning continued after first match, row index would be > 0.
+    assert diag["title_fallback_match_row_index_radarr"] == 0
+
+
 def test_upstream_radarr_parent_folder_fallback_when_file_stem_not_release_like(tmp_path: Path) -> None:
     rel = tmp_path / "Movie.Name.2026.1080p.WEB-DL-GROUP"
     rel.mkdir()
@@ -312,6 +374,22 @@ def test_upstream_blocks_when_path_matches_active_radarr_row(tmp_path: Path) -> 
     assert diag["upstream_blocked"] is True
     assert diag["radarr_upstream_active_rows"] >= 1
     assert isinstance(diag.get("candidate_resolved"), str) and len(diag["candidate_resolved"]) > 0
+
+
+def test_upstream_path_match_keeps_path_reason_even_if_title_also_matches(tmp_path: Path) -> None:
+    f = tmp_path / "Path.And.Title.2029.1080p.mkv"
+    f.write_bytes(b"x" * 100)
+    rec = {
+        "status": "downloading",
+        "sizeleft": 10,
+        "outputPath": str(f.resolve()),
+        "title": "Path.And.Title.2029.1080p",
+    }
+    snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+    blocked, rc, _m, diag = upstream_analyze_path(f, snap)
+    assert blocked is True
+    assert rc == "radarr_queue_active_download"
+    assert diag["upstream_block_match_kind"] == "path"
 
 
 def test_decide_authority_blocks_before_file_gate(tmp_path: Path) -> None:

@@ -241,10 +241,24 @@ def derive_title_fallback_candidate(path: Path) -> tuple[str, str]:
 
 def _queue_row_title_candidates(rec: dict[str, Any]) -> list[str]:
     out: list[str] = []
-    for key in ("title", "sourceTitle", "releaseTitle"):
+    for key in ("title", "sourceTitle", "releaseTitle", "downloadClientTitle"):
         v = rec.get(key)
         if isinstance(v, str) and v.strip() and v.strip() not in out:
             out.append(v.strip())
+    movie = rec.get("movie")
+    if isinstance(movie, dict):
+        for key in ("title", "sortTitle", "originalTitle", "folderName"):
+            v = movie.get(key)
+            if isinstance(v, str) and v.strip() and v.strip() not in out:
+                out.append(v.strip())
+    episode = rec.get("episode")
+    if isinstance(episode, dict):
+        series = episode.get("series")
+        if isinstance(series, dict):
+            for key in ("title", "sortTitle"):
+                v = series.get(key)
+                if isinstance(v, str) and v.strip() and v.strip() not in out:
+                    out.append(v.strip())
     return out
 
 
@@ -359,9 +373,13 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
         title_fallback_queue_title_norm = ""
         title_fallback_norm_equal = False
         title_fallback_norm_prefix = False
+        title_fallback_match_row_index = -1
+        title_fallback_match_title = ""
+        title_fallback_match_title_norm = ""
+        title_fallback_titles_considered: list[str] = []
         active_usable_path_count = 0
         active_count = 0
-        for rec in records:
+        for idx, rec in enumerate(records):
             if not isinstance(rec, dict):
                 continue
             active = queue_record_upstream_active(rec)
@@ -369,10 +387,15 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
             path_matched = any(_path_key_matches_candidate(file_key, qp) for qp in q_paths)
             title_matched = False
             title_raw = ""
+            qt = _queue_row_title_candidates(rec)
             if active and not q_paths:
                 title_fallback_entered = True
+                for title_candidate in qt:
+                    if len(title_fallback_titles_considered) < 12:
+                        title_fallback_titles_considered.append(
+                            title_candidate[:160] + ("…" if len(title_candidate) > 160 else "")
+                        )
                 title_matched, title_raw = _title_fallback_match(candidate_stem_norm, rec)
-                qt = _queue_row_title_candidates(rec)
                 if qt:
                     title_fallback_queue_title = qt[0]
                     title_fallback_queue_title_norm = _normalize_releaseish_title(qt[0])
@@ -383,14 +406,21 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
                     )
                 if title_matched:
                     title_fallback_used = True
+                    title_fallback_match_row_index = idx
+                    title_fallback_match_title = title_raw
+                    title_fallback_match_title_norm = _normalize_releaseish_title(title_raw)
             if active:
                 active_count += 1
                 active_usable_path_count += len(q_paths)
                 for ps in q_paths:
                     if len(active_samples) < 4:
                         active_samples.append(ps[:160] + ("…" if len(ps) > 160 else ""))
-                if title_raw and len(active_title_samples) < 4:
-                    active_title_samples.append(title_raw[:160] + ("…" if len(title_raw) > 160 else ""))
+                for maybe_title in qt:
+                    if len(active_title_samples) >= 8:
+                        break
+                    active_title_samples.append(
+                        maybe_title[:160] + ("…" if len(maybe_title) > 160 else "")
+                    )
             elif path_matched:
                 inactive_match = True
             if active and (path_matched or title_matched):
@@ -409,6 +439,10 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
                     diag["title_fallback_candidate_source_radarr"] = candidate_title_source
                     diag["title_fallback_match_norm_equal_radarr"] = title_fallback_norm_equal
                     diag["title_fallback_match_norm_prefix_radarr"] = title_fallback_norm_prefix
+                    diag["title_fallback_match_row_index_radarr"] = title_fallback_match_row_index
+                    diag["title_fallback_match_title_radarr"] = title_fallback_match_title
+                    diag["title_fallback_match_title_norm_radarr"] = title_fallback_match_title_norm
+                    diag["title_fallback_titles_considered_radarr"] = title_fallback_titles_considered
                 else:
                     diag["sonarr_upstream_active_rows"] = active_count
                     diag["sonarr_active_path_samples"] = active_samples
@@ -424,6 +458,10 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
                     diag["title_fallback_candidate_source_sonarr"] = candidate_title_source
                     diag["title_fallback_match_norm_equal_sonarr"] = title_fallback_norm_equal
                     diag["title_fallback_match_norm_prefix_sonarr"] = title_fallback_norm_prefix
+                    diag["title_fallback_match_row_index_sonarr"] = title_fallback_match_row_index
+                    diag["title_fallback_match_title_sonarr"] = title_fallback_match_title
+                    diag["title_fallback_match_title_norm_sonarr"] = title_fallback_match_title_norm
+                    diag["title_fallback_titles_considered_sonarr"] = title_fallback_titles_considered
                 msg = (
                     "Radarr still reports this path in the active download queue — waiting until the download finishes."
                     if app == "radarr"
@@ -450,6 +488,10 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
             diag["title_fallback_candidate_source_radarr"] = candidate_title_source
             diag["title_fallback_match_norm_equal_radarr"] = title_fallback_norm_equal
             diag["title_fallback_match_norm_prefix_radarr"] = title_fallback_norm_prefix
+            diag["title_fallback_match_row_index_radarr"] = title_fallback_match_row_index
+            diag["title_fallback_match_title_radarr"] = title_fallback_match_title
+            diag["title_fallback_match_title_norm_radarr"] = title_fallback_match_title_norm
+            diag["title_fallback_titles_considered_radarr"] = title_fallback_titles_considered
         else:
             diag["sonarr_upstream_active_rows"] = active_count
             diag["sonarr_active_path_samples"] = active_samples
@@ -465,6 +507,10 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
             diag["title_fallback_candidate_source_sonarr"] = candidate_title_source
             diag["title_fallback_match_norm_equal_sonarr"] = title_fallback_norm_equal
             diag["title_fallback_match_norm_prefix_sonarr"] = title_fallback_norm_prefix
+            diag["title_fallback_match_row_index_sonarr"] = title_fallback_match_row_index
+            diag["title_fallback_match_title_sonarr"] = title_fallback_match_title
+            diag["title_fallback_match_title_norm_sonarr"] = title_fallback_match_title_norm
+            diag["title_fallback_titles_considered_sonarr"] = title_fallback_titles_considered
         return None
 
     hit = _collect_for_app(snap.radarr_records, app="radarr")
@@ -548,6 +594,14 @@ def log_refiner_readiness_diagnostic(
         "title_fallback_match_norm_prefix_radarr": up_diag.get("title_fallback_match_norm_prefix_radarr"),
         "title_fallback_match_norm_equal_sonarr": up_diag.get("title_fallback_match_norm_equal_sonarr"),
         "title_fallback_match_norm_prefix_sonarr": up_diag.get("title_fallback_match_norm_prefix_sonarr"),
+        "title_fallback_match_row_index_radarr": up_diag.get("title_fallback_match_row_index_radarr"),
+        "title_fallback_match_row_index_sonarr": up_diag.get("title_fallback_match_row_index_sonarr"),
+        "title_fallback_match_title_radarr": up_diag.get("title_fallback_match_title_radarr"),
+        "title_fallback_match_title_sonarr": up_diag.get("title_fallback_match_title_sonarr"),
+        "title_fallback_match_title_norm_radarr": up_diag.get("title_fallback_match_title_norm_radarr"),
+        "title_fallback_match_title_norm_sonarr": up_diag.get("title_fallback_match_title_norm_sonarr"),
+        "title_fallback_titles_considered_radarr": up_diag.get("title_fallback_titles_considered_radarr"),
+        "title_fallback_titles_considered_sonarr": up_diag.get("title_fallback_titles_considered_sonarr"),
         "upstream_block_match_kind": up_diag.get("upstream_block_match_kind") or "",
         "file_gate_ok": file_gate_ok,
         "file_gate_detail": (file_gate_detail or "")[:300],

@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.7.4 — 2026-04-01
+
+### Fixed
+
+- **Refiner readiness (Radarr title fallback):** active-queue scanning now evaluates all active rows reliably and blocks immediately when any row matches the current candidate via title fallback, including large queues where the matching row is not first. Diagnostics now include bounded sampled titles considered plus exact matched row/title.
+- **Refiner ffprobe hardening:** guarded probe JSON decode for empty/`None`/invalid payloads so failures route through controlled probe-error handling instead of exposing raw JSON type/parse exceptions.
+
+### Tests
+
+- Added regression coverage for late-row title-fallback blocking, large active-row stability, early-stop on first match, and ffprobe empty/invalid payload handling.
+
 ## 3.7.3 — 2026-04-01
 
 ### Improved
