@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.7.5 — 2026-04-01
+
+### Improved
+
+- Add bounded Radarr queue diagnostics to capture unmatched active-row cases for Refiner readiness.
+
 ## 3.7.4 — 2026-04-01
 
 ### Fixed

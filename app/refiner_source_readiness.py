@@ -200,6 +200,10 @@ def _path_key_matches_candidate(file_key: str, queue_path: str) -> bool:
 _TITLE_EXT_RE = re.compile(r"\.(mkv|mp4|m4v|avi|mov|wmv|ts|m2ts|webm)$", re.IGNORECASE)
 _TITLE_SEP_RE = re.compile(r"[^a-z0-9]+")
 _DRIVE_RE = re.compile(r"^[a-zA-Z]:")
+_DIAG_MAX_SAMPLE_ROWS = 10
+_DIAG_MAX_RAW_ROWS = 4
+_DIAG_MAX_TEXT = 160
+_DIAG_MAX_JSON = 2000
 
 
 def _normalize_releaseish_title(raw: object) -> str:
@@ -294,6 +298,55 @@ def _title_fallback_match(candidate_stem_norm: str, rec: dict[str, Any]) -> tupl
     return False, ""
 
 
+def _diag_clip_text(raw: object, *, max_len: int = _DIAG_MAX_TEXT) -> str:
+    t = str(raw or "").strip()
+    if len(t) > max_len:
+        return t[:max_len] + "…"
+    return t
+
+
+def _diag_row_sample(
+    *,
+    idx: int,
+    rec: dict[str, Any],
+    q_paths: list[str],
+    title_candidates: list[str],
+) -> dict[str, Any]:
+    norm_candidates: list[str] = []
+    for t in title_candidates:
+        n = _normalize_releaseish_title(t)
+        if n and n not in norm_candidates:
+            norm_candidates.append(n)
+        if len(norm_candidates) >= 8:
+            break
+    return {
+        "row_index": idx,
+        "id": rec.get("id"),
+        "trackedDownloadState": _diag_clip_text(rec.get("trackedDownloadState")),
+        "status": _diag_clip_text(rec.get("status")),
+        "trackedDownloadStatus": _diag_clip_text(rec.get("trackedDownloadStatus")),
+        "sizeleft": rec.get("sizeleft"),
+        "sizeLeft": rec.get("sizeLeft"),
+        "title": _diag_clip_text(rec.get("title")),
+        "sourceTitle": _diag_clip_text(rec.get("sourceTitle")),
+        "releaseTitle": _diag_clip_text(rec.get("releaseTitle")),
+        "downloadClientTitle": _diag_clip_text(rec.get("downloadClientTitle")),
+        "usable_paths_exist": bool(q_paths),
+        "extracted_title_candidates": [_diag_clip_text(t) for t in title_candidates[:8]],
+        "normalized_title_candidates": [_diag_clip_text(t) for t in norm_candidates[:8]],
+    }
+
+
+def _diag_json_excerpt(rec: dict[str, Any]) -> str:
+    try:
+        raw = json.dumps(rec, ensure_ascii=True, default=str)
+    except Exception:
+        raw = repr(rec)
+    if len(raw) > _DIAG_MAX_JSON:
+        return raw[:_DIAG_MAX_JSON] + "…(truncated)"
+    return raw
+
+
 def path_matches_queue_record(file_key: str, rec: dict[str, Any]) -> bool:
     for s in iter_queue_path_strings(rec):
         if _path_key_matches_candidate(file_key, s):
@@ -353,6 +406,11 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
         "upstream_blocked": False,
         "upstream_block_reason_code": "",
         "upstream_scan_skipped": False,
+        "radarr_rows_fetched": len(snap.radarr_records),
+        "radarr_rows_active": 0,
+        "radarr_row_bucket_counts": {},
+        "radarr_row_bucket_samples": {},
+        "radarr_candidate_saw_likely_row_class": False,
     }
 
     if not snap.authority_useful:
@@ -379,6 +437,20 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
         title_fallback_titles_considered: list[str] = []
         active_usable_path_count = 0
         active_count = 0
+        row_bucket_counts: dict[str, int] = {
+            "row_present_not_active": 0,
+            "row_active_no_title_candidates": 0,
+            "row_active_title_candidates_no_match": 0,
+            "row_active_match": 0,
+        }
+        row_bucket_samples: dict[str, list[dict[str, Any]]] = {
+            "row_present_not_active": [],
+            "row_active_no_title_candidates": [],
+            "row_active_title_candidates_no_match": [],
+            "row_active_match": [],
+        }
+        raw_no_title_samples: list[str] = []
+        raw_no_match_samples: list[str] = []
         for idx, rec in enumerate(records):
             if not isinstance(rec, dict):
                 continue
@@ -388,6 +460,19 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
             title_matched = False
             title_raw = ""
             qt = _queue_row_title_candidates(rec)
+            if app == "radarr":
+                row_sample = _diag_row_sample(idx=idx, rec=rec, q_paths=q_paths, title_candidates=qt)
+                if not active:
+                    row_bucket_counts["row_present_not_active"] += 1
+                    if len(row_bucket_samples["row_present_not_active"]) < _DIAG_MAX_SAMPLE_ROWS:
+                        row_bucket_samples["row_present_not_active"].append(row_sample)
+                else:
+                    if (not q_paths) and (not qt):
+                        row_bucket_counts["row_active_no_title_candidates"] += 1
+                        if len(row_bucket_samples["row_active_no_title_candidates"]) < _DIAG_MAX_SAMPLE_ROWS:
+                            row_bucket_samples["row_active_no_title_candidates"].append(row_sample)
+                        if len(raw_no_title_samples) < _DIAG_MAX_RAW_ROWS:
+                            raw_no_title_samples.append(_diag_json_excerpt(rec))
             if active and not q_paths:
                 title_fallback_entered = True
                 for title_candidate in qt:
@@ -409,6 +494,17 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
                     title_fallback_match_row_index = idx
                     title_fallback_match_title = title_raw
                     title_fallback_match_title_norm = _normalize_releaseish_title(title_raw)
+            if app == "radarr" and active and qt:
+                if path_matched or title_matched:
+                    row_bucket_counts["row_active_match"] += 1
+                    if len(row_bucket_samples["row_active_match"]) < _DIAG_MAX_SAMPLE_ROWS:
+                        row_bucket_samples["row_active_match"].append(row_sample)
+                else:
+                    row_bucket_counts["row_active_title_candidates_no_match"] += 1
+                    if len(row_bucket_samples["row_active_title_candidates_no_match"]) < _DIAG_MAX_SAMPLE_ROWS:
+                        row_bucket_samples["row_active_title_candidates_no_match"].append(row_sample)
+                    if len(raw_no_match_samples) < _DIAG_MAX_RAW_ROWS:
+                        raw_no_match_samples.append(_diag_json_excerpt(rec))
             if active:
                 active_count += 1
                 active_usable_path_count += len(q_paths)
@@ -443,6 +539,51 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
                     diag["title_fallback_match_title_radarr"] = title_fallback_match_title
                     diag["title_fallback_match_title_norm_radarr"] = title_fallback_match_title_norm
                     diag["title_fallback_titles_considered_radarr"] = title_fallback_titles_considered
+                    diag["radarr_rows_active"] = active_count
+                    diag["radarr_row_bucket_counts"] = row_bucket_counts
+                    diag["radarr_row_bucket_samples"] = row_bucket_samples
+                    diag["radarr_candidate_saw_likely_row_class"] = (
+                        row_bucket_counts["row_active_no_title_candidates"] > 0
+                        or row_bucket_counts["row_active_title_candidates_no_match"] > 0
+                        or row_bucket_counts["row_active_match"] > 0
+                    )
+                    if raw_no_title_samples:
+                        logger.warning(
+                            "REFINER_RADARR_ROW_RAW_NO_TITLE: %s",
+                            json.dumps(
+                                {
+                                    "candidate": str(path),
+                                    "bucket": "row_active_no_title_candidates",
+                                    "sample_rows": raw_no_title_samples,
+                                },
+                                ensure_ascii=True,
+                            ),
+                        )
+                    if raw_no_match_samples:
+                        logger.warning(
+                            "REFINER_RADARR_ROW_RAW_NO_MATCH: %s",
+                            json.dumps(
+                                {
+                                    "candidate": str(path),
+                                    "bucket": "row_active_title_candidates_no_match",
+                                    "sample_rows": raw_no_match_samples,
+                                },
+                                ensure_ascii=True,
+                            ),
+                        )
+                    logger.warning(
+                        "REFINER_RADARR_ROW_BUCKET: %s",
+                        json.dumps(
+                            {
+                                "candidate": str(path),
+                                "rows_fetched": len(records),
+                                "rows_active": active_count,
+                                "bucket_counts": row_bucket_counts,
+                                "bucket_samples": row_bucket_samples,
+                            },
+                            ensure_ascii=True,
+                        ),
+                    )
                 else:
                     diag["sonarr_upstream_active_rows"] = active_count
                     diag["sonarr_active_path_samples"] = active_samples
@@ -492,6 +633,51 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
             diag["title_fallback_match_title_radarr"] = title_fallback_match_title
             diag["title_fallback_match_title_norm_radarr"] = title_fallback_match_title_norm
             diag["title_fallback_titles_considered_radarr"] = title_fallback_titles_considered
+            diag["radarr_rows_active"] = active_count
+            diag["radarr_row_bucket_counts"] = row_bucket_counts
+            diag["radarr_row_bucket_samples"] = row_bucket_samples
+            diag["radarr_candidate_saw_likely_row_class"] = (
+                row_bucket_counts["row_active_no_title_candidates"] > 0
+                or row_bucket_counts["row_active_title_candidates_no_match"] > 0
+                or row_bucket_counts["row_active_match"] > 0
+            )
+            if raw_no_title_samples:
+                logger.warning(
+                    "REFINER_RADARR_ROW_RAW_NO_TITLE: %s",
+                    json.dumps(
+                        {
+                            "candidate": str(path),
+                            "bucket": "row_active_no_title_candidates",
+                            "sample_rows": raw_no_title_samples,
+                        },
+                        ensure_ascii=True,
+                    ),
+                )
+            if raw_no_match_samples:
+                logger.warning(
+                    "REFINER_RADARR_ROW_RAW_NO_MATCH: %s",
+                    json.dumps(
+                        {
+                            "candidate": str(path),
+                            "bucket": "row_active_title_candidates_no_match",
+                            "sample_rows": raw_no_match_samples,
+                        },
+                        ensure_ascii=True,
+                    ),
+                )
+            logger.warning(
+                "REFINER_RADARR_ROW_BUCKET: %s",
+                json.dumps(
+                    {
+                        "candidate": str(path),
+                        "rows_fetched": len(records),
+                        "rows_active": active_count,
+                        "bucket_counts": row_bucket_counts,
+                        "bucket_samples": row_bucket_samples,
+                    },
+                    ensure_ascii=True,
+                ),
+            )
         else:
             diag["sonarr_upstream_active_rows"] = active_count
             diag["sonarr_active_path_samples"] = active_samples
@@ -567,6 +753,11 @@ def log_refiner_readiness_diagnostic(
         "queue_rows_radarr": up_diag.get("radarr_queue_rows"),
         "queue_rows_sonarr": up_diag.get("sonarr_queue_rows"),
         "upstream_active_rows_radarr": up_diag.get("radarr_upstream_active_rows"),
+        "radarr_rows_fetched": up_diag.get("radarr_rows_fetched"),
+        "radarr_rows_active": up_diag.get("radarr_rows_active"),
+        "radarr_row_bucket_counts": up_diag.get("radarr_row_bucket_counts"),
+        "radarr_row_bucket_samples": up_diag.get("radarr_row_bucket_samples"),
+        "radarr_candidate_saw_likely_row_class": up_diag.get("radarr_candidate_saw_likely_row_class"),
         "upstream_active_rows_sonarr": up_diag.get("sonarr_upstream_active_rows"),
         "active_queue_path_samples_radarr": up_diag.get("radarr_active_path_samples"),
         "active_queue_path_samples_sonarr": up_diag.get("sonarr_active_path_samples"),
