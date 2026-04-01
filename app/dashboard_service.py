@@ -20,6 +20,8 @@ from app.display_helpers import (
     _relative_phrase_until,
 )
 from app.models import ActivityLog, AppSettings, AppSnapshot, JobRunLog, RefinerActivity
+from app.refiner_activity_context import parse_activity_context
+from app.refiner_outcome_classify import RefinerOutcomeClass, classify_refiner_activity_context
 from app.resolvers.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
 from app.scheduler import compute_job_intervals_minutes, scheduler
 from app.service_logic import _radarr_missing_total_including_unreleased, _sonarr_missing_total_including_unreleased
@@ -32,6 +34,22 @@ logger = logging.getLogger(__name__)
 _DASHBOARD_LIVE_ARR_HTTP_TIMEOUT_S = 12.0
 _DASHBOARD_SONARR_MISSING_WALL_S = 25.0
 _DASHBOARD_RADARR_MOVIES_WALL_S = 20.0
+
+
+def _refiner_dashboard_outcome_from_row(row: RefinerActivity | None) -> str:
+    """Return dashboard-level Refiner outcome: success | failed | waiting | none."""
+    if row is None:
+        return "none"
+    st = (row.status or "").strip().lower()
+    if st == "success":
+        return "success"
+    if st != "failed":
+        return "none"
+    ctx = parse_activity_context(getattr(row, "activity_context", None))
+    oc, _hint, _retry = classify_refiner_activity_context(ctx, status=st)
+    if oc is RefinerOutcomeClass.BLOCKED_WAITING:
+        return "waiting"
+    return "failed"
 
 def trimmer_connection_status_display(
     settings: AppSettings,
@@ -330,20 +348,25 @@ async def build_dashboard_status(
     last_radarr = _last_from(settings.radarr_last_run_at, _latest_snapshot_for("radarr"))
     last_trimmer = _last_from(settings.emby_last_run_at, _latest_snapshot_for("emby"))
     last_refiner = _last_from(settings.refiner_last_run_at, None)
-    # Derive ok bool from most recent RefinerActivity status
-    _last_ra_status = (
+    # Derive Refiner card state from the latest per-file outcome, classifying blocked waits.
+    _last_ra = (
         (
             await session.execute(
-                select(RefinerActivity.status).order_by(desc(RefinerActivity.id)).limit(1)
+                select(RefinerActivity).order_by(desc(RefinerActivity.id)).limit(1)
             )
         )
-        .scalar_one_or_none()
+        .scalars()
+        .first()
     )
-    if _last_ra_status == "success":
+    refiner_outcome = _refiner_dashboard_outcome_from_row(_last_ra)
+    last_refiner["outcome"] = refiner_outcome
+    if refiner_outcome == "success":
         last_refiner["ok"] = True
-    elif _last_ra_status == "failed":
+    elif refiner_outcome == "failed":
         last_refiner["ok"] = False
-    # skipped/processing/None leaves ok=None (no pill rendered)
+    else:
+        last_refiner["ok"] = None
+    # skipped/processing/none/waiting keep ok=None; template/js render waiting via outcome.
     if settings.refiner_last_run_at:
         last_refiner["time_iso"] = settings.refiner_last_run_at.isoformat()
     else:

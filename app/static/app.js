@@ -755,6 +755,8 @@ function applyDashboardAutomationStatus(data) {
           ? ' <span class="status-pill status-pill-ok">Succeeded</span>'
           : r.ok === false
             ? ' <span class="status-pill status-pill-fail">Failed</span>'
+            : r.outcome === "waiting"
+              ? ' <span class="status-pill status-pill-idle">Waiting</span>'
             : "";
       lastRefiner.innerHTML =
         `<span class="dash-summary-run-line"><strong class="dash-summary-time-emphasis" ` +

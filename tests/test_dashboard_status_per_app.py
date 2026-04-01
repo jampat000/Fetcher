@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy import delete
 
 from app.db import SessionLocal, get_or_create_settings
-from app.models import AppSnapshot
+from app.models import AppSnapshot, RefinerActivity
 from app.dashboard_service import build_dashboard_status, fetch_live_dashboard_queue_totals
 
 
@@ -31,6 +31,16 @@ async def _seed_snapshot_state() -> None:
         s.add(AppSnapshot(app="sonarr", ok=True, status_message="OK", missing_total=1, cutoff_unmet_total=2))
         s.add(AppSnapshot(app="radarr", ok=False, status_message="err", missing_total=3, cutoff_unmet_total=4))
         s.add(AppSnapshot(app="emby", ok=True, status_message="OK", missing_total=5, cutoff_unmet_total=0))
+        await s.commit()
+
+
+async def _seed_refiner_last_run_and_rows(*rows: RefinerActivity) -> None:
+    async with SessionLocal() as s:
+        await s.execute(delete(RefinerActivity))
+        st = await get_or_create_settings(s)
+        st.refiner_last_run_at = datetime(2026, 3, 24, 10, 45, 0)
+        for r in rows:
+            s.add(r)
         await s.commit()
 
 
@@ -157,5 +167,162 @@ def test_build_dashboard_status_live_queue_totals_override_snapshot(monkeypatch)
             assert data["radarr_missing"] == 80
             assert data["radarr_upgrades"] == 9
             assert data["emby_matched"] == 5
+
+    asyncio.run(_go())
+
+
+def test_dashboard_refiner_waiting_outcome_from_blocked_context(monkeypatch) -> None:
+    class _FakeScheduler:
+        @staticmethod
+        def next_runs_by_job():
+            return {}
+
+        @staticmethod
+        def is_run_in_progress():
+            return False
+
+    async def _no_live(_settings):
+        return {}
+
+    monkeypatch.setattr("app.dashboard_service.fetch_live_dashboard_queue_totals", _no_live)
+    monkeypatch.setattr("app.dashboard_service.scheduler", _FakeScheduler())
+    asyncio.run(_seed_snapshot_state())
+    asyncio.run(
+        _seed_refiner_last_run_and_rows(
+            RefinerActivity(
+                file_name="x.mkv",
+                media_title="X",
+                status="failed",
+                size_before_bytes=0,
+                size_after_bytes=0,
+                audio_tracks_before=0,
+                audio_tracks_after=0,
+                subtitle_tracks_before=0,
+                subtitle_tracks_after=0,
+                activity_context='{"reason_code":"radarr_queue_active_download","failure_reason":"waiting"}',
+            )
+        )
+    )
+
+    async def _go():
+        async with SessionLocal() as s:
+            data = await build_dashboard_status(s, "UTC")
+            assert data["last_refiner_run"]["outcome"] == "waiting"
+            assert data["last_refiner_run"]["ok"] is None
+
+    asyncio.run(_go())
+
+
+def test_dashboard_refiner_failed_outcome_from_non_wait_failure(monkeypatch) -> None:
+    class _FakeScheduler:
+        @staticmethod
+        def next_runs_by_job():
+            return {}
+
+        @staticmethod
+        def is_run_in_progress():
+            return False
+
+    async def _no_live(_settings):
+        return {}
+
+    monkeypatch.setattr("app.dashboard_service.fetch_live_dashboard_queue_totals", _no_live)
+    monkeypatch.setattr("app.dashboard_service.scheduler", _FakeScheduler())
+    asyncio.run(_seed_snapshot_state())
+    asyncio.run(
+        _seed_refiner_last_run_and_rows(
+            RefinerActivity(
+                file_name="y.mkv",
+                media_title="Y",
+                status="failed",
+                size_before_bytes=0,
+                size_after_bytes=0,
+                audio_tracks_before=0,
+                audio_tracks_after=0,
+                subtitle_tracks_before=0,
+                subtitle_tracks_after=0,
+                activity_context='{"reason_code":"","failure_reason":"disk is full"}',
+            )
+        )
+    )
+
+    async def _go():
+        async with SessionLocal() as s:
+            data = await build_dashboard_status(s, "UTC")
+            assert data["last_refiner_run"]["outcome"] == "failed"
+            assert data["last_refiner_run"]["ok"] is False
+
+    asyncio.run(_go())
+
+
+def test_dashboard_refiner_success_outcome(monkeypatch) -> None:
+    class _FakeScheduler:
+        @staticmethod
+        def next_runs_by_job():
+            return {}
+
+        @staticmethod
+        def is_run_in_progress():
+            return False
+
+    async def _no_live(_settings):
+        return {}
+
+    monkeypatch.setattr("app.dashboard_service.fetch_live_dashboard_queue_totals", _no_live)
+    monkeypatch.setattr("app.dashboard_service.scheduler", _FakeScheduler())
+    asyncio.run(_seed_snapshot_state())
+    asyncio.run(
+        _seed_refiner_last_run_and_rows(
+            RefinerActivity(
+                file_name="z.mkv",
+                media_title="Z",
+                status="success",
+                size_before_bytes=1,
+                size_after_bytes=1,
+                audio_tracks_before=0,
+                audio_tracks_after=0,
+                subtitle_tracks_before=0,
+                subtitle_tracks_after=0,
+                activity_context="{}",
+            )
+        )
+    )
+
+    async def _go():
+        async with SessionLocal() as s:
+            data = await build_dashboard_status(s, "UTC")
+            assert data["last_refiner_run"]["outcome"] == "success"
+            assert data["last_refiner_run"]["ok"] is True
+
+    asyncio.run(_go())
+
+
+def test_dashboard_refiner_no_rows_preserves_fallback(monkeypatch) -> None:
+    class _FakeScheduler:
+        @staticmethod
+        def next_runs_by_job():
+            return {}
+
+        @staticmethod
+        def is_run_in_progress():
+            return False
+
+    async def _no_live(_settings):
+        return {}
+
+    monkeypatch.setattr("app.dashboard_service.fetch_live_dashboard_queue_totals", _no_live)
+    monkeypatch.setattr("app.dashboard_service.scheduler", _FakeScheduler())
+    asyncio.run(_seed_snapshot_state())
+
+    async def _go():
+        async with SessionLocal() as s:
+            await s.execute(delete(RefinerActivity))
+            st = await get_or_create_settings(s)
+            st.refiner_last_run_at = datetime(2026, 3, 24, 10, 45, 0)
+            await s.commit()
+            data = await build_dashboard_status(s, "UTC")
+            assert data["last_refiner_run"]["ok"] is None
+            assert data["last_refiner_run"]["outcome"] == "none"
+            assert data["last_refiner_run"]["time_local"] != ""
 
     asyncio.run(_go())

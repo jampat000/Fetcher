@@ -160,6 +160,8 @@
                   <span class="status-pill status-pill-ok">Succeeded</span>
                 {% elif av.last_refiner_run.ok is sameas false %}
                   <span class="status-pill status-pill-fail">Failed</span>
+                {% elif av.last_refiner_run.outcome == 'waiting' %}
+                  <span class="status-pill status-pill-idle">Waiting</span>
                 {% endif %}
               {% else %}
                 <span class="dash-summary-empty-state">Not yet run</span>

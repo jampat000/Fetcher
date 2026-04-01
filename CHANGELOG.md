@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.7.3 — 2026-04-01
+
+### Improved
+
+- **Dashboard — Refiner Automation card:** Last-run pill now classifies the latest Refiner row with activity-context logic, so blocked/upstream-wait outcomes render as **Waiting** instead of **Failed**. True failures remain **Failed**; successful runs remain **Succeeded**.
+
+### Tests
+
+- Added dashboard status coverage for Refiner waiting vs failed vs success outcomes, plus no-row fallback behavior.
+
 ## 3.7.2 — 2026-04-01
 
 ### Improved
