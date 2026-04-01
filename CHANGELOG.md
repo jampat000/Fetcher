@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.7.8 — 2026-04-01
+
+### Improved
+
+- Add ffprobe diagnostics to capture invocation, file state, and raw probe output for troubleshooting unreadable media cases.
+
 ## 3.7.7 — 2026-04-01
 
 ### Fixed

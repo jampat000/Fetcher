@@ -15,6 +15,14 @@ from app.paths import BASE_DIR
 logger = logging.getLogger(__name__)
 
 REFINER_FFMPEG_TIMEOUT_S: int = 3600
+_REFINER_FFPROBE_LOG_MAX_CHARS = 2000
+
+
+def _clip_probe_text(raw: object, *, max_chars: int = _REFINER_FFPROBE_LOG_MAX_CHARS) -> str:
+    t = "" if raw is None else str(raw)
+    if len(t) > max_chars:
+        return t[:max_chars] + "…(truncated)"
+    return t
 
 
 def resolve_ffprobe_ffmpeg() -> tuple[str, str]:
@@ -44,20 +52,67 @@ def resolve_ffprobe_ffmpeg() -> tuple[str, str]:
 
 def ffprobe_json(path: Path, *, timeout_s: int = 120) -> dict[str, Any]:
     ffprobe, _ = resolve_ffprobe_ffmpeg()
+    argv = [
+        ffprobe,
+        "-v",
+        "quiet",
+        "-print_format",
+        "json",
+        "-show_streams",
+        "-show_format",
+        str(path),
+    ]
+    logger.warning(
+        "REFINER_FFPROBE_CALL: %s",
+        json.dumps(
+            {
+                "path": str(path),
+                "argv": [_clip_probe_text(a, max_chars=256) for a in argv],
+            },
+            ensure_ascii=True,
+        ),
+    )
+    try:
+        resolved_path = str(path.resolve())
+    except OSError:
+        resolved_path = str(path)
+    try:
+        st = path.stat()
+        f_size = int(st.st_size)
+        f_mtime = float(st.st_mtime)
+    except OSError:
+        f_size = -1
+        f_mtime = 0.0
+    logger.warning(
+        "REFINER_FFPROBE_FILE_STATE: %s",
+        json.dumps(
+            {
+                "path": str(path),
+                "resolved_path": resolved_path,
+                "exists": bool(path.exists()),
+                "size_bytes": f_size,
+                "mtime_epoch": f_mtime,
+            },
+            ensure_ascii=True,
+        ),
+    )
     r = subprocess.run(
-        [
-            ffprobe,
-            "-v",
-            "quiet",
-            "-print_format",
-            "json",
-            "-show_streams",
-            "-show_format",
-            str(path),
-        ],
+        argv,
         capture_output=True,
         text=True,
         timeout=timeout_s,
+    )
+    logger.warning(
+        "REFINER_FFPROBE_RESULT: %s",
+        json.dumps(
+            {
+                "path": str(path),
+                "returncode": int(getattr(r, "returncode", -1)),
+                "stdout": _clip_probe_text(getattr(r, "stdout", "")),
+                "stderr": _clip_probe_text(getattr(r, "stderr", "")),
+            },
+            ensure_ascii=True,
+        ),
     )
     if r.returncode != 0:
         raise RuntimeError((r.stderr or r.stdout or "").strip() or "ffprobe failed")
