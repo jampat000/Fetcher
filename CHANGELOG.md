@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.7.6 — 2026-04-01
+
+### Fixed
+
+- Refiner readiness now treats Radarr `trackedDownloadState` values `downloading`, `importPending`, and `importBlocked` as active queue states (and still treats `sizeleft`/`sizeLeft` > 0 as active), so in-progress import rows remain blocking for readiness checks.
+
 ## 3.7.5 — 2026-04-01
 
 ### Improved

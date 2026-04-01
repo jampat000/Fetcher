@@ -29,19 +29,7 @@ logger = logging.getLogger(__name__)
 _REFINER_QUEUE_PAGE_SIZE = 200
 _REFINER_QUEUE_HTTP_TIMEOUT_S = 12.0
 
-# QueueStatus (Servarr): block while the client is still fetching or not yet settled.
-_BLOCKING_QUEUE_STATUSES = frozenset(
-    {
-        "unknown",
-        "queued",
-        "paused",
-        "downloading",
-        "warning",
-        "delay",
-        "downloadclientunavailable",
-        "fallback",
-    }
-)
+_BLOCKING_TRACKED_DOWNLOAD_STATES = frozenset({"downloading", "importpending", "importblocked"})
 
 
 @dataclass(frozen=True)
@@ -99,8 +87,8 @@ def queue_record_upstream_active(rec: dict[str, Any]) -> bool:
     """True when *arr still treats this queue row as an in-flight / unsettled download."""
     if _size_left_bytes(rec) > 0:
         return True
-    st = _norm_status(rec.get("status"))
-    return st in _BLOCKING_QUEUE_STATUSES
+    td_state = _norm_status(rec.get("trackedDownloadState"))
+    return td_state in _BLOCKING_TRACKED_DOWNLOAD_STATES
 
 
 def _nonempty_str(val: object) -> str | None:

@@ -21,11 +21,16 @@ from app.refiner_source_readiness import (
 )
 
 
-def test_queue_record_upstream_active_status_and_sizeleft() -> None:
-    assert queue_record_upstream_active({"status": "downloading", "sizeleft": 0}) is True
+def test_queue_record_upstream_active_tracked_state_and_sizeleft() -> None:
+    assert queue_record_upstream_active({"trackedDownloadState": "downloading", "sizeleft": 0}) is True
     assert queue_record_upstream_active({"status": "completed", "sizeleft": 100}) is True
     assert queue_record_upstream_active({"status": "completed", "sizeleft": 0}) is False
     assert queue_record_upstream_active({"status": "failed", "sizeleft": 0}) is False
+
+
+def test_queue_record_upstream_active_import_states_block() -> None:
+    assert queue_record_upstream_active({"trackedDownloadState": "importPending", "sizeleft": 0}) is True
+    assert queue_record_upstream_active({"trackedDownloadState": "importBlocked", "sizeleft": 0}) is True
 
 
 def test_queue_record_upstream_active_honors_sizeLeft_camelcase() -> None:
@@ -72,6 +77,7 @@ def test_upstream_radarr_blocks_movie_folder_prefix_when_file_in_subpath(tmp_pat
     f.write_bytes(b"x" * 120)
     rec = {
         "status": "downloading",
+        "trackedDownloadState": "downloading",
         "sizeLeft": 0,
         "movie": {"path": str(movie_dir.resolve())},
     }
@@ -87,6 +93,7 @@ def test_upstream_radarr_blocks_moviefile_path_field(tmp_path: Path) -> None:
     f.write_bytes(b"x" * 60)
     rec = {
         "status": "downloading",
+        "trackedDownloadState": "downloading",
         "sizeLeft": 1,
         "movieFile": {
             "path": str(f.resolve()),
@@ -344,6 +351,7 @@ def test_upstream_sonarr_blocks_episode_file_path(tmp_path: Path) -> None:
     f.write_bytes(b"x" * 70)
     rec = {
         "status": "downloading",
+        "trackedDownloadState": "downloading",
         "sizeLeft": 0,
         "episode": {
             "series": {"path": str(tmp_path.resolve()), "title": "Show"},
@@ -362,6 +370,7 @@ def test_upstream_blocks_when_path_matches_active_radarr_row(tmp_path: Path) -> 
     f.write_bytes(b"x" * 100)
     rec = {
         "status": "downloading",
+        "trackedDownloadState": "downloading",
         "sizeleft": 0,
         "outputPath": str(f.resolve()),
     }
@@ -381,6 +390,7 @@ def test_upstream_path_match_keeps_path_reason_even_if_title_also_matches(tmp_pa
     f.write_bytes(b"x" * 100)
     rec = {
         "status": "downloading",
+        "trackedDownloadState": "downloading",
         "sizeleft": 10,
         "outputPath": str(f.resolve()),
         "title": "Path.And.Title.2029.1080p",
@@ -395,7 +405,12 @@ def test_upstream_path_match_keeps_path_reason_even_if_title_also_matches(tmp_pa
 def test_decide_authority_blocks_before_file_gate(tmp_path: Path) -> None:
     f = tmp_path / "blocked.mkv"
     f.write_bytes(b"x" * 50)
-    rec = {"status": "downloading", "sizeleft": 0, "outputPath": str(f.resolve())}
+    rec = {
+        "status": "downloading",
+        "trackedDownloadState": "downloading",
+        "sizeleft": 0,
+        "outputPath": str(f.resolve()),
+    }
     snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
     row = AppSettings()
 
@@ -405,6 +420,53 @@ def test_decide_authority_blocks_before_file_gate(tmp_path: Path) -> None:
         assert d.reason_code == "radarr_queue_active_download"
 
     asyncio.run(_run())
+
+
+def test_upstream_radarr_importpending_title_match_blocks(tmp_path: Path) -> None:
+    f = tmp_path / "Import.Pending.Target.2030.1080p.mkv"
+    f.write_bytes(b"x" * 80)
+    rec = {
+        "status": "completed",
+        "trackedDownloadState": "importPending",
+        "sizeleft": 0,
+        "title": "Import.Pending.Target.2030.1080p",
+    }
+    snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+    blocked, rc, _m, diag = upstream_analyze_path(f, snap)
+    assert blocked is True
+    assert rc == "radarr_queue_active_download_title"
+    assert diag["upstream_block_match_kind"] == "title"
+
+
+def test_upstream_radarr_importblocked_title_match_blocks(tmp_path: Path) -> None:
+    f = tmp_path / "Import.Blocked.Target.2031.2160p.mkv"
+    f.write_bytes(b"x" * 80)
+    rec = {
+        "status": "completed",
+        "trackedDownloadState": "importBlocked",
+        "sizeleft": 0,
+        "title": "Import.Blocked.Target.2031.2160p",
+    }
+    snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+    blocked, rc, _m, diag = upstream_analyze_path(f, snap)
+    assert blocked is True
+    assert rc == "radarr_queue_active_download_title"
+    assert diag["upstream_block_match_kind"] == "title"
+
+
+def test_upstream_radarr_completed_no_import_state_does_not_block(tmp_path: Path) -> None:
+    f = tmp_path / "Completed.No.Import.State.2032.1080p.mkv"
+    f.write_bytes(b"x" * 80)
+    rec = {
+        "status": "completed",
+        "trackedDownloadState": "",
+        "sizeleft": 0,
+        "title": "Completed.No.Import.State.2032.1080p",
+    }
+    snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+    blocked, rc, _m, _diag = upstream_analyze_path(f, snap)
+    assert blocked is False
+    assert rc == ""
 
 
 def test_fetch_snapshot_parallel_handles_disabled_apps() -> None:

@@ -707,7 +707,12 @@ def test_refiner_pass_final_gate_blocks_when_queue_turns_active(
         phase["n"] += 1
         if phase["n"] == 1:
             return RefinerQueueSnapshot(False, False, False, False, (), ())
-        rec = {"status": "downloading", "sizeleft": 0, "outputPath": p}
+        rec = {
+            "status": "downloading",
+            "trackedDownloadState": "downloading",
+            "sizeleft": 0,
+            "outputPath": p,
+        }
         return RefinerQueueSnapshot(True, False, True, False, (rec,), ())
 
     monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", phased_fetch)
@@ -756,7 +761,12 @@ def test_refiner_pass_skips_probe_when_radarr_queue_active(tmp_path: Path, monke
         w = Path(_row.refiner_watched_folder or "")
         files = sorted(w.rglob("*.mkv"))
         p = str(files[0].resolve()) if files else ""
-        rec = {"status": "downloading", "sizeleft": 0, "outputPath": p}
+        rec = {
+            "status": "downloading",
+            "trackedDownloadState": "downloading",
+            "sizeleft": 0,
+            "outputPath": p,
+        }
         return RefinerQueueSnapshot(True, False, True, False, (rec,), ())
 
     monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", fake_fetch)
@@ -834,7 +844,12 @@ def test_refiner_pass_ffprobe_fail_reclassified_when_upstream_active(
         phase["n"] += 1
         if phase["n"] <= 2:
             return RefinerQueueSnapshot(False, False, False, False, (), ())
-        rec = {"status": "downloading", "sizeleft": 0, "outputPath": p}
+        rec = {
+            "status": "downloading",
+            "trackedDownloadState": "downloading",
+            "sizeleft": 0,
+            "outputPath": p,
+        }
         return RefinerQueueSnapshot(True, False, True, False, (rec,), ())
 
     monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", phased_fetch)
