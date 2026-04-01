@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.6.0 — 2026-04-01
+
+### Security
+
+- Backup export endpoint changed from GET to POST with CSRF validation.
+- Session cookie sets `secure=True` when served over HTTPS or behind a TLS reverse proxy.
+- Added SRI integrity hash to CDN Lucide script tag.
+- Added `Referrer-Policy` and `Permissions-Policy` security headers.
+
+### Fixed
+
+- Background manual search tasks no longer silently lost to garbage collection.
+- Orphaned refiner work-dir temp files cleaned up at the start of each pass (1-hour stale cutoff).
+- Hex API key log redaction narrowed to labeled contexts only (stops clobbering download IDs and checksums).
+- Removed `REFINER_DIAGNOSTIC_BOOT` warning that fired on every refiner pass.
+
+### Improved
+
+- Dashboard polling uses exponential backoff (15s → 60s) when idle; resets on change.
+- Live Arr dashboard API calls wrapped in 10-second timeout (prevents UI freeze on slow Arr instances).
+- Scheduler logs an INFO line when a tick is skipped due to a run already in progress.
+- Refiner before/after comparison auto-opens on successful outcomes.
+- Inter font self-hosted (eliminates Google Fonts CDN dependency and external network calls).
+
+### Internal
+
+- Split `refiner_service.py` into `refiner_pipeline.py`, `refiner_activity_persistence.py`, and `refiner_cleanup.py`.
+- Extracted shared `_dedupe_upstream_wait_row` helper (was duplicated in two persistence paths).
+- Renamed underscore-prefixed public API functions in `service_logic.py` and `display_helpers.py`.
+- Renamed `_get_or_create_settings` to `get_or_create_settings` across the codebase.
+- Deleted dead `app/config.py` module and deprecated `LOGS_DIR` constant.
+- Added missing `import logging` in `security_utils.py`.
+- Added `.cursor/` and `*.code-workspace` to `.gitignore`.
+
 ## [3.5.2] - 2026-04-01
 
 ### Fixed
