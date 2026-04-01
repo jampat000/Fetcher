@@ -173,16 +173,72 @@ def _resolved_key(p: Path) -> str:
 
 
 def _path_key_matches_candidate(file_key: str, queue_path: str) -> bool:
-    """Resolved equality, or ``file_key`` is a file under ``queue_path`` (folder from API)."""
-    try:
-        q_key = _resolved_key(Path(queue_path))
-    except OSError:
-        q_key = str(Path(queue_path)).casefold()
-    if not q_key:
+    """Universal path-shape match for file-vs-directory and equivalent suffix paths."""
+
+    def _norm_path_text(raw: str) -> str:
+        t = str(raw or "").strip().replace("\\", "/")
+        while "//" in t:
+            t = t.replace("//", "/")
+        if len(t) > 1:
+            t = t.rstrip("/")
+        return t.casefold()
+
+    def _norm_parts(raw: str) -> tuple[str, ...]:
+        t = _norm_path_text(raw)
+        if not t:
+            return ()
+        out: list[str] = []
+        for part in t.split("/"):
+            p = part.strip()
+            if not p or p == ".":
+                continue
+            if p == "..":
+                if out:
+                    out.pop()
+                continue
+            out.append(p)
+        return tuple(out)
+
+    def _parts_suffix_match(longer: tuple[str, ...], shorter: tuple[str, ...]) -> bool:
+        if len(shorter) < 2 or len(shorter) > len(longer):
+            return False
+        return tuple(longer[-len(shorter) :]) == tuple(shorter)
+
+    def _common_suffix_len(a: tuple[str, ...], b: tuple[str, ...]) -> int:
+        n = 0
+        for pa, pb in zip(reversed(a), reversed(b)):
+            if pa != pb:
+                break
+            n += 1
+        return n
+
+    q_key = _norm_path_text(queue_path)
+    f_key = _norm_path_text(file_key)
+    if not q_key or not f_key:
         return False
-    if file_key == q_key:
+    if f_key == q_key:
         return True
-    return file_key.startswith(q_key + "\\") or file_key.startswith(q_key + "/")
+    if f_key.startswith(q_key + "/"):
+        return True
+
+    f_parts = _norm_parts(f_key)
+    q_parts = _norm_parts(q_key)
+    if not f_parts or not q_parts:
+        return False
+
+    # Candidate parent directory equality (queue has directory path).
+    if len(f_parts) >= 2 and q_parts == f_parts[:-1]:
+        return True
+    # Equivalent suffix/components despite different roots/prefixes.
+    if _parts_suffix_match(f_parts, q_parts):
+        return True
+    if len(f_parts) >= 2 and _parts_suffix_match(f_parts[:-1], q_parts):
+        return True
+    if _common_suffix_len(f_parts, q_parts) >= 2:
+        return True
+    if len(f_parts) >= 2 and _common_suffix_len(f_parts[:-1], q_parts) >= 2:
+        return True
+    return False
 
 
 _TITLE_EXT_RE = re.compile(r"\.(mkv|mp4|m4v|avi|mov|wmv|ts|m2ts|webm)$", re.IGNORECASE)

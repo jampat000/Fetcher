@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.7.7 — 2026-04-01
+
+### Fixed
+
+- Refiner readiness path matching now uses universal normalized path-shape comparison (directory/file relationships plus root-agnostic suffix matching), so active Radarr queue directory paths correctly block matching candidate files even when root prefixes differ.
+
 ## 3.7.6 — 2026-04-01
 
 ### Fixed

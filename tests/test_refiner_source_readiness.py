@@ -88,6 +88,66 @@ def test_upstream_radarr_blocks_movie_folder_prefix_when_file_in_subpath(tmp_pat
     assert diag["radarr_active_path_samples"]
 
 
+def test_upstream_path_match_exact_file_path_equality_blocks(tmp_path: Path) -> None:
+    f = tmp_path / "Exact.Match.2033.mkv"
+    f.write_bytes(b"x" * 80)
+    rec = {
+        "trackedDownloadState": "downloading",
+        "sizeleft": 0,
+        "outputPath": str(f.resolve()),
+    }
+    snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+    blocked, rc, _m, _diag = upstream_analyze_path(f, snap)
+    assert blocked is True
+    assert rc == "radarr_queue_active_download"
+
+
+def test_upstream_path_match_directory_vs_candidate_file_blocks(tmp_path: Path) -> None:
+    d = tmp_path / "Movie.Name.2034.1080p"
+    d.mkdir()
+    f = d / "Movie.Name.2034.1080p.mkv"
+    f.write_bytes(b"x" * 80)
+    rec = {
+        "trackedDownloadState": "importPending",
+        "sizeleft": 0,
+        "outputPath": str(d.resolve()),
+    }
+    snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+    blocked, rc, _m, _diag = upstream_analyze_path(f, snap)
+    assert blocked is True
+    assert rc == "radarr_queue_active_download"
+
+
+def test_upstream_path_match_same_suffix_different_roots_blocks(tmp_path: Path) -> None:
+    f = tmp_path / "root_a" / "Movies" / "Movie.Name.2035.2160p" / "Movie.Name.2035.2160p.mkv"
+    f.parent.mkdir(parents=True)
+    f.write_bytes(b"x" * 80)
+    rec = {
+        "trackedDownloadState": "importBlocked",
+        "sizeleft": 0,
+        "outputPath": "Z:\\another_root\\Movies\\Movie.Name.2035.2160p",
+    }
+    snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+    blocked, rc, _m, _diag = upstream_analyze_path(f, snap)
+    assert blocked is True
+    assert rc == "radarr_queue_active_download"
+
+
+def test_upstream_path_match_unrelated_paths_do_not_block(tmp_path: Path) -> None:
+    f = tmp_path / "Downloads" / "Keep.This.2036.mkv"
+    f.parent.mkdir(parents=True)
+    f.write_bytes(b"x" * 80)
+    rec = {
+        "trackedDownloadState": "downloading",
+        "sizeleft": 0,
+        "outputPath": "Z:\\unrelated\\different\\path",
+    }
+    snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+    blocked, rc, _m, _diag = upstream_analyze_path(f, snap)
+    assert blocked is False
+    assert rc == ""
+
+
 def test_upstream_radarr_blocks_moviefile_path_field(tmp_path: Path) -> None:
     f = tmp_path / "standalone.mkv"
     f.write_bytes(b"x" * 60)
