@@ -200,7 +200,7 @@ def _path_key_matches_candidate(file_key: str, queue_path: str) -> bool:
         return tuple(out)
 
     def _parts_suffix_match(longer: tuple[str, ...], shorter: tuple[str, ...]) -> bool:
-        if len(shorter) < 2 or len(shorter) > len(longer):
+        if len(shorter) < 1 or len(shorter) > len(longer):
             return False
         return tuple(longer[-len(shorter) :]) == tuple(shorter)
 
@@ -211,6 +211,15 @@ def _path_key_matches_candidate(file_key: str, queue_path: str) -> bool:
                 break
             n += 1
         return n
+
+    def _drop_rootish(parts: tuple[str, ...]) -> tuple[str, ...]:
+        if not parts:
+            return ()
+        p0 = parts[0]
+        # Drive-like roots (e.g. ``c:``), UNC-ish anchors (``server``, ``share``), and leading slash sentinel.
+        if p0.endswith(":") or p0 in ("", "unc", "server", "share"):
+            return tuple(parts[1:])
+        return parts
 
     q_key = _norm_path_text(queue_path)
     f_key = _norm_path_text(file_key)
@@ -237,6 +246,12 @@ def _path_key_matches_candidate(file_key: str, queue_path: str) -> bool:
     if _common_suffix_len(f_parts, q_parts) >= 2:
         return True
     if len(f_parts) >= 2 and _common_suffix_len(f_parts[:-1], q_parts) >= 2:
+        return True
+    f_no_root = _drop_rootish(f_parts)
+    q_no_root = _drop_rootish(q_parts)
+    if q_no_root and _parts_suffix_match(f_no_root, q_no_root):
+        return True
+    if q_no_root and len(f_no_root) >= 2 and _parts_suffix_match(f_no_root[:-1], q_no_root):
         return True
     return False
 

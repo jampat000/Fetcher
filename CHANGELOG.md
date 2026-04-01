@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.7.9 — 2026-04-01
+
+### Fixed
+
+- Refiner queue-path matching now performs root-agnostic component suffix comparison for directory/file shapes (including single-folder queue directory paths), so valid active queue directory matches block candidate files reliably across differing roots.
+
 ## 3.7.8 — 2026-04-01
 
 ### Improved

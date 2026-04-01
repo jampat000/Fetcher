@@ -133,6 +133,21 @@ def test_upstream_path_match_same_suffix_different_roots_blocks(tmp_path: Path) 
     assert rc == "radarr_queue_active_download"
 
 
+def test_upstream_path_match_single_folder_suffix_different_roots_blocks(tmp_path: Path) -> None:
+    f = tmp_path / "Completed-Movies" / "Sucker.Punch" / "Sucker.Punch.2011.1080p.mkv"
+    f.parent.mkdir(parents=True)
+    f.write_bytes(b"x" * 80)
+    rec = {
+        "trackedDownloadState": "downloading",
+        "sizeleft": 0,
+        "outputPath": "F:\\Sucker.Punch\\",
+    }
+    snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+    blocked, rc, _m, _diag = upstream_analyze_path(f, snap)
+    assert blocked is True
+    assert rc == "radarr_queue_active_download"
+
+
 def test_upstream_path_match_unrelated_paths_do_not_block(tmp_path: Path) -> None:
     f = tmp_path / "Downloads" / "Keep.This.2036.mkv"
     f.parent.mkdir(parents=True)
