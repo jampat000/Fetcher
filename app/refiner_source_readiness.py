@@ -91,6 +91,25 @@ def queue_record_upstream_active(rec: dict[str, Any]) -> bool:
     return td_state in _BLOCKING_TRACKED_DOWNLOAD_STATES
 
 
+def _is_import_pending_no_eligible_nonblocking(rec: dict[str, Any], q_paths: list[str]) -> bool:
+    """
+    Deadlock escape hatch:
+    ``Downloaded - Waiting to Import`` rows with no eligible files should not block Refiner.
+    """
+    td_state = _norm_status(rec.get("trackedDownloadState"))
+    if td_state != "importpending":
+        return False
+    if _size_left_bytes(rec) != 0:
+        return False
+    td_status = _norm_status(rec.get("trackedDownloadStatus"))
+    if td_status not in ("warning", "warn"):
+        return False
+    if q_paths:
+        return False
+    msg = str(rec.get("message") or "").casefold()
+    return "no files found are eligible for import" in msg
+
+
 def _nonempty_str(val: object) -> str | None:
     if isinstance(val, str):
         t = val.strip()
@@ -513,8 +532,10 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
         for idx, rec in enumerate(records):
             if not isinstance(rec, dict):
                 continue
-            active = queue_record_upstream_active(rec)
             q_paths = _usable_queue_path_strings(rec)
+            active = queue_record_upstream_active(rec) and not _is_import_pending_no_eligible_nonblocking(
+                rec, q_paths
+            )
             path_matched = any(_path_key_matches_candidate(file_key, qp) for qp in q_paths)
             title_matched = False
             title_raw = ""

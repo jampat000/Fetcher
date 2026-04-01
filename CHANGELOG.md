@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.7.10 — 2026-04-01
+
+### Fixed
+
+- Refiner queue-state classification now treats Radarr `importPending` rows with `trackedDownloadStatus=warning`, zero `sizeleft/sizeLeft`, no usable import paths, and “No files found are eligible for import” as non-blocking, preventing Refiner/Radarr deadlock while preserving blocking for real active downloads.
+
 ## 3.7.9 — 2026-04-01
 
 ### Fixed

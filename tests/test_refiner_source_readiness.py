@@ -513,6 +513,23 @@ def test_upstream_radarr_importpending_title_match_blocks(tmp_path: Path) -> Non
     assert diag["upstream_block_match_kind"] == "title"
 
 
+def test_upstream_radarr_importpending_warning_no_eligible_does_not_block(tmp_path: Path) -> None:
+    f = tmp_path / "Deadlock.Case.2040.1080p.mkv"
+    f.write_bytes(b"x" * 80)
+    rec = {
+        "status": "completed",
+        "trackedDownloadState": "importPending",
+        "trackedDownloadStatus": "warning",
+        "sizeleft": 0,
+        "message": "No files found are eligible for import",
+        "title": "Deadlock.Case.2040.1080p",
+    }
+    snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+    blocked, rc, _m, _diag = upstream_analyze_path(f, snap)
+    assert blocked is False
+    assert rc == ""
+
+
 def test_upstream_radarr_importblocked_title_match_blocks(tmp_path: Path) -> None:
     f = tmp_path / "Import.Blocked.Target.2031.2160p.mkv"
     f.write_bytes(b"x" * 80)
@@ -542,6 +559,22 @@ def test_upstream_radarr_completed_no_import_state_does_not_block(tmp_path: Path
     blocked, rc, _m, _diag = upstream_analyze_path(f, snap)
     assert blocked is False
     assert rc == ""
+
+
+def test_upstream_radarr_downloading_still_blocks(tmp_path: Path) -> None:
+    f = tmp_path / "Still.Downloading.2041.1080p.mkv"
+    f.write_bytes(b"x" * 80)
+    rec = {
+        "status": "downloading",
+        "trackedDownloadState": "downloading",
+        "trackedDownloadStatus": "ok",
+        "sizeleft": 0,
+        "outputPath": str(f.resolve()),
+    }
+    snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+    blocked, rc, _m, _diag = upstream_analyze_path(f, snap)
+    assert blocked is True
+    assert rc == "radarr_queue_active_download"
 
 
 def test_fetch_snapshot_parallel_handles_disabled_apps() -> None:
