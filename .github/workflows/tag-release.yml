@@ -41,14 +41,30 @@ jobs:
           fi
           echo "tag=v${V}" >> "$GITHUB_OUTPUT"
 
+      # Single tag per VERSION: create if missing; if tag exists it MUST point at HEAD
+      # or the job fails (prevents silent “green” skips with no installer).
       - name: Create and push tag if missing
         id: tag_push
         run: |
-          set -e
+          set -euo pipefail
           echo "pushed=false" >> "$GITHUB_OUTPUT"
+          echo "dispatch=false" >> "$GITHUB_OUTPUT"
           TAG="${{ steps.ver.outputs.tag }}"
-          if git ls-remote --tags origin "refs/tags/${TAG}" | grep -q .; then
-            echo "Tag $TAG already exists on origin — skipping push (idempotent)."
+          HEAD_SHA="$(git rev-parse HEAD)"
+          # Peels annotated tag to commit; empty if tag absent
+          REMOTE_PEEL="$(git ls-remote -q origin "refs/tags/${TAG}^{}" | cut -f1 || true)"
+          if [ -z "$REMOTE_PEEL" ]; then
+            REMOTE_SHA="$(git ls-remote -q origin "refs/tags/${TAG}" | head -n1 | cut -f1 || true)"
+          else
+            REMOTE_SHA="$REMOTE_PEEL"
+          fi
+          if [ -n "$REMOTE_SHA" ]; then
+            if [ "$REMOTE_SHA" != "$HEAD_SHA" ]; then
+              echo "::error::Tag $TAG already exists on origin (commit $REMOTE_SHA) but VERSION bump commit is $HEAD_SHA. Bump VERSION to a new release or delete the remote tag."
+              exit 1
+            fi
+            echo "Tag $TAG already exists at this commit — dispatching Build installer and Docker publish (no re-push)."
+            echo "dispatch=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git config user.name "github-actions[bot]"
@@ -56,13 +72,14 @@ jobs:
           git tag -a "$TAG" -m "$TAG"
           git push origin "$TAG"
           echo "pushed=true" >> "$GITHUB_OUTPUT"
-          echo "Pushed $TAG — dispatching Build installer and Docker publish…"
+          echo "dispatch=true" >> "$GITHUB_OUTPUT"
+          echo "Pushed $TAG"
 
       # Build installer must run at the tag commit (Windows bundle matches release).
       # Docker publish must be dispatched with ref = default branch so workflow YAML is current;
       # pass checkout_ref = tag so the image is built from the release commit (ref trap).
       - name: Dispatch Build installer and Docker publish
-        if: steps.tag_push.outputs.pushed == 'true' || github.event_name == 'workflow_dispatch'
+        if: steps.tag_push.outputs.dispatch == 'true'
         uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}

@@ -311,3 +311,5 @@ def test_refiner_upstream_wait_reason_renders_waiting_not_failed() -> None:
     assert row["refiner_outcome_label"] == "Waiting"
     assert row["activity_outcome"] == "waiting"
     assert row["refiner_outcome_class"] == "blocked_waiting"
+    assert row["refiner_show_comparison"] is False
+    assert row["refiner_compare_rows"] == []

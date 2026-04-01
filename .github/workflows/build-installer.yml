@@ -1,16 +1,13 @@
-# Canonical release — Windows (part 2 of 3): PyInstaller + Inno → FetcherSetup.exe + GitHub Release on tag.
-# Orchestrator: tag-release.yml. Linux image: docker-publish.yml. CI: ci.yml.
+# Canonical release — Windows (part 2 of 3): PyInstaller + Inno → FetcherSetup.exe + GitHub Release.
+# Triggered only via workflow_dispatch (tag-release.yml after VERSION/tag, or manual recovery with ref=vX.Y.Z).
+# Pushes with GITHUB_TOKEN do not trigger downstream workflows; there is no duplicate master+tag build.
+# Linux image: docker-publish.yml. CI: ci.yml.
 #
 # Local parity: `installer\build.ps1 -Clean` with FFmpeg staged. Default branch is `master`.
 
 name: Build installer
 
 on:
-  push:
-    branches:
-      - master
-    tags:
-      - "v*"
   workflow_dispatch:
 
 # Group by ref so concurrent runs for different refs (e.g. branch vs tag) do not cancel each other.
@@ -159,8 +156,7 @@ jobs:
   # Creates the GitHub Release + attaches FetcherSetup.exe (no deployment Environment gate — those often
   # stall on “Review deployments” and leave tags without a Latest release).
   release:
-    # Tag push (PAT or rare cases) OR manual "Run workflow" with ref = tag (recover missed releases).
-    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && startsWith(github.ref, 'refs/tags/v') }}
+    if: ${{ github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/v') }}
     needs: build
     runs-on: ubuntu-latest
     permissions:

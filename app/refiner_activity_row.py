@@ -274,28 +274,32 @@ def build_refiner_activity_row_dict(r: RefinerActivity, tz: str, now: datetime) 
             outcome_label = "Waiting"
             outcome_ui = "waiting"
             tone = "skip"
+            # No remux ran — size_before on the row is only a file-size hint; do not show
+            # a misleading before/after grid (would imply a failed pipeline with partial output).
+            show_comparison = False
+            compare_rows = []
         else:
             outcome_ui = "failed"
             tone = "fail"
-        show_comparison = bool(
-            _norm_line(ctx.get("audio_before"))
-            or _norm_line(ctx.get("audio_after"))
-            or _norm_line(ctx.get("subs_before"))
-            or _norm_line(ctx.get("subs_after"))
-            or sb > 0
-        )
-        if show_comparison:
-            compare_rows = _compare_rows_audio_subs_size(
-                ctx=ctx,
-                sb=sb,
-                sa=sa,
-                failed=True,
-                include_audio_subs=True,
-                ab=ab,
-                aa=aa,
-                sbb=sbb,
-                sba=sba,
+            show_comparison = bool(
+                _norm_line(ctx.get("audio_before"))
+                or _norm_line(ctx.get("audio_after"))
+                or _norm_line(ctx.get("subs_before"))
+                or _norm_line(ctx.get("subs_after"))
+                or sb > 0
             )
+            if show_comparison:
+                compare_rows = _compare_rows_audio_subs_size(
+                    ctx=ctx,
+                    sb=sb,
+                    sa=sa,
+                    failed=True,
+                    include_audio_subs=True,
+                    ab=ab,
+                    aa=aa,
+                    sbb=sbb,
+                    sba=sba,
+                )
         reason = _failure_reason_display(ctx, st)
         if reason:
             first_ln = reason.splitlines()[0].strip()

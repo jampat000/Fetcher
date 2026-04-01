@@ -27,8 +27,10 @@ from app.refiner_media_identity import (
 )
 from app.refiner_mux import ffprobe_json, remux_to_temp_file
 from app.refiner_rules import (
+    REFINER_SOURCE_SIDECAR_CLEANUP_SUFFIXES,
     RefinerRulesConfig,
     is_commentary_audio,
+    is_refiner_media_candidate,
     is_remux_required,
     normalize_audio_preference_mode,
     normalize_lang,
@@ -106,7 +108,6 @@ def _activity_snapshot(
         if v:
             payload[key] = v[:500] if key != "refiner_year" else v[:32]
     return dumps_activity_context(payload)
-_MEDIA_EXTENSIONS = frozenset({".mkv", ".mp4", ".m4v", ".webm", ".avi"})
 _REFINER_JOB_LOG_MAX_CHARS = 400_000
 
 
@@ -169,7 +170,7 @@ def _gather_watched_files(watched_folder: Path) -> list[Path]:
     out: list[Path] = []
     try:
         for p in watched_folder.rglob("*"):
-            if p.is_file() and p.suffix.lower() in _MEDIA_EXTENSIONS:
+            if is_refiner_media_candidate(p):
                 out.append(p)
     except OSError:
         return []
@@ -348,6 +349,60 @@ def _try_remove_empty_watch_subfolder(*, source_parent: Path, watched_root: Path
         return "failed_rmdir"
     logger.info("Refiner folder cleanup: removed empty folder %s", parent)
     return "removed_empty_folder"
+
+
+def _cleanup_refiner_source_sidecar_artifacts_after_success(
+    *, media_parent: Path, watched_root: Path
+) -> int:
+    """Remove allowlisted download/repair sidecars from the watched source folder only.
+
+    Runs only after successful completion of the media file that lived under
+    ``media_parent``. Direct children only; suffix allowlist in
+    ``REFINER_SOURCE_SIDECAR_CLEANUP_SUFFIXES``. Does not touch output or work trees.
+    """
+    try:
+        w = watched_root.resolve()
+        parent = media_parent.resolve()
+    except OSError as e:
+        logger.info("Refiner sidecar cleanup: skipped (could not resolve paths: %s)", e)
+        return 0
+    try:
+        parent.relative_to(w)
+    except ValueError:
+        logger.info(
+            "Refiner sidecar cleanup: skipped (parent %s is not under watch root %s)",
+            parent,
+            w,
+        )
+        return 0
+    if not parent.is_dir():
+        return 0
+    removed = 0
+    try:
+        entries = list(parent.iterdir())
+    except OSError as e:
+        logger.warning("Refiner sidecar cleanup: skipped (could not list %s: %s)", parent, e)
+        return 0
+    for entry in entries:
+        try:
+            if not entry.is_file():
+                continue
+        except OSError:
+            continue
+        suf = entry.suffix.lower()
+        if suf not in REFINER_SOURCE_SIDECAR_CLEANUP_SUFFIXES:
+            continue
+        try:
+            entry.unlink()
+            removed += 1
+            logger.info("Refiner sidecar cleanup: removed %s", entry.name)
+        except OSError as e:
+            logger.warning(
+                "Refiner sidecar cleanup: could not remove %s (%s)",
+                entry,
+                e,
+            )
+    return removed
 
 
 def _no_change_explanation_bullets(plan: Any, *, sbb_len: int, sba_len: int) -> list[str]:
@@ -855,6 +910,9 @@ def _process_one_refiner_file_sync(
         try:
             source_parent = path.parent
             _finalize_output_file(path, destination)
+            _cleanup_refiner_source_sidecar_artifacts_after_success(
+                media_parent=source_parent, watched_root=watched_root
+            )
             fold = _try_remove_empty_watch_subfolder(source_parent=source_parent, watched_root=watched_root)
             sa = _file_size_bytes(destination)
             ok_ctx = _activity_snapshot(
@@ -1007,6 +1065,9 @@ def _process_one_refiner_file_sync(
                 u_err,
                 path,
             )
+        _cleanup_refiner_source_sidecar_artifacts_after_success(
+            media_parent=path.parent, watched_root=watched_root
+        )
         fold = _try_remove_empty_watch_subfolder(source_parent=path.parent, watched_root=watched_root)
         logger.info("Refiner: output written to %s (watched file: %s)", destination, path.name)
         sa = _file_size_bytes(destination)

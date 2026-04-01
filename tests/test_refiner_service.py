@@ -97,6 +97,8 @@ def test_live_run_moves_to_output_and_deletes_source(monkeypatch: pytest.MonkeyP
         f = watched / "a" / "m.mkv"
         f.parent.mkdir(parents=True)
         f.write_bytes(b"original")
+        (f.parent / "m.par2").write_bytes(b"par")
+        (f.parent / "readme.nfo").write_text("rel", encoding="utf-8")
         async with SessionLocal() as session:
             row = await _get_or_create_settings(session)
             row.refiner_enabled = True
@@ -110,6 +112,8 @@ def test_live_run_moves_to_output_and_deletes_source(monkeypatch: pytest.MonkeyP
         assert r.get("remuxed") == 1
         assert not f.exists()
         assert (output / "a" / "m.mkv").exists()
+        assert not (f.parent / "m.par2").exists()
+        assert not (f.parent / "readme.nfo").exists()
         assert not (watched / "a").exists()
 
     asyncio.run(_go())
@@ -135,6 +139,8 @@ def test_live_no_remux_copies_to_output_removes_source_and_empty_folder(
         sub.mkdir(parents=True)
         f = sub / "clean.file.name.1080p.mkv"
         f.write_bytes(b"payload")
+        (sub / "side.sfv").write_text("chk", encoding="utf-8")
+        (sub / "grab.nzb").write_bytes(b"nzb")
         output.mkdir()
         async with SessionLocal() as session:
             row = await _get_or_create_settings(session)
@@ -149,6 +155,8 @@ def test_live_no_remux_copies_to_output_removes_source_and_empty_folder(
         assert r.get("remuxed") == 1
         assert not f.exists()
         assert (output / "sub" / "clean.file.name.1080p.mkv").read_bytes() == b"payload"
+        assert not (sub / "side.sfv").exists()
+        assert not (sub / "grab.nzb").exists()
         assert not sub.exists()
 
     asyncio.run(_go())
@@ -197,6 +205,7 @@ def test_dry_run_no_remux_does_not_copy_or_delete(monkeypatch: pytest.MonkeyPatc
         output.mkdir()
         f = watched / "solo.mkv"
         f.write_bytes(b"orig")
+        (watched / "solo.par2").write_bytes(b"p")
         async with SessionLocal() as session:
             row = await _get_or_create_settings(session)
             row.refiner_enabled = True
@@ -208,6 +217,7 @@ def test_dry_run_no_remux_does_not_copy_or_delete(monkeypatch: pytest.MonkeyPatc
             r = await run_refiner_pass(session, trigger="scheduled")
         assert int(r.get("dry_run_items") or 0) >= 1
         assert f.exists()
+        assert (watched / "solo.par2").exists()
         assert not (output / "solo.mkv").exists()
 
     asyncio.run(_go())
@@ -236,6 +246,7 @@ def test_source_preserved_on_failure(monkeypatch: pytest.MonkeyPatch, tmp_path) 
         output.mkdir()
         f = watched / "m.mkv"
         f.write_bytes(b"original")
+        (watched / "m.par2").write_bytes(b"parity")
         async with SessionLocal() as session:
             row = await _get_or_create_settings(session)
             row.refiner_enabled = True
@@ -248,6 +259,7 @@ def test_source_preserved_on_failure(monkeypatch: pytest.MonkeyPatch, tmp_path) 
         assert r.get("errors") == 1
         assert r.get("ok") is False
         assert f.read_bytes() == b"original"
+        assert (watched / "m.par2").read_bytes() == b"parity"
         assert not (output / "m.mkv").exists()
 
     asyncio.run(_go())

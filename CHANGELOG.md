@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.5.2] - 2026-04-01
+
+### Fixed
+
+- **GitHub release flow:** Tag release no longer exits successfully when the version tag already exists on a *different* commit (VERSION drift). When the tag already points at the current commit, downstream **Build installer** and **Docker publish** are still dispatched (GITHUB_TOKEN tag pushes do not trigger other workflows). **Build installer** and **Docker publish** now run only via `workflow_dispatch` from tag-release (or manual recovery), removing duplicate master+tag Windows builds.
+- **Refiner Activity:** Upstream **Waiting** rows no longer show a misleading before/after comparison grid (file-size-only hints looked like a failed remux).
+- **Refiner:** Allowlisted download/repair sidecars (`.par2`, `.sfv`, `.nzb`, `.nfo`) are removed from the watched source folder only after a **successful** live job; discovery remains media-allowlist only.
+
 ## [3.5.1] - 2026-04-01
 
 ### Fixed
