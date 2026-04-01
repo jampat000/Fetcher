@@ -197,12 +197,7 @@ def test_run_once_sonarr_no_internal_interval_skip_anymore(monkeypatch: pytest.M
     assert "Sonarr: 0 searches — no eligible missing items" in result.message
     assert seen["health"] == 1
     assert asyncio.run(_settings_row()).sonarr_last_run_at == fixed_now
-    act = asyncio.run(_latest_activity())
-    assert act is not None
-    assert act.app == "sonarr"
-    assert act.kind == "missing"
-    assert act.count == 0
-    assert "0 searches — no eligible missing items" in (act.detail or "")
+    assert asyncio.run(_activity_count_for("sonarr", "missing")) == 0
 
 
 def test_scheduled_scoped_run_sonarr_only(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -568,13 +563,86 @@ def test_run_once_sonarr_suppressed_cooldown_snapshot_and_lifecycle(monkeypatch:
     assert snap.status_message == "OK"
     assert snap.missing_total == 4
     assert snap.cutoff_unmet_total == 7
+    assert asyncio.run(_activity_count_for("sonarr", "missing")) == 0
+    assert asyncio.run(_settings_row()).sonarr_last_run_at == fixed_now
+
+
+def test_run_once_manual_sonarr_missing_all_retry_delay_writes_friendly_activity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixed_now = datetime(2026, 3, 23, 14, 30, 0)
+    asyncio.run(_clear_run_tables())
+    asyncio.run(
+        _set_settings(
+            sonarr_enabled=True,
+            sonarr_url="http://localhost:8989",
+            sonarr_search_missing=True,
+            sonarr_search_upgrades=False,
+            sonarr_last_run_at=None,
+            emby_enabled=False,
+            radarr_enabled=False,
+        )
+    )
+
+    async def _seed_cooldown() -> None:
+        async with SessionLocal() as s:
+            for eid in (201, 202, 203, 204):
+                s.add(
+                    ArrActionLog(
+                        created_at=fixed_now - timedelta(minutes=5),
+                        app="sonarr",
+                        action="missing",
+                        item_type="episode",
+                        item_id=eid,
+                    )
+                )
+            await s.commit()
+
+    asyncio.run(_seed_cooldown())
+    seen = {"health": 0}
+
+    class _FakeArrClient:
+        def __init__(self, _cfg):
+            pass
+
+        async def health(self):
+            seen["health"] += 1
+
+        async def series(self):
+            return [{"id": 10}]
+
+        async def episodes_for_series(self, *, series_id: int):
+            assert series_id == 10
+            return [
+                {"id": 201, "monitored": True, "hasFile": False},
+                {"id": 202, "monitored": True, "hasFile": False},
+                {"id": 203, "monitored": True, "hasFile": False},
+                {"id": 204, "monitored": True, "hasFile": False},
+            ]
+
+        async def aclose(self):
+            return None
+
+    async def _wanted_total(*args, **kwargs):
+        return 7
+
+    monkeypatch.setattr("app.service_logic.utc_now_naive", lambda: fixed_now)
+    monkeypatch.setattr("app.service_logic.resolve_sonarr_api_key", lambda _s: "k")
+    monkeypatch.setattr("app.service_logic.resolve_radarr_api_key", lambda _s: "")
+    monkeypatch.setattr("app.service_logic.resolve_emby_api_key", lambda _s: "")
+    monkeypatch.setattr("app.service_logic.in_window", lambda **_kw: True)
+    monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
+    monkeypatch.setattr("app.service_logic._wanted_queue_total", _wanted_total)
+    result = asyncio.run(_run_once("sonarr_missing"))
+    assert result.ok is True
+    assert "retry delay" in result.message.lower()
+    assert asyncio.run(_activity_count_for("sonarr", "missing")) == 1
     act = asyncio.run(_latest_activity())
     assert act is not None
-    assert act.app == "sonarr"
     assert act.kind == "missing"
     assert act.count == 0
-    assert "0 searches — all items within retry delay" in (act.detail or "")
-    assert asyncio.run(_settings_row()).sonarr_last_run_at == fixed_now
+    assert "No missing search was started" in (act.detail or "")
+    assert "retry wait period" in (act.detail or "").lower()
 
 
 def test_run_once_radarr_manual_upgrade_success_activity_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -708,6 +776,7 @@ def test_run_once_manual_sonarr_missing_no_results_writes_activity(monkeypatch: 
     assert act.app == "sonarr"
     assert act.kind == "missing"
     assert act.count == 0
+    assert "No missing search was started" in (act.detail or "")
     assert asyncio.run(_activity_count_for("sonarr", "missing")) == 1
 
 
@@ -753,6 +822,7 @@ def test_run_once_manual_radarr_missing_no_results_writes_activity(monkeypatch: 
     assert act.app == "radarr"
     assert act.kind == "missing"
     assert act.count == 0
+    assert "No missing search was started" in (act.detail or "")
     assert asyncio.run(_activity_count_for("radarr", "missing")) == 1
 
 

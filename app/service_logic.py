@@ -1115,6 +1115,40 @@ def _detail_from_labels(labels: list[str]) -> str:
     return body
 
 
+def _activity_missing_no_search_detail(*, app: str, reason: str, candidates: int | None = None) -> str:
+    """Two-line Activity detail for missing search when nothing was queued (manual actions only)."""
+    is_tv = app == "sonarr"
+    media = "TV" if is_tv else "Movies"
+    label = "episodes" if is_tv else "movies"
+    if reason == "retry_delay":
+        c = int(candidates or 0)
+        user = (
+            f"No missing search was started. All {c} monitored missing {label} "
+            f"are still inside Fetcher’s retry wait period."
+        )
+        tech = f"Technical · {media} · candidates={c}; skipped due to retry delay."
+        return f"{user}\n{tech}"
+    user = f"No missing search was started — there are no eligible missing {label} for Fetcher to queue right now."
+    tech = f"Technical · {media} · wanted queue empty or nothing matched filters."
+    return f"{user}\n{tech}"
+
+
+def _activity_upgrade_manual_blocked_detail(*, app: str, reason: str) -> str:
+    """Two-line Activity detail for manual upgrade search when nothing was queued."""
+    media = "TV" if app == "sonarr" else "Movies"
+    if reason == "retry_delay":
+        user = (
+            "No upgrade search was started — everything in the cutoff queue is still inside "
+            "Fetcher’s retry wait period."
+        )
+        tech = f"Technical · {media} · skipped due to retry delay."
+        return f"{user}\n{tech}"
+    unit = "episodes" if app == "sonarr" else "movies"
+    user = f"No upgrade search was started — no {unit} need a cutoff upgrade search right now."
+    tech = f"Technical · {media} · cutoff-unmet queue empty."
+    return f"{user}\n{tech}"
+
+
 def _sanitize_log_text(text: str | None) -> str:
     """Apply log-text redaction before persisting ActivityLog / JobRunLog fields."""
     return redact_sensitive_text(text)
@@ -1431,36 +1465,31 @@ async def _execute_sonarr_block(
             elif missing_total > 0:
                 summary = f"Sonarr: 0 searches — all items within retry delay (candidates={missing_total})"
                 actions.append(summary)
-                # Scheduled runs also need a UI explanation (Activity page), not only JobRunLog text.
-                session.add(
-                    ActivityLog(
-                        job_run_id=log.id,
-                        app="sonarr",
-                        kind="missing",
-                        count=0,
-                        detail=(
-                            f"0 searches — all items within retry delay (candidates={missing_total}, "
-                            f"retry_delay_filtered={missing_total}, cutoff_already_met_filtered=0, "
-                            f"quality_profile_filtered=0, other_constraints_filtered=0)."
-                        ),
+                if arr_manual_scope is not None:
+                    session.add(
+                        ActivityLog(
+                            job_run_id=log.id,
+                            app="sonarr",
+                            kind="missing",
+                            count=0,
+                            detail=_activity_missing_no_search_detail(
+                                app="sonarr", reason="retry_delay", candidates=missing_total
+                            ),
+                        )
                     )
-                )
             else:
                 summary = "Sonarr: 0 searches — no eligible missing items"
                 actions.append(summary)
-                session.add(
-                    ActivityLog(
-                        job_run_id=log.id,
-                        app="sonarr",
-                        kind="missing",
-                        count=0,
-                        detail=(
-                            "0 searches — no eligible missing items "
-                            "(candidates=0, retry_delay_filtered=0, cutoff_already_met_filtered=0, "
-                            "quality_profile_filtered=0, other_constraints_filtered=0)."
-                        ),
+                if arr_manual_scope is not None:
+                    session.add(
+                        ActivityLog(
+                            job_run_id=log.id,
+                            app="sonarr",
+                            kind="missing",
+                            count=0,
+                            detail=_activity_missing_no_search_detail(app="sonarr", reason="no_candidates"),
+                        )
                     )
-                )
         else:
             try:
                 missing_total_including_unreleased = await _sonarr_missing_total_including_unreleased(sonarr)
@@ -1518,7 +1547,7 @@ async def _execute_sonarr_block(
                             app="sonarr",
                             kind="upgrade",
                             count=0,
-                            detail="Manual upgrade search: suppressed by retry delay (no search triggered).",
+                            detail=_activity_upgrade_manual_blocked_detail(app="sonarr", reason="retry_delay"),
                         )
                     )
             else:
@@ -1530,7 +1559,7 @@ async def _execute_sonarr_block(
                             app="sonarr",
                             kind="upgrade",
                             count=0,
-                            detail="Manual upgrade search: no cutoff-unmet episodes found.",
+                            detail=_activity_upgrade_manual_blocked_detail(app="sonarr", reason="no_candidates"),
                         )
                     )
 
@@ -1659,35 +1688,31 @@ async def _execute_radarr_block(
             elif missing_total > 0:
                 summary = f"Radarr: 0 searches — all items within retry delay (candidates={missing_total})"
                 actions.append(summary)
-                session.add(
-                    ActivityLog(
-                        job_run_id=log.id,
-                        app="radarr",
-                        kind="missing",
-                        count=0,
-                        detail=(
-                            f"0 searches — all items within retry delay (candidates={missing_total}, "
-                            f"retry_delay_filtered={missing_total}, cutoff_already_met_filtered=0, "
-                            f"quality_profile_filtered=0, other_constraints_filtered=0)."
-                        ),
+                if arr_manual_scope is not None:
+                    session.add(
+                        ActivityLog(
+                            job_run_id=log.id,
+                            app="radarr",
+                            kind="missing",
+                            count=0,
+                            detail=_activity_missing_no_search_detail(
+                                app="radarr", reason="retry_delay", candidates=missing_total
+                            ),
+                        )
                     )
-                )
             else:
                 summary = "Radarr: 0 searches — no eligible missing items"
                 actions.append(summary)
-                session.add(
-                    ActivityLog(
-                        job_run_id=log.id,
-                        app="radarr",
-                        kind="missing",
-                        count=0,
-                        detail=(
-                            "0 searches — no eligible missing items "
-                            "(candidates=0, retry_delay_filtered=0, cutoff_already_met_filtered=0, "
-                            "quality_profile_filtered=0, other_constraints_filtered=0)."
-                        ),
+                if arr_manual_scope is not None:
+                    session.add(
+                        ActivityLog(
+                            job_run_id=log.id,
+                            app="radarr",
+                            kind="missing",
+                            count=0,
+                            detail=_activity_missing_no_search_detail(app="radarr", reason="no_candidates"),
+                        )
                     )
-                )
         else:
             try:
                 missing_total_including_unreleased = _radarr_missing_total_including_unreleased(await radarr.movies())
@@ -1736,7 +1761,7 @@ async def _execute_radarr_block(
                             app="radarr",
                             kind="upgrade",
                             count=0,
-                            detail="Manual upgrade search: suppressed by retry delay (no search triggered).",
+                            detail=_activity_upgrade_manual_blocked_detail(app="radarr", reason="retry_delay"),
                         )
                     )
             else:
@@ -1748,7 +1773,7 @@ async def _execute_radarr_block(
                             app="radarr",
                             kind="upgrade",
                             count=0,
-                            detail="Manual upgrade search: no cutoff-unmet movies found.",
+                            detail=_activity_upgrade_manual_blocked_detail(app="radarr", reason="no_candidates"),
                         )
                     )
 

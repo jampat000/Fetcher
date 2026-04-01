@@ -343,11 +343,17 @@ def _activity_primary_label(e: ActivityLog) -> str:
     if kind == "trimmed":
         return f"Trimmer · {count} item{'s' if count != 1 else ''} matched rules"
     if kind == "missing":
+        media = "TV" if app == "sonarr" else "Movies"
         unit = "episode" if app == "sonarr" else "movie"
-        return f"Missing search · {count} {unit}{'s' if count != 1 else ''}"
+        if count > 0:
+            return f"{media} · Missing search · {count} {unit}{'s' if count != 1 else ''}"
+        return f"{media} · Missing search · No search started"
     if kind == "upgrade":
+        media = "TV" if app == "sonarr" else "Movies"
         unit = "episode" if app == "sonarr" else "movie"
-        return f"Upgrade search · {count} {unit}{'s' if count != 1 else ''}"
+        if count > 0:
+            return f"{media} · Upgrade search · {count} {unit}{'s' if count != 1 else ''}"
+        return f"{media} · Upgrade search · No search started"
     return f"Activity ({kind or 'event'})"
 
 
@@ -383,6 +389,51 @@ def _humanize_refiner_batch_log_detail(detail: str) -> list[str] | None:
     return lines
 
 
+def _humanize_legacy_arr_search_detail_lines(
+    app: str, kind: str, raw: str, count: int
+) -> list[str] | None:
+    """Rewrite older noisy ActivityLog.detail strings for missing/upgrade (display-only)."""
+    if count > 0:
+        return None
+    t = (raw or "").strip()
+    if not t:
+        return None
+    media = "TV" if app == "sonarr" else "Movies"
+    label = "episodes" if app == "sonarr" else "movies"
+    if kind == "upgrade":
+        if "Manual upgrade search: suppressed by retry delay" in t:
+            return [
+                "No upgrade search was started — everything in the cutoff queue is still inside "
+                "Fetcher’s retry wait period.",
+                f"Technical · {media} · skipped due to retry delay.",
+            ]
+        if "Manual upgrade search: no cutoff-unmet" in t:
+            unit = "episodes" if app == "sonarr" else "movies"
+            return [
+                f"No upgrade search was started — no {unit} need a cutoff upgrade search right now.",
+                f"Technical · {media} · cutoff-unmet queue empty.",
+            ]
+        return None
+    if kind != "missing":
+        return None
+    if "no eligible missing items" in t or t.startswith("0 searches — no eligible"):
+        return [
+            f"No missing search was started — there are no eligible missing {label} for Fetcher to queue right now.",
+            f"Technical · {media} · wanted queue empty or nothing matched filters.",
+        ]
+    m = re.search(r"candidates=(\d+)", t)
+    c = int(m.group(1)) if m else 0
+    rd_m = re.search(r"retry_delay_filtered=(\d+)", t)
+    rd_n = int(rd_m.group(1)) if rd_m else 0
+    if "all items within retry delay" in t or rd_n > 0:
+        return [
+            f"No missing search was started. All {c} monitored missing {label} are still inside "
+            f"Fetcher’s retry wait period.",
+            f"Technical · {media} · candidates={c}; skipped due to retry delay.",
+        ]
+    return None
+
+
 def _activity_timestamp_fields(created_at: datetime, tz: str, now: datetime) -> dict[str, str]:
     t_utc = _as_utc_naive(created_at).replace(microsecond=0)
     return {
@@ -407,6 +458,12 @@ def activity_display_row(e: ActivityLog, tz: str, *, now: datetime | None = None
             extra = activity_log_title_lines(remainder)
             if extra:
                 human.extend(extra)
+    if human is None and kind in ("missing", "upgrade") and app in ("sonarr", "radarr"):
+        legacy = _humanize_legacy_arr_search_detail_lines(
+            app, kind, raw_detail, int(getattr(e, "count", 0) or 0)
+        )
+        if legacy is not None:
+            human = legacy
     if human is not None:
         detail_lines = human
     else:

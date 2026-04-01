@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.7.1 — 2026-04-01
+
+### Improved
+
+- **Activity — Refiner:** Subtitle before/after values in the comparison card are compacted when many tracks are listed (count + short preview + “+N more”), with CSS line-clamp so long lists do not unbalance the layout.
+- **Activity — Sonarr/Radarr:** Missing and upgrade search rows use clearer primary labels (**TV** / **Movies** · …). Scheduled runs no longer write **Activity** rows when a missing search queued **zero** titles (everything on retry delay or nothing eligible); **JobRunLog** still records the run. Manual searches still get an **Activity** row with a short user-facing summary plus a **Technical** line instead of raw filter accounting.
+- **Activity — display:** Legacy stored detail text for missing/upgrade is rewritten at render time for older database rows so the Activity list stays readable.
+
+### Tests
+
+- Added coverage for subtitle compaction, Arr search labels/humanization, and scheduled vs manual missing-search activity persistence.
+
 ## 3.7.0 — 2026-04-01
 
 Minor release (feature scope); use **v3.7.0** instead of the briefly published **v3.6.1** tag.

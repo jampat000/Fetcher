@@ -31,6 +31,24 @@ def _display(val: object, *, empty: str = "—") -> str:
     return n if n else empty
 
 
+def compact_subtitle_line_for_compare(val: object) -> str:
+    """Shorten long ·-separated subtitle lists so Refiner compare cards stay balanced and scannable."""
+    n = _norm_line(val)
+    if not n:
+        return "—"
+    sep = " · "
+    if sep not in n:
+        return n if len(n) <= 96 else (n[:93].rstrip() + "…")
+    parts = [p.strip() for p in n.split(sep) if p.strip()]
+    if not parts:
+        return "—"
+    if len(parts) <= 3 and len(n) <= 100:
+        return n
+    head = sep.join(parts[:3])
+    extra = len(parts) - 3
+    return f"{len(parts)} tracks — {head} (+{extra} more)"
+
+
 def _ctx_lines_differ(ctx: dict[str, Any]) -> bool:
     ab = _norm_line(ctx.get("audio_before"))
     aa = _norm_line(ctx.get("audio_after"))
@@ -82,7 +100,13 @@ def _compare_rows_audio_subs_size(
         sb_line = _display(ctx.get("subs_before"))
         sa_line = _display(ctx.get("subs_after"))
         if sb_raw or sa_raw or sbb != sba:
-            rows.append({"label": "Subtitles", "before": sb_line, "after": sa_line})
+            rows.append(
+                {
+                    "label": "Subtitles",
+                    "before": compact_subtitle_line_for_compare(ctx.get("subs_before")),
+                    "after": compact_subtitle_line_for_compare(ctx.get("subs_after")),
+                }
+            )
     bsz = _fmt_size_bytes_si(sb)
     if failed:
         rows.append({"label": "File size", "before": bsz, "after": "—"})

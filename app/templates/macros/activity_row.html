@@ -84,7 +84,7 @@
                   <div class="rfn-compare-col rfn-compare-col--success-before">
                     <div class="rfn-compare-col-head rfn-compare-col-head--premium">Before</div>
                     {% for row in _rows %}
-                    <div class="rfn-compare-line rfn-compare-line--premium">
+                    <div class="rfn-compare-line rfn-compare-line--premium{% if row.label == 'Subtitles' %} rfn-compare-line--subs{% endif %}">
                       <span class="rfn-compare-line-label">{{ row.label }}</span>
                       <span class="rfn-compare-line-val">{{ row.before }}</span>
                     </div>
@@ -96,7 +96,7 @@
                   <div class="rfn-compare-col rfn-compare-col--success-after">
                     <div class="rfn-compare-col-head rfn-compare-col-head--premium">After</div>
                     {% for row in _rows %}
-                    <div class="rfn-compare-line rfn-compare-line--premium">
+                    <div class="rfn-compare-line rfn-compare-line--premium{% if row.label == 'Subtitles' %} rfn-compare-line--subs{% endif %}">
                       <span class="rfn-compare-line-label">{{ row.label }}</span>
                       <span class="rfn-compare-line-val rfn-compare-line-val--after">{{ row.after }}</span>
                     </div>
@@ -113,7 +113,7 @@
                   <div class="rfn-compare-col rfn-compare-col--before">
                     <div class="rfn-compare-col-head">Before</div>
                     {% for row in _rows %}
-                    <div class="rfn-compare-line">
+                    <div class="rfn-compare-line{% if row.label == 'Subtitles' %} rfn-compare-line--subs{% endif %}">
                       <span class="rfn-compare-line-label">{{ row.label }}</span>
                       <span class="rfn-compare-line-val">{{ row.before }}</span>
                     </div>
@@ -123,7 +123,7 @@
                   <div class="rfn-compare-col rfn-compare-col--after">
                     <div class="rfn-compare-col-head">After</div>
                     {% for row in _rows %}
-                    <div class="rfn-compare-line">
+                    <div class="rfn-compare-line{% if row.label == 'Subtitles' %} rfn-compare-line--subs{% endif %}">
                       <span class="rfn-compare-line-label">{{ row.label }}</span>
                       <span class="rfn-compare-line-val rfn-compare-line-val--after">{{ row.after }}</span>
                     </div>

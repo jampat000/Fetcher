@@ -4558,6 +4558,18 @@ form[action="/trimmer/settings/cleaner"] .card.gc .toggle-label {
   font-weight: 650;
 }
 
+/* Refiner compare — subtitle cells stay compact even if context carried long lists */
+.rfn-compare-line--subs .rfn-compare-line-val {
+  max-width: min(38ch, 100%);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  word-break: break-word;
+  text-align: right;
+}
+
 .rfn-compare-line-label {
   color: var(--text2);
 }
