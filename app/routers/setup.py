@@ -13,12 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import attach_session_cookie, get_csrf_token_for_template, hash_password, require_csrf
 from app.branding import APP_NAME, APP_TAGLINE
 from app.constants import _TIMEZONE_CHOICES
-from app.db import _get_or_create_settings, get_session
+from app.db import get_or_create_settings, get_session
 from app.form_helpers import _normalize_base_url, _resolve_timezone_name
 from app.resolvers.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
 from app.security_utils import encrypt_secret_for_storage
 from app.time_util import utc_now_naive
-from app.display_helpers import _now_local
+from app.display_helpers import now_local
 from app.ui_templates import templates
 from app.web_common import (
     SETUP_WIZARD_STEPS,
@@ -40,7 +40,7 @@ def _setup_wants_inplace_json(request: Request) -> bool:
 
 @router.get("/setup", response_class=RedirectResponse)
 async def setup_wizard_entry(session: AsyncSession = Depends(get_session)) -> RedirectResponse:
-    settings = await _get_or_create_settings(session)
+    settings = await get_or_create_settings(session)
     if not (settings.auth_password_hash or "").strip():
         return RedirectResponse("/setup/0", status_code=302)
     return RedirectResponse("/setup/1", status_code=302)
@@ -50,7 +50,7 @@ async def setup_wizard_entry(session: AsyncSession = Depends(get_session)) -> Re
 async def setup_wizard_page(
     step: int, request: Request, session: AsyncSession = Depends(get_session)
 ) -> HTMLResponse | RedirectResponse:
-    settings = await _get_or_create_settings(session)
+    settings = await get_or_create_settings(session)
     settings.sonarr_api_key = resolve_sonarr_api_key(settings)
     settings.radarr_api_key = resolve_radarr_api_key(settings)
     settings.emby_api_key = resolve_emby_api_key(settings)
@@ -90,7 +90,7 @@ async def setup_wizard_page(
             "setup_step_labels": ["Account", "Sonarr", "Radarr", "Emby", "Schedule", "Next steps"],
             "timezone_choices": _TIMEZONE_CHOICES,
             "now": utc_now_naive(),
-            "now_local": _now_local(tz),
+            "now_local": now_local(tz),
             "timezone": tz,
             "setup_error": setup_error,
             "setup_save_fail": setup_save_fail,
@@ -136,10 +136,10 @@ async def setup_wizard_save(
     ) -> RedirectResponse | JSONResponse:
         if want_json:
             resp = JSONResponse({"ok": True, "redirect": path})
-            attach_session_cookie(resp, secret=secret, username=username)
+            attach_session_cookie(resp, secret=secret, username=username, request=request)
             return resp
         resp = RedirectResponse(path, status_code=status)
-        attach_session_cookie(resp, secret=secret, username=username)
+        attach_session_cookie(resp, secret=secret, username=username, request=request)
         return resp
 
     def respond_err(
@@ -164,7 +164,7 @@ async def setup_wizard_save(
         suffix = ("?" + "&".join(q)) if q else ""
         return RedirectResponse(f"{path}{suffix}", status_code=303)
 
-    row0 = await _get_or_create_settings(session)
+    row0 = await get_or_create_settings(session)
     if not (row0.auth_password_hash or "").strip():
         if step != 0:
             return respond_redirect("/setup/0")
@@ -184,7 +184,7 @@ async def setup_wizard_save(
         return respond_err(path="/setup/0", error="account_required")
 
     if not skip:
-        row = await _get_or_create_settings(session)
+        row = await get_or_create_settings(session)
         if step == 0:
             u = (setup_auth_username or "admin").strip() or "admin"
             pw = (setup_auth_password or "").strip()

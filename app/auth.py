@@ -15,7 +15,7 @@ from itsdangerous import BadSignature, SignatureExpired, TimestampSigner
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import RedirectResponse, Response
 
-from app.db import SessionLocal, _get_or_create_settings, get_session
+from app.db import SessionLocal, get_or_create_settings, get_session
 from app.models import AppSettings
 from app.auth_runtime import (
     get_client_ip,
@@ -163,7 +163,7 @@ def effective_username_for_csrf(request: Request, settings: AppSettings) -> str:
 
 async def get_csrf_token_for_template(request: Request, session: AsyncSession) -> str:
     """Token for layout meta and hidden fields (empty if not signable)."""
-    settings = await _get_or_create_settings(session)
+    settings = await get_or_create_settings(session)
     secret = (settings.auth_session_secret or "").strip()
     if not secret:
         return ""
@@ -185,7 +185,7 @@ async def require_csrf(request: Request, session: AsyncSession = Depends(get_ses
         except (TypeError, ValueError):
             pass
 
-    settings = await _get_or_create_settings(session)
+    settings = await get_or_create_settings(session)
     secret = (settings.auth_session_secret or "").strip()
     username = effective_username_for_csrf(request, settings)
     if not username:
@@ -206,15 +206,23 @@ async def require_csrf(request: Request, session: AsyncSession = Depends(get_ses
         )
 
 
-def attach_session_cookie(response: Response, *, secret: str, username: str) -> None:
+def attach_session_cookie(
+    response: Response, *, secret: str, username: str, request: Request | None = None
+) -> None:
     value = build_session_cookie_value(secret=secret, username=username)
+    is_secure = False
+    if request is not None:
+        is_secure = (
+            request.url.scheme == "https"
+            or (request.headers.get("x-forwarded-proto") or "").strip().lower() == "https"
+        )
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=value,
         max_age=SESSION_MAX_AGE_SEC,
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=is_secure,
         path="/",
     )
 
@@ -258,7 +266,7 @@ async def bootstrap_auth_on_startup() -> None:
 
     log = logging.getLogger(__name__)
     async with SessionLocal() as session:
-        settings = await _get_or_create_settings(session)
+        settings = await get_or_create_settings(session)
         if os.environ.get("FETCHER_RESET_AUTH", "").strip() == "1":
             settings.auth_username = "admin"
             settings.auth_password_hash = ""
@@ -287,7 +295,7 @@ async def bootstrap_auth_on_startup() -> None:
                 settings.updated_at = utc_now_naive()
         await session.commit()
 
-        settings = await _get_or_create_settings(session)
+        settings = await get_or_create_settings(session)
         has_pw = bool((settings.auth_password_hash or "").strip())
         log.info(
             "Auth startup diagnostic: password_hash_configured=%s next_ui=%s",
@@ -347,7 +355,7 @@ async def require_auth(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> None:
-    settings = await _get_or_create_settings(session)
+    settings = await get_or_create_settings(session)
 
     # New installs and upgrades after adding auth: no password yet. Send everyone here
     # first (IP allowlist does not apply — avoids an open UI without choosing a password).

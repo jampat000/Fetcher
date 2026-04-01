@@ -434,7 +434,10 @@
           <div class="gc-title">Download backup</div>
         </div>
         <p class="small backup-panel-desc">Downloads your current Fetcher and Trimmer settings as <code class="code-inline">fetcher-settings-backup-dd-mm-yyyy.json</code>.</p>
-        <a class="btn backup-panel-btn" href="/settings/backup/export" download>Download backup</a>
+        <form method="post" action="/settings/backup/export" style="display:inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <button type="submit" class="btn backup-panel-btn">Download backup</button>
+        </form>
       </div>
 
       <div class="backup-panel backup-panel-restore">

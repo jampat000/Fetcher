@@ -8,14 +8,14 @@ import httpx
 import pytest
 from sqlalchemy import delete, desc, select
 
-from app.db import SessionLocal, _get_or_create_settings
+from app.db import SessionLocal, get_or_create_settings
 from app.models import ActivityLog, AppSnapshot, ArrActionLog, JobRunLog
 from app.service_logic import ArrManualScope, run_once
 
 
 async def _set_settings(**updates: Any) -> None:
     async with SessionLocal() as s:
-        row = await _get_or_create_settings(s)
+        row = await get_or_create_settings(s)
         for k, v in updates.items():
             setattr(row, k, v)
         await s.commit()
@@ -86,7 +86,7 @@ async def _activity_count_for(app: str, kind: str) -> int:
 
 async def _settings_row() -> Any:
     async with SessionLocal() as s:
-        return await _get_or_create_settings(s)
+        return await get_or_create_settings(s)
 
 
 async def _run_once(scope: ArrManualScope | None = None):
@@ -272,7 +272,7 @@ def test_scheduled_scoped_run_sonarr_only(monkeypatch: pytest.MonkeyPatch) -> No
     async def _should_not_search(*args, **kwargs):
         raise AssertionError("should not search")
 
-    monkeypatch.setattr("app.service_logic._paginate_wanted_for_search", _should_not_search)
+    monkeypatch.setattr("app.service_logic.paginate_wanted_for_search", _should_not_search)
     result = asyncio.run(_run_once_scheduled("sonarr"))
     assert result.ok is True
     assert seen["sonarr"] == 1
@@ -296,7 +296,7 @@ async def _run_scheduled_window_disabled_case(scope: str) -> None:
     fixed_now = datetime(2026, 3, 24, 10, 0, 0)
     await _clear_run_tables()
     async with SessionLocal() as s:
-        row = await _get_or_create_settings(s)
+        row = await get_or_create_settings(s)
         row.sonarr_enabled = scope == "sonarr"
         row.sonarr_url = "http://localhost:8989"
         row.sonarr_search_missing = False
@@ -634,7 +634,7 @@ def test_run_once_radarr_manual_upgrade_success_activity_snapshot(monkeypatch: p
     monkeypatch.setattr("app.service_logic.resolve_radarr_api_key", lambda _s: "rk")
     monkeypatch.setattr("app.service_logic.resolve_emby_api_key", lambda _s: "")
     monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
-    monkeypatch.setattr("app.service_logic._paginate_wanted_for_search", _paginate)
+    monkeypatch.setattr("app.service_logic.paginate_wanted_for_search", _paginate)
     monkeypatch.setattr("app.service_logic._wanted_queue_total", _wanted_total)
     monkeypatch.setattr("app.service_logic.trigger_radarr_cutoff_search", _trigger)
     result = asyncio.run(_run_once("radarr_upgrade"))

@@ -10,13 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_csrf_token_for_template
 from app.branding import APP_NAME, APP_TAGLINE
-from app.db import _get_or_create_settings, fetch_latest_app_snapshots, get_session
+from app.db import get_or_create_settings, fetch_latest_app_snapshots, get_session
 from app.display_helpers import (
-    _fmt_local,
-    _now_local,
-    _schedule_days_display,
-    _schedule_time_range_friendly,
-    _to_12h,
+    fmt_local,
+    now_local,
+    schedule_days_display,
+    schedule_time_range_friendly,
+    to_12h,
 )
 from app.emby_rules import (
     parse_genres_csv,
@@ -73,7 +73,7 @@ def _automation_view_for_template(settings: Any, dash_status: Mapping[str, Any])
 
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
-    settings = await _get_or_create_settings(session)
+    settings = await get_or_create_settings(session)
     tz = settings.timezone or "UTC"
     now = utc_now_naive()
     activity_logs = (
@@ -113,19 +113,19 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
     sonarr_snap = snapshots.get("sonarr")
     radarr_snap = snapshots.get("radarr")
     emby_snap = snapshots.get("emby")
-    emby_schedule_start_display = _to_12h(settings.emby_schedule_start or "00:00", "12:00 AM")
-    emby_schedule_end_display = _to_12h(settings.emby_schedule_end or "23:59", "11:59 PM")
-    sonarr_schedule_start_display = _to_12h(settings.sonarr_schedule_start or "00:00", "12:00 AM")
-    sonarr_schedule_end_display = _to_12h(settings.sonarr_schedule_end or "23:59", "11:59 PM")
-    radarr_schedule_start_display = _to_12h(settings.radarr_schedule_start or "00:00", "12:00 AM")
-    radarr_schedule_end_display = _to_12h(settings.radarr_schedule_end or "23:59", "11:59 PM")
-    sonarr_schedule_days_display = _schedule_days_display(settings.sonarr_schedule_days or "")
-    sonarr_schedule_time_friendly = _schedule_time_range_friendly(
+    emby_schedule_start_display = to_12h(settings.emby_schedule_start or "00:00", "12:00 AM")
+    emby_schedule_end_display = to_12h(settings.emby_schedule_end or "23:59", "11:59 PM")
+    sonarr_schedule_start_display = to_12h(settings.sonarr_schedule_start or "00:00", "12:00 AM")
+    sonarr_schedule_end_display = to_12h(settings.sonarr_schedule_end or "23:59", "11:59 PM")
+    radarr_schedule_start_display = to_12h(settings.radarr_schedule_start or "00:00", "12:00 AM")
+    radarr_schedule_end_display = to_12h(settings.radarr_schedule_end or "23:59", "11:59 PM")
+    sonarrschedule_days_display = schedule_days_display(settings.sonarr_schedule_days or "")
+    sonarr_schedule_time_friendly = schedule_time_range_friendly(
         settings.sonarr_schedule_start or "00:00",
         settings.sonarr_schedule_end or "23:59",
     )
-    radarr_schedule_days_display = _schedule_days_display(settings.radarr_schedule_days or "")
-    radarr_schedule_time_friendly = _schedule_time_range_friendly(
+    radarrschedule_days_display = schedule_days_display(settings.radarr_schedule_days or "")
+    radarr_schedule_time_friendly = schedule_time_range_friendly(
         settings.radarr_schedule_start or "00:00",
         settings.radarr_schedule_end or "23:59",
     )
@@ -165,9 +165,9 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
             "sonarr_schedule_end_display": sonarr_schedule_end_display,
             "radarr_schedule_start_display": radarr_schedule_start_display,
             "radarr_schedule_end_display": radarr_schedule_end_display,
-            "sonarr_schedule_days_display": sonarr_schedule_days_display,
+            "sonarrschedule_days_display": sonarrschedule_days_display,
             "sonarr_schedule_time_friendly": sonarr_schedule_time_friendly,
-            "radarr_schedule_days_display": radarr_schedule_days_display,
+            "radarrschedule_days_display": radarrschedule_days_display,
             "radarr_schedule_time_friendly": radarr_schedule_time_friendly,
             "hero_sonarr_missing": hero_sonarr_missing,
             "hero_sonarr_upgrades": hero_sonarr_upgrades,
@@ -196,7 +196,7 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
                 )
             ),
             "now": now,
-            "now_local": _now_local(tz),
+            "now_local": now_local(tz),
             "timezone": tz,
             "csrf_token": await get_csrf_token_for_template(request, session),
         },
@@ -205,14 +205,14 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
 
 @router.get("/logs", response_class=HTMLResponse)
 async def logs_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
-    settings = await _get_or_create_settings(session)
+    settings = await get_or_create_settings(session)
     show_setup_wizard = not is_setup_complete(settings)
     logs = (await session.execute(select(JobRunLog).order_by(desc(JobRunLog.id)).limit(200))).scalars().all()
     logs = dedupe_job_run_logs_for_display(logs)
     tz = settings.timezone or "UTC"
     logs_display = [
         {
-            "started_local": _fmt_local(r.started_at, tz),
+            "started_local": fmt_local(r.started_at, tz),
             "ok": r.ok,
             "message": user_visible_job_run_message(
                 message=r.message, ok=bool(r.ok), finished_at=r.finished_at
@@ -230,7 +230,7 @@ async def logs_page(request: Request, session: AsyncSession = Depends(get_sessio
             "subtitle": "Service run history",
             "logs": logs_display,
             "now": utc_now_naive(),
-            "now_local": _now_local(tz),
+            "now_local": now_local(tz),
             "timezone": tz,
             "csrf_token": await get_csrf_token_for_template(request, session),
             "show_setup_wizard": show_setup_wizard,
@@ -270,7 +270,7 @@ async def activity_page(
     app: str | None = Query(None),
     q: str | None = Query(None),
 ) -> HTMLResponse:
-    settings = await _get_or_create_settings(session)
+    settings = await get_or_create_settings(session)
     show_setup_wizard = not is_setup_complete(settings)
     tz = settings.timezone or "UTC"
     now = utc_now_naive()
@@ -299,7 +299,7 @@ async def activity_page(
             "activity_tab": tab_key,
             "activity_search_q": (q or "") if q is not None else "",
             "now": now,
-            "now_local": _now_local(tz),
+            "now_local": now_local(tz),
             "timezone": tz,
             "csrf_token": await get_csrf_token_for_template(request, session),
             "show_setup_wizard": show_setup_wizard,

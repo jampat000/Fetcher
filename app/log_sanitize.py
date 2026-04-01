@@ -40,7 +40,9 @@ _JSON_SECRET_RE = re.compile(
 _BEARER_RE = re.compile(r"(?i)Bearer\s+[\w\-.~+/=]+")
 _AUTH_HEADER_RE = re.compile(r"(?im)^Authorization:\s*\S.*$")
 # 32-char hex tokens (common API key material in logs / payloads).
-_HEX_API_KEY_32_RE = re.compile(r"\b[A-Fa-f0-9]{32}\b")
+_HEX_API_KEY_32_RE = re.compile(
+    r"(?i)(?:api_key|apikey|x-api-key|sonarr_key|radarr_key|token|secret|key)\s*[:=]\s*['\"]?([A-Fa-f0-9]{32})\b"
+)
 
 
 def redact_url_for_logging(url: str | object) -> str:
@@ -74,7 +76,7 @@ def redact_sensitive_text(text: str | None) -> str:
     s = _JSON_SECRET_RE.sub(r'\1"[REDACTED]"', s)
     s = _BEARER_RE.sub("Bearer [REDACTED]", s)
     s = _AUTH_HEADER_RE.sub("Authorization: [REDACTED]", s)
-    s = _HEX_API_KEY_32_RE.sub("[REDACTED]", s)
+    s = _HEX_API_KEY_32_RE.sub(lambda m: m.group(0).replace(m.group(1), "[REDACTED]"), s)
     return s
 
 

@@ -34,10 +34,6 @@ def resolved_logs_dir() -> Path:
     return root
 
 
-# Deprecated: use ``resolved_logs_dir()`` (``BASE_DIR / "logs"`` is wrong for packaged services).
-LOGS_DIR = BASE_DIR / "logs"
-
-
 def is_safe_path(target: Path, base: Path) -> bool:
     """True when ``target`` resolves to ``base`` or a path inside ``base`` (after ``.resolve()``)."""
     t = target.resolve()

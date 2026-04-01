@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.auth import is_ip_allowed, normalize_auth_ip_allowlist_input
-from app.db import SessionLocal, _get_or_create_settings
+from app.db import SessionLocal, get_or_create_settings
 from app.main import app
 
 
@@ -102,7 +102,7 @@ def test_access_control_post_valid_saves(monkeypatch: pytest.MonkeyPatch) -> Non
     finally:
         async def _clear_allowlist() -> None:
             async with SessionLocal() as s:
-                row = await _get_or_create_settings(s)
+                row = await get_or_create_settings(s)
                 row.auth_ip_allowlist = ""
                 await s.commit()
 

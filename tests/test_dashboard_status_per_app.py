@@ -5,7 +5,7 @@ from datetime import datetime
 
 from sqlalchemy import delete
 
-from app.db import SessionLocal, _get_or_create_settings
+from app.db import SessionLocal, get_or_create_settings
 from app.models import AppSnapshot
 from app.dashboard_service import build_dashboard_status, fetch_live_dashboard_queue_totals
 
@@ -13,7 +13,7 @@ from app.dashboard_service import build_dashboard_status, fetch_live_dashboard_q
 async def _seed_snapshot_state() -> None:
     async with SessionLocal() as s:
         await s.execute(delete(AppSnapshot))
-        row = await _get_or_create_settings(s)
+        row = await get_or_create_settings(s)
         row.timezone = "UTC"
         row.sonarr_enabled = True
         row.sonarr_url = "http://localhost:8989"
@@ -116,7 +116,7 @@ def test_fetch_live_dashboard_missing_uses_including_unreleased_semantics(monkey
 
     async def _go():
         async with SessionLocal() as s:
-            row = await _get_or_create_settings(s)
+            row = await get_or_create_settings(s)
             live = await fetch_live_dashboard_queue_totals(row)
         assert live["sonarr_missing"] == 501
         assert live["radarr_missing"] == 2

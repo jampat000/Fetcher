@@ -13,9 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.arr_client import ArrClient, ArrConfig
 from app.arr_intervals import effective_arr_interval_minutes
-from app.db import _get_or_create_settings, fetch_latest_app_snapshots
+from app.db import get_or_create_settings, fetch_latest_app_snapshots
 from app.display_helpers import (
-    _fmt_local,
+    fmt_local,
     _relative_phrase_past,
     _relative_phrase_until,
 )
@@ -216,6 +216,18 @@ def _fetcher_phase_for_dashboard(
     )
 
 
+async def _fetch_live_arr_totals(session: AsyncSession, out: dict[str, Any], settings: AppSettings) -> None:
+    live = await fetch_live_dashboard_queue_totals(settings)
+    if "sonarr_missing" in live:
+        out["sonarr_missing"] = live["sonarr_missing"]
+    if "sonarr_upgrades" in live:
+        out["sonarr_upgrades"] = live["sonarr_upgrades"]
+    if "radarr_missing" in live:
+        out["radarr_missing"] = live["radarr_missing"]
+    if "radarr_upgrades" in live:
+        out["radarr_upgrades"] = live["radarr_upgrades"]
+
+
 async def build_dashboard_status(
     session: AsyncSession,
     tz: str,
@@ -233,8 +245,8 @@ async def build_dashboard_status(
     if last_run:
         rel_svc = _relative_phrase_past(last_run.started_at, now) if last_run.started_at else ""
         last_run_display = {
-            "started_local": _fmt_local(last_run.started_at, tz),
-            "finished_local": _fmt_local(last_run.finished_at, tz) if last_run.finished_at else "",
+            "started_local": fmt_local(last_run.started_at, tz),
+            "finished_local": fmt_local(last_run.finished_at, tz) if last_run.finished_at else "",
             "has_finished": last_run.finished_at is not None,
             "ok": bool(last_run.ok),
             "message": user_visible_job_run_message(
@@ -248,7 +260,7 @@ async def build_dashboard_status(
     next_sonarr_dt = next_runs.get("sonarr")
     next_radarr_dt = next_runs.get("radarr")
     next_trimmer_dt = next_runs.get("trimmer")
-    settings = await _get_or_create_settings(session)
+    settings = await get_or_create_settings(session)
     snaps = snapshots if snapshots is not None else await fetch_latest_app_snapshots(session)
 
     def _latest_snapshot_for(app_name: str) -> AppSnapshot | None:
@@ -260,7 +272,7 @@ async def build_dashboard_status(
         if not dt:
             return {"time_local": "", "ok": None, "relative": ""}
         return {
-            "time_local": _fmt_local(dt, tz),
+            "time_local": fmt_local(dt, tz),
             "ok": (bool(snap.ok) if snap is not None else None),
             "relative": _relative_phrase_past(dt, now),
         }
@@ -289,7 +301,7 @@ async def build_dashboard_status(
         event_name = event_name_map.get(kind, kind.replace("_", " ").title() if kind else "Activity event")
         latest_system_event = {
             "context": f"{app_name} • {event_name}",
-            "time_local": _fmt_local(latest_activity.created_at, tz),
+            "time_local": fmt_local(latest_activity.created_at, tz),
             "ok": (latest_activity.status or "ok").strip().lower() != "failed",
             "relative": _relative_phrase_past(latest_activity.created_at, now),
         }
@@ -315,9 +327,9 @@ async def build_dashboard_status(
         if dt:
             next_trimmer_dt = dt + timedelta(minutes=max(5, int(settings.emby_interval_minutes or 60)))
 
-    next_sonarr_local = _fmt_local(next_sonarr_dt, tz) if next_sonarr_dt else ""
-    next_radarr_local = _fmt_local(next_radarr_dt, tz) if next_radarr_dt else ""
-    next_trimmer_local = _fmt_local(next_trimmer_dt, tz) if next_trimmer_dt else ""
+    next_sonarr_local = fmt_local(next_sonarr_dt, tz) if next_sonarr_dt else ""
+    next_radarr_local = fmt_local(next_radarr_dt, tz) if next_radarr_dt else ""
+    next_trimmer_local = fmt_local(next_trimmer_dt, tz) if next_trimmer_dt else ""
     next_sonarr_relative = _relative_phrase_until(next_sonarr_dt, now) if next_sonarr_dt else ""
     next_radarr_relative = _relative_phrase_until(next_radarr_dt, now) if next_radarr_dt else ""
     next_trimmer_relative = _relative_phrase_until(next_trimmer_dt, now) if next_trimmer_dt else ""
@@ -358,15 +370,20 @@ async def build_dashboard_status(
     radarr_missing = int(radarr_snap.missing_total) if radarr_snap else 0
     radarr_upgrades = int(radarr_snap.cutoff_unmet_total) if radarr_snap else 0
     if include_live:
-        live = await fetch_live_dashboard_queue_totals(settings)
-        if "sonarr_missing" in live:
-            sonarr_missing = live["sonarr_missing"]
-        if "sonarr_upgrades" in live:
-            sonarr_upgrades = live["sonarr_upgrades"]
-        if "radarr_missing" in live:
-            radarr_missing = live["radarr_missing"]
-        if "radarr_upgrades" in live:
-            radarr_upgrades = live["radarr_upgrades"]
+        out = {
+            "sonarr_missing": sonarr_missing,
+            "sonarr_upgrades": sonarr_upgrades,
+            "radarr_missing": radarr_missing,
+            "radarr_upgrades": radarr_upgrades,
+        }
+        try:
+            await asyncio.wait_for(_fetch_live_arr_totals(session, out, settings), timeout=10.0)
+        except asyncio.TimeoutError:
+            logger.warning("Dashboard: live Arr totals timed out after 10s — using cached values")
+        sonarr_missing = out["sonarr_missing"]
+        sonarr_upgrades = out["sonarr_upgrades"]
+        radarr_missing = out["radarr_missing"]
+        radarr_upgrades = out["radarr_upgrades"]
     return {
         "last_run": last_run_display,
         "last_sonarr_run": last_sonarr,

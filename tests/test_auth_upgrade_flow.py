@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from app.auth import hash_password
 
 pytestmark = pytest.mark.no_auth_override
-from app.db import SessionLocal, _get_or_create_settings
+from app.db import SessionLocal, get_or_create_settings
 from app.main import app
 from app.time_util import utc_now_naive
 
@@ -29,7 +29,7 @@ def _client_no_scheduler(monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
 async def _restore_seeded_auth_state() -> None:
     async with SessionLocal() as s:
-        r = await _get_or_create_settings(s)
+        r = await get_or_create_settings(s)
         r.auth_password_hash = hash_password("testpass12")
         r.auth_username = "admin"
         r.auth_bypass_lan = False
@@ -52,7 +52,7 @@ def client_real_auth(monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
 async def _clear_password_and_bypass() -> None:
     async with SessionLocal() as s:
-        r = await _get_or_create_settings(s)
+        r = await get_or_create_settings(s)
         r.auth_password_hash = ""
         r.auth_bypass_lan = False
         r.auth_ip_allowlist = ""
@@ -130,7 +130,7 @@ def test_no_password_json_home_returns_401_with_setup_path(client_real_auth: Tes
 def test_ip_allowlist_does_not_skip_setup_when_no_password(client_real_auth: TestClient) -> None:
     async def set_allowlist() -> None:
         async with SessionLocal() as s:
-            r = await _get_or_create_settings(s)
+            r = await get_or_create_settings(s)
             r.auth_ip_allowlist = "127.0.0.1"
             r.updated_at = utc_now_naive()
             await s.commit()
@@ -146,7 +146,7 @@ def test_ip_allowlist_bypasses_when_password_set_and_ip_matches(
 ) -> None:
     async def password_plus_allowlist() -> None:
         async with SessionLocal() as s:
-            r = await _get_or_create_settings(s)
+            r = await get_or_create_settings(s)
             r.auth_password_hash = hash_password("testpass12")
             r.auth_ip_allowlist = "127.0.0.1"
             r.updated_at = utc_now_naive()
@@ -161,7 +161,7 @@ def test_ip_allowlist_bypasses_when_password_set_and_ip_matches(
 def test_setup_zero_upgrade_banner_when_sonarr_configured(client_real_auth: TestClient) -> None:
     async def prime() -> None:
         async with SessionLocal() as s:
-            r = await _get_or_create_settings(s)
+            r = await get_or_create_settings(s)
             r.sonarr_url = "http://127.0.0.1:8989"
             r.updated_at = utc_now_naive()
             await s.commit()

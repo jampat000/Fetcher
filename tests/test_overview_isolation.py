@@ -8,7 +8,7 @@ from datetime import timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db import SessionLocal, _get_or_create_settings
+from app.db import SessionLocal, get_or_create_settings
 from app.main import app
 from app.models import AppSettings
 from app.routers import refiner as refiner_router
@@ -41,7 +41,7 @@ def test_refiner_and_trimmer_overview_builders_are_not_shared() -> None:
 def test_trimmer_overview_page_avoids_refiner_overview_css_classes(monkeypatch: pytest.MonkeyPatch) -> None:
     async def seed() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.emby_schedule_enabled = False
             await session.commit()
 
@@ -59,7 +59,7 @@ def test_trimmer_overview_page_avoids_refiner_overview_css_classes(monkeypatch: 
 def test_trimmer_overview_compact_configured_state_only(monkeypatch: pytest.MonkeyPatch) -> None:
     async def seed() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.emby_schedule_enabled = False
             row.emby_rule_movie_unwatched_days = 30
             row.emby_rule_tv_unwatched_days = 14
@@ -153,7 +153,7 @@ def test_refiner_overview_unchanged_after_trimmer_overview_redesign(monkeypatch:
 def test_refiner_overview_compact_configured_state(monkeypatch: pytest.MonkeyPatch) -> None:
     async def seed() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_interval_seconds = 45
             row.refiner_watched_folder = "D:\\Media\\in"
@@ -263,7 +263,7 @@ def test_activity_template_trimmer_pill_uses_trimmer_token() -> None:
 def test_trimmer_rules_collapsed_when_no_active_rules(monkeypatch: pytest.MonkeyPatch) -> None:
     async def seed() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.emby_rule_watched_rating_below = 0
             row.emby_rule_unwatched_days = 0
             row.emby_rule_movie_watched_rating_below = 0

@@ -10,7 +10,7 @@ import pytest
 
 from sqlalchemy import delete, select
 
-from app.db import SessionLocal, _get_or_create_settings
+from app.db import SessionLocal, get_or_create_settings
 from app.models import ActivityLog, JobRunLog, RefinerActivity
 from app.refiner_activity_context import parse_activity_context
 from app.time_util import utc_now_naive
@@ -49,8 +49,8 @@ def _fake_probe_single_eng() -> dict:
 
 def test_dry_run_no_file_changes(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     calls: list[int] = []
-    monkeypatch.setattr("app.refiner_service.remux_to_temp_file", lambda *_a, **_k: calls.append(1))
-    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+    monkeypatch.setattr("app.refiner_pipeline.remux_to_temp_file", lambda *_a, **_k: calls.append(1))
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_multi_audio())
 
     async def _go() -> None:
         watched = tmp_path / "watched"
@@ -60,7 +60,7 @@ def test_dry_run_no_file_changes(monkeypatch: pytest.MonkeyPatch, tmp_path) -> N
         f = watched / "m.mkv"
         f.write_bytes(b"original")
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = True
             row.refiner_primary_audio_lang = "eng"
@@ -86,8 +86,8 @@ def test_live_run_moves_to_output_and_deletes_source(monkeypatch: pytest.MonkeyP
         out.write_bytes(b"ok")
         return out
 
-    monkeypatch.setattr("app.refiner_service.remux_to_temp_file", _fake_remux)
-    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+    monkeypatch.setattr("app.refiner_pipeline.remux_to_temp_file", _fake_remux)
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_multi_audio())
 
     async def _go() -> None:
         watched = tmp_path / "watched"
@@ -100,7 +100,7 @@ def test_live_run_moves_to_output_and_deletes_source(monkeypatch: pytest.MonkeyP
         (f.parent / "m.par2").write_bytes(b"par")
         (f.parent / "readme.nfo").write_text("rel", encoding="utf-8")
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = False
             row.refiner_primary_audio_lang = "eng"
@@ -128,9 +128,9 @@ def test_live_no_remux_copies_to_output_removes_source_and_empty_folder(
         calls.append(1)
         raise AssertionError("remux should not run when no stream changes are required")
 
-    monkeypatch.setattr("app.refiner_service.remux_to_temp_file", _no_remux)
-    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_single_eng())
-    monkeypatch.setattr("app.refiner_service.is_remux_required", lambda *_a, **_k: False)
+    monkeypatch.setattr("app.refiner_pipeline.remux_to_temp_file", _no_remux)
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_single_eng())
+    monkeypatch.setattr("app.refiner_pipeline.is_remux_required", lambda *_a, **_k: False)
 
     async def _go() -> None:
         watched = tmp_path / "watched"
@@ -143,7 +143,7 @@ def test_live_no_remux_copies_to_output_removes_source_and_empty_folder(
         (sub / "grab.nzb").write_bytes(b"nzb")
         output.mkdir()
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = False
             row.refiner_primary_audio_lang = "eng"
@@ -165,8 +165,8 @@ def test_live_no_remux_copies_to_output_removes_source_and_empty_folder(
 def test_live_no_remux_leaves_folder_when_other_files_remain(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
-    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_single_eng())
-    monkeypatch.setattr("app.refiner_service.is_remux_required", lambda *_a, **_k: False)
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_single_eng())
+    monkeypatch.setattr("app.refiner_pipeline.is_remux_required", lambda *_a, **_k: False)
 
     async def _go() -> None:
         watched = tmp_path / "watched"
@@ -178,7 +178,7 @@ def test_live_no_remux_leaves_folder_when_other_files_remain(
         (sub / "keep.txt").write_text("hold", encoding="utf-8")
         output.mkdir()
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = False
             row.refiner_primary_audio_lang = "eng"
@@ -195,8 +195,8 @@ def test_live_no_remux_leaves_folder_when_other_files_remain(
 
 
 def test_dry_run_no_remux_does_not_copy_or_delete(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_single_eng())
-    monkeypatch.setattr("app.refiner_service.is_remux_required", lambda *_a, **_k: False)
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_single_eng())
+    monkeypatch.setattr("app.refiner_pipeline.is_remux_required", lambda *_a, **_k: False)
 
     async def _go() -> None:
         watched = tmp_path / "watched"
@@ -207,7 +207,7 @@ def test_dry_run_no_remux_does_not_copy_or_delete(monkeypatch: pytest.MonkeyPatc
         f.write_bytes(b"orig")
         (watched / "solo.par2").write_bytes(b"p")
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = True
             row.refiner_primary_audio_lang = "eng"
@@ -236,8 +236,8 @@ def test_source_preserved_on_failure(monkeypatch: pytest.MonkeyPatch, tmp_path) 
     def _boom(*_a, **_k):
         raise RuntimeError("ffmpeg failed")
 
-    monkeypatch.setattr("app.refiner_service.remux_to_temp_file", _boom)
-    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+    monkeypatch.setattr("app.refiner_pipeline.remux_to_temp_file", _boom)
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_multi_audio())
 
     async def _go() -> None:
         watched = tmp_path / "watched"
@@ -248,7 +248,7 @@ def test_source_preserved_on_failure(monkeypatch: pytest.MonkeyPatch, tmp_path) 
         f.write_bytes(b"original")
         (watched / "m.par2").write_bytes(b"parity")
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = False
             row.refiner_primary_audio_lang = "eng"
@@ -275,8 +275,8 @@ def test_custom_work_folder_used(monkeypatch: pytest.MonkeyPatch, tmp_path) -> N
         out.write_bytes(b"ok")
         return out
 
-    monkeypatch.setattr("app.refiner_service.remux_to_temp_file", _fake_remux)
-    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+    monkeypatch.setattr("app.refiner_pipeline.remux_to_temp_file", _fake_remux)
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_multi_audio())
 
     async def _go() -> None:
         watched = tmp_path / "watched"
@@ -287,7 +287,7 @@ def test_custom_work_folder_used(monkeypatch: pytest.MonkeyPatch, tmp_path) -> N
         f = watched / "m.mkv"
         f.write_bytes(b"orig")
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = False
             row.refiner_primary_audio_lang = "eng"
@@ -302,11 +302,11 @@ def test_custom_work_folder_used(monkeypatch: pytest.MonkeyPatch, tmp_path) -> N
 
 
 def test_missing_watched_or_output_folders_rejected(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
-    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_multi_audio())
 
     async def _go() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = False
             row.refiner_primary_audio_lang = "eng"
@@ -330,8 +330,8 @@ def test_default_work_folder_usage(monkeypatch: pytest.MonkeyPatch, tmp_path) ->
         out.write_bytes(b"ok")
         return out
 
-    monkeypatch.setattr("app.refiner_service.remux_to_temp_file", _fake_remux)
-    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+    monkeypatch.setattr("app.refiner_pipeline.remux_to_temp_file", _fake_remux)
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_multi_audio())
 
     async def _go() -> None:
         watched = tmp_path / "watched"
@@ -341,7 +341,7 @@ def test_default_work_folder_usage(monkeypatch: pytest.MonkeyPatch, tmp_path) ->
         f = watched / "m.mkv"
         f.write_bytes(b"orig")
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = False
             row.refiner_primary_audio_lang = "eng"
@@ -454,7 +454,7 @@ def test_finalize_output_cross_root_stream_copy(monkeypatch: pytest.MonkeyPatch,
         replaced.append((a, b))
         _real_replace(a, b)
 
-    monkeypatch.setattr("app.refiner_service.os.replace", _track_replace)
+    monkeypatch.setattr("app.refiner_pipeline.os.replace", _track_replace)
 
     _finalize_output_file(src, dst)
     assert dst.read_bytes() == b"xyz"
@@ -482,7 +482,7 @@ def test_finalize_output_copyfileobj_error_unlinks_partial_dst(monkeypatch: pyte
     def _boom(*_a, **_k):
         raise OSError(28, "no space")
 
-    monkeypatch.setattr("app.refiner_service.shutil.copyfileobj", _boom)
+    monkeypatch.setattr("app.refiner_pipeline.shutil.copyfileobj", _boom)
     with pytest.raises(OSError):
         _finalize_output_file(src, dst)
     assert src.exists()
@@ -530,7 +530,7 @@ def test_worker_boot_reconcile_closes_processing_rows() -> None:
 
 
 def test_source_missing_skips_as_failed(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
-    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_multi_audio())
 
     async def _go() -> None:
         watched = tmp_path / "watched"
@@ -543,7 +543,7 @@ def test_source_missing_skips_as_failed(monkeypatch: pytest.MonkeyPatch, tmp_pat
             lambda _w: [missing],
         )
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = False
             row.refiner_primary_audio_lang = "eng"
@@ -569,8 +569,8 @@ def test_refiner_pass_calls_insert_then_update_per_file(monkeypatch: pytest.Monk
 
     monkeypatch.setattr("app.refiner_service._insert_refiner_processing_row", _fake_insert)
     monkeypatch.setattr("app.refiner_service._update_refiner_activity_row", _fake_update)
-    monkeypatch.setattr("app.refiner_service.remux_to_temp_file", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError()))
-    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+    monkeypatch.setattr("app.refiner_pipeline.remux_to_temp_file", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError()))
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_multi_audio())
 
     async def _go() -> None:
         watched = tmp_path / "watched"
@@ -579,7 +579,7 @@ def test_refiner_pass_calls_insert_then_update_per_file(monkeypatch: pytest.Monk
         output.mkdir()
         (watched / "m.mkv").write_bytes(b"x")
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = True
             row.refiner_primary_audio_lang = "eng"
@@ -601,8 +601,8 @@ def test_refiner_pass_persists_job_run_log_with_failure_hints(
     def _boom(*_a, **_k):
         raise RuntimeError("ffmpeg failed")
 
-    monkeypatch.setattr("app.refiner_service.remux_to_temp_file", _boom)
-    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+    monkeypatch.setattr("app.refiner_pipeline.remux_to_temp_file", _boom)
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_multi_audio())
 
     async def _go() -> None:
         watched = tmp_path / "watched"
@@ -612,7 +612,7 @@ def test_refiner_pass_persists_job_run_log_with_failure_hints(
         f = watched / "m.mkv"
         f.write_bytes(b"original")
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = False
             row.refiner_primary_audio_lang = "eng"
@@ -639,7 +639,7 @@ def test_refiner_pass_persists_job_run_log_with_failure_hints(
 
 
 def test_live_run_refuses_overwrite_existing_destination(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
-    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_multi_audio())
 
     def _fake_remux(*, src, work_dir, plan):  # noqa: ANN001
         work_dir.mkdir(parents=True, exist_ok=True)
@@ -647,7 +647,7 @@ def test_live_run_refuses_overwrite_existing_destination(monkeypatch: pytest.Mon
         out.write_bytes(b"new")
         return out
 
-    monkeypatch.setattr("app.refiner_service.remux_to_temp_file", _fake_remux)
+    monkeypatch.setattr("app.refiner_pipeline.remux_to_temp_file", _fake_remux)
 
     async def _go() -> None:
         watched = tmp_path / "watched"
@@ -659,7 +659,7 @@ def test_live_run_refuses_overwrite_existing_destination(monkeypatch: pytest.Mon
         existing = output / "m.mkv"
         existing.write_bytes(b"existing")
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = False
             row.refiner_primary_audio_lang = "eng"
@@ -697,7 +697,7 @@ def test_refiner_pass_final_gate_blocks_when_queue_turns_active(
         probe_calls.append(p)
         return _fake_probe_multi_audio()
 
-    monkeypatch.setattr("app.refiner_service.ffprobe_json", _probe)
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", _probe)
     phase = {"n": 0}
 
     async def phased_fetch(_row):  # noqa: ANN001
@@ -719,7 +719,7 @@ def test_refiner_pass_final_gate_blocks_when_queue_turns_active(
         output.mkdir()
         (watched / "late.mkv").write_bytes(b"x" * 400)
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = True
             row.refiner_primary_audio_lang = "eng"
@@ -750,7 +750,7 @@ def test_refiner_pass_skips_probe_when_radarr_queue_active(tmp_path: Path, monke
         probe_calls.append(p)
         return _fake_probe_multi_audio()
 
-    monkeypatch.setattr("app.refiner_service.ffprobe_json", _probe)
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", _probe)
 
     async def fake_fetch(_row):  # noqa: ANN001
         w = Path(_row.refiner_watched_folder or "")
@@ -769,7 +769,7 @@ def test_refiner_pass_skips_probe_when_radarr_queue_active(tmp_path: Path, monke
         src = watched / "hold.mkv"
         src.write_bytes(b"x" * 400)
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = True
             row.refiner_primary_audio_lang = "eng"
@@ -796,7 +796,7 @@ def test_refiner_pass_queue_snapshot_fetched_twice_before_probe(
         return RefinerQueueSnapshot(False, False, False, False, (), ())
 
     monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", counting_fetch)
-    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_multi_audio())
 
     async def _go() -> None:
         watched = tmp_path / "watched"
@@ -805,7 +805,7 @@ def test_refiner_pass_queue_snapshot_fetched_twice_before_probe(
         output.mkdir()
         (watched / "one.mkv").write_bytes(b"x" * 300)
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = True
             row.refiner_primary_audio_lang = "eng"
@@ -822,7 +822,7 @@ def test_refiner_pass_ffprobe_fail_reclassified_when_upstream_active(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "app.refiner_service.ffprobe_json",
+        "app.refiner_pipeline.ffprobe_json",
         lambda _p: (_ for _ in ()).throw(RuntimeError("probe failed")),
     )
     phase = {"n": 0}
@@ -846,7 +846,7 @@ def test_refiner_pass_ffprobe_fail_reclassified_when_upstream_active(
         output.mkdir()
         (watched / "bad.mkv").write_bytes(b"x" * 300)
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = True
             row.refiner_primary_audio_lang = "eng"
@@ -891,7 +891,7 @@ def test_refiner_waiting_upstream_repeat_dedupes_same_candidate_reason(
     monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", fake_fetch)
     probe_calls: list[Path] = []
     monkeypatch.setattr(
-        "app.refiner_service.ffprobe_json",
+        "app.refiner_pipeline.ffprobe_json",
         lambda p: (probe_calls.append(p), _fake_probe_multi_audio())[1],
     )
 
@@ -903,7 +903,7 @@ def test_refiner_waiting_upstream_repeat_dedupes_same_candidate_reason(
         src = watched / "Movie.Name.2026.1080p.mkv"
         src.write_bytes(b"x" * 500)
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = True
             row.refiner_primary_audio_lang = "eng"
@@ -961,7 +961,7 @@ def test_refiner_scheduled_pass_waiting_only_no_failed_aggregate(
         output.mkdir()
         (watched / "Hold.2024.1080p.mkv").write_bytes(b"x" * 500)
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = True
             row.refiner_primary_audio_lang = "eng"
@@ -1008,7 +1008,7 @@ def test_refiner_mixed_refined_and_waiting_counts_waiting_separate(
         )
 
     monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", fake_fetch)
-    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_multi_audio())
 
     def _proc_one(*args: Any, **kwargs: Any) -> tuple[str, dict[str, Any]]:
         path = args[0]
@@ -1041,7 +1041,7 @@ def test_refiner_mixed_refined_and_waiting_counts_waiting_separate(
         (watched / "ok.mkv").write_bytes(b"x" * 400)
         (watched / "Blocked.2024.1080p.mkv").write_bytes(b"x" * 500)
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = False
             row.refiner_primary_audio_lang = "eng"
@@ -1102,7 +1102,7 @@ def test_refiner_final_gate_wait_dedupes_across_passes_not_only_persist_path(
         output.mkdir()
         (watched / "GateHold.2024.1080p.mkv").write_bytes(b"x" * 500)
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = True
             row.refiner_primary_audio_lang = "eng"

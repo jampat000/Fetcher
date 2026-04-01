@@ -11,14 +11,14 @@ from fastapi.testclient import TestClient
 from app.auth import hash_password, sanitize_next_param
 
 pytestmark = pytest.mark.no_auth_override
-from app.db import SessionLocal, _get_or_create_settings
+from app.db import SessionLocal, get_or_create_settings
 from app.main import app
 from app.time_util import utc_now_naive
 
 
 async def _restore_seeded_auth_state() -> None:
     async with SessionLocal() as s:
-        r = await _get_or_create_settings(s)
+        r = await get_or_create_settings(s)
         r.auth_password_hash = hash_password("testpass12")
         r.auth_username = "admin"
         r.auth_bypass_lan = False
@@ -43,7 +43,7 @@ def _client_no_scheduler(monkeypatch: pytest.MonkeyPatch) -> TestClient:
 def client_real_auth(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     async def _clear_password() -> None:
         async with SessionLocal() as s:
-            r = await _get_or_create_settings(s)
+            r = await get_or_create_settings(s)
             r.auth_password_hash = ""
             r.auth_bypass_lan = False
             r.auth_ip_allowlist = ""

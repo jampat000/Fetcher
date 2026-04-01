@@ -104,7 +104,7 @@ async def login_post(
                 "Session could not be created. Restart Fetcher or contact support.", status_code=500
             )
         resp = RedirectResponse(next_dest, status_code=303)
-        attach_session_cookie(resp, secret=secret, username=result.cookie_username)
+        attach_session_cookie(resp, secret=secret, username=result.cookie_username, request=request)
         return resp
 
     if request_prefers_json(request):

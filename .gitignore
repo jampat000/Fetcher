@@ -74,6 +74,10 @@ packaging/ffmpeg-download/
 
 # IDE / OS
 
+.cursor/
+
+*.code-workspace
+
 .idea/
 
 .vscode/

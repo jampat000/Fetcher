@@ -6,7 +6,7 @@ import asyncio
 
 import pytest
 
-from app.db import SessionLocal, _get_or_create_settings
+from app.db import SessionLocal, get_or_create_settings
 from app.dashboard_service import fetch_live_dashboard_queue_totals
 
 
@@ -14,7 +14,7 @@ from app.dashboard_service import fetch_live_dashboard_queue_totals
 def _enabled_sonarr_radarr_settings():
     async def _seed():
         async with SessionLocal() as s:
-            row = await _get_or_create_settings(s)
+            row = await get_or_create_settings(s)
             row.sonarr_enabled = True
             row.sonarr_url = "http://127.0.0.1:8989"
             row.sonarr_api_key = "sk"
@@ -52,7 +52,7 @@ def test_fetch_live_omits_sonarr_missing_when_helper_raises(
 
     async def _go():
         async with SessionLocal() as s:
-            row = await _get_or_create_settings(s)
+            row = await get_or_create_settings(s)
             return await fetch_live_dashboard_queue_totals(row)
 
     live = asyncio.run(_go())
@@ -86,7 +86,7 @@ def test_fetch_live_omits_radarr_missing_when_movies_raises(
 
     async def _go():
         async with SessionLocal() as s:
-            row = await _get_or_create_settings(s)
+            row = await get_or_create_settings(s)
             return await fetch_live_dashboard_queue_totals(row)
 
     live = asyncio.run(_go())
@@ -120,7 +120,7 @@ def test_fetch_live_sonarr_cutoff_omitted_on_invalid_response_shape(
 
     async def _go():
         async with SessionLocal() as s:
-            row = await _get_or_create_settings(s)
+            row = await get_or_create_settings(s)
             return await fetch_live_dashboard_queue_totals(row)
 
     live = asyncio.run(_go())
@@ -161,7 +161,7 @@ def test_fetch_live_applies_wait_for_timeout_to_sonarr_missing(monkeypatch: pyte
 
     async def _seed():
         async with SessionLocal() as s:
-            row = await _get_or_create_settings(s)
+            row = await get_or_create_settings(s)
             row.sonarr_enabled = True
             row.sonarr_url = "http://127.0.0.1:8989"
             row.sonarr_api_key = "sk"
@@ -172,7 +172,7 @@ def test_fetch_live_applies_wait_for_timeout_to_sonarr_missing(monkeypatch: pyte
 
     async def _go():
         async with SessionLocal() as s:
-            row = await _get_or_create_settings(s)
+            row = await get_or_create_settings(s)
             return await fetch_live_dashboard_queue_totals(row)
 
     live = asyncio.run(_go())

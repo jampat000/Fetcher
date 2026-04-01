@@ -14,13 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import get_csrf_token_for_template, require_csrf
 from app.branding import APP_NAME, APP_TAGLINE
 from app.constants import _MOVIE_GENRE_OPTIONS, _PEOPLE_CREDIT_OPTIONS
-from app.db import _get_or_create_settings, fetch_latest_app_snapshots, get_session
+from app.db import get_or_create_settings, fetch_latest_app_snapshots, get_session
 from app.display_helpers import (
-    _normalize_hhmm,
-    _now_local,
-    _schedule_days_display,
-    _schedule_time_range_friendly,
-    _time_select_orphan,
+    normalize_hhmm,
+    now_local,
+    schedule_days_display,
+    schedule_time_range_friendly,
+    time_select_orphan,
     activity_relative_time,
 )
 from app.emby_client import EmbyClient, EmbyConfig
@@ -86,10 +86,10 @@ def build_trimmer_overview_config(settings: AppSettings) -> dict[str, object]:
     tv_on = tv_w or tud > 0
 
     sched_on = bool(settings.emby_schedule_enabled)
-    days_d = _schedule_days_display(settings.emby_schedule_days or "")
-    es = _normalize_hhmm(settings.emby_schedule_start, "00:00")
-    ee = _normalize_hhmm(settings.emby_schedule_end, "23:59")
-    win = _schedule_time_range_friendly(es, ee)
+    days_d = schedule_days_display(settings.emby_schedule_days or "")
+    es = normalize_hhmm(settings.emby_schedule_start, "00:00")
+    ee = normalize_hhmm(settings.emby_schedule_end, "23:59")
+    win = schedule_time_range_friendly(es, ee)
     sched_detail = f"{days_d or '—'} · {win}" if sched_on else "—"
 
     key = resolve_emby_api_key(settings)
@@ -137,7 +137,7 @@ def build_trimmer_recent_activity_summary(settings: AppSettings, *, now: datetim
 
 @router.get("/trimmer/settings", response_class=HTMLResponse)
 async def trimmer_settings_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
-    settings = await _get_or_create_settings(session)
+    settings = await get_or_create_settings(session)
     show_setup_wizard = not is_setup_complete(settings)
     settings.emby_api_key = resolve_emby_api_key(settings)
     emby_snap = (await fetch_latest_app_snapshots(session)).get("emby")
@@ -145,8 +145,8 @@ async def trimmer_settings_page(request: Request, session: AsyncSession = Depend
     time_choices = schedule_time_dropdown_choices(step_minutes=30)
     time_choice_keys = {v for v, _ in time_choices}
     em_days = normalize_schedule_days_csv(settings.emby_schedule_days or "")
-    es = _normalize_hhmm(settings.emby_schedule_start, "00:00")
-    ee = _normalize_hhmm(settings.emby_schedule_end, "23:59")
+    es = normalize_hhmm(settings.emby_schedule_start, "00:00")
+    ee = normalize_hhmm(settings.emby_schedule_end, "23:59")
     return templates.TemplateResponse(
         request,
         "trimmer_settings.html",
@@ -158,7 +158,7 @@ async def trimmer_settings_page(request: Request, session: AsyncSession = Depend
             "settings": settings,
             "emby": emby_snap,
             "now": utc_now_naive(),
-            "now_local": _now_local(tz),
+            "now_local": now_local(tz),
             "timezone": tz,
             "schedule_time_choices": time_choices,
             "emby_schedule_days_normalized": em_days,
@@ -167,8 +167,8 @@ async def trimmer_settings_page(request: Request, session: AsyncSession = Depend
             ),
             "emby_schedule_start_hhmm": es,
             "emby_schedule_end_hhmm": ee,
-            "emby_start_orphan": _time_select_orphan(es, time_choice_keys, fallback_display="12:00 AM"),
-            "emby_end_orphan": _time_select_orphan(ee, time_choice_keys, fallback_display="11:59 PM"),
+            "emby_start_orphan": time_select_orphan(es, time_choice_keys, fallback_display="12:00 AM"),
+            "emby_end_orphan": time_select_orphan(ee, time_choice_keys, fallback_display="11:59 PM"),
             "movie_genre_options": _MOVIE_GENRE_OPTIONS,
             "selected_movie_genres": parse_genres_csv(settings.emby_rule_movie_genres_csv),
             "selected_tv_genres": parse_genres_csv(settings.emby_rule_tv_genres_csv),
@@ -188,7 +188,7 @@ async def trimmer_settings_page(request: Request, session: AsyncSession = Depend
 @router.get("/trimmer", response_class=HTMLResponse)
 async def trimmer_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     # Keep this route thin: parse request input, delegate orchestration to services, then render.
-    settings = await _get_or_create_settings(session)
+    settings = await get_or_create_settings(session)
     show_setup_wizard = not is_setup_complete(settings)
     tz = settings.timezone or "UTC"
     _truthy = ("1", "true", "yes")
@@ -232,7 +232,7 @@ async def trimmer_page(request: Request, session: AsyncSession = Depends(get_ses
             "scan_prompt": review.scan_prompt,
             "scan_loaded": review.scan_loaded,
             "now": now,
-            "now_local": _now_local(tz),
+            "now_local": now_local(tz),
             "timezone": tz,
             "csrf_token": await get_csrf_token_for_template(request, session),
             "show_setup_wizard": show_setup_wizard,
@@ -252,7 +252,7 @@ async def save_emby_settings(
 ) -> RedirectResponse:
     # Backward-compatible endpoint: save both sections if old form posts here.
     try:
-        row = await _get_or_create_settings(session)
+        row = await get_or_create_settings(session)
         row.emby_enabled = emby_enabled
         row.emby_url = _normalize_base_url(emby_url)
         row.emby_api_key = encrypt_secret_for_storage(emby_api_key.strip())
@@ -313,7 +313,7 @@ async def save_emby_connection_settings(
         return RedirectResponse(trimmer_settings_redirect_url(saved=False, reason=reason, section=sec), status_code=303)
 
     try:
-        row = await _get_or_create_settings(session)
+        row = await get_or_create_settings(session)
         row.emby_enabled = emby_enabled
         row.emby_url = _normalize_base_url(emby_url)
         row.emby_api_key = encrypt_secret_for_storage(emby_api_key.strip())
@@ -405,7 +405,7 @@ async def save_trimmer_settings(
         return respond(saved=False, reason="invalid_scope")
 
     try:
-        row = await _get_or_create_settings(session)
+        row = await get_or_create_settings(session)
         if scope == "schedule":
             eim = max(5, min(7 * 24 * 60, int(emby_interval_minutes or 60)))
             row.emby_interval_minutes = eim
@@ -420,8 +420,8 @@ async def save_trimmer_settings(
                 emby_schedule_Sat,
                 emby_schedule_Sun,
             )
-            row.emby_schedule_start = _normalize_hhmm(emby_schedule_start, "00:00")
-            row.emby_schedule_end = _normalize_hhmm(emby_schedule_end, "23:59")
+            row.emby_schedule_start = normalize_hhmm(emby_schedule_start, "00:00")
+            row.emby_schedule_end = normalize_hhmm(emby_schedule_end, "23:59")
             _scan = int(emby_max_items_scan)
             row.emby_max_items_scan = 0 if _scan <= 0 else max(1, min(100_000, _scan))
             row.emby_max_deletes_per_run = max(1, min(500, int(emby_max_deletes_per_run or 25)))
@@ -484,7 +484,7 @@ async def test_emby(request: Request, session: AsyncSession = Depends(get_sessio
             return JSONResponse({"ok": ok, "section": "connection", "test": "emby_ok" if ok else "emby_fail"})
         return RedirectResponse(trimmer_settings_test_redirect_url(ok=ok), status_code=303)
 
-    settings = await _get_or_create_settings(session)
+    settings = await get_or_create_settings(session)
     emby_url = _normalize_base_url(settings.emby_url)
     emby_token = resolve_emby_api_key(settings)
     if not emby_url:
@@ -558,7 +558,7 @@ async def test_emby_from_form(
         session.add(AppSnapshot(app="emby", ok=False, status_message="Connection test failed: Emby URL is required.", missing_total=0, cutoff_unmet_total=0))
         await session.commit()
         return finish(False)
-    row = await _get_or_create_settings(session)
+    row = await get_or_create_settings(session)
     emby_token_n = resolve_emby_api_key(row, form=emby_api_key)
     if not emby_token_n:
         session.add(AppSnapshot(app="emby", ok=False, status_message="Connection test failed: Emby API key is required.", missing_total=0, cutoff_unmet_total=0))

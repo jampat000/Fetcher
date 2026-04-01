@@ -37,7 +37,7 @@ import asyncio
 import os
 os.environ["FETCHER_DEV_DB_PATH"] = {path_json}
 from app.auth import hash_password
-from app.db import SessionLocal, _get_or_create_settings, engine
+from app.db import SessionLocal, get_or_create_settings, engine
 from app.migrations import migrate
 from app.models import Base
 from app.time_util import utc_now_naive
@@ -47,7 +47,7 @@ async def main():
         await conn.run_sync(Base.metadata.create_all)
     await migrate(engine)
     async with SessionLocal() as s:
-        r = await _get_or_create_settings(s)
+        r = await get_or_create_settings(s)
         r.auth_password_hash = hash_password({pass_json})
         r.auth_session_secret = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
         r.auth_username = {user_json}

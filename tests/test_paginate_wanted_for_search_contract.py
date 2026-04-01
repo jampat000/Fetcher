@@ -1,4 +1,4 @@
-"""Contract tests for ``_paginate_wanted_for_search`` (page walk, totals, limits, ordering, cooldown).
+"""Contract tests for ``paginate_wanted_for_search`` (page walk, totals, limits, ordering, cooldown).
 
 Performance overlap/prefetch must not land without updating these assertions.
 """
@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.models import ArrActionLog, Base
 from app.service_logic import (
     _PAGINATE_WANTED_FOR_SEARCH_MAX_PAGES,
-    _paginate_wanted_for_search,
+    paginate_wanted_for_search,
 )
 
 
@@ -75,7 +75,7 @@ def test_page_walk_order_three_pages(paginate_session) -> None:
 
     async def run():
         async with SessionMaker() as session:
-            ids, recs, total = await _paginate_wanted_for_search(
+            ids, recs, total = await paginate_wanted_for_search(
                 client,
                 session,
                 kind="missing",
@@ -108,7 +108,7 @@ def test_total_records_taken_only_from_page_1(paginate_session) -> None:
 
     async def run():
         async with SessionMaker() as session:
-            _, _, total = await _paginate_wanted_for_search(
+            _, _, total = await paginate_wanted_for_search(
                 client,
                 session,
                 kind="missing",
@@ -134,7 +134,7 @@ def test_early_exit_empty_records_page_1(paginate_session) -> None:
 
     async def run():
         async with SessionMaker() as session:
-            ids, recs, total = await _paginate_wanted_for_search(
+            ids, recs, total = await paginate_wanted_for_search(
                 client,
                 session,
                 kind="missing",
@@ -168,7 +168,7 @@ def test_early_exit_empty_records_after_nonempty_page(paginate_session) -> None:
 
     async def run():
         async with SessionMaker() as session:
-            ids, _, _ = await _paginate_wanted_for_search(
+            ids, _, _ = await paginate_wanted_for_search(
                 client,
                 session,
                 kind="missing",
@@ -198,7 +198,7 @@ def test_early_exit_when_limit_reached_stops_extra_pages(paginate_session) -> No
 
     async def run():
         async with SessionMaker() as session:
-            ids, recs, _ = await _paginate_wanted_for_search(
+            ids, recs, _ = await paginate_wanted_for_search(
                 client,
                 session,
                 kind="missing",
@@ -239,7 +239,7 @@ def test_max_pages_cap(monkeypatch: pytest.MonkeyPatch, paginate_session) -> Non
 
     async def run():
         async with SessionMaker() as session:
-            ids, _, _ = await _paginate_wanted_for_search(
+            ids, _, _ = await paginate_wanted_for_search(
                 client,
                 session,
                 kind="missing",
@@ -271,7 +271,7 @@ def test_duplicate_episode_id_across_pages_first_wins_in_output(paginate_session
 
     async def run():
         async with SessionMaker() as session:
-            ids, _, _ = await _paginate_wanted_for_search(
+            ids, _, _ = await paginate_wanted_for_search(
                 client,
                 session,
                 kind="missing",
@@ -301,7 +301,7 @@ def test_page_all_duplicates_advances_and_continues(paginate_session) -> None:
 
     async def run():
         async with SessionMaker() as session:
-            ids, _, _ = await _paginate_wanted_for_search(
+            ids, _, _ = await paginate_wanted_for_search(
                 client,
                 session,
                 kind="missing",
@@ -347,7 +347,7 @@ def test_cooldown_filters_some_ids_max_apply_fetches_next_page(paginate_session)
 
     async def run():
         async with SessionMaker() as session:
-            ids, recs, total = await _paginate_wanted_for_search(
+            ids, recs, total = await paginate_wanted_for_search(
                 client,
                 session,
                 kind="missing",
@@ -381,7 +381,7 @@ def test_radarr_wanted_cutoff_movieId_shape(paginate_session) -> None:
 
     async def run():
         async with SessionMaker() as session:
-            ids, recs, total = await _paginate_wanted_for_search(
+            ids, recs, total = await paginate_wanted_for_search(
                 client,
                 session,
                 kind="cutoff",
@@ -416,7 +416,7 @@ def test_sonarr_id_key_fallback_when_episodeId_missing(paginate_session) -> None
 
     async def run():
         async with SessionMaker() as session:
-            ids, recs, total = await _paginate_wanted_for_search(
+            ids, recs, total = await paginate_wanted_for_search(
                 client,
                 session,
                 kind="missing",
@@ -447,7 +447,7 @@ def test_arr_action_log_written_for_allowed_ids_only(paginate_session) -> None:
 
     async def run():
         async with SessionMaker() as session:
-            await _paginate_wanted_for_search(
+            await paginate_wanted_for_search(
                 client,
                 session,
                 kind="missing",

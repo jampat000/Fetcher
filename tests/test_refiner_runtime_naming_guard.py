@@ -11,6 +11,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 # Python modules that define or schedule Refiner behavior, logging, and UI wiring.
 _REFINER_CORE_PY = [
     _REPO_ROOT / "app" / "refiner_service.py",
+    _REPO_ROOT / "app" / "refiner_pipeline.py",
     _REPO_ROOT / "app" / "refiner_mux.py",
     _REPO_ROOT / "app" / "refiner_rules.py",
     _REPO_ROOT / "app" / "refiner_errors.py",
@@ -39,7 +40,9 @@ def test_scheduler_has_no_sm_seconds_abbreviation() -> None:
 
 
 def test_refiner_temp_and_finalize_paths_use_refiner_markers() -> None:
+    pipeline = (_REPO_ROOT / "app" / "refiner_pipeline.py").read_text(encoding="utf-8")
     svc = (_REPO_ROOT / "app" / "refiner_service.py").read_text(encoding="utf-8")
     mux = (_REPO_ROOT / "app" / "refiner_mux.py").read_text(encoding="utf-8")
-    assert ".refiner-" in svc
+    assert ".refiner-" in pipeline
+    assert ".refiner." in svc
     assert 'f"{src.stem}.refiner."' in mux

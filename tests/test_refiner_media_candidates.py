@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import func, select
 
-from app.db import SessionLocal, _get_or_create_settings
+from app.db import SessionLocal, get_or_create_settings
 from app.models import RefinerActivity
 from app.refiner_rules import collect_media_files_under_path, is_refiner_media_candidate
 from app.refiner_service import (
@@ -107,7 +107,7 @@ def test_run_refiner_par2_only_no_activity_no_processing(tmp_path: Path, monkeyp
         return RefinerQueueSnapshot(False, False, False, False, (), ())
 
     monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", _track_fetch)
-    monkeypatch.setattr("app.refiner_service.ffprobe_json", lambda _p: (_ for _ in ()).throw(AssertionError("no probe")))
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: (_ for _ in ()).throw(AssertionError("no probe")))
 
     async def _go() -> None:
         watched = tmp_path / "watched"
@@ -119,7 +119,7 @@ def test_run_refiner_par2_only_no_activity_no_processing(tmp_path: Path, monkeyp
             n_before = (
                 await session.execute(select(func.count()).select_from(RefinerActivity))
             ).scalar_one()
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = True
             row.refiner_primary_audio_lang = "eng"
@@ -146,7 +146,7 @@ def test_run_refiner_mkv_with_sidecar_par2_only_media_gets_activity(tmp_path: Pa
 
     monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", fake_fetch)
     monkeypatch.setattr(
-        "app.refiner_service.ffprobe_json",
+        "app.refiner_pipeline.ffprobe_json",
         lambda _p: {
             "streams": [
                 {"index": 0, "codec_type": "video"},
@@ -166,7 +166,7 @@ def test_run_refiner_mkv_with_sidecar_par2_only_media_gets_activity(tmp_path: Pa
             n0 = (
                 await session.execute(select(func.count()).select_from(RefinerActivity))
             ).scalar_one()
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = True
             row.refiner_primary_audio_lang = "eng"

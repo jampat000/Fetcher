@@ -155,7 +155,7 @@ def test_dashboard_route_renders_per_app_success_failure_badges(monkeypatch) -> 
 def test_dashboard_route_empty_states_are_intentional(monkeypatch) -> None:
     import app.routers.dashboard as dash_mod
 
-    real_get = dash_mod._get_or_create_settings
+    real_get = dash_mod.get_or_create_settings
 
     async def _settings_sonarr_on(session):
         row = await real_get(session)
@@ -191,7 +191,7 @@ def test_dashboard_route_empty_states_are_intentional(monkeypatch) -> None:
         }
 
     monkeypatch.setattr("app.routers.dashboard.build_dashboard_status", _fake_status)
-    monkeypatch.setattr(dash_mod, "_get_or_create_settings", _settings_sonarr_on)
+    monkeypatch.setattr(dash_mod, "get_or_create_settings", _settings_sonarr_on)
     monkeypatch.setattr(
         "app.routers.dashboard.merge_activity_feed",
         lambda *_a, **_kw: [],
@@ -217,7 +217,7 @@ def test_cleaner_default_skips_emby_client_when_ready(monkeypatch) -> None:
     def _emby_should_not_construct(*_a, **_kw):
         raise AssertionError("EmbyClient must not run without ?scan=1")
 
-    monkeypatch.setattr("app.routers.trimmer._get_or_create_settings", _fake_settings)
+    monkeypatch.setattr("app.routers.trimmer.get_or_create_settings", _fake_settings)
     monkeypatch.setattr("app.routers.trimmer.EmbyClient", _emby_should_not_construct)
     with _build_client(monkeypatch) as client:
         resp = client.get("/trimmer")
@@ -255,7 +255,7 @@ def test_cleaner_preview_query_does_not_trigger_scan(monkeypatch) -> None:
         async def aclose(self) -> None:
             return None
 
-    monkeypatch.setattr("app.routers.trimmer._get_or_create_settings", _fake_settings)
+    monkeypatch.setattr("app.routers.trimmer.get_or_create_settings", _fake_settings)
     monkeypatch.setattr("app.routers.trimmer.EmbyClient", _StubClient)
     with _build_client(monkeypatch) as client:
         resp = client.get("/trimmer?preview=1")

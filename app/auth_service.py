@@ -22,7 +22,7 @@ from app.auth_runtime import (
     login_rate_limited,
     record_login_failure,
 )
-from app.db import _get_or_create_settings
+from app.db import get_or_create_settings
 from app.models import AppSettings
 from app.security_utils import (
     hash_password,
@@ -52,7 +52,7 @@ class LoginFlowResult:
 
 class AuthService:
     async def get_settings(self, session: AsyncSession) -> AppSettings:
-        return await _get_or_create_settings(session)
+        return await get_or_create_settings(session)
 
     @staticmethod
     def _upgrade_password_hash_if_needed(*, password: str, settings: AppSettings) -> None:
@@ -68,7 +68,7 @@ class AuthService:
         username: str,
         password: str,
     ) -> LoginFlowResult:
-        settings = await _get_or_create_settings(session)
+        settings = await get_or_create_settings(session)
         ip = get_client_ip(request)
         if login_rate_limited(ip):
             return LoginFlowResult(ok=False, status_code=429, message=TOO_MANY_ATTEMPTS_MESSAGE)
@@ -99,7 +99,7 @@ class AuthService:
         password: str,
         jwt_secret: str,
     ) -> tuple[AuthResult, dict[str, str | int] | None]:
-        settings = await _get_or_create_settings(session)
+        settings = await get_or_create_settings(session)
         login_result = await self.login(
             session=session,
             request=request,
@@ -131,7 +131,7 @@ class AuthService:
         refresh_token: str,
         jwt_secret: str,
     ) -> tuple[AuthResult, dict[str, str | int] | None]:
-        settings = await _get_or_create_settings(session)
+        settings = await get_or_create_settings(session)
         try:
             payload = jwt.decode(refresh_token, jwt_secret, algorithms=["HS256"])
         except Exception:

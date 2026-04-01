@@ -11,7 +11,7 @@ import pytest
 import httpx
 from fastapi.testclient import TestClient
 
-from app.db import SessionLocal, _get_or_create_settings
+from app.db import SessionLocal, get_or_create_settings
 from app.main import app
 
 _WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
@@ -52,7 +52,6 @@ def _client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
         "/trimmer",
         "/healthz",
         "/settings?import=ok",
-        "/settings/backup/export",
         "/setup/1",
         "/setup/2",
         "/setup/3",
@@ -94,7 +93,7 @@ def _seed_setup_config(
 ) -> None:
     async def _seed() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.sonarr_url = sonarr_url
             row.sonarr_api_key = sonarr_api_key
             row.radarr_url = radarr_url
@@ -360,7 +359,7 @@ def test_post_refiner_save_async_header_returns_json(monkeypatch: pytest.MonkeyP
     """Refiner XHR path: JSON instead of 303 (same persistence as normal POST)."""
     async def seed() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_primary_audio_lang = "eng"
             await session.commit()
 
@@ -393,7 +392,7 @@ def test_post_refiner_save_async_header_returns_json(monkeypatch: pytest.MonkeyP
 
     async def verify() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             assert row.refiner_interval_seconds == 120
 
     asyncio.run(verify())
@@ -497,7 +496,7 @@ def test_refiner_folders_save_async_rejects_missing_paths_when_enabled(
 def test_refiner_readiness_banner_when_enabled_incomplete(monkeypatch: pytest.MonkeyPatch) -> None:
     async def seed() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_primary_audio_lang = ""
             row.refiner_watched_folder = ""
@@ -515,7 +514,7 @@ def test_refiner_readiness_banner_when_enabled_incomplete(monkeypatch: pytest.Mo
 def test_refiner_readiness_brief_api_json(monkeypatch: pytest.MonkeyPatch) -> None:
     async def seed() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_primary_audio_lang = ""
             await session.commit()
@@ -541,7 +540,7 @@ def test_refiner_settings_page_has_syncable_banner_ids(monkeypatch: pytest.Monke
 def test_refiner_dry_run_save_does_not_modify_emby_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:
     async def seed() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.emby_dry_run = True
             row.refiner_dry_run = True
             await session.commit()
@@ -573,7 +572,7 @@ def test_refiner_dry_run_save_does_not_modify_emby_dry_run(monkeypatch: pytest.M
 
     async def verify() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             assert row.emby_dry_run is True
             assert row.refiner_dry_run is False
             assert row.refiner_audio_preference_mode == "preferred_langs_quality"
@@ -585,7 +584,7 @@ def test_refiner_dry_run_save_does_not_modify_emby_dry_run(monkeypatch: pytest.M
 def test_trimmer_dry_run_save_does_not_modify_refiner_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:
     async def seed() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.emby_dry_run = True
             row.refiner_dry_run = False
             await session.commit()
@@ -613,7 +612,7 @@ def test_trimmer_dry_run_save_does_not_modify_refiner_dry_run(monkeypatch: pytes
 
     async def verify() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             assert row.emby_dry_run is False
             assert row.refiner_dry_run is False
 
@@ -639,7 +638,7 @@ def test_refiner_page_is_separate_from_trimmer(monkeypatch: pytest.MonkeyPatch) 
 def test_refiner_overview_page_exists_and_has_tabs(monkeypatch: pytest.MonkeyPatch) -> None:
     async def seed() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_interval_seconds = 45
             await session.commit()
@@ -957,7 +956,7 @@ def test_post_trimmer_cleaner_async_header_returns_json(monkeypatch: pytest.Monk
 
     async def verify_interval() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             assert row.emby_interval_minutes == 95
 
     asyncio.run(verify_interval())
@@ -992,7 +991,7 @@ def test_post_trimmer_cleaner_save_scope_from_query_when_missing_from_body(
 
     async def verify_interval() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             assert row.emby_interval_minutes == 93
 
     asyncio.run(verify_interval())
@@ -1121,7 +1120,7 @@ def test_post_trimmer_cleaner_legacy_global_async_json(monkeypatch: pytest.Monke
 def test_post_trimmer_cleaner_legacy_global_does_not_mutate_db(monkeypatch: pytest.MonkeyPatch) -> None:
     async def seed() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.emby_interval_minutes = 88
             row.emby_dry_run = True
             row.emby_max_items_scan = 2000
@@ -1152,7 +1151,7 @@ def test_post_trimmer_cleaner_legacy_global_does_not_mutate_db(monkeypatch: pyte
 
     async def verify() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             assert row.emby_interval_minutes == 88
             assert row.emby_dry_run is True
             assert row.emby_max_items_scan == 2000
@@ -1200,7 +1199,7 @@ def test_post_trimmer_cleaner_save_scope_all_async_json(monkeypatch: pytest.Monk
 def test_post_trimmer_cleaner_save_scope_all_does_not_mutate_db(monkeypatch: pytest.MonkeyPatch) -> None:
     async def seed() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.emby_interval_minutes = 33
             row.emby_rule_movie_watched_rating_below = 5
             row.emby_rule_tv_unwatched_days = 20
@@ -1225,7 +1224,7 @@ def test_post_trimmer_cleaner_save_scope_all_does_not_mutate_db(monkeypatch: pyt
 
     async def verify() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             assert row.emby_interval_minutes == 33
             assert row.emby_rule_movie_watched_rating_below == 5
             assert row.emby_rule_tv_unwatched_days == 20
@@ -1236,7 +1235,7 @@ def test_post_trimmer_cleaner_save_scope_all_does_not_mutate_db(monkeypatch: pyt
 def test_trimmer_schedule_save_does_not_update_rule_columns(monkeypatch: pytest.MonkeyPatch) -> None:
     async def seed() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.emby_rule_movie_watched_rating_below = 7
             row.emby_rule_tv_unwatched_days = 42
             row.emby_rule_movie_genres_csv = "SciFi"
@@ -1270,7 +1269,7 @@ def test_trimmer_schedule_save_does_not_update_rule_columns(monkeypatch: pytest.
 
     async def verify() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             assert row.emby_interval_minutes == 45
             assert row.emby_max_items_scan == 1234
             assert row.emby_rule_movie_watched_rating_below == 7
@@ -1284,7 +1283,7 @@ def test_trimmer_schedule_save_does_not_update_rule_columns(monkeypatch: pytest.
 def test_trimmer_tv_save_does_not_update_movie_columns(monkeypatch: pytest.MonkeyPatch) -> None:
     async def seed() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.emby_rule_movie_watched_rating_below = 8
             row.emby_rule_movie_unwatched_days = 15
             row.emby_rule_tv_unwatched_days = 10
@@ -1310,7 +1309,7 @@ def test_trimmer_tv_save_does_not_update_movie_columns(monkeypatch: pytest.Monke
 
     async def verify() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             assert row.emby_rule_tv_unwatched_days == 25
             assert row.emby_rule_movie_watched_rating_below == 8
             assert row.emby_rule_movie_unwatched_days == 15
@@ -1321,7 +1320,7 @@ def test_trimmer_tv_save_does_not_update_movie_columns(monkeypatch: pytest.Monke
 def test_trimmer_movies_save_does_not_update_tv_columns(monkeypatch: pytest.MonkeyPatch) -> None:
     async def seed() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.emby_rule_tv_unwatched_days = 40
             row.emby_rule_tv_delete_watched = False
             row.emby_rule_movie_watched_rating_below = 2
@@ -1346,7 +1345,7 @@ def test_trimmer_movies_save_does_not_update_tv_columns(monkeypatch: pytest.Monk
 
     async def verify() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             assert row.emby_rule_movie_watched_rating_below == 6
             assert row.emby_rule_movie_unwatched_days == 11
             assert row.emby_rule_tv_unwatched_days == 40
@@ -1376,7 +1375,7 @@ def test_trimmer_cleaner_validation_redirect_preserves_section_in_url(monkeypatc
 def test_global_fetcher_save_does_not_mutate_trimmer_emby_interval(monkeypatch: pytest.MonkeyPatch) -> None:
     async def seed() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.emby_interval_minutes = 77
             row.emby_dry_run = True
             await session.commit()
@@ -1401,7 +1400,7 @@ def test_global_fetcher_save_does_not_mutate_trimmer_emby_interval(monkeypatch: 
 
     async def verify() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             assert row.emby_interval_minutes == 77
             assert row.emby_dry_run is True
 
@@ -1411,7 +1410,7 @@ def test_global_fetcher_save_does_not_mutate_trimmer_emby_interval(monkeypatch: 
 def test_trimmer_schedule_save_does_not_mutate_sonarr_fields(monkeypatch: pytest.MonkeyPatch) -> None:
     async def seed() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.sonarr_url = "http://sonarr-preserved.example:8989"
             row.sonarr_interval_minutes = 31
             await session.commit()
@@ -1440,7 +1439,7 @@ def test_trimmer_schedule_save_does_not_mutate_sonarr_fields(monkeypatch: pytest
 
     async def verify() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             assert row.sonarr_url == "http://sonarr-preserved.example:8989"
             assert row.sonarr_interval_minutes == 31
             assert row.emby_interval_minutes == 55
@@ -1499,7 +1498,7 @@ def test_post_settings_async_header_returns_json(monkeypatch: pytest.MonkeyPatch
     """XHR/fetch path: JSON body instead of 303 (same scoping as normal POST)."""
     async def seed() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.sonarr_retry_delay_minutes = 17
             row.radarr_retry_delay_minutes = 23
             await session.commit()
@@ -1523,7 +1522,7 @@ def test_post_settings_async_header_returns_json(monkeypatch: pytest.MonkeyPatch
 
     async def verify_retry_delay_unchanged() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             assert row.sonarr_retry_delay_minutes == 17
             assert row.radarr_retry_delay_minutes == 23
 
@@ -1582,7 +1581,7 @@ def test_post_settings_async_rejects_invalid_save_scope_json(monkeypatch: pytest
 def test_post_settings_invalid_scope_does_not_change_database(monkeypatch: pytest.MonkeyPatch) -> None:
     async def seed() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.sonarr_retry_delay_minutes = 7777
             row.radarr_retry_delay_minutes = 7777
             await session.commit()
@@ -1604,7 +1603,7 @@ def test_post_settings_invalid_scope_does_not_change_database(monkeypatch: pytes
 
     async def verify() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             assert row.sonarr_retry_delay_minutes == 7777
             assert row.radarr_retry_delay_minutes == 7777
 
@@ -1625,7 +1624,7 @@ def test_test_sonarr_post_does_not_mutate_app_settings_url(monkeypatch: pytest.M
 
     async def seed() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.sonarr_url = "http://unchanged.example:8989"
             row.sonarr_api_key = ""
             await session.commit()
@@ -1646,7 +1645,7 @@ def test_test_sonarr_post_does_not_mutate_app_settings_url(monkeypatch: pytest.M
 
         async def verify_url() -> None:
             async with SessionLocal() as session:
-                row = await _get_or_create_settings(session)
+                row = await get_or_create_settings(session)
                 assert row.sonarr_url == "http://unchanged.example:8989"
 
         asyncio.run(verify_url())
@@ -1654,7 +1653,7 @@ def test_test_sonarr_post_does_not_mutate_app_settings_url(monkeypatch: pytest.M
 
         async def reset_url() -> None:
             async with SessionLocal() as session:
-                row = await _get_or_create_settings(session)
+                row = await get_or_create_settings(session)
                 row.sonarr_url = ""
                 await session.commit()
 
@@ -1666,7 +1665,7 @@ def test_global_save_updates_only_retention_timezone(monkeypatch: pytest.MonkeyP
 
     async def seed() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.sonarr_interval_minutes = 33
             row.radarr_interval_minutes = 44
             row.sonarr_max_items_per_run = 50
@@ -1720,7 +1719,7 @@ def test_global_save_updates_only_retention_timezone(monkeypatch: pytest.MonkeyP
 
     async def verify_db() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             assert row.sonarr_interval_minutes == 33
             assert row.radarr_interval_minutes == 44
             assert row.sonarr_max_items_per_run == 50
@@ -1740,7 +1739,7 @@ def test_sonarr_save_preserves_radarr_interval_when_post_includes_wrong_radarr_i
 
     async def seed() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.radarr_interval_minutes = 30
             row.sonarr_interval_minutes = 45
             await session.commit()
@@ -1794,7 +1793,7 @@ def test_sonarr_save_preserves_radarr_interval_when_post_includes_wrong_radarr_i
 
     async def verify_db() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             assert row.radarr_interval_minutes == 30
 
     asyncio.run(verify_db())
@@ -1803,7 +1802,7 @@ def test_sonarr_save_preserves_radarr_interval_when_post_includes_wrong_radarr_i
 def test_sonarr_remove_failed_imports_saves_without_touching_radarr(monkeypatch: pytest.MonkeyPatch) -> None:
     async def seed() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.sonarr_remove_failed_imports = False
             row.radarr_remove_failed_imports = True
             await session.commit()
@@ -1829,7 +1828,7 @@ def test_sonarr_remove_failed_imports_saves_without_touching_radarr(monkeypatch:
 
     async def verify() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             assert row.sonarr_remove_failed_imports is True
             assert row.radarr_remove_failed_imports is True
 

@@ -36,7 +36,7 @@ def _ensure_dev_env() -> None:
 
 
 async def _run(username: str, password: str) -> None:
-    from app.db import SessionLocal, _get_or_create_settings, db_path, engine
+    from app.db import SessionLocal, get_or_create_settings, db_path, engine
     from app.migrations import migrate
     from app.models import Base
     from app.security_utils import hash_password
@@ -46,7 +46,7 @@ async def _run(username: str, password: str) -> None:
         await conn.run_sync(Base.metadata.create_all)
     await migrate(engine)
     async with SessionLocal() as session:
-        row = await _get_or_create_settings(session)
+        row = await get_or_create_settings(session)
         row.auth_username = username.strip() or "admin"
         row.auth_password_hash = hash_password(password)
         if not (row.auth_session_secret or "").strip():

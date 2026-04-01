@@ -10,7 +10,7 @@ from itsdangerous import SignatureExpired
 from unittest.mock import patch
 
 from app.auth import build_session_cookie_value, generate_csrf_token
-from app.db import SessionLocal, _get_or_create_settings
+from app.db import SessionLocal, get_or_create_settings
 from app.main import app
 
 # Must match ``tests/conftest.py`` seed after ``_init_fetcher_test_database``.
@@ -74,7 +74,7 @@ def test_post_protected_form_with_valid_csrf_succeeds(monkeypatch: pytest.Monkey
 
         async def _clear_allowlist() -> None:
             async with SessionLocal() as s:
-                row = await _get_or_create_settings(s)
+                row = await get_or_create_settings(s)
                 row.auth_ip_allowlist = ""
                 await s.commit()
 

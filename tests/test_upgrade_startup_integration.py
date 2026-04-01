@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.auth import bootstrap_auth_on_startup, hash_password
-from app.db import SessionLocal, _get_or_create_settings
+from app.db import SessionLocal, get_or_create_settings
 from app.main import app
 from app.time_util import utc_now_naive
 
@@ -42,7 +42,7 @@ def test_lifespan_logs_auth_startup_diagnostic(monkeypatch: pytest.MonkeyPatch, 
 def test_fetcher_reset_auth_logs_error_level(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
     async def seed_password() -> None:
         async with SessionLocal() as s:
-            r = await _get_or_create_settings(s)
+            r = await get_or_create_settings(s)
             r.auth_password_hash = hash_password("x" * 12)
             r.updated_at = utc_now_naive()
             await s.commit()

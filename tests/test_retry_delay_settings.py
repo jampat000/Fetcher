@@ -8,10 +8,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.db import SessionLocal, _get_or_create_settings
+from app.db import SessionLocal, get_or_create_settings
 from app.main import app
 from app.migrations import migrate
-from app.service_logic import _build_run_context
+from app.service_logic import build_run_context
 
 
 def _client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
@@ -156,7 +156,7 @@ def test_retry_delay_settings_are_isolated_and_persistent(monkeypatch: pytest.Mo
 
     async def verify_db() -> tuple[int, int]:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             return int(row.sonarr_retry_delay_minutes), int(row.radarr_retry_delay_minutes)
 
     assert asyncio.run(verify_db()) == (17, 89)
@@ -165,14 +165,14 @@ def test_retry_delay_settings_are_isolated_and_persistent(monkeypatch: pytest.Mo
 def test_run_context_uses_per_app_retry_delays_only() -> None:
     async def seed_and_build():
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.sonarr_retry_delay_minutes = 11
             row.radarr_retry_delay_minutes = 73
             row.sonarr_interval_minutes = 5
             row.radarr_interval_minutes = 300
             row.timezone = "UTC"
             await session.commit()
-            return _build_run_context(row, arr_manual_scope=None)
+            return build_run_context(row, arr_manual_scope=None)
 
     ctx = asyncio.run(seed_and_build())
     assert ctx.sonarr_retry_delay_minutes == 11
@@ -184,7 +184,7 @@ def test_missing_progression_path_does_not_use_wanted_missing(monkeypatch: pytes
 
     async def prep() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.sonarr_enabled = True
             row.sonarr_url = "http://localhost:8989"
             row.sonarr_search_missing = True
@@ -235,7 +235,7 @@ def test_missing_progression_path_does_not_use_wanted_missing(monkeypatch: pytes
     monkeypatch.setattr("app.service_logic.resolve_emby_api_key", lambda _s: "")
     monkeypatch.setattr("app.service_logic.in_window", lambda **_kw: True)
     monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
-    monkeypatch.setattr("app.service_logic._paginate_wanted_for_search", _panic_paginate)
+    monkeypatch.setattr("app.service_logic.paginate_wanted_for_search", _panic_paginate)
     monkeypatch.setattr("app.service_logic._wanted_queue_total", _wanted_total)
     monkeypatch.setattr("app.service_logic.trigger_sonarr_missing_search", _trigger)
     monkeypatch.setattr("app.service_logic.utc_now_naive", lambda: datetime(2026, 3, 25, 12, 0, 0))

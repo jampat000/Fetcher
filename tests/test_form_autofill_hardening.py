@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.auth import hash_password
-from app.db import SessionLocal, _get_or_create_settings
+from app.db import SessionLocal, get_or_create_settings
 from app.main import app
 from app.time_util import utc_now_naive
 
@@ -33,7 +33,7 @@ def client_login_page(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     """Password set so /login renders (not redirect to setup)."""
     async def seed() -> None:
         async with SessionLocal() as s:
-            r = await _get_or_create_settings(s)
+            r = await get_or_create_settings(s)
             r.auth_password_hash = hash_password("testpass12")
             r.auth_username = "admin"
             r.updated_at = utc_now_naive()
@@ -62,7 +62,7 @@ def test_setup_step0_form_autocomplete_off_and_scoped_auth_fields(
 ) -> None:
     async def clear_pw() -> None:
         async with SessionLocal() as s:
-            r = await _get_or_create_settings(s)
+            r = await get_or_create_settings(s)
             r.auth_password_hash = ""
             r.updated_at = utc_now_naive()
             await s.commit()
@@ -84,7 +84,7 @@ def test_setup_step1_sonarr_fields_have_integration_autofill_hardening(
 ) -> None:
     async def clear_pw() -> None:
         async with SessionLocal() as s:
-            r = await _get_or_create_settings(s)
+            r = await get_or_create_settings(s)
             r.auth_password_hash = ""
             r.updated_at = utc_now_naive()
             await s.commit()
@@ -120,7 +120,7 @@ def test_setup_step3_emby_fields_have_integration_autofill_hardening(
 ) -> None:
     async def clear_pw() -> None:
         async with SessionLocal() as s:
-            r = await _get_or_create_settings(s)
+            r = await get_or_create_settings(s)
             r.auth_password_hash = ""
             r.updated_at = utc_now_naive()
             await s.commit()

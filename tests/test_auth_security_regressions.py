@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.auth import hash_password
-from app.db import SessionLocal, _get_or_create_settings
+from app.db import SessionLocal, get_or_create_settings
 from app.main import app
 from app.time_util import utc_now_naive
 
@@ -27,7 +27,7 @@ def _scheduler_noop(monkeypatch: pytest.MonkeyPatch) -> None:
 
 async def _seed_auth_state() -> None:
     async with SessionLocal() as s:
-        row = await _get_or_create_settings(s)
+        row = await get_or_create_settings(s)
         row.auth_username = "admin"
         row.auth_password_hash = hash_password("testpass12")
         row.auth_refresh_token_hash = ""
@@ -178,7 +178,7 @@ def test_password_hash_upgrade_only_after_successful_verification(monkeypatch: p
 
     async def _get_hash() -> str:
         async with SessionLocal() as s:
-            row = await _get_or_create_settings(s)
+            row = await get_or_create_settings(s)
             return row.auth_password_hash
 
     before = asyncio.run(_get_hash())

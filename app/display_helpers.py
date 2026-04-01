@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 from app.form_helpers import _resolve_timezone_name
 
 
-def _to_12h(hhmm: str, default: str) -> str:
+def to_12h(hhmm: str, default: str) -> str:
     try:
         dt = datetime.strptime((hhmm or "").strip(), "%H:%M")
         return dt.strftime("%I:%M %p").lstrip("0")
@@ -14,7 +14,7 @@ def _to_12h(hhmm: str, default: str) -> str:
         return default
 
 
-def _normalize_hhmm(raw: str, default: str) -> str:
+def normalize_hhmm(raw: str, default: str) -> str:
     v = (raw or "").strip()
     if not v:
         return default
@@ -34,14 +34,14 @@ def _normalize_hhmm(raw: str, default: str) -> str:
     return default
 
 
-def _time_select_orphan(canonical_hhmm: str, choice_keys: set[str], *, fallback_display: str) -> tuple[str, str] | None:
+def time_select_orphan(canonical_hhmm: str, choice_keys: set[str], *, fallback_display: str) -> tuple[str, str] | None:
     """If saved time is not on the dropdown grid, offer it as the first option."""
     if canonical_hhmm in choice_keys:
         return None
-    return (canonical_hhmm, _to_12h(canonical_hhmm, fallback_display))
+    return (canonical_hhmm, to_12h(canonical_hhmm, fallback_display))
 
 
-def _schedule_days_display(days_csv: str) -> str:
+def schedule_days_display(days_csv: str) -> str:
     """Format stored CSV weekdays for dashboard (commas → spaced hyphens)."""
     raw = (days_csv or "").strip()
     if not raw:
@@ -50,7 +50,7 @@ def _schedule_days_display(days_csv: str) -> str:
     return " - ".join(parts)
 
 
-def _schedule_time_range_friendly(start_hhmm: str, end_hhmm: str) -> str:
+def schedule_time_range_friendly(start_hhmm: str, end_hhmm: str) -> str:
     """Avoid a lone en-dash when pairing start/end for dashboard tiles."""
     s = (start_hhmm or "").strip() or "00:00"
     e = (end_hhmm or "").strip() or "23:59"
@@ -58,8 +58,8 @@ def _schedule_time_range_friendly(start_hhmm: str, end_hhmm: str) -> str:
         e = "23:59"
     if s == "00:00" and e in ("23:59", "23:58"):
         return "All day"
-    left = _to_12h(s, "12:00 AM")
-    right = _to_12h(e, "11:59 PM")
+    left = to_12h(s, "12:00 AM")
+    right = to_12h(e, "11:59 PM")
     return f"{left} – {right}"
 
 
@@ -70,7 +70,7 @@ def _truncate_display(s: str, max_len: int = 220) -> str:
     return t[: max_len - 1] + "…"
 
 
-def _now_local(timezone: str) -> str:
+def now_local(timezone: str) -> str:
     try:
         tz = ZoneInfo(_resolve_timezone_name(timezone))
     except Exception:
@@ -79,7 +79,7 @@ def _now_local(timezone: str) -> str:
     return datetime.now(tz).strftime("%d-%m-%Y %I:%M %p")
 
 
-def _fmt_local(dt: datetime, tz_name: str) -> str:
+def fmt_local(dt: datetime, tz_name: str) -> str:
     try:
         tz = ZoneInfo(_resolve_timezone_name(tz_name))
     except Exception:

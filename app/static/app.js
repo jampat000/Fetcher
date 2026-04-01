@@ -793,13 +793,25 @@ function startHeroMetricsPolling() {
 
 function startDashboardStatusPolling() {
   if (!document.getElementById("dashboard-hero-stats")) return;
-  const intervalMs = 15000;
+  const baseIntervalMs = 15000;
+  let intervalMs = baseIntervalMs;
+  let lastPayloadHash = "";
   let timerId = null;
   const pollAutomation = () => {
     if (document.visibilityState === "hidden") return;
     fetchDashboardStatusJson()
       .then((data) => {
-        if (data) applyDashboardAutomationStatus(data);
+        if (data) {
+          applyDashboardAutomationStatus(data);
+          var hash = JSON.stringify([data.fetcher_phase, data.last_sonarr_run, data.last_radarr_run, data.last_trimmer_run]);
+          if (hash === lastPayloadHash) {
+            intervalMs = Math.min(intervalMs * 2, 60000);
+          } else {
+            intervalMs = baseIntervalMs;
+          }
+          lastPayloadHash = hash;
+          arm();
+        }
       })
       .catch(() => {});
   };
@@ -814,17 +826,17 @@ function startDashboardStatusPolling() {
   window.fetcherDashboardPollNow = pollFull;
   const arm = () => {
     if (timerId !== null) {
-      clearInterval(timerId);
+      clearTimeout(timerId);
       timerId = null;
     }
-    timerId = window.setInterval(pollAutomation, intervalMs);
+    timerId = window.setTimeout(pollAutomation, intervalMs);
   };
   pollAutomation();
   arm();
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
       if (timerId !== null) {
-        clearInterval(timerId);
+        clearTimeout(timerId);
         timerId = null;
       }
     } else {

@@ -38,7 +38,7 @@ def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool 
 @pytest.fixture(scope="session", autouse=True)
 def _init_fetcher_test_database() -> None:
     from app.auth import hash_password
-    from app.db import SessionLocal, _get_or_create_settings, engine
+    from app.db import SessionLocal, get_or_create_settings, engine
     from app.migrations import migrate
     from app.models import Base
     from app.time_util import utc_now_naive
@@ -48,7 +48,7 @@ def _init_fetcher_test_database() -> None:
             await conn.run_sync(Base.metadata.create_all)
         await migrate(engine)
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.auth_password_hash = hash_password("testpass12")
             row.auth_session_secret = "0123456789abcdef" * 4
             row.auth_username = "admin"

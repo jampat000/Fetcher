@@ -101,7 +101,7 @@ async def get_session() -> AsyncIterator[AsyncSession]:
         await session.close()
 
 
-async def _get_or_create_settings(session: AsyncSession) -> AppSettings:
+async def get_or_create_settings(session: AsyncSession) -> AppSettings:
     row = (await session.execute(select(AppSettings).order_by(AppSettings.id.asc()).limit(1))).scalars().first()
     if row:
         return row

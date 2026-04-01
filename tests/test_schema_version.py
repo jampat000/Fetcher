@@ -153,7 +153,7 @@ def test_subprocess_startup_succeeds_on_schema_version_higher_than_build(tmp_pat
             os.environ["FETCHER_JWT_SECRET"] = "0123456789abcdef0123456789abcdef"
 
             async def tamper() -> None:
-                from app.db import SessionLocal, _get_or_create_settings, engine
+                from app.db import SessionLocal, get_or_create_settings, engine
                 from app.migrations import migrate
                 from app.models import Base
 
@@ -161,7 +161,7 @@ def test_subprocess_startup_succeeds_on_schema_version_higher_than_build(tmp_pat
                     await conn.run_sync(Base.metadata.create_all)
                 await migrate(engine)
                 async with SessionLocal() as session:
-                    row = await _get_or_create_settings(session)
+                    row = await get_or_create_settings(session)
                     row.schema_version = {newer}
                     await session.commit()
 
@@ -210,7 +210,7 @@ def test_subprocess_startup_fails_on_schema_version_too_low(tmp_path: Path) -> N
             os.environ["FETCHER_JWT_SECRET"] = "0123456789abcdef0123456789abcdef"
 
             async def tamper() -> None:
-                from app.db import SessionLocal, _get_or_create_settings, engine
+                from app.db import SessionLocal, get_or_create_settings, engine
                 from app.migrations import migrate
                 from app.models import Base
 
@@ -218,7 +218,7 @@ def test_subprocess_startup_fails_on_schema_version_too_low(tmp_path: Path) -> N
                     await conn.run_sync(Base.metadata.create_all)
                 await migrate(engine)
                 async with SessionLocal() as session:
-                    row = await _get_or_create_settings(session)
+                    row = await get_or_create_settings(session)
                     row.schema_version = {wrong}
                     await session.commit()
 

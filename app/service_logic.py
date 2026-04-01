@@ -12,7 +12,7 @@ import httpx
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import _get_or_create_settings
+from app.db import get_or_create_settings
 from app.arr_intervals import effective_arr_interval_minutes
 from app.arr_client import (
     ArrClient,
@@ -88,7 +88,7 @@ class RunContext:
     do_radarr_block: bool
 
 
-def _build_run_context(settings: AppSettings, *, arr_manual_scope: ArrManualScope | None) -> RunContext:
+def build_run_context(settings: AppSettings, *, arr_manual_scope: ArrManualScope | None) -> RunContext:
     # Keep this builder side-effect free; persistence and app execution remain in executors/coordinator.
     son_key = resolve_sonarr_api_key(settings)
     rad_key = resolve_radarr_api_key(settings)
@@ -259,7 +259,7 @@ async def _filter_ids_by_cooldown(
 _PAGINATE_WANTED_FOR_SEARCH_MAX_PAGES = 250
 
 
-async def _paginate_wanted_for_search(
+async def paginate_wanted_for_search(
     client: ArrClient,
     session: AsyncSession,
     *,
@@ -404,7 +404,7 @@ async def _drain_monitored_missing_scan_with_cooldown(
     cooldown_minutes: int,
     now: datetime,
 ) -> tuple[list[int], list[dict[str, Any]], int]:
-    """Walk all monitored-missing rows; apply batch cooldown like ``_paginate_wanted_for_search``; return dispatch batch.
+    """Walk all monitored-missing rows; apply batch cooldown like ``paginate_wanted_for_search``; return dispatch batch.
 
     ``total_candidates`` matches the inclusive missing scan cardinality (one per yielded row), regardless of whether
     an internal id could be resolved for dispatch.
@@ -472,7 +472,7 @@ async def _drain_monitored_missing_scan_with_cooldown(
     return allowed_ids, allowed_recs, total_candidates
 
 
-async def _sonarr_select_monitored_missing_with_cooldown(
+async def sonarr_select_monitored_missing_with_cooldown(
     client: ArrClient,
     session: AsyncSession,
     *,
@@ -493,7 +493,7 @@ async def _sonarr_select_monitored_missing_with_cooldown(
     )
 
 
-async def _radarr_select_monitored_missing_with_cooldown(
+async def radarr_select_monitored_missing_with_cooldown(
     client: ArrClient,
     session: AsyncSession,
     *,
@@ -1387,7 +1387,7 @@ async def _execute_sonarr_block(
 
         if want_missing:
             try:
-                allowed_ids, allowed_records, missing_total = await _sonarr_select_monitored_missing_with_cooldown(
+                allowed_ids, allowed_records, missing_total = await sonarr_select_monitored_missing_with_cooldown(
                     sonarr,
                     session,
                     limit=sonarr_limit,
@@ -1469,7 +1469,7 @@ async def _execute_sonarr_block(
                 actions.append(f"Sonarr: missing (including unreleased) count unavailable ({format_http_error_detail(e)})")
 
         if want_upgrade:
-            allowed_ids, allowed_records, cutoff_total = await _paginate_wanted_for_search(
+            allowed_ids, allowed_records, cutoff_total = await paginate_wanted_for_search(
                 sonarr,
                 session,
                 kind="cutoff",
@@ -1625,7 +1625,7 @@ async def _execute_radarr_block(
 
         if want_missing:
             try:
-                allowed_ids, allowed_records, missing_total = await _radarr_select_monitored_missing_with_cooldown(
+                allowed_ids, allowed_records, missing_total = await radarr_select_monitored_missing_with_cooldown(
                     radarr,
                     session,
                     limit=radarr_limit,
@@ -1696,7 +1696,7 @@ async def _execute_radarr_block(
                 actions.append(f"Radarr: missing (including unreleased) count unavailable ({format_http_error_detail(e)})")
 
         if want_upgrade:
-            allowed_ids, allowed_records, cutoff_total = await _paginate_wanted_for_search(
+            allowed_ids, allowed_records, cutoff_total = await paginate_wanted_for_search(
                 radarr,
                 session,
                 kind="cutoff",
@@ -1899,7 +1899,7 @@ async def _run_once_inner(
 ) -> RunResult:
     # Outer coordinator: builds shared context once, dispatches app executors, and finalizes run outcome.
     # Behavior/message/side-effect timing here is regression-sensitive; update tests before changing.
-    settings = await _get_or_create_settings(session)
+    settings = await get_or_create_settings(session)
     await prune_old_records(session, settings)
 
     log = JobRunLog(started_at=utc_now_naive(), ok=False, message="")
@@ -1909,7 +1909,7 @@ async def _run_once_inner(
     await session.refresh(log)
 
     try:
-        ctx = _build_run_context(settings, arr_manual_scope=arr_manual_scope)
+        ctx = build_run_context(settings, arr_manual_scope=arr_manual_scope)
         son_key = ctx.son_key
         rad_key = ctx.rad_key
         em_key = ctx.em_key

@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.models import ArrActionLog, Base
-from app.service_logic import _filter_ids_by_cooldown, _paginate_wanted_for_search
+from app.service_logic import _filter_ids_by_cooldown, paginate_wanted_for_search
 
 
 async def _session_factory() -> tuple[async_sessionmaker[AsyncSession], object]:
@@ -156,7 +156,7 @@ def test_paginate_stops_when_limit_reached(cooldown_session) -> None:
     async def run():
         client = FakeArrClient()
         async with SessionMaker() as session:
-            ids, recs, total = await _paginate_wanted_for_search(
+            ids, recs, total = await paginate_wanted_for_search(
                 client,
                 session,
                 kind="missing",
@@ -210,7 +210,7 @@ def test_paginate_respects_cooldown_across_pages(cooldown_session) -> None:
 
         client = FakeArrClient()
         async with SessionMaker() as session:
-            ids, recs, total = await _paginate_wanted_for_search(
+            ids, recs, total = await paginate_wanted_for_search(
                 client,
                 session,
                 kind="missing",

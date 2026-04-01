@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.display_helpers import (
     _as_utc_naive,
-    _fmt_local,
+    fmt_local,
     _relative_phrase_past,
     _truncate_display,
     activity_relative_time,
@@ -368,7 +368,7 @@ def _humanize_refiner_batch_log_detail(detail: str) -> list[str] | None:
 def _activity_timestamp_fields(created_at: datetime, tz: str, now: datetime) -> dict[str, str]:
     t_utc = _as_utc_naive(created_at).replace(microsecond=0)
     return {
-        "time_local": _fmt_local(created_at, tz),
+        "time_local": fmt_local(created_at, tz),
         "time_relative": activity_relative_time(created_at, now),
         "activity_time_iso": f"{t_utc.isoformat()}Z",
     }

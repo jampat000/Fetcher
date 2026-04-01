@@ -18,17 +18,17 @@ from app.arr_client import (
     trigger_sonarr_missing_search,
 )
 from app.branding import APP_NAME
-from app.db import SessionLocal, _get_or_create_settings, get_session
+from app.db import SessionLocal, get_or_create_settings, get_session
 from app.models import ActivityLog
 from app.resolvers.api_keys import resolve_setup_api_key
 from app.resolvers.api_keys import resolve_radarr_api_key, resolve_sonarr_api_key
 from app.schemas import ArrSearchNowIn, SetupConnTestIn, SetupEmbyTestIn
 from app.service_logic import (
     ArrManualScope,
-    _build_run_context,
-    _paginate_wanted_for_search,
-    _radarr_select_monitored_missing_with_cooldown,
-    _sonarr_select_monitored_missing_with_cooldown,
+    build_run_context,
+    paginate_wanted_for_search,
+    radarr_select_monitored_missing_with_cooldown,
+    sonarr_select_monitored_missing_with_cooldown,
     run_once,
 )
 from app.setup_helpers import test_emby_connection, test_radarr_connection, test_sonarr_connection
@@ -60,8 +60,13 @@ async def _run_manual_search_task(scope: str) -> None:
             logger.exception("Queued manual Arr search task failed for scope=%s", scope)
 
 
+_background_tasks: set[asyncio.Task] = set()
+
+
 def enqueue_manual_arr_search(scope: str) -> None:
-    asyncio.create_task(_run_manual_search_task(scope))
+    task = asyncio.create_task(_run_manual_search_task(scope))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 def _manual_detail_text(scope: str, records: list[dict]) -> str:
@@ -99,7 +104,7 @@ def _manual_detail_text(scope: str, records: list[dict]) -> str:
 
 async def trigger_manual_arr_search_now(scope: str, session: AsyncSession) -> None:
     """Dispatch the Arr search command immediately for manual button clicks."""
-    settings = await _get_or_create_settings(session)
+    settings = await get_or_create_settings(session)
     kind = "missing" if scope.endswith("_missing") else "upgrade"
     manual_scope: ArrManualScope | None = (
         cast(ArrManualScope, scope)
@@ -115,10 +120,10 @@ async def trigger_manual_arr_search_now(scope: str, session: AsyncSession) -> No
         selected_records: list[dict] = []
         try:
             await client.health()
-            ctx = _build_run_context(settings, arr_manual_scope=manual_scope)
+            ctx = build_run_context(settings, arr_manual_scope=manual_scope)
             sonarr_limit = max(1, int((settings.sonarr_max_items_per_run or 0) or 50))
             if scope == "sonarr_missing":
-                ids, selected_records, _pool = await _sonarr_select_monitored_missing_with_cooldown(
+                ids, selected_records, _pool = await sonarr_select_monitored_missing_with_cooldown(
                     client,
                     session,
                     limit=sonarr_limit,
@@ -126,7 +131,7 @@ async def trigger_manual_arr_search_now(scope: str, session: AsyncSession) -> No
                     now=ctx.now,
                 )
             else:
-                ids, selected_records, _ = await _paginate_wanted_for_search(
+                ids, selected_records, _ = await paginate_wanted_for_search(
                     client,
                     session,
                     kind="cutoff",
@@ -165,10 +170,10 @@ async def trigger_manual_arr_search_now(scope: str, session: AsyncSession) -> No
     selected_records_r: list[dict] = []
     try:
         await client.health()
-        ctx = _build_run_context(settings, arr_manual_scope=manual_scope)
+        ctx = build_run_context(settings, arr_manual_scope=manual_scope)
         radarr_limit = max(1, int((settings.radarr_max_items_per_run or 0) or 50))
         if scope == "radarr_missing":
-            ids_r, selected_records_r, _pool = await _radarr_select_monitored_missing_with_cooldown(
+            ids_r, selected_records_r, _pool = await radarr_select_monitored_missing_with_cooldown(
                 client,
                 session,
                 limit=radarr_limit,
@@ -176,7 +181,7 @@ async def trigger_manual_arr_search_now(scope: str, session: AsyncSession) -> No
                 now=ctx.now,
             )
         else:
-            ids_r, selected_records_r, _ = await _paginate_wanted_for_search(
+            ids_r, selected_records_r, _ = await paginate_wanted_for_search(
                 client,
                 session,
                 kind="cutoff",
@@ -312,6 +317,6 @@ async def api_arr_search_now(body: ArrSearchNowIn, session: AsyncSession = Depen
 async def api_dashboard_status(
     session: AsyncSession = Depends(get_session),
 ) -> JSONResponse:
-    settings = await _get_or_create_settings(session)
+    settings = await get_or_create_settings(session)
     tz = settings.timezone or "UTC"
     return JSONResponse(await build_dashboard_status(session, tz))

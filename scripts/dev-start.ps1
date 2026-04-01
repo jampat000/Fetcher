@@ -18,6 +18,14 @@ Set-Location -LiteralPath $RepoRoot
 Write-Host "Repo: $RepoRoot" -ForegroundColor DarkGray
 Write-Host ""
 
+# Unfrozen runs require a non-empty JWT secret (see app/security_utils.py); packaged builds use machine-jwt-secret file.
+$jwtEnv = [string]$env:FETCHER_JWT_SECRET
+if ([string]::IsNullOrWhiteSpace($jwtEnv)) {
+  $env:FETCHER_JWT_SECRET = "0123456789abcdef0123456789abcdef"
+  Write-Host "Dev: FETCHER_JWT_SECRET unset - using dev-only default (same as dev-set-login.ps1). Set your own to match production." -ForegroundColor DarkGray
+  Write-Host ""
+}
+
 # Isolated dev DB by default so uvicorn does not compete with the Windows service for the same fetcher.db.
 if ($SharedAppDb) {
   Remove-Item Env:\FETCHER_DEV_DB_PATH -ErrorAction SilentlyContinue

@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 from sqlalchemy import delete, desc, select
-from app.db import SessionLocal, _get_or_create_settings
+from app.db import SessionLocal, get_or_create_settings
 from app.failed_import_activity import FAILED_IMPORT_ACTIVITY_V1
 from app.models import ActivityLog, AppSnapshot, JobRunLog
 from app.web_common import activity_display_row
@@ -632,7 +632,7 @@ def test_run_once_radarr_failed_import_cleanup_disabled_skips_api(monkeypatch: p
 
     async def _prep() -> None:
         async with SessionLocal() as s:
-            row = await _get_or_create_settings(s)
+            row = await get_or_create_settings(s)
             row.radarr_remove_failed_imports = False
             await s.commit()
             await s.execute(delete(ActivityLog))
@@ -678,12 +678,12 @@ def test_run_once_radarr_failed_import_cleanup_disabled_skips_api(monkeypatch: p
     monkeypatch.setattr("app.service_logic.resolve_emby_api_key", lambda _s: "")
     monkeypatch.setattr("app.service_logic.in_window", lambda **_kw: True)
     monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
-    monkeypatch.setattr("app.service_logic._paginate_wanted_for_search", _paginate)
+    monkeypatch.setattr("app.service_logic.paginate_wanted_for_search", _paginate)
     monkeypatch.setattr("app.service_logic._wanted_queue_total", _wanted_total)
 
     async def _set_radarr() -> None:
         async with SessionLocal() as s:
-            row = await _get_or_create_settings(s)
+            row = await get_or_create_settings(s)
             row.radarr_enabled = True
             row.radarr_url = "http://localhost:7878"
             row.radarr_search_missing = False

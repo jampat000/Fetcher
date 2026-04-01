@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.models import ArrActionLog, Base
-from app.service_logic import _radarr_select_monitored_missing_with_cooldown, _sonarr_select_monitored_missing_with_cooldown
+from app.service_logic import radarr_select_monitored_missing_with_cooldown, sonarr_select_monitored_missing_with_cooldown
 
 
 async def _session_factory():
@@ -65,7 +65,7 @@ def test_sonarr_scan_skips_cooled_ids_and_advances(scan_session) -> None:
             await session.commit()
 
         async with SessionMaker() as session:
-            ids, recs, total = await _sonarr_select_monitored_missing_with_cooldown(
+            ids, recs, total = await sonarr_select_monitored_missing_with_cooldown(
                 _Fake(),
                 session,
                 limit=3,
@@ -82,7 +82,7 @@ def test_sonarr_scan_skips_cooled_ids_and_advances(scan_session) -> None:
     async def run_second():
         # 30 minutes later: first-run dispatch (12–14) plus seeded (10–11) remain inside a 60-minute window.
         async with SessionMaker() as session:
-            ids, _, total = await _sonarr_select_monitored_missing_with_cooldown(
+            ids, _, total = await sonarr_select_monitored_missing_with_cooldown(
                 _Fake(),
                 session,
                 limit=3,
@@ -122,7 +122,7 @@ def test_radarr_scan_skips_cooled_ids_and_advances(scan_session) -> None:
 
     async def run_once():
         async with SessionMaker() as session:
-            ids, recs, total = await _radarr_select_monitored_missing_with_cooldown(
+            ids, recs, total = await radarr_select_monitored_missing_with_cooldown(
                 _Fake(),
                 session,
                 limit=4,

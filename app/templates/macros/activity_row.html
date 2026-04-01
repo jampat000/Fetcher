@@ -54,7 +54,7 @@
             </ul>
             {% endif %}
             {% if _show_cmp and _rows | length > 0 %}
-            <details class="activity-refiner-compare-details">
+            <details class="activity-refiner-compare-details"{% if _outcome == 'success' %} open{% endif %}>
               <summary class="activity-refiner-compare-summary">Before / after detail</summary>
               <div class="activity-refiner-compare activity-refiner-compare--nested" role="group" aria-label="Before and after">
                 <div class="activity-refiner-compare-head">

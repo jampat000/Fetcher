@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -16,6 +17,8 @@ from app.refiner_service import run_scheduled_refiner_pass
 from app.service_logic import run_once
 from app.resolvers.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
 from app.time_util import utc_now_naive
+
+logger = logging.getLogger(__name__)
 
 
 def _sonarr_configured(settings: AppSettings) -> bool:
@@ -93,6 +96,7 @@ class ServiceScheduler:
 
     async def _run_scope(self, scope: str) -> None:
         if self._run_lock.locked():
+            logger.info("Scheduler: skipping %s tick — previous run still in progress", scope)
             return
         async with self._run_lock:
             async with SessionLocal() as session:

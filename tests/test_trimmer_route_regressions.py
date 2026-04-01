@@ -7,7 +7,7 @@ import pytest
 from fastapi.responses import HTMLResponse
 from fastapi.testclient import TestClient
 
-from app.db import SessionLocal, _get_or_create_settings
+from app.db import SessionLocal, get_or_create_settings
 from app.main import app
 from app.trimmer_service import TRIMMER_REVIEW_ERROR_MISSING_CONNECTION
 
@@ -26,7 +26,7 @@ def _client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
 async def _set_trimmer_state(**updates: Any) -> None:
     async with SessionLocal() as s:
-        row = await _get_or_create_settings(s)
+        row = await get_or_create_settings(s)
         for k, v in updates.items():
             setattr(row, k, v)
         await s.commit()
@@ -172,7 +172,7 @@ def test_trimmer_scan_dry_run_skips_live_delete_and_last_run_commit(monkeypatch:
 
     async def _get_last_run():
         async with SessionLocal() as s:
-            row = await _get_or_create_settings(s)
+            row = await get_or_create_settings(s)
             return row.emby_last_run_at
 
     assert asyncio.run(_get_last_run()) is None
@@ -217,7 +217,7 @@ def test_trimmer_scan_live_mode_calls_delete_and_persists_last_run(monkeypatch: 
 
     async def _get_last_run():
         async with SessionLocal() as s:
-            row = await _get_or_create_settings(s)
+            row = await get_or_create_settings(s)
             return row.emby_last_run_at
 
     assert asyncio.run(_get_last_run()) is not None

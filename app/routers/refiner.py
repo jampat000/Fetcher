@@ -16,11 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_csrf_token_for_template
 from app.branding import APP_NAME, APP_TAGLINE
-from app.db import _get_or_create_settings, db_path, get_session
+from app.db import get_or_create_settings, db_path, get_session
 from app.display_helpers import (
-    _normalize_hhmm,
-    _now_local,
-    _time_select_orphan,
+    normalize_hhmm,
+    now_local,
+    time_select_orphan,
     activity_relative_time,
 )
 from app.schedule import normalize_schedule_days_csv
@@ -62,7 +62,7 @@ router = APIRouter(dependencies=AUTH_DEPS)
 REFINER_SETTINGS_INPLACE_JSON_HEADER = "x-fetcher-refiner-settings-async"
 
 
-def _refiner_schedule_days_display(days_csv: str) -> str:
+def _refinerschedule_days_display(days_csv: str) -> str:
     norm = normalize_schedule_days_csv(days_csv or "")
     if not norm:
         return ""
@@ -70,8 +70,8 @@ def _refiner_schedule_days_display(days_csv: str) -> str:
 
 
 def _refiner_schedule_window_24h(start: str, end: str) -> str:
-    s = _normalize_hhmm(start, "00:00")
-    e = _normalize_hhmm(end, "23:59")
+    s = normalize_hhmm(start, "00:00")
+    e = normalize_hhmm(end, "23:59")
     if s == "00:00" and e in ("23:59", "23:58"):
         return "All day"
     return f"{s}–{e}"
@@ -143,7 +143,7 @@ def build_refiner_overview_config(settings, refiner_state) -> dict[str, object]:
     sched_on = bool(settings.refiner_schedule_enabled)
     schedule_window = "Yes" if sched_on else "No"
     if sched_on:
-        days_part = _refiner_schedule_days_display(settings.refiner_schedule_days or "")
+        days_part = _refinerschedule_days_display(settings.refiner_schedule_days or "")
         if not days_part:
             days_part = "—"
         win = _refiner_schedule_window_24h(
@@ -195,7 +195,7 @@ def _refiner_default_work_folder_path() -> str:
 
 @router.get("/refiner", response_class=HTMLResponse)
 async def refiner_overview_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
-    settings = await _get_or_create_settings(session)
+    settings = await get_or_create_settings(session)
     show_setup_wizard = not is_setup_complete(settings)
     tz = settings.timezone or "UTC"
     now = utc_now_naive()
@@ -221,7 +221,7 @@ async def refiner_overview_page(request: Request, session: AsyncSession = Depend
             "subtitle": "Refiner",
             "settings": settings,
             "timezone": tz,
-            "now_local": _now_local(tz),
+            "now_local": now_local(tz),
             "csrf_token": await get_csrf_token_for_template(request, session),
             "show_setup_wizard": show_setup_wizard,
             "refiner_state": rs,
@@ -233,14 +233,14 @@ async def refiner_overview_page(request: Request, session: AsyncSession = Depend
 
 @router.get("/refiner/settings", response_class=HTMLResponse)
 async def refiner_settings_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
-    settings = await _get_or_create_settings(session)
+    settings = await get_or_create_settings(session)
     show_setup_wizard = not is_setup_complete(settings)
     tz = settings.timezone or "UTC"
     time_choices = schedule_time_dropdown_choices(step_minutes=30)
     time_choice_keys = {v for v, _ in time_choices}
     schedule_days_norm = normalize_schedule_days_csv(settings.refiner_schedule_days or "")
-    schedule_start_hhmm = _normalize_hhmm(settings.refiner_schedule_start, "00:00")
-    schedule_end_hhmm = _normalize_hhmm(settings.refiner_schedule_end, "23:59")
+    schedule_start_hhmm = normalize_hhmm(settings.refiner_schedule_start, "00:00")
+    schedule_end_hhmm = normalize_hhmm(settings.refiner_schedule_end, "23:59")
     return templates.TemplateResponse(
         request,
         "refiner_settings.html",
@@ -251,7 +251,7 @@ async def refiner_settings_page(request: Request, session: AsyncSession = Depend
             "subtitle": "Configure Refiner workflow and schedule",
             "settings": settings,
             "timezone": tz,
-            "now_local": _now_local(tz),
+            "now_local": now_local(tz),
             "schedule_time_choices": time_choices,
             "refiner_schedule_days_normalized": schedule_days_norm,
             "refiner_schedule_days_selected": schedule_weekdays_selected_dict(
@@ -259,10 +259,10 @@ async def refiner_settings_page(request: Request, session: AsyncSession = Depend
             ),
             "refiner_schedule_start_hhmm": schedule_start_hhmm,
             "refiner_schedule_end_hhmm": schedule_end_hhmm,
-            "refiner_start_orphan": _time_select_orphan(
+            "refiner_start_orphan": time_select_orphan(
                 schedule_start_hhmm, time_choice_keys, fallback_display="12:00 AM"
             ),
-            "refiner_end_orphan": _time_select_orphan(
+            "refiner_end_orphan": time_select_orphan(
                 schedule_end_hhmm, time_choice_keys, fallback_display="11:59 PM"
             ),
             "selected_stream_subtitle_langs": list(
@@ -334,7 +334,7 @@ async def refiner_settings_save(
         )
 
     try:
-        row = await _get_or_create_settings(session)
+        row = await get_or_create_settings(session)
         slot = (refiner_default_audio_slot or "primary").strip().lower()
         if slot not in ("primary", "secondary"):
             slot = "primary"
@@ -382,8 +382,8 @@ async def refiner_settings_save(
             refiner_schedule_Sat,
             refiner_schedule_Sun,
         )
-        row.refiner_schedule_start = _normalize_hhmm(refiner_schedule_start, "00:00")
-        row.refiner_schedule_end = _normalize_hhmm(refiner_schedule_end, "23:59")
+        row.refiner_schedule_start = normalize_hhmm(refiner_schedule_start, "00:00")
+        row.refiner_schedule_end = normalize_hhmm(refiner_schedule_end, "23:59")
         # Canonicalize weekday CSV same as other schedules
         row.refiner_schedule_days = normalize_schedule_days_csv(row.refiner_schedule_days or "")
         row.updated_at = utc_now_naive()
@@ -411,7 +411,7 @@ async def refiner_settings_save(
 @router.get("/api/refiner/readiness-brief", response_model=None)
 async def refiner_readiness_brief_api(session: AsyncSession = Depends(get_session)) -> JSONResponse:
     """JSON for Refiner banners after async save (enabled vs off, readiness list)."""
-    row = await _get_or_create_settings(session)
+    row = await get_or_create_settings(session)
     state = get_refiner_state(row)
     issues = [{"anchor": a, "message": m} for a, m in state.issue_pairs]
     return JSONResponse({"enabled": state.enabled, "issues": issues})

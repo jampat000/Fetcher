@@ -21,8 +21,8 @@ from app.backup import export_json_bytes, import_settings_replace
 from app.branding import APP_NAME, APP_TAGLINE
 from app.constants import _TIMEZONE_CHOICES
 from app.connection_test_service import ConnectionTestService
-from app.db import _get_or_create_settings, fetch_latest_app_snapshots, get_session
-from app.display_helpers import _fmt_local, _normalize_hhmm, _now_local, _time_select_orphan
+from app.db import get_or_create_settings, fetch_latest_app_snapshots, get_session
+from app.display_helpers import fmt_local, normalize_hhmm, now_local, time_select_orphan
 from app.form_helpers import _normalize_base_url, _people_credit_types_csv_from_form, _resolve_timezone_name
 from app.models import AppSnapshot
 from app.resolvers.api_keys import resolve_radarr_api_key, resolve_sonarr_api_key
@@ -53,7 +53,7 @@ _SETTINGS_POST_SAVE_SCOPES = frozenset({"global", "sonarr", "radarr"})
 
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
-    settings = await _get_or_create_settings(session)
+    settings = await get_or_create_settings(session)
     show_setup_wizard = not is_setup_complete(settings)
     settings.sonarr_api_key = resolve_sonarr_api_key(settings)
     settings.radarr_api_key = resolve_radarr_api_key(settings)
@@ -65,10 +65,10 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
     time_choice_keys = {v for v, _ in time_choices}
     sn_days = normalize_schedule_days_csv(settings.sonarr_schedule_days or "")
     rd_days = normalize_schedule_days_csv(settings.radarr_schedule_days or "")
-    ss = _normalize_hhmm(settings.sonarr_schedule_start, "00:00")
-    se = _normalize_hhmm(settings.sonarr_schedule_end, "23:59")
-    rs = _normalize_hhmm(settings.radarr_schedule_start, "00:00")
-    re = _normalize_hhmm(settings.radarr_schedule_end, "23:59")
+    ss = normalize_hhmm(settings.sonarr_schedule_start, "00:00")
+    se = normalize_hhmm(settings.sonarr_schedule_end, "23:59")
+    rs = normalize_hhmm(settings.radarr_schedule_start, "00:00")
+    re = normalize_hhmm(settings.radarr_schedule_end, "23:59")
     sec_notice = (request.query_params.get("sec") or "").strip()
     response = templates.TemplateResponse(
         request,
@@ -83,7 +83,7 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
             "sonarr": sonarr_snap,
             "radarr": radarr_snap,
             "now": utc_now_naive(),
-            "now_local": _now_local(tz),
+            "now_local": now_local(tz),
             "timezone": tz,
             "timezones": _TIMEZONE_CHOICES,
             "schedule_time_choices": time_choices,
@@ -99,10 +99,10 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
             "sonarr_schedule_end_hhmm": se,
             "radarr_schedule_start_hhmm": rs,
             "radarr_schedule_end_hhmm": re,
-            "sonarr_start_orphan": _time_select_orphan(ss, time_choice_keys, fallback_display="12:00 AM"),
-            "sonarr_end_orphan": _time_select_orphan(se, time_choice_keys, fallback_display="11:59 PM"),
-            "radarr_start_orphan": _time_select_orphan(rs, time_choice_keys, fallback_display="12:00 AM"),
-            "radarr_end_orphan": _time_select_orphan(re, time_choice_keys, fallback_display="11:59 PM"),
+            "sonarr_start_orphan": time_select_orphan(ss, time_choice_keys, fallback_display="12:00 AM"),
+            "sonarr_end_orphan": time_select_orphan(se, time_choice_keys, fallback_display="11:59 PM"),
+            "radarr_start_orphan": time_select_orphan(rs, time_choice_keys, fallback_display="12:00 AM"),
+            "radarr_end_orphan": time_select_orphan(re, time_choice_keys, fallback_display="11:59 PM"),
             "csrf_token": await get_csrf_token_for_template(request, session),
             "show_setup_wizard": show_setup_wizard,
         },
@@ -113,9 +113,9 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
     return response
 
 
-@router.get("/settings/backup/export")
+@router.post("/settings/backup/export", dependencies=AUTH_FORM_DEPS)
 async def settings_backup_export(session: AsyncSession = Depends(get_session)) -> Response:
-    row = await _get_or_create_settings(session)
+    row = await get_or_create_settings(session)
     body = export_json_bytes(row)
     d = datetime.now(timezone.utc).strftime("%d-%m-%Y")
     fname = f"fetcher-settings-backup-{d}.json"
@@ -135,7 +135,7 @@ async def settings_auth_credentials(
     confirm_new_password: str = Form(""),
     session: AsyncSession = Depends(get_session),
 ) -> RedirectResponse:
-    row = await _get_or_create_settings(session)
+    row = await get_or_create_settings(session)
     cp = current_password or ""
     if not verify_password(password=cp, stored_hash=(row.auth_password_hash or "")):
         return RedirectResponse("/settings?sec=bad_current&tab=security", status_code=303)
@@ -174,7 +174,7 @@ async def settings_auth_access_control(
     auth_ip_allowlist: str = Form(""),
     session: AsyncSession = Depends(get_session),
 ) -> RedirectResponse:
-    row = await _get_or_create_settings(session)
+    row = await get_or_create_settings(session)
     try:
         normalized = normalize_auth_ip_allowlist_input(auth_ip_allowlist)
     except ValueError:
@@ -283,7 +283,7 @@ async def save_settings(
         return respond(saved=False, reason="radarr_retry_delay_min")
 
     try:
-        row = await _get_or_create_settings(session)
+        row = await get_or_create_settings(session)
         # Merge intervals from DB for the app not being saved so SettingsIn is well-formed without
         # applying Form defaults to the other app's interval.
         son_im = sonarr_interval_minutes
@@ -335,8 +335,8 @@ async def save_settings(
                 sonarr_schedule_Sat,
                 sonarr_schedule_Sun,
             )
-            row.sonarr_schedule_start = _normalize_hhmm(sonarr_schedule_start, "00:00")
-            row.sonarr_schedule_end = _normalize_hhmm(sonarr_schedule_end, "23:59")
+            row.sonarr_schedule_start = normalize_hhmm(sonarr_schedule_start, "00:00")
+            row.sonarr_schedule_end = normalize_hhmm(sonarr_schedule_end, "23:59")
 
         if scope == "radarr":
             row.radarr_enabled = data.radarr_enabled
@@ -359,8 +359,8 @@ async def save_settings(
                 radarr_schedule_Sat,
                 radarr_schedule_Sun,
             )
-            row.radarr_schedule_start = _normalize_hhmm(radarr_schedule_start, "00:00")
-            row.radarr_schedule_end = _normalize_hhmm(radarr_schedule_end, "23:59")
+            row.radarr_schedule_start = normalize_hhmm(radarr_schedule_start, "00:00")
+            row.radarr_schedule_end = normalize_hhmm(radarr_schedule_end, "23:59")
 
         if scope == "global":
             row.log_retention_days = max(7, min(3650, int(log_retention_days or 90)))
@@ -404,7 +404,7 @@ async def test_sonarr(
     Does **not** change configuration columns on ``AppSettings``.
     """
     want_json = (request.headers.get(SETTINGS_INPLACE_JSON_HEADER) or "").strip() == "1"
-    settings = await _get_or_create_settings(session)
+    settings = await get_or_create_settings(session)
     result = await ConnectionTestService().check_arr_health(
         url=settings.sonarr_url,
         api_key=resolve_sonarr_api_key(settings),
@@ -441,7 +441,7 @@ async def test_radarr(
     Does **not** change configuration columns on ``AppSettings``.
     """
     want_json = (request.headers.get(SETTINGS_INPLACE_JSON_HEADER) or "").strip() == "1"
-    settings = await _get_or_create_settings(session)
+    settings = await get_or_create_settings(session)
     result = await ConnectionTestService().check_arr_health(
         url=settings.radarr_url,
         api_key=resolve_radarr_api_key(settings),

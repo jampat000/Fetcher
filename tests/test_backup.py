@@ -273,7 +273,7 @@ def test_http_export_import_redirects_ok(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr("app.main.scheduler.shutdown", _noop_shutdown)
 
     with TestClient(app) as client:
-        ex = client.get("/settings/backup/export")
+        ex = client.post("/settings/backup/export")
     assert ex.status_code == 200
     exported = json.loads(ex.text)
     assert exported["fetcher_backup"] == BACKUP_MAGIC
@@ -295,7 +295,7 @@ def test_http_export_import_redirects_ok(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_import_schema_mismatch_does_not_modify_stored_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     """parse runs before any row update; failed restore must not change the DB row."""
     from app.backup import import_settings_replace
-    from app.db import SessionLocal, _get_or_create_settings
+    from app.db import SessionLocal, get_or_create_settings
 
     async def _noop_start() -> None:
         return None
@@ -310,7 +310,7 @@ def test_import_schema_mismatch_does_not_modify_stored_settings(monkeypatch: pyt
 
     async def seed_and_fail() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.sonarr_url = marker
             await session.commit()
 
@@ -329,7 +329,7 @@ def test_import_schema_mismatch_does_not_modify_stored_settings(monkeypatch: pyt
                 await import_settings_replace(session, bad)
 
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             assert row.sonarr_url == marker
 
     asyncio.run(seed_and_fail())
@@ -337,7 +337,7 @@ def test_import_schema_mismatch_does_not_modify_stored_settings(monkeypatch: pyt
 
 def test_import_removed_global_keys_does_not_modify_stored_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.backup import import_settings_replace
-    from app.db import SessionLocal, _get_or_create_settings
+    from app.db import SessionLocal, get_or_create_settings
 
     async def _noop_start() -> None:
         return None
@@ -352,7 +352,7 @@ def test_import_removed_global_keys_does_not_modify_stored_settings(monkeypatch:
 
     async def seed_and_fail() -> None:
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             row.sonarr_url = marker
             await session.commit()
 
@@ -374,7 +374,7 @@ def test_import_removed_global_keys_does_not_modify_stored_settings(monkeypatch:
                 await import_settings_replace(session, bad)
 
         async with SessionLocal() as session:
-            row = await _get_or_create_settings(session)
+            row = await get_or_create_settings(session)
             assert row.sonarr_url == marker
 
     asyncio.run(seed_and_fail())
