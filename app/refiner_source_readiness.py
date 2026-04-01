@@ -111,8 +111,7 @@ def _is_import_pending_no_eligible_nonblocking(rec: dict[str, Any], q_paths: lis
         return False
     if td_status not in ("warning", "warn", "error", "failed", "fail") and "warn" not in td_status:
         return False
-    if q_paths:
-        return False
+    _ = q_paths
     return True
 
 
@@ -623,6 +622,22 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
             elif path_matched:
                 inactive_match = True
             if active and (path_matched or title_matched):
+                if app == "radarr" and _is_import_pending_no_eligible_nonblocking(rec, q_paths):
+                    nonblocking_import_wait_count += 1
+                    if len(nonblocking_import_wait_samples) < 10:
+                        nonblocking_import_wait_samples.append(
+                            {
+                                "row_index": idx,
+                                "status": _diag_clip_text(rec.get("status")),
+                                "trackedDownloadState": _diag_clip_text(rec.get("trackedDownloadState")),
+                                "trackedDownloadStatus": _diag_clip_text(rec.get("trackedDownloadStatus")),
+                                "sizeleft": rec.get("sizeleft"),
+                                "sizeLeft": rec.get("sizeLeft"),
+                                "usable_paths_exist": bool(q_paths),
+                                "override_nonblocking_on_match": True,
+                            }
+                        )
+                    continue
                 if app == "radarr":
                     diag["radarr_upstream_active_rows"] = active_count
                     diag["radarr_active_path_samples"] = active_samples

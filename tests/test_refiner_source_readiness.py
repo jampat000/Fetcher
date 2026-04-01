@@ -530,6 +530,22 @@ def test_upstream_radarr_importpending_warning_no_eligible_does_not_block(tmp_pa
     assert rc == ""
 
 
+def test_upstream_radarr_importpending_completed_warning_path_match_does_not_block(tmp_path: Path) -> None:
+    f = tmp_path / "Deadlock.Path.Match.2043.1080p.mkv"
+    f.write_bytes(b"x" * 80)
+    rec = {
+        "status": "completed",
+        "trackedDownloadState": "importPending",
+        "trackedDownloadStatus": "warning",
+        "sizeleft": 0,
+        "outputPath": str(f.resolve()),
+    }
+    snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+    blocked, rc, _m, _diag = upstream_analyze_path(f, snap)
+    assert blocked is False
+    assert rc == ""
+
+
 def test_upstream_radarr_importpending_warning_non_completed_still_blocks(tmp_path: Path) -> None:
     f = tmp_path / "Import.Pending.Still.Active.2042.1080p.mkv"
     f.write_bytes(b"x" * 80)
@@ -538,6 +554,22 @@ def test_upstream_radarr_importpending_warning_non_completed_still_blocks(tmp_pa
         "trackedDownloadState": "importPending",
         "trackedDownloadStatus": "warning",
         "sizeleft": 0,
+        "outputPath": str(f.resolve()),
+    }
+    snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())
+    blocked, rc, _m, _diag = upstream_analyze_path(f, snap)
+    assert blocked is True
+    assert rc == "radarr_queue_active_download"
+
+
+def test_upstream_radarr_importpending_completed_warning_sizeleft_nonzero_blocks(tmp_path: Path) -> None:
+    f = tmp_path / "Import.Pending.Still.Downloading.2044.1080p.mkv"
+    f.write_bytes(b"x" * 80)
+    rec = {
+        "status": "completed",
+        "trackedDownloadState": "importPending",
+        "trackedDownloadStatus": "warning",
+        "sizeleft": 1024,
         "outputPath": str(f.resolve()),
     }
     snap = RefinerQueueSnapshot(True, False, True, False, (rec,), ())

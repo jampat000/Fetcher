@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.7.12 — 2026-04-01
+
+### Fixed
+
+- Refiner now applies a non-blocking override at block decision time for Radarr import-wait rows (`importPending` + completed/import-wait status + `sizeleft=0` + warning/non-ok tracked status), so matched queue rows in this state no longer deadlock processing.
+
 ## 3.7.11 — 2026-04-01
 
 ### Fixed
