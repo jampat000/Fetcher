@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.7.11 — 2026-04-01
+
+### Fixed
+
+- Fix Refiner/Radarr deadlock by allowing Refiner to proceed when Radarr is waiting to import and no importable file exists yet.
+
 ## 3.7.10 — 2026-04-01
 
 ### Fixed

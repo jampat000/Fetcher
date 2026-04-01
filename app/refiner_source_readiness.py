@@ -30,6 +30,7 @@ _REFINER_QUEUE_PAGE_SIZE = 200
 _REFINER_QUEUE_HTTP_TIMEOUT_S = 12.0
 
 _BLOCKING_TRACKED_DOWNLOAD_STATES = frozenset({"downloading", "importpending", "importblocked"})
+_IMPORT_WAIT_COMPLETED_STATUSES = frozenset({"completed", "importpending", "importing"})
 
 
 @dataclass(frozen=True)
@@ -101,13 +102,18 @@ def _is_import_pending_no_eligible_nonblocking(rec: dict[str, Any], q_paths: lis
         return False
     if _size_left_bytes(rec) != 0:
         return False
+    st = _norm_status(rec.get("status"))
+    if st not in _IMPORT_WAIT_COMPLETED_STATUSES:
+        return False
     td_status = _norm_status(rec.get("trackedDownloadStatus"))
-    if td_status not in ("warning", "warn"):
+    # Treat non-ok warning/error style tracked status as import-wait deadlock state.
+    if td_status in ("", "ok", "success"):
+        return False
+    if td_status not in ("warning", "warn", "error", "failed", "fail") and "warn" not in td_status:
         return False
     if q_paths:
         return False
-    msg = str(rec.get("message") or "").casefold()
-    return "no files found are eligible for import" in msg
+    return True
 
 
 def _nonempty_str(val: object) -> str | None:
@@ -486,6 +492,8 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
         "upstream_scan_skipped": False,
         "radarr_rows_fetched": len(snap.radarr_records),
         "radarr_rows_active": 0,
+        "radarr_rows_nonblocking_import_wait": 0,
+        "radarr_nonblocking_import_wait_samples": [],
         "radarr_row_bucket_counts": {},
         "radarr_row_bucket_samples": {},
         "radarr_candidate_saw_likely_row_class": False,
@@ -529,18 +537,33 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
         }
         raw_no_title_samples: list[str] = []
         raw_no_match_samples: list[str] = []
+        nonblocking_import_wait_count = 0
+        nonblocking_import_wait_samples: list[dict[str, Any]] = []
         for idx, rec in enumerate(records):
             if not isinstance(rec, dict):
                 continue
             q_paths = _usable_queue_path_strings(rec)
-            active = queue_record_upstream_active(rec) and not _is_import_pending_no_eligible_nonblocking(
-                rec, q_paths
-            )
+            nonblocking_import_wait = _is_import_pending_no_eligible_nonblocking(rec, q_paths)
+            active = queue_record_upstream_active(rec) and not nonblocking_import_wait
             path_matched = any(_path_key_matches_candidate(file_key, qp) for qp in q_paths)
             title_matched = False
             title_raw = ""
             qt = _queue_row_title_candidates(rec)
             if app == "radarr":
+                if nonblocking_import_wait:
+                    nonblocking_import_wait_count += 1
+                    if len(nonblocking_import_wait_samples) < 10:
+                        nonblocking_import_wait_samples.append(
+                            {
+                                "row_index": idx,
+                                "status": _diag_clip_text(rec.get("status")),
+                                "trackedDownloadState": _diag_clip_text(rec.get("trackedDownloadState")),
+                                "trackedDownloadStatus": _diag_clip_text(rec.get("trackedDownloadStatus")),
+                                "sizeleft": rec.get("sizeleft"),
+                                "sizeLeft": rec.get("sizeLeft"),
+                                "usable_paths_exist": bool(q_paths),
+                            }
+                        )
                 row_sample = _diag_row_sample(idx=idx, rec=rec, q_paths=q_paths, title_candidates=qt)
                 if not active:
                     row_bucket_counts["row_present_not_active"] += 1
@@ -620,6 +643,8 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
                     diag["title_fallback_match_title_norm_radarr"] = title_fallback_match_title_norm
                     diag["title_fallback_titles_considered_radarr"] = title_fallback_titles_considered
                     diag["radarr_rows_active"] = active_count
+                    diag["radarr_rows_nonblocking_import_wait"] = nonblocking_import_wait_count
+                    diag["radarr_nonblocking_import_wait_samples"] = nonblocking_import_wait_samples
                     diag["radarr_row_bucket_counts"] = row_bucket_counts
                     diag["radarr_row_bucket_samples"] = row_bucket_samples
                     diag["radarr_candidate_saw_likely_row_class"] = (
@@ -714,6 +739,8 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
             diag["title_fallback_match_title_norm_radarr"] = title_fallback_match_title_norm
             diag["title_fallback_titles_considered_radarr"] = title_fallback_titles_considered
             diag["radarr_rows_active"] = active_count
+            diag["radarr_rows_nonblocking_import_wait"] = nonblocking_import_wait_count
+            diag["radarr_nonblocking_import_wait_samples"] = nonblocking_import_wait_samples
             diag["radarr_row_bucket_counts"] = row_bucket_counts
             diag["radarr_row_bucket_samples"] = row_bucket_samples
             diag["radarr_candidate_saw_likely_row_class"] = (
@@ -835,6 +862,8 @@ def log_refiner_readiness_diagnostic(
         "upstream_active_rows_radarr": up_diag.get("radarr_upstream_active_rows"),
         "radarr_rows_fetched": up_diag.get("radarr_rows_fetched"),
         "radarr_rows_active": up_diag.get("radarr_rows_active"),
+        "radarr_rows_nonblocking_import_wait": up_diag.get("radarr_rows_nonblocking_import_wait"),
+        "radarr_nonblocking_import_wait_samples": up_diag.get("radarr_nonblocking_import_wait_samples"),
         "radarr_row_bucket_counts": up_diag.get("radarr_row_bucket_counts"),
         "radarr_row_bucket_samples": up_diag.get("radarr_row_bucket_samples"),
         "radarr_candidate_saw_likely_row_class": up_diag.get("radarr_candidate_saw_likely_row_class"),
