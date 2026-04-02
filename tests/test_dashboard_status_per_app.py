@@ -132,9 +132,9 @@ def test_build_dashboard_status_unscheduled_and_disabled_next_run_display(monkey
                 "secondary": "No schedule configured",
             }
             assert data["next_refiner_display"] == {
-                "state": "enabled_unscheduled",
+                "state": "enabled_unscheduled_live",
                 "primary": "Always on",
-                "secondary": "No schedule configured",
+                "secondary": "Runs when items are ready",
             }
             assert data["next_trimmer_display"] == {
                 "state": "disabled",
