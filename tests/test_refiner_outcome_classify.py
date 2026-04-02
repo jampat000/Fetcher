@@ -91,6 +91,15 @@ def test_job_log_line_uses_reason_code_for_classification() -> None:
     assert line.startswith("x.mkv [waiting]")
 
 
+def test_cleanup_reason_codes_classified_manual_action() -> None:
+    for rc in ("source_cleanup_failed", "source_folder_removal_failed"):
+        ctx = {"reason_code": rc, "failure_reason": ""}
+        oc, hint, auto = classify_refiner_activity_context(ctx, status="failed")
+        assert oc is RefinerOutcomeClass.MANUAL_ACTION
+        assert "Manual action" in hint
+        assert auto is False
+
+
 def test_activity_row_failed_includes_outcome_class_and_sub() -> None:
     r = RefinerActivity(
         file_name="bad.mkv",

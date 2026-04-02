@@ -77,12 +77,70 @@ def test_build_dashboard_status_has_per_app_last_run_status(monkeypatch) -> None
             assert data["next_sonarr_tick_local"] != ""
             assert data["next_radarr_tick_local"] != ""
             assert data["next_trimmer_tick_local"] != ""
+            assert data["next_sonarr_display"]["state"] == "scheduled"
+            assert data["next_sonarr_display"]["primary"] == data["next_sonarr_tick_local"]
+            assert data["next_sonarr_display"]["secondary"] == data["next_sonarr_relative"]
+            assert data["next_radarr_display"]["state"] == "scheduled"
+            assert data["next_trimmer_display"]["state"] == "scheduled"
             assert data["last_sonarr_run"]["relative"] != ""
             assert data["next_sonarr_relative"] != ""
             assert data["fetcher_phase"] in ("processing", "idle", "active")
             assert "No line for this app" not in (data["sonarr_automation_sub"] or "")
             assert data["trimmer_connection_type"] == "Emby"
             assert data["trimmer_connection_status"] == "Connected"
+
+    asyncio.run(_go())
+
+
+def test_build_dashboard_status_unscheduled_and_disabled_next_run_display(monkeypatch) -> None:
+    class _FakeScheduler:
+        @staticmethod
+        def next_runs_by_job():
+            return {}
+
+        @staticmethod
+        def is_run_in_progress():
+            return False
+
+    async def _no_live(_settings):
+        return {}
+
+    monkeypatch.setattr("app.dashboard_service.fetch_live_dashboard_queue_totals", _no_live)
+    monkeypatch.setattr("app.dashboard_service.scheduler", _FakeScheduler())
+    asyncio.run(_seed_snapshot_state())
+
+    async def _go():
+        async with SessionLocal() as s:
+            row = await get_or_create_settings(s)
+            row.sonarr_enabled = True
+            row.sonarr_schedule_enabled = False
+            row.radarr_enabled = True
+            row.radarr_schedule_enabled = False
+            row.refiner_enabled = True
+            row.refiner_schedule_enabled = False
+            row.emby_enabled = False
+            await s.commit()
+            data = await build_dashboard_status(s, "UTC")
+            assert data["next_sonarr_display"] == {
+                "state": "enabled_unscheduled",
+                "primary": "Always on",
+                "secondary": "No schedule configured",
+            }
+            assert data["next_radarr_display"] == {
+                "state": "enabled_unscheduled",
+                "primary": "Always on",
+                "secondary": "No schedule configured",
+            }
+            assert data["next_refiner_display"] == {
+                "state": "enabled_unscheduled",
+                "primary": "Always on",
+                "secondary": "No schedule configured",
+            }
+            assert data["next_trimmer_display"] == {
+                "state": "disabled",
+                "primary": "Off",
+                "secondary": "Automation disabled",
+            }
 
     asyncio.run(_go())
 

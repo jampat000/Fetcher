@@ -1,19 +1,24 @@
-"""Refiner watched-folder cleanup: empty subfolders and allowlisted sidecar files."""
+"""Refiner watched-folder cleanup: post-success file pruning and source-folder removal."""
 
 from __future__ import annotations
 
 import logging
+import shutil
 from pathlib import Path
-
-from app.refiner_rules import REFINER_SOURCE_SIDECAR_CLEANUP_SUFFIXES
 
 logger = logging.getLogger(__name__)
 
 
 def _try_remove_empty_watch_subfolder(*, source_parent: Path, watched_root: Path) -> str:
-    """Remove the immediate parent of the source file only if it is empty and strictly inside watched_root.
+    """Remove the processed source folder tree for one completed item.
 
-    Does not walk up beyond one level. Returns a short token for activity context / support logs.
+    Safety rules:
+    - only the provided ``source_parent`` (and children) may be removed;
+    - folder must resolve strictly under ``watched_root``;
+    - ``watched_root`` itself is never removed.
+
+    Returns a short token for activity context / support logs.
+    Raises ``RuntimeError`` on removal failure so callers can mark the item as not-fully-cleaned.
     """
     try:
         w = watched_root.resolve()
@@ -36,38 +41,34 @@ def _try_remove_empty_watch_subfolder(*, source_parent: Path, watched_root: Path
             w,
         )
         return "skipped_not_under_watch"
+    if not parent.exists():
+        logger.info("Refiner folder cleanup: skipped (already removed: %s)", parent)
+        return "skipped_not_dir"
     if not parent.is_dir():
         logger.info("Refiner folder cleanup: skipped (not a directory: %s)", parent)
         return "skipped_not_dir"
     try:
-        entries = list(parent.iterdir())
+        shutil.rmtree(parent)
     except OSError as e:
-        logger.warning("Refiner folder cleanup: skipped (could not list %s: %s)", parent, e)
-        return "skipped_list_error"
-    if entries:
-        logger.info(
-            "Refiner folder cleanup: skipped (folder not empty: %s has %s item(s))",
-            parent,
-            len(entries),
-        )
-        return "skipped_not_empty"
-    try:
-        parent.rmdir()
-    except OSError as e:
-        logger.warning("Refiner folder cleanup: failed to remove %s (%s)", parent, e)
-        return "failed_rmdir"
-    logger.info("Refiner folder cleanup: removed empty folder %s", parent)
-    return "removed_empty_folder"
+        logger.warning("Refiner folder cleanup: failed to remove source folder tree %s (%s)", parent, e)
+        raise RuntimeError(
+            f"Source folder removal failed after successful file cleanup; could not remove {parent.name!r}."
+        ) from e
+    logger.info("Refiner folder cleanup: removed source folder tree %s", parent)
+    return "removed_source_folder"
 
 
 def _cleanup_refiner_source_sidecar_artifacts_after_success(
     *, media_parent: Path, watched_root: Path
 ) -> int:
-    """Remove allowlisted download/repair sidecars from the watched source folder only.
+    """Remove all direct-child files from the processed watched source folder only.
 
     Runs only after successful completion of the media file that lived under
-    ``media_parent``. Direct children only; suffix allowlist in
-    ``REFINER_SOURCE_SIDECAR_CLEANUP_SUFFIXES``. Does not touch output or work trees.
+    ``media_parent``. Scope is intentionally narrow (direct children only; no recursion),
+    and never touches output/work trees.
+
+    Returns the number of files removed. Raises ``RuntimeError`` when one or more files
+    could not be removed so callers can mark the item as cleanup-failed.
     """
     try:
         w = watched_root.resolve()
@@ -87,6 +88,7 @@ def _cleanup_refiner_source_sidecar_artifacts_after_success(
     if not parent.is_dir():
         return 0
     removed = 0
+    failures: list[str] = []
     try:
         entries = list(parent.iterdir())
     except OSError as e:
@@ -98,17 +100,20 @@ def _cleanup_refiner_source_sidecar_artifacts_after_success(
                 continue
         except OSError:
             continue
-        suf = entry.suffix.lower()
-        if suf not in REFINER_SOURCE_SIDECAR_CLEANUP_SUFFIXES:
-            continue
         try:
             entry.unlink()
             removed += 1
-            logger.info("Refiner sidecar cleanup: removed %s", entry.name)
+            logger.info("Refiner source cleanup: removed %s", entry.name)
         except OSError as e:
             logger.warning(
-                "Refiner sidecar cleanup: could not remove %s (%s)",
+                "Refiner source cleanup: could not remove %s (%s)",
                 entry,
                 e,
             )
+            failures.append(entry.name)
+    if failures:
+        raise RuntimeError(
+            "Source folder cleanup failed after successful output finalize; could not delete: "
+            + ", ".join(sorted(failures))
+        )
     return removed

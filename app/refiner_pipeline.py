@@ -30,6 +30,7 @@ from app.refiner_rules import (
     plan_remux,
     split_streams,
 )
+from app.refiner_subtitle_sidecars import preserve_external_subtitle_sidecars_if_configured
 from app.refiner_source_readiness import RefinerReadinessDecision, derive_title_fallback_candidate
 from app.refiner_track_display import (
     audio_after_line_from_plan,
@@ -60,6 +61,7 @@ def _activity_snapshot(
     wrong_content: bool = False,
     radarr_wrong_content_verdict: dict[str, Any] | None = None,
     radarr_wrong_content_automation: dict[str, Any] | None = None,
+    subtitle_sidecars_preserved: list[str] | None = None,
 ) -> str:
     payload: dict[str, Any] = {
         "audio_before": audio_before,
@@ -85,6 +87,10 @@ def _activity_snapshot(
         payload["radarr_wrong_content_verdict"] = radarr_wrong_content_verdict
     if isinstance(radarr_wrong_content_automation, dict) and radarr_wrong_content_automation:
         payload["radarr_wrong_content_automation"] = radarr_wrong_content_automation
+    if subtitle_sidecars_preserved:
+        payload["subtitle_sidecars_preserved"] = [
+            str(x).strip()[:500] for x in subtitle_sidecars_preserved if str(x).strip()
+        ][:32]
     idn = ident or {}
     for key in ("media_title", "refiner_title", "refiner_year", "trusted_title"):
         v = (idn.get(key) or "").strip()
@@ -549,11 +555,92 @@ def _process_one_refiner_file_sync(
         _log_plan_outcome(path=path, plan=plan, dry=False)
         try:
             source_parent = path.parent
+            preserved_sidecars: list[str] = []
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            # External subtitle sidecars before finalize: copy-only path deletes the watched media
+            # inside _finalize_output_file; sidecar discovery uses the source directory only (media
+            # filename still available from path even after unlink).
+            try:
+                preserved_sidecars = preserve_external_subtitle_sidecars_if_configured(
+                    source_media_path=path,
+                    destination_media_path=destination,
+                    cfg=cfg,
+                )
+            except RuntimeError as sub_e:
+                fh_sub = str(sub_e).strip()
+                logger.error("Refiner: no-remux pipeline — %s", fh_sub)
+                return "error", pack(
+                    "failed",
+                    sb,
+                    sb,
+                    ab_len,
+                    ab_len,
+                    sbb_len,
+                    sbb_len,
+                    failure_hint=fh_sub[:500],
+                    activity_context=_activity_snapshot(
+                        ident=identity_snap,
+                        audio_before=ab_line,
+                        audio_after=ab_line,
+                        subs_before=subs_b_line,
+                        subs_after=subs_b_line,
+                        failure_reason=fh_sub[:8000],
+                        reason_code="subtitle_preservation_failed",
+                    ),
+                )
             _finalize_output_file(path, destination)
-            _cleanup_refiner_source_sidecar_artifacts_after_success(
-                media_parent=source_parent, watched_root=watched_root
-            )
-            fold = _try_remove_empty_watch_subfolder(source_parent=source_parent, watched_root=watched_root)
+            try:
+                _cleanup_refiner_source_sidecar_artifacts_after_success(
+                    media_parent=source_parent, watched_root=watched_root
+                )
+            except RuntimeError as cln_e:
+                fh_cln = str(cln_e).strip()
+                logger.error("Refiner: no-remux pipeline — %s", fh_cln)
+                return "cleanup_needed", pack(
+                    "failed",
+                    sb,
+                    sb,
+                    ab_len,
+                    ab_len,
+                    sbb_len,
+                    sbb_len,
+                    failure_hint=fh_cln[:500],
+                    activity_context=_activity_snapshot(
+                        ident=identity_snap,
+                        audio_before=ab_line,
+                        audio_after=ab_line,
+                        subs_before=subs_b_line,
+                        subs_after=subs_b_line,
+                        failure_reason=fh_cln[:8000],
+                        reason_code="source_cleanup_failed",
+                    ),
+                )
+            try:
+                fold = _try_remove_empty_watch_subfolder(
+                    source_parent=source_parent, watched_root=watched_root
+                )
+            except RuntimeError as fold_e:
+                fh_fold = str(fold_e).strip()
+                logger.error("Refiner: no-remux pipeline — %s", fh_fold)
+                return "cleanup_needed", pack(
+                    "failed",
+                    sb,
+                    sb,
+                    ab_len,
+                    ab_len,
+                    sbb_len,
+                    sbb_len,
+                    failure_hint=fh_fold[:500],
+                    activity_context=_activity_snapshot(
+                        ident=identity_snap,
+                        audio_before=ab_line,
+                        audio_after=ab_line,
+                        subs_before=subs_b_line,
+                        subs_after=subs_b_line,
+                        failure_reason=fh_fold[:8000],
+                        reason_code="source_folder_removal_failed",
+                    ),
+                )
             sa = _file_size_bytes(destination)
             ok_ctx = _activity_snapshot(
                 ident=identity_snap,
@@ -566,11 +653,24 @@ def _process_one_refiner_file_sync(
                 folder_cleanup=fold,
                 pipeline_no_remux=True,
                 no_change_bullets=nc_bullets,
+                subtitle_sidecars_preserved=preserved_sidecars or None,
             )
             return "ok", pack(
                 "success", sb, sa, ab_len, ab_len, sbb_len, sbb_len, activity_context=ok_ctx
             )
         except Exception as e:
+            if preserved_sidecars:
+                for n in preserved_sidecars:
+                    try:
+                        p = destination.parent / n
+                        if p.exists():
+                            p.unlink()
+                    except OSError:
+                        logger.warning(
+                            "Refiner: no-remux pipeline — could not roll back preserved subtitle %s",
+                            n,
+                            exc_info=True,
+                        )
             fh = failure_hint_from_exception(e)
             summary, detail = format_refiner_failure_for_operator(e)
             logger.error("Refiner: no-remux pipeline finalize failed for %s — %s", path.name, summary)
@@ -696,6 +796,42 @@ def _process_one_refiner_file_sync(
         temp_file = remux_to_temp_file(src=path, work_dir=work_dir, plan=plan)
         _finalize_output_file(temp_file, destination)
         try:
+            preserved_sidecars = preserve_external_subtitle_sidecars_if_configured(
+                source_media_path=path,
+                destination_media_path=destination,
+                cfg=cfg,
+            )
+        except RuntimeError as sub_e:
+            fh_sub = str(sub_e).strip()
+            logger.error("Refiner: remux pipeline — %s", fh_sub)
+            try:
+                destination.unlink(missing_ok=True)
+            except OSError as de:
+                logger.warning(
+                    "Refiner: could not remove output file after subtitle preservation failure (%s)",
+                    de,
+                    exc_info=True,
+                )
+            return "error", pack(
+                "failed",
+                sb,
+                sb,
+                ab_len,
+                ab_len,
+                sbb_len,
+                sbb_len,
+                failure_hint=fh_sub[:500],
+                activity_context=_activity_snapshot(
+                    ident=identity_snap,
+                    audio_before=ab_line,
+                    audio_after=audio_after_line_from_plan(plan),
+                    subs_before=subs_b_line,
+                    subs_after=subtitle_after_line_from_plan(plan, remove_all=cfg.subtitle_mode == "remove_all"),
+                    failure_reason=fh_sub[:8000],
+                    reason_code="subtitle_preservation_failed",
+                ),
+            )
+        try:
             path.unlink()
         except OSError as u_err:
             logger.warning(
@@ -705,10 +841,56 @@ def _process_one_refiner_file_sync(
                 u_err,
                 path,
             )
-        _cleanup_refiner_source_sidecar_artifacts_after_success(
-            media_parent=path.parent, watched_root=watched_root
-        )
-        fold = _try_remove_empty_watch_subfolder(source_parent=path.parent, watched_root=watched_root)
+        try:
+            _cleanup_refiner_source_sidecar_artifacts_after_success(
+                media_parent=path.parent, watched_root=watched_root
+            )
+        except RuntimeError as cln_e:
+            fh_cln = str(cln_e).strip()
+            logger.error("Refiner: remux pipeline — %s", fh_cln)
+            return "error", pack(
+                "failed",
+                sb,
+                sb,
+                ab_len,
+                ab_len,
+                sbb_len,
+                sbb_len,
+                failure_hint=fh_cln[:500],
+                activity_context=_activity_snapshot(
+                    ident=identity_snap,
+                    audio_before=ab_line,
+                    audio_after=audio_after_line_from_plan(plan),
+                    subs_before=subs_b_line,
+                    subs_after=subtitle_after_line_from_plan(plan, remove_all=cfg.subtitle_mode == "remove_all"),
+                    failure_reason=fh_cln[:8000],
+                    reason_code="source_cleanup_failed",
+                ),
+            )
+        try:
+            fold = _try_remove_empty_watch_subfolder(source_parent=path.parent, watched_root=watched_root)
+        except RuntimeError as fold_e:
+            fh_fold = str(fold_e).strip()
+            logger.error("Refiner: remux pipeline — %s", fh_fold)
+            return "error", pack(
+                "failed",
+                sb,
+                sb,
+                ab_len,
+                ab_len,
+                sbb_len,
+                sbb_len,
+                failure_hint=fh_fold[:500],
+                activity_context=_activity_snapshot(
+                    ident=identity_snap,
+                    audio_before=ab_line,
+                    audio_after=audio_after_line_from_plan(plan),
+                    subs_before=subs_b_line,
+                    subs_after=subtitle_after_line_from_plan(plan, remove_all=cfg.subtitle_mode == "remove_all"),
+                    failure_reason=fh_fold[:8000],
+                    reason_code="source_folder_removal_failed",
+                ),
+            )
         logger.info("Refiner: output written to %s (watched file: %s)", destination, path.name)
         sa = _file_size_bytes(destination)
         aa = len(plan.audio)
@@ -725,6 +907,7 @@ def _process_one_refiner_file_sync(
             finalized=True,
             source_removed=True,
             folder_cleanup=fold,
+            subtitle_sidecars_preserved=preserved_sidecars or None,
         )
         return "ok", pack(
             "success", sb, sa, ab_len, aa, sbb_len, sba, activity_context=ok_ctx

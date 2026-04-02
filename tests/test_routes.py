@@ -72,6 +72,9 @@ def test_dashboard_route_smoke(monkeypatch) -> None:
     assert b"Radarr" in resp.content
     assert b"Trimmer" in resp.content
     assert b"Refiner" in resp.content
+    assert resp.content.count(b"automation-footer-shell") >= 4
+    assert resp.content.count(b"automation-footer-note-slot") >= 4
+    assert resp.content.count(b"automation-footer-action-slot") >= 4
 
 
 def test_dashboard_hero_does_not_fetch_live_totals_before_render(monkeypatch) -> None:
@@ -200,8 +203,73 @@ def test_dashboard_route_empty_states_are_intentional(monkeypatch) -> None:
         resp = client.get("/")
     assert resp.status_code == 200
     assert b"Not yet run" in resp.content
-    assert b"Scheduled" in resp.content
+    assert b"Always on" in resp.content
+    assert b"No schedule configured" in resp.content
     assert b"No activity yet" in resp.content
+    assert b"automation-footer-shell" in resp.content
+
+
+def test_dashboard_route_disabled_actions_render_inside_shared_footer(monkeypatch) -> None:
+    import app.routers.dashboard as dash_mod
+
+    real_get = dash_mod.get_or_create_settings
+
+    async def _settings_disabled(session):
+        row = await real_get(session)
+        row.refiner_enabled = False
+        row.emby_enabled = False
+        return row
+
+    async def _fake_status(_session, _tz, *, snapshots=None, include_live: bool | None = None):  # noqa: ARG001
+        return {
+            "last_run": None,
+            "latest_system_event": None,
+            "last_sonarr_run": {"time_local": "", "ok": None, "relative": ""},
+            "last_radarr_run": {"time_local": "", "ok": None, "relative": ""},
+            "last_trimmer_run": {"time_local": "", "ok": None, "relative": ""},
+            "last_refiner_run": {"time_local": "", "ok": None, "relative": "", "time_iso": ""},
+            "next_sonarr_tick_local": "",
+            "next_radarr_tick_local": "",
+            "next_trimmer_tick_local": "",
+            "next_refiner_tick_local": "",
+            "next_sonarr_relative": "",
+            "next_radarr_relative": "",
+            "next_trimmer_relative": "",
+            "next_refiner_relative": "",
+            "next_sonarr_display": {"state": "enabled_unscheduled", "primary": "Always on", "secondary": "No schedule configured"},
+            "next_radarr_display": {"state": "enabled_unscheduled", "primary": "Always on", "secondary": "No schedule configured"},
+            "next_trimmer_display": {"state": "disabled", "primary": "Off", "secondary": "Automation disabled"},
+            "next_refiner_display": {"state": "disabled", "primary": "Off", "secondary": "Automation disabled"},
+            "fetcher_phase": "idle",
+            "fetcher_phase_label": "Idle",
+            "fetcher_phase_detail": "No jobs.",
+            "sonarr_automation_sub": "",
+            "radarr_automation_sub": "",
+            "trimmer_automation_sub": "",
+            "sonarr_missing": 0,
+            "sonarr_upgrades": 0,
+            "radarr_missing": 0,
+            "radarr_upgrades": 0,
+            "emby_matched": 0,
+            "trimmer_connection_type": "Emby",
+            "trimmer_connection_status": "Not configured",
+            "sonarr_sparkline": [],
+            "radarr_sparkline": [],
+            "refiner_sparkline": [],
+            "trimmer_sparkline": [],
+            "refiner_live_total": 0,
+            "refiner_live_done": 0,
+        }
+
+    monkeypatch.setattr("app.routers.dashboard.build_dashboard_status", _fake_status)
+    monkeypatch.setattr(dash_mod, "get_or_create_settings", _settings_disabled)
+    monkeypatch.setattr("app.routers.dashboard.merge_activity_feed", lambda *_a, **_kw: [])
+    with _build_client(monkeypatch) as client:
+        resp = client.get("/")
+    assert resp.status_code == 200
+    assert b'href="/refiner/settings"' in resp.content
+    assert b'href="/trimmer/settings"' in resp.content
+    assert b"automation-footer-action-slot" in resp.content
 
 
 def test_cleaner_default_skips_emby_client_when_ready(monkeypatch) -> None:

@@ -31,7 +31,7 @@ def test_is_refiner_media_candidate_rejects_par2_and_common_sidecars(tmp_path: P
     assert is_refiner_media_candidate(tmp_path / "e.mkv") is True
 
 
-def test_sidecar_cleanup_allowlist_only_under_watched(tmp_path: Path) -> None:
+def test_source_cleanup_deletes_all_direct_child_files_under_watched(tmp_path: Path) -> None:
     watched = tmp_path / "w"
     sub = watched / "job"
     watched.mkdir()
@@ -41,12 +41,16 @@ def test_sidecar_cleanup_allowlist_only_under_watched(tmp_path: Path) -> None:
     (sub / "x.nzb").write_bytes(b"n")
     (sub / "x.nfo").write_text("nfo", encoding="utf-8")
     (sub / "keep.txt").write_text("hold", encoding="utf-8")
+    (sub / "poster.jpg").write_bytes(b"jpg")
+    (sub / "sub.en.srt").write_text("s", encoding="utf-8")
     n = _cleanup_refiner_source_sidecar_artifacts_after_success(
         media_parent=sub, watched_root=watched
     )
-    assert n == 4
+    assert n == 7
     assert not (sub / "x.par2").exists()
-    assert (sub / "keep.txt").exists()
+    assert not (sub / "keep.txt").exists()
+    assert not (sub / "poster.jpg").exists()
+    assert not (sub / "sub.en.srt").exists()
 
 
 def test_sidecar_cleanup_runs_when_media_parent_is_watch_root(tmp_path: Path) -> None:
@@ -75,6 +79,22 @@ def test_sidecar_cleanup_skips_path_outside_watch_root(tmp_path: Path) -> None:
         == 0
     )
     assert (other / "x.par2").exists()
+
+
+def test_source_cleanup_does_not_recurse_into_child_dirs(tmp_path: Path) -> None:
+    watched = tmp_path / "w"
+    sub = watched / "job"
+    child = sub / "nested"
+    watched.mkdir()
+    child.mkdir(parents=True)
+    (sub / "x.txt").write_text("x", encoding="utf-8")
+    (child / "inside.txt").write_text("keep", encoding="utf-8")
+    n = _cleanup_refiner_source_sidecar_artifacts_after_success(
+        media_parent=sub, watched_root=watched
+    )
+    assert n == 1
+    assert not (sub / "x.txt").exists()
+    assert (child / "inside.txt").read_text(encoding="utf-8") == "keep"
 
 
 def test_collect_media_files_under_path_ignores_par2(tmp_path: Path) -> None:

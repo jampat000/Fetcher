@@ -48,6 +48,13 @@ router = APIRouter(dependencies=AUTH_DEPS)
 
 def _automation_view_for_template(settings: Any, dash_status: Mapping[str, Any]) -> dict[str, Any]:
     """Single dict for Automation card rows + footer (dashboard.html ``automation_view`` / ``av``)."""
+    def _fallback_display(*, enabled: bool, local: str, rel: str) -> dict[str, str]:
+        if not enabled:
+            return {"state": "disabled", "primary": "Off", "secondary": "Automation disabled"}
+        if local:
+            return {"state": "scheduled", "primary": local, "secondary": rel or ""}
+        return {"state": "enabled_unscheduled", "primary": "Always on", "secondary": "No schedule configured"}
+
     return {
         "fetcher_phase": dash_status["fetcher_phase"],
         "fetcher_phase_label": dash_status["fetcher_phase_label"],
@@ -64,10 +71,36 @@ def _automation_view_for_template(settings: Any, dash_status: Mapping[str, Any])
         "next_sonarr_relative": dash_status["next_sonarr_relative"],
         "next_radarr_relative": dash_status["next_radarr_relative"],
         "next_trimmer_relative": dash_status["next_trimmer_relative"],
+        "next_refiner_tick_local": dash_status.get("next_refiner_tick_local", ""),
+        "next_refiner_relative": dash_status.get("next_refiner_relative", ""),
         "sonarr_enabled": bool(settings.sonarr_enabled),
         "radarr_enabled": bool(settings.radarr_enabled),
         "refiner_enabled": bool(settings.refiner_enabled),
         "emby_enabled": bool(settings.emby_enabled),
+        "next_sonarr_display": dash_status.get("next_sonarr_display")
+        or _fallback_display(
+            enabled=bool(settings.sonarr_enabled),
+            local=str(dash_status.get("next_sonarr_tick_local") or ""),
+            rel=str(dash_status.get("next_sonarr_relative") or ""),
+        ),
+        "next_radarr_display": dash_status.get("next_radarr_display")
+        or _fallback_display(
+            enabled=bool(settings.radarr_enabled),
+            local=str(dash_status.get("next_radarr_tick_local") or ""),
+            rel=str(dash_status.get("next_radarr_relative") or ""),
+        ),
+        "next_refiner_display": dash_status.get("next_refiner_display")
+        or _fallback_display(
+            enabled=bool(settings.refiner_enabled),
+            local=str(dash_status.get("next_refiner_tick_local") or ""),
+            rel=str(dash_status.get("next_refiner_relative") or ""),
+        ),
+        "next_trimmer_display": dash_status.get("next_trimmer_display")
+        or _fallback_display(
+            enabled=bool(settings.emby_enabled),
+            local=str(dash_status.get("next_trimmer_tick_local") or ""),
+            rel=str(dash_status.get("next_trimmer_relative") or ""),
+        ),
         "sonarr_automation_sub": dash_status["sonarr_automation_sub"],
         "radarr_automation_sub": dash_status["radarr_automation_sub"],
         "trimmer_automation_sub": dash_status["trimmer_automation_sub"],

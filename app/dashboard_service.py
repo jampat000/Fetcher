@@ -36,6 +36,39 @@ _DASHBOARD_SONARR_MISSING_WALL_S = 25.0
 _DASHBOARD_RADARR_MOVIES_WALL_S = 20.0
 
 
+def _next_run_display(
+    *,
+    enabled: bool,
+    schedule_enabled: bool,
+    next_local: str,
+    next_relative: str,
+) -> dict[str, str]:
+    """Shared two-line Next Run display model for automation cards."""
+    if not enabled:
+        return {
+            "state": "disabled",
+            "primary": "Off",
+            "secondary": "Automation disabled",
+        }
+    if next_local:
+        return {
+            "state": "scheduled",
+            "primary": next_local,
+            "secondary": next_relative or "",
+        }
+    if not schedule_enabled:
+        return {
+            "state": "enabled_unscheduled",
+            "primary": "Always on",
+            "secondary": "No schedule configured",
+        }
+    return {
+        "state": "scheduled",
+        "primary": "Scheduled",
+        "secondary": "Next run pending",
+    }
+
+
 def _refiner_dashboard_outcome_from_row(row: RefinerActivity | None) -> str:
     """Return dashboard-level Refiner outcome: success | failed | waiting | none."""
     if row is None:
@@ -297,6 +330,7 @@ async def build_dashboard_status(
     next_sonarr_dt = next_runs.get("sonarr")
     next_radarr_dt = next_runs.get("radarr")
     next_trimmer_dt = next_runs.get("trimmer")
+    next_refiner_dt = next_runs.get("refiner")
     settings = await get_or_create_settings(session)
     snaps = snapshots if snapshots is not None else await fetch_latest_app_snapshots(session)
     refiner_pass_total = int(getattr(settings, "refiner_current_pass_total", 0) or 0)
@@ -373,19 +407,34 @@ async def build_dashboard_status(
         last_refiner["time_iso"] = ""
 
     # If scheduler next-run is unavailable in this process, keep useful per-app timing by estimating from last+interval.
-    if not next_sonarr_dt and settings.sonarr_enabled and last_sonarr["time_local"]:
+    if (
+        not next_sonarr_dt
+        and settings.sonarr_enabled
+        and bool(settings.sonarr_schedule_enabled)
+        and last_sonarr["time_local"]
+    ):
         dt = settings.sonarr_last_run_at
         if dt:
             next_sonarr_dt = dt + timedelta(
                 minutes=effective_arr_interval_minutes(settings.sonarr_interval_minutes)
             )
-    if not next_radarr_dt and settings.radarr_enabled and last_radarr["time_local"]:
+    if (
+        not next_radarr_dt
+        and settings.radarr_enabled
+        and bool(settings.radarr_schedule_enabled)
+        and last_radarr["time_local"]
+    ):
         dt = settings.radarr_last_run_at
         if dt:
             next_radarr_dt = dt + timedelta(
                 minutes=effective_arr_interval_minutes(settings.radarr_interval_minutes)
             )
-    if not next_trimmer_dt and settings.emby_enabled and last_trimmer["time_local"]:
+    if (
+        not next_trimmer_dt
+        and settings.emby_enabled
+        and bool(settings.emby_schedule_enabled)
+        and last_trimmer["time_local"]
+    ):
         dt = settings.emby_last_run_at
         if dt:
             next_trimmer_dt = dt + timedelta(minutes=max(5, int(settings.emby_interval_minutes or 60)))
@@ -393,9 +442,35 @@ async def build_dashboard_status(
     next_sonarr_local = fmt_local(next_sonarr_dt, tz) if next_sonarr_dt else ""
     next_radarr_local = fmt_local(next_radarr_dt, tz) if next_radarr_dt else ""
     next_trimmer_local = fmt_local(next_trimmer_dt, tz) if next_trimmer_dt else ""
+    next_refiner_local = fmt_local(next_refiner_dt, tz) if next_refiner_dt else ""
     next_sonarr_relative = _relative_phrase_until(next_sonarr_dt, now) if next_sonarr_dt else ""
     next_radarr_relative = _relative_phrase_until(next_radarr_dt, now) if next_radarr_dt else ""
     next_trimmer_relative = _relative_phrase_until(next_trimmer_dt, now) if next_trimmer_dt else ""
+    next_refiner_relative = _relative_phrase_until(next_refiner_dt, now) if next_refiner_dt else ""
+    next_sonarr_display = _next_run_display(
+        enabled=bool(settings.sonarr_enabled),
+        schedule_enabled=bool(settings.sonarr_schedule_enabled),
+        next_local=next_sonarr_local,
+        next_relative=next_sonarr_relative,
+    )
+    next_radarr_display = _next_run_display(
+        enabled=bool(settings.radarr_enabled),
+        schedule_enabled=bool(settings.radarr_schedule_enabled),
+        next_local=next_radarr_local,
+        next_relative=next_radarr_relative,
+    )
+    next_trimmer_display = _next_run_display(
+        enabled=bool(settings.emby_enabled),
+        schedule_enabled=bool(settings.emby_schedule_enabled),
+        next_local=next_trimmer_local,
+        next_relative=next_trimmer_relative,
+    )
+    next_refiner_display = _next_run_display(
+        enabled=bool(settings.refiner_enabled),
+        schedule_enabled=bool(settings.refiner_schedule_enabled),
+        next_local=next_refiner_local,
+        next_relative=next_refiner_relative,
+    )
 
     job_intervals = compute_job_intervals_minutes(settings)
     job_msg = (last_run.message or "") if last_run else ""
@@ -464,6 +539,12 @@ async def build_dashboard_status(
         "next_sonarr_relative": next_sonarr_relative,
         "next_radarr_relative": next_radarr_relative,
         "next_trimmer_relative": next_trimmer_relative,
+        "next_refiner_tick_local": next_refiner_local,
+        "next_refiner_relative": next_refiner_relative,
+        "next_sonarr_display": next_sonarr_display,
+        "next_radarr_display": next_radarr_display,
+        "next_trimmer_display": next_trimmer_display,
+        "next_refiner_display": next_refiner_display,
         "fetcher_phase": phase_id,
         "fetcher_phase_label": phase_label,
         "fetcher_phase_detail": phase_detail,

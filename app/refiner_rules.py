@@ -64,8 +64,8 @@ def normalize_audio_preference_mode(raw: str | None) -> AudioSelectionPolicy:
 
 _MEDIA_EXTENSIONS = frozenset({".mkv", ".mp4", ".m4v", ".webm", ".avi"})
 
-# Removed from the *watched source directory only* after a successful Refiner job for a
-# media file in that directory. Never media candidates; never scanned from output tree.
+# Historical allowlist marker kept for candidate classification docs/tests; cleanup behavior
+# now removes all direct-child files in the processed source folder after successful live runs.
 REFINER_SOURCE_SIDECAR_CLEANUP_SUFFIXES: frozenset[str] = frozenset(
     {".par2", ".sfv", ".nzb", ".nfo"}
 )
@@ -77,9 +77,9 @@ def is_refiner_media_candidate(path: Path) -> bool:
     Paths under the watched tree that are *not* candidates—including Usenet/repair
     sidecars (``.par2``, ``.sfv``, ``.nzb``, ``.nfo``), subtitles, and other
     non-allowlisted files—are ignored for processing: no activity rows, readiness,
-    ffprobe, or output copies. After a **successful** live job, allowlisted sidecars in
-    the same source folder are removed (see ``REFINER_SOURCE_SIDECAR_CLEANUP_SUFFIXES``),
-    then empty watched subfolders may be removed; failed jobs do not delete sidecars.
+    ffprobe, or output copies. After a **successful** live job, remaining direct-child
+    files in the same source folder are removed, then empty watched subfolders may be
+    removed; failed jobs do not run that source-folder file cleanup.
     """
     try:
         return path.is_file() and path.suffix.lower() in _MEDIA_EXTENSIONS
