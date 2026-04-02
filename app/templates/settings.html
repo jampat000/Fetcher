@@ -227,7 +227,7 @@
                 {% call toggle_checkbox("sonarr_search_upgrades", settings.sonarr_search_upgrades) %}Search cutoff-unmet items (upgrade){% endcall %}
               </div>
               <div class="settings-failed-import-block">
-                <p class="small settings-field-hint settings-failed-import-hint settings-failed-import-hint--granular">Clean up Sonarr’s <strong>download queue</strong> by failure type. <strong>Remove</strong> deletes the row; <strong>Blocklist</strong> passes that flag to the API only (no retry). Does not touch your download client.</p>
+                <p class="small settings-field-hint settings-failed-import-hint settings-failed-import-hint--granular">Clean up Sonarr’s <strong>download queue</strong> by failure type. <strong>Remove</strong> deletes the row; <strong>Blocklist</strong> passes that flag to the API only (no retry). Unless you enable the option below, the underlying job may stay in your download client and Sonarr can re-add the queue row on sync.</p>
                 <div class="settings-granular-failed-import-matrix" role="group" aria-label="Sonarr failed import cleanup by scenario">
                   <div class="settings-granular-failed-import-matrix-row settings-granular-failed-import-matrix-row--head">
                     <span class="settings-granular-failed-import-matrix-scenario">Failure type</span>
@@ -259,6 +259,10 @@
                     <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("sonarr_cleanup_quality", settings.sonarr_cleanup_quality | default(false)) %}Remove{% endcall %}</div>
                     <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("sonarr_blocklist_quality", settings.sonarr_blocklist_quality | default(false)) %}Blocklist{% endcall %}</div>
                   </div>
+                </div>
+                <div class="settings-arr-search-toggles settings-failed-import-remove-client-row">
+                  {% call toggle_checkbox("sonarr_failed_import_remove_from_client", settings.sonarr_failed_import_remove_from_client | default(false)) %}Also remove from download client (removeFromClient){% endcall %}
+                  <div class="small settings-field-hint">When on, queue deletes ask Sonarr to remove the job from SABnzbd, qBittorrent, etc., so the same grab cannot pop back after cleanup.</div>
                 </div>
                 <div class="field settings-failed-import-interval-field">
                   <label for="sonarr_failed_import_cleanup_interval_minutes">Failed import cleanup interval (minutes)</label>
@@ -373,7 +377,7 @@
                 {% call toggle_checkbox("radarr_search_upgrades", settings.radarr_search_upgrades) %}Search cutoff-unmet items (upgrade){% endcall %}
               </div>
               <div class="settings-failed-import-block">
-                <p class="small settings-field-hint settings-failed-import-hint settings-failed-import-hint--granular">Clean up Radarr’s <strong>download queue</strong> by failure type. <strong>Remove</strong> deletes the row; <strong>Blocklist</strong> passes that flag to the API only (no retry). Does not touch your download client.</p>
+                <p class="small settings-field-hint settings-failed-import-hint settings-failed-import-hint--granular">Clean up Radarr’s <strong>download queue</strong> by failure type. <strong>Remove</strong> deletes the row; <strong>Blocklist</strong> passes that flag to the API only (no retry). Unless you enable the option below, the underlying job may stay in your download client and Radarr can re-add the queue row on sync.</p>
                 <div class="settings-granular-failed-import-matrix" role="group" aria-label="Radarr failed import cleanup by scenario">
                   <div class="settings-granular-failed-import-matrix-row settings-granular-failed-import-matrix-row--head">
                     <span class="settings-granular-failed-import-matrix-scenario">Failure type</span>
@@ -405,6 +409,10 @@
                     <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("radarr_cleanup_quality", settings.radarr_cleanup_quality | default(false)) %}Remove{% endcall %}</div>
                     <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("radarr_blocklist_quality", settings.radarr_blocklist_quality | default(false)) %}Blocklist{% endcall %}</div>
                   </div>
+                </div>
+                <div class="settings-arr-search-toggles settings-failed-import-remove-client-row">
+                  {% call toggle_checkbox("radarr_failed_import_remove_from_client", settings.radarr_failed_import_remove_from_client | default(false)) %}Also remove from download client (removeFromClient){% endcall %}
+                  <div class="small settings-field-hint">When on, queue deletes ask Radarr to remove the job from SABnzbd, qBittorrent, etc., so the same grab cannot pop back after cleanup.</div>
                 </div>
                 <div class="field settings-failed-import-interval-field">
                   <label for="radarr_failed_import_cleanup_interval_minutes">Failed import cleanup interval (minutes)</label>

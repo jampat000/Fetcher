@@ -51,7 +51,7 @@ class _FakeSonarrClient:
         }
 
     async def delete_queue_item(self, *, queue_id: int, blocklist: bool = False, **kwargs: Any) -> None:
-        self.delete_calls.append({"queue_id": int(queue_id), "blocklist": bool(blocklist)})
+        self.delete_calls.append({"queue_id": int(queue_id), "blocklist": bool(blocklist), **kwargs})
 
 
 class _FakeSonarrWaitingToImportNoEligible(_FakeSonarrClient):
@@ -174,7 +174,7 @@ async def _run_sonarr_unknown_import_failed_only() -> None:
             policy=policy,
         )
         await session.commit()
-    assert client.delete_calls == [{"queue_id": 77, "blocklist": True}]
+    assert client.delete_calls == [{"queue_id": 77, "blocklist": True, "remove_from_client": False}]
 
 
 class _FakeSonarrQueueGenericImportFailed(_FakeSonarrClient):
@@ -234,7 +234,7 @@ async def _run_sonarr_queue_generic_all_on() -> None:
             policy=SONARR_CLEANUP_POLICY_ALL_ON,
         )
         await session.commit()
-    assert client.delete_calls == [{"queue_id": 305, "blocklist": True}]
+    assert client.delete_calls == [{"queue_id": 305, "blocklist": True, "remove_from_client": False}]
 
 
 class _FakeSonarrQueueDownloadFailedOnly(_FakeSonarrClient):
@@ -275,7 +275,7 @@ async def _run_sonarr_queue_download_failed() -> None:
             policy=policy,
         )
         await session.commit()
-    assert client.delete_calls == [{"queue_id": 303, "blocklist": True}]
+    assert client.delete_calls == [{"queue_id": 303, "blocklist": True, "remove_from_client": False}]
 
 
 class _FakeSonarrTrackedStateFailedOnly(_FakeSonarrClient):
@@ -316,7 +316,7 @@ async def _run_sonarr_tracked_failed() -> None:
             policy=policy,
         )
         await session.commit()
-    assert client.delete_calls == [{"queue_id": 304, "blocklist": True}]
+    assert client.delete_calls == [{"queue_id": 304, "blocklist": True, "remove_from_client": False}]
 
 
 def test_sonarr_cleanup_queue_only_waiting_no_eligible_no_delete() -> None:
@@ -359,7 +359,7 @@ async def _run_sonarr_success() -> None:
         )
         await session.commit()
 
-    assert client.delete_calls == [{"queue_id": 99, "blocklist": True}]
+    assert client.delete_calls == [{"queue_id": 99, "blocklist": True, "remove_from_client": False}]
     assert any("failed import cleaned up" in a.lower() for a in actions)
 
     async with SessionLocal() as session:
@@ -419,7 +419,7 @@ async def _run_sonarr_ambiguous() -> None:
 
 class _FakeSonarrDeleteFails(_FakeSonarrClient):
     async def delete_queue_item(self, *, queue_id: int, blocklist: bool = False, **kwargs: Any) -> None:
-        self.delete_calls.append({"queue_id": int(queue_id), "blocklist": bool(blocklist)})
+        self.delete_calls.append({"queue_id": int(queue_id), "blocklist": bool(blocklist), **kwargs})
         if blocklist:
             raise RuntimeError("sonarr delete failed")
 
@@ -441,7 +441,7 @@ async def _run_sonarr_delete_fail() -> None:
         )
         await session.commit()
 
-    assert client.delete_calls == [{"queue_id": 99, "blocklist": True}]
+    assert client.delete_calls == [{"queue_id": 99, "blocklist": True, "remove_from_client": False}]
     assert any("failed import removal failed" in a.lower() for a in actions)
     async with SessionLocal() as session:
         rows = (await session.execute(select(ActivityLog))).scalars().all()

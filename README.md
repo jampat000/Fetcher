@@ -17,7 +17,7 @@ Fetcher is a production-ready automation service for Sonarr, Radarr, and Emby, f
 - **Missing & upgrade automation** — scheduled (and manual) searches for monitored items without files and for cutoff-unmet queues, with **per-app Retry Delay** so you’re not hammering the same items every tick.
 - **Dashboard** — per-app last/next run, live-style queue counts when Arr is reachable, and short hints from the last service run (including retry-delay context where it applies).
 - **Activity & job logs** — human-readable summaries; logs page reads the same log directory the service writes to.
-- **Failed import cleanup** — optional Sonarr/Radarr: removes **terminal** failed imports from each app’s **download queue** (queue API delete with **blocklist** attempted on the same request, then **queue-only** removal if that fails). Fetcher does **not** enable **remove-from-client**. Successful removals appear in **Activity** as **Failed import cleaned up** or **Failed import removed**; waiting/unknown/no-op paths do not add cleanup rows. See **[Failed import cleanup matrix](#failed-import-cleanup-matrix-sonarr--radarr)** below.
+- **Failed import cleanup** — optional Sonarr/Radarr: removes **terminal** failed imports from each app’s **download queue** (queue API delete with **blocklist** on the same request). **Remove from download client** is a separate per-app checkbox (`removeFromClient`); when off, the client job can remain and *arr may **re-track** the same grab. Successful removals appear in **Activity** as **Failed import cleaned up** or **Failed import removed**; waiting/unknown/no-op paths do not add cleanup rows. See **[Failed import cleanup matrix](#failed-import-cleanup-matrix-sonarr--radarr)** below.
 - **Setup wizard** — shown until real configuration is in place (password + at least one integration configured the way the app checks it). No separate “I’m done” flag; it’s driven by saved state.
 - **Auth** — password (bcrypt), session cookie, optional IP allowlist; JSON API can use **Bearer access tokens** from the auth endpoints.
 - **Backup / restore** — settings JSON from the UI (treat it as secret).
@@ -34,7 +34,7 @@ Fetcher is a production-ready automation service for Sonarr, Radarr, and Emby, f
 
 ## Failed import cleanup matrix (Sonarr & Radarr)
 
-In **Settings → Sonarr** and **Settings → Radarr**, under **Search and cleanup**, each app has the same **five failure types**. Each row has its own **Remove** and **Blocklist** checkboxes (`sonarr_*` / `radarr_*` column names in backups). The legacy single “remove failed imports” master toggles still turn **all** five pairs on when enabled.
+In **Settings → Sonarr** and **Settings → Radarr**, under **Search and cleanup**, each app has the same **five failure types**. Each row has its own **Remove** and **Blocklist** checkboxes (`sonarr_*` / `radarr_*` column names in backups). Below the matrix, **Also remove from download client** maps to `sonarr_failed_import_remove_from_client` / `radarr_failed_import_remove_from_client` in backups. The legacy single “remove failed imports” master toggles still turn **all** five pairs on when enabled (they do **not** auto-enable remove-from-client).
 
 | Settings label | Internal scenario | Remove / blocklist field suffix |
 | --- | --- | --- |
@@ -54,7 +54,7 @@ Phrase lists differ slightly between **Radarr** (movies) and **Sonarr** (episode
 
 **Why a title can still appear in *arr after “Failed import cleaned up”**
 
-1. **Download client** — Fetcher does **not** set `removeFromClient` on queue delete. If the release is still in SABnzbd, qBittorrent, etc., the next client sync can **re-create** the same queue row. Clear or remove the job in the client, or remove the queue item from the *arr UI with “remove from download client” if you want it gone there too.
+1. **Download client** — With **Also remove from download client** off (default), Fetcher sends `removeFromClient=false`. If the release is still in SABnzbd, qBittorrent, etc., the next client sync can **re-create** the same queue row. Turn that checkbox on for automated cleanup, or clear the job in the client / use the *arr UI “remove from download client” manually.
 2. **Activity vs queue** — Radarr/Sonarr **Activity** history keeps past events; that is not the live download queue.
 
 ---

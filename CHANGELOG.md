@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.7.19 — 2026-04-02
+
+### Added
+
+- **Failed import cleanup:** optional per-app **Also remove from download client** (`removeFromClient=true` on queue delete). Stops the same client job from surviving so Radarr/Sonarr cannot put it back in the queue on the next sync. Schema: `sonarr_failed_import_remove_from_client`, `radarr_failed_import_remove_from_client`; **`CURRENT_SCHEMA_VERSION` 38**.
+
+### Documentation
+
+- **README:** Default vs opt-in remove-from-client; master “remove failed imports” does not imply it.
+
 ## 3.7.18 — 2026-04-02
 
 ### Fixed

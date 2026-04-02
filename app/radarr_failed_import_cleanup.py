@@ -3,8 +3,9 @@ Radarr-only opt-in: delete failed-import rows from Radarr’s download queue by 
 
 Matches history/queue by ``downloadId`` or queue signals, applies per-scenario remove/blocklist
 settings, then calls ``DELETE /api/v3/queue/{id}`` once per item with the chosen ``blocklist``
-flag (no true-then-false fallback). No ``removeFromClient``. Activity rows only after a
-successful delete.
+flag (no true-then-false fallback). ``removeFromClient`` is off by default; enable per app in
+Fetcher Settings when the download client should drop the job so Radarr cannot re-track it.
+Activity rows only after a successful delete.
 
 History-driven cleanup skips when more than one distinct queue id shares the same ``downloadId``
 (ambiguous match); queue-only cleanup can still remove individual rows by terminal queue messages.
@@ -52,6 +53,7 @@ class RadarrCleanupPolicy:
     blocklist_unmatched: bool = False
     remove_quality: bool = False
     blocklist_quality: bool = False
+    remove_from_client: bool = False
 
 
 # Opt-in all scenarios with blocklist for tests and manual callers.
@@ -66,10 +68,12 @@ RADARR_CLEANUP_POLICY_ALL_ON = RadarrCleanupPolicy(
     blocklist_unmatched=True,
     remove_quality=True,
     blocklist_quality=True,
+    remove_from_client=False,
 )
 
 
 def radarr_cleanup_policy_from_settings(settings: Any) -> RadarrCleanupPolicy:
+    rfc = bool(getattr(settings, "radarr_failed_import_remove_from_client", False))
     if getattr(settings, "radarr_remove_failed_imports", False):
         return RadarrCleanupPolicy(
             remove_corrupt=True,
@@ -82,6 +86,7 @@ def radarr_cleanup_policy_from_settings(settings: Any) -> RadarrCleanupPolicy:
             blocklist_unmatched=True,
             remove_quality=True,
             blocklist_quality=True,
+            remove_from_client=rfc,
         )
     return RadarrCleanupPolicy(
         remove_corrupt=bool(getattr(settings, "radarr_cleanup_corrupt", False)),
@@ -94,6 +99,7 @@ def radarr_cleanup_policy_from_settings(settings: Any) -> RadarrCleanupPolicy:
         blocklist_unmatched=bool(getattr(settings, "radarr_blocklist_unmatched", False)),
         remove_quality=bool(getattr(settings, "radarr_cleanup_quality", False)),
         blocklist_quality=bool(getattr(settings, "radarr_blocklist_quality", False)),
+        remove_from_client=rfc,
     )
 
 
@@ -118,6 +124,7 @@ async def _delete_queue_item_for_scenario(
     *,
     queue_id: int,
     blocklist: bool,
+    remove_from_client: bool,
     scenario: str,
     arr: str,
     actions: list[str],
@@ -134,7 +141,11 @@ async def _delete_queue_item_for_scenario(
     """
     app_key = arr.lower()
     try:
-        await client.delete_queue_item(queue_id=queue_id, blocklist=blocklist)
+        await client.delete_queue_item(
+            queue_id=queue_id,
+            blocklist=blocklist,
+            remove_from_client=remove_from_client,
+        )
     except Exception as exc:
         hint = format_http_error_detail(exc)
         suffix = f" ({title})" if title else ""
@@ -162,6 +173,7 @@ async def _delete_queue_item_for_scenario(
     detail = format_failed_import_cleanup_activity_detail(
         app_key,
         blocklist_applied=blocklist,
+        remove_from_client_applied=remove_from_client,
         title=title,
         reason=reason,
         queue_signal=queue_signal,
@@ -494,6 +506,7 @@ async def run_radarr_failed_import_queue_cleanup(
                 client,
                 queue_id=target_qid,
                 blocklist=blocklist,
+                remove_from_client=policy.remove_from_client,
                 scenario=scenario.value,
                 arr="Radarr",
                 actions=actions,
@@ -565,6 +578,7 @@ async def run_radarr_failed_import_queue_cleanup(
             client,
             queue_id=qid,
             blocklist=blocklist,
+            remove_from_client=policy.remove_from_client,
             scenario=scenario.value,
             arr="Radarr",
             actions=actions,

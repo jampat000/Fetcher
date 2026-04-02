@@ -75,6 +75,9 @@ class AppSettings(Base):
     radarr_blocklist_unmatched: Mapped[bool] = mapped_column(Boolean, default=False)
     radarr_cleanup_quality: Mapped[bool] = mapped_column(Boolean, default=False)
     radarr_blocklist_quality: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Failed-import cleanup: pass removeFromClient=true on queue delete so *arr removes the job from the download client.
+    sonarr_failed_import_remove_from_client: Mapped[bool] = mapped_column(Boolean, default=False)
+    radarr_failed_import_remove_from_client: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # How often Emby Trimmer may run (Trimmer Settings only; independent of Sonarr/Radarr).
     emby_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)

@@ -50,6 +50,7 @@ class SonarrCleanupPolicy:
     blocklist_unmatched: bool = False
     remove_quality: bool = False
     blocklist_quality: bool = False
+    remove_from_client: bool = False
 
 
 SONARR_CLEANUP_POLICY_ALL_ON = SonarrCleanupPolicy(
@@ -63,10 +64,12 @@ SONARR_CLEANUP_POLICY_ALL_ON = SonarrCleanupPolicy(
     blocklist_unmatched=True,
     remove_quality=True,
     blocklist_quality=True,
+    remove_from_client=False,
 )
 
 
 def sonarr_cleanup_policy_from_settings(settings: Any) -> SonarrCleanupPolicy:
+    sfc = bool(getattr(settings, "sonarr_failed_import_remove_from_client", False))
     if getattr(settings, "sonarr_remove_failed_imports", False):
         return SonarrCleanupPolicy(
             remove_corrupt=True,
@@ -79,6 +82,7 @@ def sonarr_cleanup_policy_from_settings(settings: Any) -> SonarrCleanupPolicy:
             blocklist_unmatched=True,
             remove_quality=True,
             blocklist_quality=True,
+            remove_from_client=sfc,
         )
     return SonarrCleanupPolicy(
         remove_corrupt=bool(getattr(settings, "sonarr_cleanup_corrupt", False)),
@@ -91,6 +95,7 @@ def sonarr_cleanup_policy_from_settings(settings: Any) -> SonarrCleanupPolicy:
         blocklist_unmatched=bool(getattr(settings, "sonarr_blocklist_unmatched", False)),
         remove_quality=bool(getattr(settings, "sonarr_cleanup_quality", False)),
         blocklist_quality=bool(getattr(settings, "sonarr_blocklist_quality", False)),
+        remove_from_client=sfc,
     )
 
 
@@ -251,6 +256,7 @@ async def run_sonarr_failed_import_queue_cleanup(
                 client,
                 queue_id=target_qid,
                 blocklist=blocklist,
+                remove_from_client=policy.remove_from_client,
                 scenario=scenario.value,
                 arr="Sonarr",
                 actions=actions,
@@ -319,6 +325,7 @@ async def run_sonarr_failed_import_queue_cleanup(
             client,
             queue_id=qid,
             blocklist=blocklist,
+            remove_from_client=policy.remove_from_client,
             scenario=scenario.value,
             arr="Sonarr",
             actions=actions,
