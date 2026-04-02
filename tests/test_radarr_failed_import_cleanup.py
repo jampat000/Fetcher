@@ -843,7 +843,6 @@ def test_run_once_radarr_failed_import_cleanup_disabled_skips_api(monkeypatch: p
     async def _prep() -> None:
         async with SessionLocal() as s:
             row = await get_or_create_settings(s)
-            row.radarr_remove_failed_imports = False
             await s.commit()
             await s.execute(delete(ActivityLog))
             await s.execute(delete(AppSnapshot))
@@ -899,7 +898,6 @@ def test_run_once_radarr_failed_import_cleanup_disabled_skips_api(monkeypatch: p
             row.radarr_search_missing = False
             row.radarr_search_upgrades = False
             row.radarr_last_run_at = None
-            row.radarr_remove_failed_imports = False
             await s.commit()
 
     asyncio.run(_set_radarr())

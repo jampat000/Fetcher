@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.8.1 — 2026-04-03
+
+### Changed
+
+- Remove legacy `sonarr_remove_failed_imports` / `radarr_remove_failed_imports` single-toggle fields from model, schema, settings route, and cleanup policy bridge. Migrations _023 and _025 converted to safe no-ops; SQLite columns left on disk untouched. All cleanup behaviour is now driven exclusively by the granular per-scenario fields.
+
 ## 3.8.0 — 2026-04-02
 
 ### Improved
