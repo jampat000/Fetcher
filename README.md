@@ -17,7 +17,7 @@ Fetcher is a production-ready automation service for Sonarr, Radarr, and Emby, f
 - **Missing & upgrade automation** — scheduled (and manual) searches for monitored items without files and for cutoff-unmet queues, with **per-app Retry Delay** so you’re not hammering the same items every tick.
 - **Dashboard** — per-app last/next run, live-style queue counts when Arr is reachable, and short hints from the last service run (including retry-delay context where it applies).
 - **Activity & job logs** — human-readable summaries; logs page reads the same log directory the service writes to.
-- **Failed import cleanup** — optional Sonarr/Radarr: removes **terminal** failed imports from each app’s **download queue** (queue API delete with **blocklist** attempted on the same request, then **queue-only** removal if that fails). Fetcher does **not** enable **remove-from-client**. Successful removals appear in **Activity** as **Failed import cleaned up** or **Failed import removed**; waiting/unknown/no-op paths do not add cleanup rows.
+- **Failed import cleanup** — optional Sonarr/Radarr: removes **terminal** failed imports from each app’s **download queue** (queue API delete with **blocklist** attempted on the same request, then **queue-only** removal if that fails). Fetcher does **not** enable **remove-from-client**. Successful removals appear in **Activity** as **Failed import cleaned up** or **Failed import removed**; waiting/unknown/no-op paths do not add cleanup rows. See **[Failed import cleanup matrix](#failed-import-cleanup-matrix-sonarr--radarr)** below.
 - **Setup wizard** — shown until real configuration is in place (password + at least one integration configured the way the app checks it). No separate “I’m done” flag; it’s driven by saved state.
 - **Auth** — password (bcrypt), session cookie, optional IP allowlist; JSON API can use **Bearer access tokens** from the auth endpoints.
 - **Backup / restore** — settings JSON from the UI (treat it as secret).
@@ -29,6 +29,28 @@ Fetcher is a production-ready automation service for Sonarr, Radarr, and Emby, f
 - **Windows (installed service):** 64-bit Windows; installer bundles the app and WinSW. You need **Sonarr** and/or **Radarr** (and **Emby** if you use Trimmer) reachable on your LAN; Fetcher stores **base URLs and API keys** you provide.
 - **Python (from source / dev only):** see **Development** at the bottom; the shipped product does not require a system Python install.
 - **Network:** the service listens on **TCP 8765** by default (`0.0.0.0` in the packaged service so other PCs on the LAN can open the UI—tighten with firewall or `--host 127.0.0.1` if you want loopback only).
+
+---
+
+## Failed import cleanup matrix (Sonarr & Radarr)
+
+In **Settings → Sonarr** and **Settings → Radarr**, under **Search and cleanup**, each app has the same **five failure types**. Each row has its own **Remove** and **Blocklist** checkboxes (`sonarr_*` / `radarr_*` column names in backups). The legacy single “remove failed imports” master toggles still turn **all** five pairs on when enabled.
+
+| Settings label | Internal scenario | Remove / blocklist field suffix |
+| --- | --- | --- |
+| Corrupt / unreadable file | `corrupt` | `_cleanup_corrupt` / `_blocklist_corrupt` |
+| Download failed (client) | `download_failed` | `_cleanup_download_failed` / `_blocklist_download_failed` |
+| Import failed (other / unclassified) | `import_failed` | `_cleanup_import_failed` / `_blocklist_import_failed` |
+| Unmatched / manual import | `unmatched` | `_cleanup_unmatched` / `_blocklist_unmatched` |
+| Not an upgrade / quality | `quality` | `_cleanup_quality` / `_blocklist_quality` |
+
+**How rows are matched**
+
+- **History pass:** walks Radarr/Sonarr **history** with a `downloadId`, then finds the **queue** row(s) with the same id. **`downloadFailed`** events map to **Download failed**. **`importFailed`** events use reason text: **quality → unmatched → corrupt** (including read-file-with-media-hint); anything still unclassified uses **Import failed (other)**. **Pending / waiting** (“downloaded, waiting to import, no eligible files…”) is **never** removed.
+- **Queue pass:** any queue row not already removed; same **quality → unmatched → corrupt → download failed → generic import failed** order on **`errorMessage` / `statusMessages`**. **Download failed** also applies when **`trackedDownloadState`** is **failed** and nothing else matched.
+- **Ambiguous `downloadId`:** if **more than one** distinct queue id shares the same `downloadId`, **history-driven** cleanup skips that id (conservative); the **queue** pass can still remove rows individually when their own text/state classifies.
+
+Phrase lists differ slightly between **Radarr** (movies) and **Sonarr** (episodes); behavior is otherwise parallel.
 
 ---
 

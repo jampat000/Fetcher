@@ -3340,31 +3340,104 @@ textarea.input:focus {
   max-width: 40rem;
   line-height: 1.45;
 }
+.settings-failed-import-hint--granular {
+  margin: 0 0 var(--space-3) 0;
+  max-width: 44rem;
+}
 .settings-failed-import-interval-field {
-  margin: 0 0 0 calc(40px + var(--space-4));
+  margin: var(--space-4) 0 0 0;
   max-width: 18rem;
 }
 .settings-failed-import-interval-field .number {
   width: 100%;
 }
 
-.settings-granular-failed-import {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin: 0 0 0 calc(40px + var(--space-4));
-  max-width: 48rem;
-}
-.settings-granular-failed-import-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-4) var(--space-8);
-  align-items: flex-start;
-}
-.settings-granular-failed-import-row .toggle-field.checkline-toggle {
-  flex: 1 1 14rem;
-  min-width: 12rem;
+/* Failed-import cleanup: table-style matrix (scenario | Remove | Blocklist) */
+.settings-granular-failed-import-matrix {
   margin: 0;
+  max-width: 44rem;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+.settings-granular-failed-import-matrix-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(5.75rem, 7rem) minmax(5.75rem, 7rem);
+  gap: var(--space-3) var(--space-5);
+  align-items: center;
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.settings-granular-failed-import-matrix-row:first-of-type {
+  border-top: 0;
+}
+.settings-granular-failed-import-matrix-row--head {
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+  background: rgba(255, 255, 255, 0.04);
+}
+.settings-granular-failed-import-matrix-scenario {
+  font-size: 13px;
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 0;
+}
+.settings-granular-failed-import-matrix-row--head .settings-granular-failed-import-matrix-scenario {
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.48);
+}
+.settings-granular-failed-import-matrix-colhead {
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.48);
+  text-align: center;
+  justify-self: center;
+}
+.settings-granular-failed-import-matrix-toggle {
+  display: flex;
+  justify-content: center;
+  justify-self: center;
+}
+.settings-granular-failed-import-matrix-toggle .toggle-field.checkline-toggle.ui-toggle {
+  margin: 0;
+  width: auto;
+  max-width: max-content;
+}
+.settings-granular-failed-import-matrix-toggle .toggle-label {
+  font-size: 12px;
+  font-weight: 500;
+}
+@media (max-width: 520px) {
+  .settings-granular-failed-import-matrix-row:not(.settings-granular-failed-import-matrix-row--head) {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "scen scen"
+      "rem blk";
+    gap: var(--space-2) var(--space-4);
+  }
+  .settings-granular-failed-import-matrix-row:not(.settings-granular-failed-import-matrix-row--head)
+    > .settings-granular-failed-import-matrix-scenario {
+    grid-area: scen;
+  }
+  .settings-granular-failed-import-matrix-row:not(.settings-granular-failed-import-matrix-row--head)
+    > .settings-granular-failed-import-matrix-toggle:nth-child(2) {
+    grid-area: rem;
+  }
+  .settings-granular-failed-import-matrix-row:not(.settings-granular-failed-import-matrix-row--head)
+    > .settings-granular-failed-import-matrix-toggle:nth-child(3) {
+    grid-area: blk;
+  }
+  .settings-granular-failed-import-matrix-row--head {
+    display: none;
+  }
 }
 
 .settings-arr-limits-schedule-inner {

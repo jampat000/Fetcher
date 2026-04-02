@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.7.17 — 2026-04-02
+
+### Added
+
+- **Failed import — “Import failed (other / unclassified)”:** per-app **Remove** and **Blocklist** toggles (Sonarr/Radarr settings matrix). Covers `importFailed` history reasons that do not match a narrower classifier, plus queue text containing **import failed** / **failed to import** (after other scenario checks).
+- Schema: four new `app_settings` booleans (`*_cleanup_import_failed`, `*_blocklist_import_failed`); **`CURRENT_SCHEMA_VERSION` 37**.
+
+### Fixed
+
+- **Download failed (client):** queue rows are classified from stable UI/API phrases and from **`trackedDownloadState` = failed** when message classification is empty, so the download-failed toggles match what operators see.
+- **Unmatched vs import-failed:** `importFailed` **history** reasons that match manual-import / unable-to-import-automatically / grab-history phrases now map to **`UNMATCHED`** (same tables as queue), so the **Unmatched / manual import** toggles apply— not the generic import-failed row.
+
+### Documentation
+
+- **README:** Sonarr/Radarr failed-import **failure-type matrix** (settings row ↔ disposition ↔ history vs queue signals, precedence, pending skip, ambiguous `downloadId`).
+
+### Changed
+
+- Settings matrix and related styling for the expanded failed-import scenario list.
+
 ## 3.7.16 — 2026-04-02
 
 ### Fixed

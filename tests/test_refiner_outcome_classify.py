@@ -24,6 +24,7 @@ def test_map_failed_import_disposition_bridge() -> None:
     for disp in (
         FailedImportDisposition.CORRUPT,
         FailedImportDisposition.DOWNLOAD_FAILED,
+        FailedImportDisposition.IMPORT_FAILED,
         FailedImportDisposition.UNMATCHED,
         FailedImportDisposition.QUALITY,
     ):

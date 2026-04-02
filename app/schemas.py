@@ -16,6 +16,8 @@ class SettingsIn(BaseModel):
     sonarr_blocklist_corrupt: bool = False
     sonarr_cleanup_download_failed: bool = False
     sonarr_blocklist_download_failed: bool = False
+    sonarr_cleanup_import_failed: bool = False
+    sonarr_blocklist_import_failed: bool = False
     sonarr_cleanup_unmatched: bool = False
     sonarr_blocklist_unmatched: bool = False
     sonarr_cleanup_quality: bool = False
@@ -33,6 +35,8 @@ class SettingsIn(BaseModel):
     radarr_blocklist_corrupt: bool = False
     radarr_cleanup_download_failed: bool = False
     radarr_blocklist_download_failed: bool = False
+    radarr_cleanup_import_failed: bool = False
+    radarr_blocklist_import_failed: bool = False
     radarr_cleanup_unmatched: bool = False
     radarr_blocklist_unmatched: bool = False
     radarr_cleanup_quality: bool = False

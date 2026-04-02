@@ -10,9 +10,21 @@ from app.failed_import_activity import FAILED_IMPORT_ACTIVITY_V1
 from app.models import ActivityLog, JobRunLog
 from app.sonarr_failed_import_cleanup import (
     SONARR_CLEANUP_POLICY_ALL_ON,
+    SonarrCleanupPolicy,
     run_sonarr_failed_import_queue_cleanup,
 )
 from app.web_common import activity_display_row
+
+_SONARR_CLEANUP_WITHOUT_IMPORT_FAILED = SonarrCleanupPolicy(
+    remove_corrupt=True,
+    blocklist_corrupt=True,
+    remove_download_failed=True,
+    blocklist_download_failed=True,
+    remove_unmatched=True,
+    blocklist_unmatched=True,
+    remove_quality=True,
+    blocklist_quality=True,
+)
 
 
 class _FakeSonarrClient:
@@ -123,7 +135,7 @@ class _FakeSonarrUnknownHistoryClient(_FakeSonarrClient):
         }
 
 
-def test_sonarr_cleanup_unknown_history_no_delete() -> None:
+def test_sonarr_cleanup_unknown_history_no_delete_without_import_failed_toggle() -> None:
     asyncio.run(_run_sonarr_unknown_history())
 
 
@@ -136,10 +148,175 @@ async def _run_sonarr_unknown_history() -> None:
             session=session,
             job_run_id=None,
             actions=actions,
-            policy=SONARR_CLEANUP_POLICY_ALL_ON,
+            policy=_SONARR_CLEANUP_WITHOUT_IMPORT_FAILED,
         )
         await session.commit()
     assert client.delete_calls == []
+
+
+def test_sonarr_cleanup_unknown_history_removes_when_import_failed_toggle_only() -> None:
+    asyncio.run(_run_sonarr_unknown_import_failed_only())
+
+
+async def _run_sonarr_unknown_import_failed_only() -> None:
+    client = _FakeSonarrUnknownHistoryClient()
+    actions: list[str] = []
+    policy = SonarrCleanupPolicy(
+        remove_import_failed=True,
+        blocklist_import_failed=True,
+    )
+    async with SessionLocal() as session:
+        await run_sonarr_failed_import_queue_cleanup(
+            client,
+            session=session,
+            job_run_id=None,
+            actions=actions,
+            policy=policy,
+        )
+        await session.commit()
+    assert client.delete_calls == [{"queue_id": 77, "blocklist": True}]
+
+
+class _FakeSonarrQueueGenericImportFailed(_FakeSonarrClient):
+    async def history_page(self, *, page: int, page_size: int) -> dict[str, Any]:
+        return {"records": [], "totalRecords": 0}
+
+    async def queue_page(self, *, page: int, page_size: int) -> dict[str, Any]:
+        return {
+            "records": [
+                {
+                    "id": 305,
+                    "downloadId": "s-gen",
+                    "title": "Generic Ep",
+                    "errorMessage": "Import failed",
+                }
+            ],
+            "totalRecords": 1,
+        }
+
+
+def test_sonarr_cleanup_queue_generic_import_failed_skipped_without_toggle() -> None:
+    asyncio.run(_run_sonarr_queue_generic_no_toggle())
+
+
+async def _run_sonarr_queue_generic_no_toggle() -> None:
+    client = _FakeSonarrQueueGenericImportFailed()
+    actions: list[str] = []
+    policy = SonarrCleanupPolicy(
+        remove_download_failed=True,
+        blocklist_download_failed=True,
+    )
+    async with SessionLocal() as session:
+        await run_sonarr_failed_import_queue_cleanup(
+            client,
+            session=session,
+            job_run_id=None,
+            actions=actions,
+            policy=policy,
+        )
+        await session.commit()
+    assert client.delete_calls == []
+
+
+def test_sonarr_cleanup_queue_generic_import_failed_removes_with_all_on() -> None:
+    asyncio.run(_run_sonarr_queue_generic_all_on())
+
+
+async def _run_sonarr_queue_generic_all_on() -> None:
+    client = _FakeSonarrQueueGenericImportFailed()
+    actions: list[str] = []
+    async with SessionLocal() as session:
+        await run_sonarr_failed_import_queue_cleanup(
+            client,
+            session=session,
+            job_run_id=None,
+            actions=actions,
+            policy=SONARR_CLEANUP_POLICY_ALL_ON,
+        )
+        await session.commit()
+    assert client.delete_calls == [{"queue_id": 305, "blocklist": True}]
+
+
+class _FakeSonarrQueueDownloadFailedOnly(_FakeSonarrClient):
+    async def history_page(self, *, page: int, page_size: int) -> dict[str, Any]:
+        return {"records": [], "totalRecords": 0}
+
+    async def queue_page(self, *, page: int, page_size: int) -> dict[str, Any]:
+        return {
+            "records": [
+                {
+                    "id": 303,
+                    "downloadId": "s-dl-fail",
+                    "title": "Failed Grab Show",
+                    "errorMessage": "Download failed",
+                }
+            ],
+            "totalRecords": 1,
+        }
+
+
+def test_sonarr_cleanup_queue_only_download_failed_removes_when_enabled() -> None:
+    asyncio.run(_run_sonarr_queue_download_failed())
+
+
+async def _run_sonarr_queue_download_failed() -> None:
+    client = _FakeSonarrQueueDownloadFailedOnly()
+    actions: list[str] = []
+    policy = SonarrCleanupPolicy(
+        remove_download_failed=True,
+        blocklist_download_failed=True,
+    )
+    async with SessionLocal() as session:
+        await run_sonarr_failed_import_queue_cleanup(
+            client,
+            session=session,
+            job_run_id=None,
+            actions=actions,
+            policy=policy,
+        )
+        await session.commit()
+    assert client.delete_calls == [{"queue_id": 303, "blocklist": True}]
+
+
+class _FakeSonarrTrackedStateFailedOnly(_FakeSonarrClient):
+    async def history_page(self, *, page: int, page_size: int) -> dict[str, Any]:
+        return {"records": [], "totalRecords": 0}
+
+    async def queue_page(self, *, page: int, page_size: int) -> dict[str, Any]:
+        return {
+            "records": [
+                {
+                    "id": 304,
+                    "downloadId": "s-td",
+                    "title": "Tracked Fail Show",
+                    "trackedDownloadState": "failed",
+                }
+            ],
+            "totalRecords": 1,
+        }
+
+
+def test_sonarr_cleanup_queue_tracked_state_failed_removes() -> None:
+    asyncio.run(_run_sonarr_tracked_failed())
+
+
+async def _run_sonarr_tracked_failed() -> None:
+    client = _FakeSonarrTrackedStateFailedOnly()
+    actions: list[str] = []
+    policy = SonarrCleanupPolicy(
+        remove_download_failed=True,
+        blocklist_download_failed=True,
+    )
+    async with SessionLocal() as session:
+        await run_sonarr_failed_import_queue_cleanup(
+            client,
+            session=session,
+            job_run_id=None,
+            actions=actions,
+            policy=policy,
+        )
+        await session.commit()
+    assert client.delete_calls == [{"queue_id": 304, "blocklist": True}]
 
 
 def test_sonarr_cleanup_queue_only_waiting_no_eligible_no_delete() -> None:
@@ -215,7 +392,7 @@ class _FakeAmbiguousClient(_FakeSonarrClient):
         }
 
 
-def test_sonarr_cleanup_ambiguous_download_id_removes_all_matches() -> None:
+def test_sonarr_cleanup_ambiguous_download_id_skips_history_driven_removal() -> None:
     asyncio.run(_run_sonarr_ambiguous())
 
 
@@ -231,15 +408,11 @@ async def _run_sonarr_ambiguous() -> None:
             policy=SONARR_CLEANUP_POLICY_ALL_ON,
         )
         await session.commit()
-    assert client.delete_calls == [
-        {"queue_id": 1, "blocklist": True},
-        {"queue_id": 2, "blocklist": True},
-    ]
-    assert any("multiple queue rows matched" in a.lower() for a in actions)
+    assert client.delete_calls == []
+    assert any("skipped failed-import cleanup" in a.lower() and "ambiguous" in a.lower() for a in actions)
     async with SessionLocal() as session:
         rows = (await session.execute(select(ActivityLog))).scalars().all()
-        assert len(rows) == 2
-        assert all((r.detail or "").startswith(FAILED_IMPORT_ACTIVITY_V1) for r in rows)
+        assert len(rows) == 0
         await session.execute(delete(ActivityLog))
         await session.commit()
 

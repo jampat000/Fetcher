@@ -2,6 +2,8 @@
 Sonarr-only opt-in: delete failed-import rows from Sonarr’s download queue by scenario.
 
 Same policy model as Radarr: per-scenario remove/blocklist, single delete per item, no blocklist fallback.
+History-driven cleanup skips when multiple queue rows share the same ``downloadId``; queue-only
+pass may still remove rows with terminal signals.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from app.arr_failed_import_classify import (
     is_sonarr_download_failed_record,
     sonarr_import_failed_history_disposition,
     sonarr_queue_scenario_label,
+    tracked_queue_download_state_is_failed,
     user_visible_text_is_pending_waiting_no_eligible,
 )
 from app.radarr_failed_import_cleanup import (
@@ -41,6 +44,8 @@ class SonarrCleanupPolicy:
     blocklist_corrupt: bool = False
     remove_download_failed: bool = False
     blocklist_download_failed: bool = False
+    remove_import_failed: bool = False
+    blocklist_import_failed: bool = False
     remove_unmatched: bool = False
     blocklist_unmatched: bool = False
     remove_quality: bool = False
@@ -52,6 +57,8 @@ SONARR_CLEANUP_POLICY_ALL_ON = SonarrCleanupPolicy(
     blocklist_corrupt=True,
     remove_download_failed=True,
     blocklist_download_failed=True,
+    remove_import_failed=True,
+    blocklist_import_failed=True,
     remove_unmatched=True,
     blocklist_unmatched=True,
     remove_quality=True,
@@ -66,6 +73,8 @@ def sonarr_cleanup_policy_from_settings(settings: Any) -> SonarrCleanupPolicy:
             blocklist_corrupt=True,
             remove_download_failed=True,
             blocklist_download_failed=True,
+            remove_import_failed=True,
+            blocklist_import_failed=True,
             remove_unmatched=True,
             blocklist_unmatched=True,
             remove_quality=True,
@@ -76,6 +85,8 @@ def sonarr_cleanup_policy_from_settings(settings: Any) -> SonarrCleanupPolicy:
         blocklist_corrupt=bool(getattr(settings, "sonarr_blocklist_corrupt", False)),
         remove_download_failed=bool(getattr(settings, "sonarr_cleanup_download_failed", False)),
         blocklist_download_failed=bool(getattr(settings, "sonarr_blocklist_download_failed", False)),
+        remove_import_failed=bool(getattr(settings, "sonarr_cleanup_import_failed", False)),
+        blocklist_import_failed=bool(getattr(settings, "sonarr_blocklist_import_failed", False)),
         remove_unmatched=bool(getattr(settings, "sonarr_cleanup_unmatched", False)),
         blocklist_unmatched=bool(getattr(settings, "sonarr_blocklist_unmatched", False)),
         remove_quality=bool(getattr(settings, "sonarr_cleanup_quality", False)),
@@ -90,6 +101,8 @@ def _sonarr_policy_for_scenario(
         return policy.remove_corrupt, policy.blocklist_corrupt
     if scenario is FailedImportDisposition.DOWNLOAD_FAILED:
         return policy.remove_download_failed, policy.blocklist_download_failed
+    if scenario is FailedImportDisposition.IMPORT_FAILED:
+        return policy.remove_import_failed, policy.blocklist_import_failed
     if scenario is FailedImportDisposition.UNMATCHED:
         return policy.remove_unmatched, policy.blocklist_unmatched
     if scenario is FailedImportDisposition.QUALITY:
@@ -130,6 +143,7 @@ async def run_sonarr_failed_import_queue_cleanup(
         [
             policy.remove_corrupt,
             policy.remove_download_failed,
+            policy.remove_import_failed,
             policy.remove_unmatched,
             policy.remove_quality,
         ]
@@ -182,13 +196,9 @@ async def run_sonarr_failed_import_queue_cleanup(
                 continue
             disp = sonarr_import_failed_history_disposition(rec)
             if disp is FailedImportDisposition.UNKNOWN:
-                logger.info(
-                    "Sonarr failed-import cleanup: skip downloadId=%s — unknown disposition",
-                    download_id,
-                )
-                processed_download_ids.add(download_id)
-                continue
-            scenario = disp
+                scenario = FailedImportDisposition.IMPORT_FAILED
+            else:
+                scenario = disp
         else:
             continue
 
@@ -213,13 +223,20 @@ async def run_sonarr_failed_import_queue_cleanup(
             continue
 
         if kind == "many":
-            qids = _queue_ids_for_download_id(download_id, queue_records)
-            actions.append(
-                f"Sonarr: Multiple queue rows matched one download; removing each ({len(qids)})."
+            n = len(_queue_ids_for_download_id(download_id, queue_records))
+            logger.info(
+                "Sonarr failed-import cleanup: skip downloadId=%s — %s queue rows match (ambiguous); no history-driven removals",
+                download_id,
+                n,
             )
-        else:
-            assert qid is not None
-            qids = [qid]
+            actions.append(
+                f"Sonarr: Skipped failed-import cleanup for downloadId={download_id} — "
+                f"{n} queue rows match (ambiguous); removed none (conservative policy)."
+            )
+            continue
+
+        assert qid is not None
+        qids = [qid]
 
         title = history_item_title(rec)
         reason = parse_radarr_import_failed_reason(rec)
@@ -267,6 +284,11 @@ async def run_sonarr_failed_import_queue_cleanup(
             )
             continue
         scenario_label = sonarr_queue_scenario_label(q_blob)
+        if scenario_label is None and tracked_queue_download_state_is_failed(q):
+            scenario_label = (
+                FailedImportDisposition.DOWNLOAD_FAILED,
+                "download client failure (tracked state)",
+            )
         if scenario_label is None:
             ineligible += 1
             logger.info(

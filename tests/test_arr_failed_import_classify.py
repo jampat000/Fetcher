@@ -3,7 +3,10 @@ from __future__ import annotations
 from app.arr_failed_import_classify import (
     FailedImportDisposition,
     radarr_import_failed_history_disposition,
+    radarr_queue_scenario_label,
     sonarr_import_failed_history_disposition,
+    sonarr_queue_scenario_label,
+    tracked_queue_download_state_is_failed,
 )
 
 
@@ -81,6 +84,69 @@ def test_sonarr_disposition_episode_file_corrupted_phrase() -> None:
 def test_radarr_disposition_movie_file_corrupt_phrase() -> None:
     rec = {"eventType": "importFailed", "downloadId": "m", "reason": "Movie file is corrupt"}
     assert radarr_import_failed_history_disposition(rec) == FailedImportDisposition.CORRUPT
+
+
+def test_radarr_disposition_manual_import_required_history_is_unmatched() -> None:
+    rec = {
+        "eventType": "importFailed",
+        "downloadId": "u2",
+        "reason": "Manual import required for Movie.Title.2024",
+    }
+    assert radarr_import_failed_history_disposition(rec) == FailedImportDisposition.UNMATCHED
+
+
+def test_sonarr_disposition_unable_to_import_automatically_history_is_unmatched() -> None:
+    rec = {
+        "eventType": "importFailed",
+        "downloadId": "u3",
+        "reason": "Unable to import automatically",
+    }
+    assert sonarr_import_failed_history_disposition(rec) == FailedImportDisposition.UNMATCHED
+
+
+def test_radarr_queue_scenario_download_failed_phrase() -> None:
+    d, lab = radarr_queue_scenario_label("Download failed")
+    assert d is FailedImportDisposition.DOWNLOAD_FAILED
+    assert lab == "download failed"
+
+
+def test_radarr_queue_scenario_corrupt_before_download_failed_text() -> None:
+    """File/import corruption is more specific than a generic download-failed line."""
+    d, _ = radarr_queue_scenario_label("Download failed: movie file is corrupt")
+    assert d is FailedImportDisposition.CORRUPT
+
+
+def test_radarr_queue_scenario_wasnt_grabbed_by_radarr() -> None:
+    d, lab = radarr_queue_scenario_label("Release wasn't grabbed by Radarr.")
+    assert d is FailedImportDisposition.DOWNLOAD_FAILED
+    assert "radarr" in lab.casefold()
+
+
+def test_sonarr_queue_scenario_download_failed_phrase() -> None:
+    d, _ = sonarr_queue_scenario_label("The download failed.")
+    assert d is FailedImportDisposition.DOWNLOAD_FAILED
+
+
+def test_sonarr_queue_scenario_episode_not_grabbed() -> None:
+    d, _ = sonarr_queue_scenario_label("Episode wasn't grabbed by Sonarr")
+    assert d is FailedImportDisposition.DOWNLOAD_FAILED
+
+
+def test_tracked_queue_download_state_is_failed() -> None:
+    assert tracked_queue_download_state_is_failed({"trackedDownloadState": "failed"}) is True
+    assert tracked_queue_download_state_is_failed({"trackedDownloadState": "Failed"}) is True
+    assert tracked_queue_download_state_is_failed({"trackedDownloadState": "importPending"}) is False
+
+
+def test_radarr_queue_scenario_generic_import_failed_phrase() -> None:
+    d, lab = radarr_queue_scenario_label("Import failed")
+    assert d is FailedImportDisposition.IMPORT_FAILED
+    assert lab == "import failed"
+
+
+def test_sonarr_queue_scenario_failed_to_import_phrase() -> None:
+    d, _ = sonarr_queue_scenario_label("Failed to import episode")
+    assert d is FailedImportDisposition.IMPORT_FAILED
 
 
 def test_sonarr_disposition_unknown() -> None:

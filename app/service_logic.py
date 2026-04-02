@@ -1384,6 +1384,7 @@ async def _execute_sonarr_block(
                 [
                     sonarr_fail_policy.remove_corrupt,
                     sonarr_fail_policy.remove_download_failed,
+                    sonarr_fail_policy.remove_import_failed,
                     sonarr_fail_policy.remove_unmatched,
                     sonarr_fail_policy.remove_quality,
                 ]
@@ -1640,6 +1641,7 @@ async def _execute_radarr_block(
                 [
                     radarr_fail_policy.remove_corrupt,
                     radarr_fail_policy.remove_download_failed,
+                    radarr_fail_policy.remove_import_failed,
                     radarr_fail_policy.remove_unmatched,
                     radarr_fail_policy.remove_quality,
                 ]

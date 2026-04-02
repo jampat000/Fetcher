@@ -5,6 +5,9 @@ Matches history/queue by ``downloadId`` or queue signals, applies per-scenario r
 settings, then calls ``DELETE /api/v3/queue/{id}`` once per item with the chosen ``blocklist``
 flag (no true-then-false fallback). No ``removeFromClient``. Activity rows only after a
 successful delete.
+
+History-driven cleanup skips when more than one distinct queue id shares the same ``downloadId``
+(ambiguous match); queue-only cleanup can still remove individual rows by terminal queue messages.
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ from app.arr_failed_import_classify import (
     is_radarr_download_failed_record,
     radarr_import_failed_history_disposition,
     radarr_queue_scenario_label,
-    radarr_queue_terminal_cleanup_label,
+    tracked_queue_download_state_is_failed,
     user_visible_text_is_pending_waiting_no_eligible,
 )
 from app.failed_import_activity import (
@@ -43,6 +46,8 @@ class RadarrCleanupPolicy:
     blocklist_corrupt: bool = False
     remove_download_failed: bool = False
     blocklist_download_failed: bool = False
+    remove_import_failed: bool = False
+    blocklist_import_failed: bool = False
     remove_unmatched: bool = False
     blocklist_unmatched: bool = False
     remove_quality: bool = False
@@ -55,6 +60,8 @@ RADARR_CLEANUP_POLICY_ALL_ON = RadarrCleanupPolicy(
     blocklist_corrupt=True,
     remove_download_failed=True,
     blocklist_download_failed=True,
+    remove_import_failed=True,
+    blocklist_import_failed=True,
     remove_unmatched=True,
     blocklist_unmatched=True,
     remove_quality=True,
@@ -69,6 +76,8 @@ def radarr_cleanup_policy_from_settings(settings: Any) -> RadarrCleanupPolicy:
             blocklist_corrupt=True,
             remove_download_failed=True,
             blocklist_download_failed=True,
+            remove_import_failed=True,
+            blocklist_import_failed=True,
             remove_unmatched=True,
             blocklist_unmatched=True,
             remove_quality=True,
@@ -79,6 +88,8 @@ def radarr_cleanup_policy_from_settings(settings: Any) -> RadarrCleanupPolicy:
         blocklist_corrupt=bool(getattr(settings, "radarr_blocklist_corrupt", False)),
         remove_download_failed=bool(getattr(settings, "radarr_cleanup_download_failed", False)),
         blocklist_download_failed=bool(getattr(settings, "radarr_blocklist_download_failed", False)),
+        remove_import_failed=bool(getattr(settings, "radarr_cleanup_import_failed", False)),
+        blocklist_import_failed=bool(getattr(settings, "radarr_blocklist_import_failed", False)),
         remove_unmatched=bool(getattr(settings, "radarr_cleanup_unmatched", False)),
         blocklist_unmatched=bool(getattr(settings, "radarr_blocklist_unmatched", False)),
         remove_quality=bool(getattr(settings, "radarr_cleanup_quality", False)),
@@ -93,6 +104,8 @@ def _radarr_policy_for_scenario(
         return policy.remove_corrupt, policy.blocklist_corrupt
     if scenario is FailedImportDisposition.DOWNLOAD_FAILED:
         return policy.remove_download_failed, policy.blocklist_download_failed
+    if scenario is FailedImportDisposition.IMPORT_FAILED:
+        return policy.remove_import_failed, policy.blocklist_import_failed
     if scenario is FailedImportDisposition.UNMATCHED:
         return policy.remove_unmatched, policy.blocklist_unmatched
     if scenario is FailedImportDisposition.QUALITY:
@@ -291,6 +304,9 @@ def classify_queue_matches_by_download_id(
 
     Returns:
         (``none``, None), (``one``, queue id), or (``many``, None) when multiple distinct queue ids match.
+
+    History-driven cleanup **skips** removals when kind is ``many`` (conservative policy); queue-only
+    cleanup may still remove rows individually if their messages classify as terminal.
     """
     if not download_id:
         return "none", None
@@ -369,6 +385,7 @@ async def run_radarr_failed_import_queue_cleanup(
         [
             policy.remove_corrupt,
             policy.remove_download_failed,
+            policy.remove_import_failed,
             policy.remove_unmatched,
             policy.remove_quality,
         ]
@@ -422,13 +439,9 @@ async def run_radarr_failed_import_queue_cleanup(
                 continue
             disp = radarr_import_failed_history_disposition(rec)
             if disp is FailedImportDisposition.UNKNOWN:
-                logger.info(
-                    "Radarr failed-import cleanup: skip downloadId=%s — unknown disposition",
-                    download_id,
-                )
-                processed_download_ids.add(download_id)
-                continue
-            scenario = disp
+                scenario = FailedImportDisposition.IMPORT_FAILED
+            else:
+                scenario = disp
         else:
             continue
 
@@ -452,15 +465,21 @@ async def run_radarr_failed_import_queue_cleanup(
             )
             continue
 
-        qids: list[int]
         if kind == "many":
-            qids = _queue_ids_for_download_id(download_id, queue_records)
-            actions.append(
-                f"Radarr: Multiple queue rows matched one download; removing each ({len(qids)})."
+            n = len(_queue_ids_for_download_id(download_id, queue_records))
+            logger.info(
+                "Radarr failed-import cleanup: skip downloadId=%s — %s queue rows match (ambiguous); no history-driven removals",
+                download_id,
+                n,
             )
-        else:
-            assert qid is not None
-            qids = [qid]
+            actions.append(
+                f"Radarr: Skipped failed-import cleanup for downloadId={download_id} — "
+                f"{n} queue rows match (ambiguous); removed none (conservative policy)."
+            )
+            continue
+
+        assert qid is not None
+        qids = [qid]
 
         title = history_item_title(rec)
         reason = parse_radarr_import_failed_reason(rec)
@@ -511,6 +530,11 @@ async def run_radarr_failed_import_queue_cleanup(
             continue
         q_blob = _flatten_radarr_queue_user_messages(q)
         scenario_label = radarr_queue_scenario_label(q_blob)
+        if scenario_label is None and tracked_queue_download_state_is_failed(q):
+            scenario_label = (
+                FailedImportDisposition.DOWNLOAD_FAILED,
+                "download client failure (tracked state)",
+            )
         if scenario_label is None:
             ineligible += 1
             logger.info(
