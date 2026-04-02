@@ -5,7 +5,7 @@
 {% block content %}
 {% set _ref_saved = (request.query_params.get('refiner_saved') or '') %}
 {% set _ref_fail_sec = (request.query_params.get('refiner_section') or '') %}
-<div class="wrap">
+<div class="wrap refiner-settings-content">
   <div class="page-head">
     <div>
       <h1 class="ph-title">Refiner settings</h1>
@@ -66,7 +66,7 @@
   >
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
 
-    <div class="card gc stripe-amber refiner-settings-anchor" id="refiner-processing">
+    <div class="card gc stripe-amber refiner-settings-anchor refiner-settings-card" id="refiner-processing">
       <div class="gc-title">Processing</div>
       <div class="settings-async-feedback" hidden aria-live="polite"></div>
       {% if request.query_params.get('saved') == '1' and _ref_saved == 'processing' %}

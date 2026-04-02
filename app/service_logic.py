@@ -37,8 +37,14 @@ from app.emby_rules import (
     parse_movie_people_phrases,
     tv_matches_selected_genres,
 )
-from app.radarr_failed_import_cleanup import run_radarr_failed_import_queue_cleanup
-from app.sonarr_failed_import_cleanup import run_sonarr_failed_import_queue_cleanup
+from app.radarr_failed_import_cleanup import (
+    radarr_cleanup_policy_from_settings,
+    run_radarr_failed_import_queue_cleanup,
+)
+from app.sonarr_failed_import_cleanup import (
+    run_sonarr_failed_import_queue_cleanup,
+    sonarr_cleanup_policy_from_settings,
+)
 from app.resolvers.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
 
 logger = logging.getLogger(__name__)
@@ -1372,7 +1378,19 @@ async def _execute_sonarr_block(
     sonarr = ArrClient(ArrConfig(settings.sonarr_url, ctx.son_key))
     try:
         await sonarr.health()
-        if settings.sonarr_remove_failed_imports and hasattr(sonarr, "queue_page") and hasattr(sonarr, "history_page"):
+        sonarr_fail_policy = sonarr_cleanup_policy_from_settings(settings)
+        if (
+            any(
+                [
+                    sonarr_fail_policy.remove_corrupt,
+                    sonarr_fail_policy.remove_download_failed,
+                    sonarr_fail_policy.remove_unmatched,
+                    sonarr_fail_policy.remove_quality,
+                ]
+            )
+            and hasattr(sonarr, "queue_page")
+            and hasattr(sonarr, "history_page")
+        ):
             cleanup_interval_m = _failed_import_cleanup_interval_minutes(settings)
             if _failed_import_cleanup_due(
                 now=ctx.now,
@@ -1385,6 +1403,7 @@ async def _execute_sonarr_block(
                     session=session,
                     job_run_id=log.id,
                     actions=actions,
+                    policy=sonarr_fail_policy,
                 )
                 settings.sonarr_failed_import_cleanup_last_run_at = ctx.now
             else:
@@ -1615,7 +1634,19 @@ async def _execute_radarr_block(
     try:
         await radarr.health()
 
-        if settings.radarr_remove_failed_imports and hasattr(radarr, "queue_page") and hasattr(radarr, "history_page"):
+        radarr_fail_policy = radarr_cleanup_policy_from_settings(settings)
+        if (
+            any(
+                [
+                    radarr_fail_policy.remove_corrupt,
+                    radarr_fail_policy.remove_download_failed,
+                    radarr_fail_policy.remove_unmatched,
+                    radarr_fail_policy.remove_quality,
+                ]
+            )
+            and hasattr(radarr, "queue_page")
+            and hasattr(radarr, "history_page")
+        ):
             cleanup_interval_m = _failed_import_cleanup_interval_minutes(settings)
             if _failed_import_cleanup_due(
                 now=ctx.now,
@@ -1628,6 +1659,7 @@ async def _execute_radarr_block(
                     session=session,
                     job_run_id=log.id,
                     actions=actions,
+                    policy=radarr_fail_policy,
                 )
                 settings.radarr_failed_import_cleanup_last_run_at = ctx.now
             else:

@@ -108,6 +108,16 @@ def test_trimmer_overview_compact_configured_state_only(monkeypatch: pytest.Monk
 
 
 def test_trimmer_validation_error_not_inside_overview_card(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _seed_trimmer_enabled_connection_missing() -> None:
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.emby_enabled = True
+            row.emby_url = ""
+            row.emby_api_key = ""
+            await session.commit()
+
+    asyncio.run(_seed_trimmer_enabled_connection_missing())
+
     async def _fake_review(_self, _settings, *, run_emby_scan: bool) -> TrimmerReviewResult:
         return TrimmerReviewResult(error=TRIMMER_REVIEW_ERROR_MISSING_CONNECTION)
 

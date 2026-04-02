@@ -98,6 +98,79 @@
       </div>
       <p class="small muted">Saves only log retention and timezone on this tab.</p>
     </form>
+    <div class="settings-section-divider"></div>
+    <div class="gc-title">Global operations</div>
+    <div class="card backup-restore-card gc">
+    <div class="gc-title">Backup &amp; restore</div>
+    <p class="hint backup-restore-lead">Backs up all Fetcher and Trimmer settings to one file. Keep this file private because it contains API keys. This backup includes your password hash and session credentials — store it securely.</p>
+
+    <div class="backup-panels">
+      <div class="backup-panel backup-panel-download">
+        <div class="backup-panel-head">
+          <span class="backup-panel-icon" aria-hidden="true">⬇</span>
+          <div class="gc-title">Download backup</div>
+        </div>
+        <p class="small backup-panel-desc">Downloads your current Fetcher and Trimmer settings as <code class="code-inline">fetcher-settings-backup-dd-mm-yyyy.json</code>.</p>
+        <form method="post" action="/settings/backup/export" style="display:inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <button type="submit" class="btn backup-panel-btn">Download backup</button>
+        </form>
+      </div>
+
+      <div class="backup-panel backup-panel-restore">
+        <div class="backup-panel-head">
+          <span class="backup-panel-icon" aria-hidden="true">⬆</span>
+          <div class="gc-title">Restore from backup</div>
+        </div>
+        <p class="small backup-panel-desc">Replaces all saved Fetcher and Trimmer settings on this PC.</p>
+        <form method="post" action="/settings/backup/import" enctype="multipart/form-data" class="backup-restore-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+          <div class="settings-step-group" role="group" aria-labelledby="backup-restore-step-file">
+            <p class="settings-step-legend" id="backup-restore-step-file">Select backup</p>
+            <div class="backup-file-picker">
+              <input id="backup-file-input" class="backup-file-input-native" type="file" name="file" accept="application/json,.json,.JSON" required aria-describedby="backup-file-name" />
+              <label for="backup-file-input" class="btn secondary backup-panel-btn backup-file-btn">Choose backup file</label>
+              <span class="backup-file-name small muted" id="backup-file-name" aria-live="polite">No file selected</span>
+            </div>
+          </div>
+          <div class="settings-step-group" role="group" aria-labelledby="backup-restore-step-confirm">
+            <p class="settings-step-legend" id="backup-restore-step-confirm">Confirm restore</p>
+            <div class="settings-commit-panel">
+              <label class="toggle-field settings-commit-toggle">
+                <input type="checkbox" name="confirm" value="yes" id="backup-confirm" class="toggle-input" />
+                <span class="toggle" aria-hidden="true"><span class="toggle-knob"></span></span>
+                <span class="toggle-label">I understand this will <strong>overwrite</strong> my saved <strong>Fetcher</strong> and <strong>Trimmer</strong> settings on this PC. Dashboard <strong>Activity</strong> is not changed.</span>
+              </label>
+              <div class="settings-commit-actions">
+                <button type="submit" class="btn secondary backup-panel-btn backup-restore-submit">Restore from backup</button>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+    <script>
+      (function () {
+        var form = document.querySelector("form.backup-restore-form");
+        if (!form) return;
+        var fileInput = form.querySelector("#backup-file-input");
+        var fileNameEl = form.querySelector("#backup-file-name");
+        if (fileInput && fileNameEl) {
+          fileInput.addEventListener("change", function () {
+            var f = fileInput.files && fileInput.files[0];
+            fileNameEl.textContent = f ? f.name : "No file selected";
+          });
+        }
+        form.addEventListener("submit", function (e) {
+          var ok = form.querySelector("#backup-confirm");
+          if (!ok || !ok.checked) {
+            e.preventDefault();
+            alert("Turn on the confirmation toggle to restore from backup.");
+          }
+        });
+      })();
+    </script>
+    </div>
     </div>
     </div>
 
@@ -154,12 +227,29 @@
                 {% call toggle_checkbox("sonarr_search_upgrades", settings.sonarr_search_upgrades) %}Search cutoff-unmet items (upgrade){% endcall %}
               </div>
               <div class="settings-failed-import-block">
-                {% call toggle_checkbox("sonarr_remove_failed_imports", settings.sonarr_remove_failed_imports | default(false)) %}Remove terminal failed imports from queue{% endcall %}
-                <div class="small settings-field-hint settings-failed-import-hint">Removes terminal failed imports from Sonarr’s <strong>download queue</strong> (delete with blocklist attempted first; falls back to queue-only removal). Does not remove downloads from your download client. Successful removals appear in Activity.</div>
+                <div class="small settings-field-hint settings-failed-import-hint">Optional per-scenario cleanup of Sonarr’s <strong>download queue</strong>. Turn on <strong>Remove</strong> for each failure type you want cleared; <strong>Blocklist</strong> sends only that flag on delete (no automatic retry). Does not remove downloads from your download client. Activity logs successful removals.</div>
+                <div class="settings-granular-failed-import" role="group" aria-label="Sonarr failed import scenarios">
+                  <div class="settings-granular-failed-import-row">
+                    {% call toggle_checkbox("sonarr_cleanup_corrupt", settings.sonarr_cleanup_corrupt | default(false)) %}Remove: corrupt / unreadable file{% endcall %}
+                    {% call toggle_checkbox("sonarr_blocklist_corrupt", settings.sonarr_blocklist_corrupt | default(false)) %}Blocklist (corrupt){% endcall %}
+                  </div>
+                  <div class="settings-granular-failed-import-row">
+                    {% call toggle_checkbox("sonarr_cleanup_download_failed", settings.sonarr_cleanup_download_failed | default(false)) %}Remove: download failed (client){% endcall %}
+                    {% call toggle_checkbox("sonarr_blocklist_download_failed", settings.sonarr_blocklist_download_failed | default(false)) %}Blocklist (download failed){% endcall %}
+                  </div>
+                  <div class="settings-granular-failed-import-row">
+                    {% call toggle_checkbox("sonarr_cleanup_unmatched", settings.sonarr_cleanup_unmatched | default(false)) %}Remove: unmatched / manual import{% endcall %}
+                    {% call toggle_checkbox("sonarr_blocklist_unmatched", settings.sonarr_blocklist_unmatched | default(false)) %}Blocklist (unmatched){% endcall %}
+                  </div>
+                  <div class="settings-granular-failed-import-row">
+                    {% call toggle_checkbox("sonarr_cleanup_quality", settings.sonarr_cleanup_quality | default(false)) %}Remove: not an upgrade / quality{% endcall %}
+                    {% call toggle_checkbox("sonarr_blocklist_quality", settings.sonarr_blocklist_quality | default(false)) %}Blocklist (quality){% endcall %}
+                  </div>
+                </div>
                 <div class="field settings-failed-import-interval-field">
                   <label for="sonarr_failed_import_cleanup_interval_minutes">Failed import cleanup interval (minutes)</label>
                   <input id="sonarr_failed_import_cleanup_interval_minutes" class="number" type="number" name="failed_import_cleanup_interval_minutes" value="{{ settings.failed_import_cleanup_interval_minutes|default(60, true) }}" min="1" max="10080" />
-                  <div class="small settings-field-hint">How often to run the cleanup check when this option is on.</div>
+                  <div class="small settings-field-hint">How often to run the cleanup check when at least one remove option is on.</div>
                 </div>
               </div>
             </div>
@@ -269,12 +359,29 @@
                 {% call toggle_checkbox("radarr_search_upgrades", settings.radarr_search_upgrades) %}Search cutoff-unmet items (upgrade){% endcall %}
               </div>
               <div class="settings-failed-import-block">
-                {% call toggle_checkbox("radarr_remove_failed_imports", settings.radarr_remove_failed_imports | default(false)) %}Remove terminal failed imports from queue{% endcall %}
-                <div class="small settings-field-hint settings-failed-import-hint">Removes terminal failed imports from Radarr’s <strong>download queue</strong> (delete with blocklist attempted first; falls back to queue-only removal). Does not remove downloads from your download client. Successful removals appear in Activity.</div>
+                <div class="small settings-field-hint settings-failed-import-hint">Optional per-scenario cleanup of Radarr’s <strong>download queue</strong>. Turn on <strong>Remove</strong> for each failure type you want cleared; <strong>Blocklist</strong> sends only that flag on delete (no automatic retry). Does not remove downloads from your download client. Activity logs successful removals.</div>
+                <div class="settings-granular-failed-import" role="group" aria-label="Radarr failed import scenarios">
+                  <div class="settings-granular-failed-import-row">
+                    {% call toggle_checkbox("radarr_cleanup_corrupt", settings.radarr_cleanup_corrupt | default(false)) %}Remove: corrupt / unreadable file{% endcall %}
+                    {% call toggle_checkbox("radarr_blocklist_corrupt", settings.radarr_blocklist_corrupt | default(false)) %}Blocklist (corrupt){% endcall %}
+                  </div>
+                  <div class="settings-granular-failed-import-row">
+                    {% call toggle_checkbox("radarr_cleanup_download_failed", settings.radarr_cleanup_download_failed | default(false)) %}Remove: download failed (client){% endcall %}
+                    {% call toggle_checkbox("radarr_blocklist_download_failed", settings.radarr_blocklist_download_failed | default(false)) %}Blocklist (download failed){% endcall %}
+                  </div>
+                  <div class="settings-granular-failed-import-row">
+                    {% call toggle_checkbox("radarr_cleanup_unmatched", settings.radarr_cleanup_unmatched | default(false)) %}Remove: unmatched / manual import{% endcall %}
+                    {% call toggle_checkbox("radarr_blocklist_unmatched", settings.radarr_blocklist_unmatched | default(false)) %}Blocklist (unmatched){% endcall %}
+                  </div>
+                  <div class="settings-granular-failed-import-row">
+                    {% call toggle_checkbox("radarr_cleanup_quality", settings.radarr_cleanup_quality | default(false)) %}Remove: not an upgrade / quality{% endcall %}
+                    {% call toggle_checkbox("radarr_blocklist_quality", settings.radarr_blocklist_quality | default(false)) %}Blocklist (quality){% endcall %}
+                  </div>
+                </div>
                 <div class="field settings-failed-import-interval-field">
                   <label for="radarr_failed_import_cleanup_interval_minutes">Failed import cleanup interval (minutes)</label>
                   <input id="radarr_failed_import_cleanup_interval_minutes" class="number" type="number" name="failed_import_cleanup_interval_minutes" value="{{ settings.failed_import_cleanup_interval_minutes|default(60, true) }}" min="1" max="10080" />
-                  <div class="small settings-field-hint">How often to run the cleanup check when this option is on.</div>
+                  <div class="small settings-field-hint">How often to run the cleanup check when at least one remove option is on.</div>
                 </div>
               </div>
             </div>
@@ -430,79 +537,6 @@
   </form>
 
   <div class="settings-panel-slice" data-settings-panel="global">
-  <div class="gc-title">Global operations</div>
-  <div class="card backup-restore-card gc">
-    <div class="gc-title">Backup &amp; restore</div>
-    <p class="hint backup-restore-lead">Backs up all Fetcher and Trimmer settings to one file. Keep this file private because it contains API keys. This backup includes your password hash and session credentials — store it securely.</p>
-
-    <div class="backup-panels">
-      <div class="backup-panel backup-panel-download">
-        <div class="backup-panel-head">
-          <span class="backup-panel-icon" aria-hidden="true">⬇</span>
-          <div class="gc-title">Download backup</div>
-        </div>
-        <p class="small backup-panel-desc">Downloads your current Fetcher and Trimmer settings as <code class="code-inline">fetcher-settings-backup-dd-mm-yyyy.json</code>.</p>
-        <form method="post" action="/settings/backup/export" style="display:inline">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-          <button type="submit" class="btn backup-panel-btn">Download backup</button>
-        </form>
-      </div>
-
-      <div class="backup-panel backup-panel-restore">
-        <div class="backup-panel-head">
-          <span class="backup-panel-icon" aria-hidden="true">⬆</span>
-          <div class="gc-title">Restore from backup</div>
-        </div>
-        <p class="small backup-panel-desc">Replaces all saved Fetcher and Trimmer settings on this PC.</p>
-        <form method="post" action="/settings/backup/import" enctype="multipart/form-data" class="backup-restore-form">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-          <div class="settings-step-group" role="group" aria-labelledby="backup-restore-step-file">
-            <p class="settings-step-legend" id="backup-restore-step-file">Select backup</p>
-            <div class="backup-file-picker">
-              <input id="backup-file-input" class="backup-file-input-native" type="file" name="file" accept="application/json,.json,.JSON" required aria-describedby="backup-file-name" />
-              <label for="backup-file-input" class="btn secondary backup-panel-btn backup-file-btn">Choose backup file</label>
-              <span class="backup-file-name small muted" id="backup-file-name" aria-live="polite">No file selected</span>
-            </div>
-          </div>
-          <div class="settings-step-group" role="group" aria-labelledby="backup-restore-step-confirm">
-            <p class="settings-step-legend" id="backup-restore-step-confirm">Confirm restore</p>
-            <div class="settings-commit-panel">
-              <label class="toggle-field settings-commit-toggle">
-                <input type="checkbox" name="confirm" value="yes" id="backup-confirm" class="toggle-input" />
-                <span class="toggle" aria-hidden="true"><span class="toggle-knob"></span></span>
-                <span class="toggle-label">I understand this will <strong>overwrite</strong> my saved <strong>Fetcher</strong> and <strong>Trimmer</strong> settings on this PC. Dashboard <strong>Activity</strong> is not changed.</span>
-              </label>
-              <div class="settings-commit-actions">
-                <button type="submit" class="btn secondary backup-panel-btn backup-restore-submit">Restore from backup</button>
-              </div>
-            </div>
-          </div>
-        </form>
-      </div>
-    </div>
-    <script>
-      (function () {
-        var form = document.querySelector("form.backup-restore-form");
-        if (!form) return;
-        var fileInput = form.querySelector("#backup-file-input");
-        var fileNameEl = form.querySelector("#backup-file-name");
-        if (fileInput && fileNameEl) {
-          fileInput.addEventListener("change", function () {
-            var f = fileInput.files && fileInput.files[0];
-            fileNameEl.textContent = f ? f.name : "No file selected";
-          });
-        }
-        form.addEventListener("submit", function (e) {
-          var ok = form.querySelector("#backup-confirm");
-          if (!ok || !ok.checked) {
-            e.preventDefault();
-            alert("Turn on the confirmation toggle to restore from backup.");
-          }
-        });
-      })();
-    </script>
-  </div>
-
   <div class="card updates-card gc" id="updates-card">
     <div class="gc-title">Software updates</div>
     <p class="hint updates-lead">Checks this PC against the latest GitHub release and runs <code class="code-inline">FetcherSetup.exe</code> for upgrades.</p>

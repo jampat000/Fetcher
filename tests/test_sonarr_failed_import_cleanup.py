@@ -8,7 +8,10 @@ from sqlalchemy import delete, desc, select
 from app.db import SessionLocal
 from app.failed_import_activity import FAILED_IMPORT_ACTIVITY_V1
 from app.models import ActivityLog, JobRunLog
-from app.sonarr_failed_import_cleanup import run_sonarr_failed_import_queue_cleanup
+from app.sonarr_failed_import_cleanup import (
+    SONARR_CLEANUP_POLICY_ALL_ON,
+    run_sonarr_failed_import_queue_cleanup,
+)
 from app.web_common import activity_display_row
 
 
@@ -93,6 +96,7 @@ async def _run_sonarr_waiting_skip() -> None:
             session=session,
             job_run_id=None,
             actions=actions,
+            policy=SONARR_CLEANUP_POLICY_ALL_ON,
         )
         await session.commit()
     assert client.delete_calls == []
@@ -132,6 +136,7 @@ async def _run_sonarr_unknown_history() -> None:
             session=session,
             job_run_id=None,
             actions=actions,
+            policy=SONARR_CLEANUP_POLICY_ALL_ON,
         )
         await session.commit()
     assert client.delete_calls == []
@@ -150,6 +155,7 @@ async def _run_sonarr_queue_waiting_skip() -> None:
             session=session,
             job_run_id=None,
             actions=actions,
+            policy=SONARR_CLEANUP_POLICY_ALL_ON,
         )
         await session.commit()
     assert client.delete_calls == []
@@ -172,6 +178,7 @@ async def _run_sonarr_success() -> None:
             session=session,
             job_run_id=log.id,
             actions=actions,
+            policy=SONARR_CLEANUP_POLICY_ALL_ON,
         )
         await session.commit()
 
@@ -221,6 +228,7 @@ async def _run_sonarr_ambiguous() -> None:
             session=session,
             job_run_id=None,
             actions=actions,
+            policy=SONARR_CLEANUP_POLICY_ALL_ON,
         )
         await session.commit()
     assert client.delete_calls == [
@@ -243,7 +251,7 @@ class _FakeSonarrDeleteFails(_FakeSonarrClient):
             raise RuntimeError("sonarr delete failed")
 
 
-def test_sonarr_cleanup_delete_failure_retries_without_blocklist() -> None:
+def test_sonarr_cleanup_delete_failure_writes_failed_activity() -> None:
     asyncio.run(_run_sonarr_delete_fail())
 
 
@@ -256,20 +264,16 @@ async def _run_sonarr_delete_fail() -> None:
             session=session,
             job_run_id=None,
             actions=actions,
+            policy=SONARR_CLEANUP_POLICY_ALL_ON,
         )
         await session.commit()
 
-    assert client.delete_calls == [
-        {"queue_id": 99, "blocklist": True},
-        {"queue_id": 99, "blocklist": False},
-    ]
-    assert any("failed import removed" in a.lower() for a in actions)
+    assert client.delete_calls == [{"queue_id": 99, "blocklist": True}]
+    assert any("failed import removal failed" in a.lower() for a in actions)
     async with SessionLocal() as session:
         rows = (await session.execute(select(ActivityLog))).scalars().all()
         assert len(rows) == 1
-        assert "Failed import removed" in (rows[0].detail or "")
-        assert "Blocklist was not applied" in (rows[0].detail or "")
-        disp = activity_display_row(rows[0], "UTC", now=rows[0].created_at)
-        assert disp["primary_label"] == "Failed import removed"
+        assert rows[0].status == "failed"
+        assert "Failed import removal failed" in (rows[0].detail or "")
         await session.execute(delete(ActivityLog))
         await session.commit()

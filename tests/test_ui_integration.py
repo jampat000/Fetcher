@@ -208,9 +208,9 @@ def test_settings_page_has_forms(monkeypatch: pytest.MonkeyPatch) -> None:
     assert b"radarr_url" in r.content
     assert b"section-trimmer" not in r.content
     assert b"Trimmer settings" in r.content
-    assert b"name=\"sonarr_remove_failed_imports\"" in r.content
-    assert b"name=\"radarr_remove_failed_imports\"" in r.content
-    assert html.count("Successful removals appear in Activity.") == 2
+    assert b"name=\"sonarr_cleanup_corrupt\"" in r.content
+    assert b"name=\"radarr_cleanup_corrupt\"" in r.content
+    assert html.count("Activity logs successful removals.") == 2
     assert html.count('id="sonarr-panel-connection"') == 1
     assert html.count('id="radarr-panel-connection"') == 1
     assert html.count('id="sonarr-panel-search-cleanup"') == 1
@@ -222,7 +222,7 @@ def test_settings_page_has_forms(monkeypatch: pytest.MonkeyPatch) -> None:
     assert html.count("settings-arr-panels") == 2
     assert html.count("Search behavior") == 0
     assert html.count("Failed import cleanup interval (minutes)") == 2
-    assert html.count("How often to run the cleanup check when this option is on.") == 2
+    assert html.count("How often to run the cleanup check when at least one remove option is on.") == 2
     assert html.count("Run limits") == 0
     assert "each Sonarr run removes" not in html
     assert "each Radarr run removes" not in html
@@ -1692,7 +1692,6 @@ def test_global_save_updates_only_retention_timezone(monkeypatch: pytest.MonkeyP
         "radarr_api_key": "def",
         "radarr_search_missing": "true",
         "radarr_search_upgrades": "true",
-        "radarr_remove_failed_imports": "false",
         "radarr_max_items_per_run": "888",
         "radarr_schedule_enabled": "false",
         "radarr_schedule_start": "00:00",
@@ -1761,7 +1760,6 @@ def test_sonarr_save_preserves_radarr_interval_when_post_includes_wrong_radarr_i
         "radarr_api_key": "",
         "radarr_search_missing": "true",
         "radarr_search_upgrades": "true",
-        "radarr_remove_failed_imports": "false",
         "radarr_max_items_per_run": "50",
         "radarr_schedule_enabled": "false",
         "radarr_schedule_start": "00:00",
@@ -1799,10 +1797,13 @@ def test_sonarr_save_preserves_radarr_interval_when_post_includes_wrong_radarr_i
     asyncio.run(verify_db())
 
 
-def test_sonarr_remove_failed_imports_saves_without_touching_radarr(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_sonarr_granular_cleanup_saves_without_touching_radarr_legacy_flags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     async def seed() -> None:
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
+            row.sonarr_cleanup_corrupt = False
             row.sonarr_remove_failed_imports = False
             row.radarr_remove_failed_imports = True
             await session.commit()
@@ -1815,7 +1816,7 @@ def test_sonarr_remove_failed_imports_saves_without_touching_radarr(monkeypatch:
         "sonarr_api_key": "",
         "sonarr_search_missing": "true",
         "sonarr_search_upgrades": "true",
-        "sonarr_remove_failed_imports": "true",
+        "sonarr_cleanup_corrupt": "true",
         "sonarr_max_items_per_run": "50",
         "sonarr_interval_minutes": "60",
         "sonarr_retry_delay_minutes": "15",
@@ -1829,7 +1830,8 @@ def test_sonarr_remove_failed_imports_saves_without_touching_radarr(monkeypatch:
     async def verify() -> None:
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            assert row.sonarr_remove_failed_imports is True
+            assert row.sonarr_cleanup_corrupt is True
+            assert row.sonarr_remove_failed_imports is False
             assert row.radarr_remove_failed_imports is True
 
     asyncio.run(verify())

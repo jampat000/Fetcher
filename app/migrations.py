@@ -614,6 +614,36 @@ async def _migrate_038_refiner_pass_progress(engine: AsyncEngine) -> None:
         await _add_column(engine, table=table, ddl="refiner_current_pass_done INTEGER NOT NULL DEFAULT 0")
 
 
+async def _migrate_039_granular_cleanup(engine: AsyncEngine) -> None:
+    """Add 16 granular failed-import cleanup columns (all BOOLEAN NOT NULL DEFAULT 0)."""
+    table = "app_settings"
+    new_cols = [
+        "sonarr_cleanup_corrupt",
+        "sonarr_blocklist_corrupt",
+        "sonarr_cleanup_download_failed",
+        "sonarr_blocklist_download_failed",
+        "sonarr_cleanup_unmatched",
+        "sonarr_blocklist_unmatched",
+        "sonarr_cleanup_quality",
+        "sonarr_blocklist_quality",
+        "radarr_cleanup_corrupt",
+        "radarr_blocklist_corrupt",
+        "radarr_cleanup_download_failed",
+        "radarr_blocklist_download_failed",
+        "radarr_cleanup_unmatched",
+        "radarr_blocklist_unmatched",
+        "radarr_cleanup_quality",
+        "radarr_blocklist_quality",
+    ]
+    for col in new_cols:
+        if not await _has_column(engine, table=table, column=col):
+            await _add_column(
+                engine,
+                table=table,
+                ddl=f"{col} BOOLEAN NOT NULL DEFAULT 0",
+            )
+
+
 async def migrate(engine: AsyncEngine) -> None:
     await _migrate_001_sonarr_per_app_columns(engine)
     await _migrate_002_radarr_per_app_columns(engine)
@@ -649,6 +679,7 @@ async def migrate(engine: AsyncEngine) -> None:
     await _migrate_034_forward_app_settings_schema_version(engine)
     await _migrate_037_job_run_log_app_column(engine)
     await _migrate_038_refiner_pass_progress(engine)
+    await _migrate_039_granular_cleanup(engine)
     await repair_refiner_app_settings_columns(engine)
 
     logger.info(
