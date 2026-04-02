@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.8.0 — 2026-04-02
+
+### Improved
+
+- **Failed-import ambiguity safety:** history-driven cleanup stays conservative when one `downloadId` matches multiple queue rows (skip ambiguous match, remove none).
+- **Refiner successful-live cleanup chain:** external subtitle sidecars can be preserved to output, remaining files in the processed source folder are deleted, and the processed source folder is removed after success.
+- **Refiner dry-run safety:** dry run remains fully non-destructive (including no stale `.refiner.` work-file deletion).
+- **Refiner reporting truthfulness:** post-finalize cleanup issues are surfaced as **cleanup needed** semantics (manual action) instead of ordinary processing-failure counts.
+- **Refiner wrong-content safety proof:** end-to-end test coverage confirms wrong-content early stop leaves watched-source item and siblings untouched.
+- **Refiner activity de-noise:** duplicate scheduled waiting-only activity entries are suppressed while meaningful waiting transitions still log.
+- **Automation dashboard consistency:** shared two-line Next Run and shared footer structure across Sonarr/Radarr/Refiner/Trimmer, with truthful Refiner unscheduled state (`Always on` / `Runs when items are ready`).
+
 ## 3.7.20 — 2026-04-02
 
 ### Fixed

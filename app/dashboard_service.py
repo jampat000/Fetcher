@@ -42,6 +42,8 @@ def _next_run_display(
     schedule_enabled: bool,
     next_local: str,
     next_relative: str,
+    unscheduled_state: str = "enabled_unscheduled",
+    unscheduled_secondary: str = "No schedule configured",
 ) -> dict[str, str]:
     """Shared two-line Next Run display model for automation cards."""
     if not enabled:
@@ -58,9 +60,9 @@ def _next_run_display(
         }
     if not schedule_enabled:
         return {
-            "state": "enabled_unscheduled",
+            "state": unscheduled_state,
             "primary": "Always on",
-            "secondary": "No schedule configured",
+            "secondary": unscheduled_secondary,
         }
     return {
         "state": "scheduled",
@@ -470,6 +472,8 @@ async def build_dashboard_status(
         schedule_enabled=bool(settings.refiner_schedule_enabled),
         next_local=next_refiner_local,
         next_relative=next_refiner_relative,
+        unscheduled_state="enabled_unscheduled_live",
+        unscheduled_secondary="Runs when items are ready",
     )
 
     job_intervals = compute_job_intervals_minutes(settings)
