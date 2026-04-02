@@ -86,6 +86,15 @@ class ArrClient:
         data = r.json()
         return data if isinstance(data, list) else []
 
+    async def get_movie(self, movie_id: int) -> dict[str, Any] | None:
+        """Radarr single movie (runtime, title, year, etc.)."""
+        r = await self._req("GET", f"/api/v3/movie/{int(movie_id)}")
+        if r.status_code == 404:
+            return None
+        r.raise_for_status()
+        data = r.json()
+        return data if isinstance(data, dict) else None
+
     async def series(self) -> list[dict]:
         """Sonarr series catalog."""
         r = await self._req("GET", "/api/v3/series")

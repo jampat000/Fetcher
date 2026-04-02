@@ -496,6 +496,10 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
         "radarr_row_bucket_counts": {},
         "radarr_row_bucket_samples": {},
         "radarr_candidate_saw_likely_row_class": False,
+        "radarr_refiner_target_queue_id": None,
+        "radarr_refiner_target_movie_id": None,
+        "radarr_refiner_target_movie_title": "",
+        "radarr_refiner_target_movie_year": None,
     }
 
     if not snap.authority_useful:
@@ -621,6 +625,19 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
                     )
             elif path_matched:
                 inactive_match = True
+            if app == "radarr" and (path_matched or title_matched) and diag.get("radarr_refiner_target_movie_id") is None:
+                mov = rec.get("movie") if isinstance(rec.get("movie"), dict) else {}
+                mid = mov.get("id")
+                if isinstance(mid, int) and mid > 0:
+                    diag["radarr_refiner_target_movie_id"] = mid
+                    qrid = rec.get("id")
+                    if isinstance(qrid, int) and qrid > 0:
+                        diag["radarr_refiner_target_queue_id"] = qrid
+                    elif isinstance(qrid, str) and qrid.isdigit():
+                        diag["radarr_refiner_target_queue_id"] = int(qrid)
+                    diag["radarr_refiner_target_movie_title"] = str(mov.get("title") or "").strip()[:400]
+                    y = mov.get("year")
+                    diag["radarr_refiner_target_movie_year"] = int(y) if isinstance(y, int) else None
             if active and (path_matched or title_matched):
                 if app == "radarr" and _is_import_pending_no_eligible_nonblocking(rec, q_paths):
                     nonblocking_import_wait_count += 1

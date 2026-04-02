@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.7.14 — 2026-04-02
+
+### Added
+
+- Add aggressive wrong-content movie detection with automatic Radarr fail, block, and re-search for high-confidence mismatches.
+
 ## 3.7.13 — 2026-04-01
 
 ### Improved

@@ -21,6 +21,7 @@ from app.refiner_media_identity import (
     provisional_media_title_before_probe,
     resolve_activity_card_title,
 )
+from app.refiner_movie_wrong_content import evaluate_movie_wrong_content
 from app.refiner_mux import ffprobe_json, remux_to_temp_file
 from app.refiner_rules import (
     RefinerRulesConfig,
@@ -56,6 +57,9 @@ def _activity_snapshot(
     folder_cleanup: str = "",
     pipeline_no_remux: bool = False,
     no_change_bullets: list[str] | None = None,
+    wrong_content: bool = False,
+    radarr_wrong_content_verdict: dict[str, Any] | None = None,
+    radarr_wrong_content_automation: dict[str, Any] | None = None,
 ) -> str:
     payload: dict[str, Any] = {
         "audio_before": audio_before,
@@ -75,6 +79,12 @@ def _activity_snapshot(
         payload["reason_code"] = rc[:128]
     if no_change_bullets:
         payload["no_change_bullets"] = [str(x).strip()[:500] for x in no_change_bullets if str(x).strip()][:8]
+    if wrong_content:
+        payload["wrong_content"] = True
+    if isinstance(radarr_wrong_content_verdict, dict) and radarr_wrong_content_verdict:
+        payload["radarr_wrong_content_verdict"] = radarr_wrong_content_verdict
+    if isinstance(radarr_wrong_content_automation, dict) and radarr_wrong_content_automation:
+        payload["radarr_wrong_content_automation"] = radarr_wrong_content_automation
     idn = ident or {}
     for key in ("media_title", "refiner_title", "refiner_year", "trusted_title"):
         v = (idn.get(key) or "").strip()
@@ -264,6 +274,7 @@ def _process_one_refiner_file_sync(
     watched_root: Path,
     output_root: Path,
     work_dir: Path,
+    movie_wrong_content_ctx: dict[str, Any] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Per file: ffprobe analysis → rule planning from probe data → remux/validate/move (source delete only after success)."""
     t0 = time.perf_counter()
@@ -271,6 +282,10 @@ def _process_one_refiner_file_sync(
     _provisional_mt = provisional_media_title_before_probe(fname)[:512]
     identity_snap: dict[str, str] = {}
     _media_title_col: list[str] = [""]
+    _wc_failure_lines = (
+        "Wrong content detected",
+        "This file does not appear to match the selected movie. The release was failed and blocked in Radarr, and a new search was requested.",
+    )
 
     def pack(
         act_status: str,
@@ -369,6 +384,56 @@ def _process_one_refiner_file_sync(
         ffprobe_year=ident.refiner_year,
     )
     sb = _file_size_bytes(path)
+    if (
+        movie_wrong_content_ctx
+        and movie_wrong_content_ctx.get("enabled")
+        and isinstance(movie_wrong_content_ctx.get("movie_id"), int)
+        and int(movie_wrong_content_ctx["movie_id"]) > 0
+    ):
+        wc = evaluate_movie_wrong_content(
+            path,
+            ffprobe_report,
+            video,
+            target_title=str(movie_wrong_content_ctx.get("target_title") or ""),
+            target_year=movie_wrong_content_ctx.get("target_year"),
+            expected_runtime_minutes=movie_wrong_content_ctx.get("expected_runtime_minutes"),
+        )
+        if wc.wrong_content:
+            fh_full = "\n".join(_wc_failure_lines)
+            verdict_payload: dict[str, Any] = {
+                "triggered_reason": (wc.triggered_reason or "")[:500],
+                "score": int(wc.score),
+                "hard_trigger": bool(wc.hard_trigger),
+                "probed_runtime_minutes": wc.probed_runtime_minutes,
+                "expected_runtime_minutes": wc.expected_runtime_minutes,
+                "runtime_ratio": wc.runtime_ratio,
+                "token_overlap_summary": (wc.token_overlap_summary or "")[:400],
+            }
+            wctx = _activity_snapshot(
+                ident=identity_snap,
+                failure_reason=fh_full[:8000],
+                reason_code="radarr_wrong_content",
+                wrong_content=True,
+                radarr_wrong_content_verdict=verdict_payload,
+            )
+            meta0 = pack(
+                "failed",
+                sb,
+                sb,
+                len(audio),
+                len(audio),
+                len(subs),
+                len(subs),
+                failure_hint=_wc_failure_lines[0],
+                activity_context=wctx,
+            )
+            meta0["_refiner_reason_code"] = "radarr_wrong_content"
+            meta0["_radarr_wrong_content_actions"] = {
+                "queue_id": movie_wrong_content_ctx.get("queue_id"),
+                "movie_id": int(movie_wrong_content_ctx["movie_id"]),
+                "dry_run": bool(dry),
+            }
+            return "error", meta0
     ab_len = len(audio)
     sbb_len = len(subs)
     if not audio:

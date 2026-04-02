@@ -15,8 +15,12 @@ from typing import Any, Literal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.arr_client import ArrClient, ArrConfig
 from app.db import db_path
 from app.models import ActivityLog, AppSettings, JobRunLog
+from app.refiner_activity_context import dumps_activity_context, parse_activity_context
+from app.refiner_radarr_wrong_content_actions import execute_radarr_wrong_content_actions
+from app.resolvers.api_keys import resolve_radarr_api_key
 from app.refiner_cleanup import (
     _cleanup_refiner_source_sidecar_artifacts_after_success,
     _try_remove_empty_watch_subfolder,
@@ -48,6 +52,7 @@ from app.refiner_rules import (
     parse_subtitle_langs_csv,
 )
 from app.refiner_source_readiness import (
+    RefinerQueueSnapshot,
     decide_refiner_readiness,
     fetch_refiner_queue_snapshot,
     ffprobe_failure_hint_is_read_analyze,
@@ -60,6 +65,50 @@ from app.time_util import utc_now_naive
 logger = logging.getLogger(__name__)
 
 _refiner_lock = asyncio.Lock()
+
+
+async def _movie_wrong_content_ctx_for_candidate(
+    fp: Path, row: AppSettings, snap: RefinerQueueSnapshot
+) -> dict[str, Any] | None:
+    """Radarr movie queue association + catalog runtime for post-probe wrong-content scoring (movies only)."""
+    if not row.radarr_enabled or not snap.authority_useful:
+        return None
+    _, _, _, ud = upstream_analyze_path(fp, snap)
+    mid = ud.get("radarr_refiner_target_movie_id")
+    if not isinstance(mid, int) or mid <= 0:
+        return None
+    url = (row.radarr_url or "").strip()
+    key = resolve_radarr_api_key(row)
+    if not (url and key):
+        return None
+    expected_rt: float | None = None
+    try:
+        client = ArrClient(ArrConfig(url, key), timeout_s=30.0)
+        m = await client.get_movie(mid)
+        if m:
+            rt = m.get("runtime")
+            if isinstance(rt, int) and rt > 0:
+                expected_rt = float(rt)
+    except Exception:
+        logger.debug("Refiner: get_movie failed for wrong-content context (movie_id=%s)", mid, exc_info=True)
+    title = str(ud.get("radarr_refiner_target_movie_title") or "").strip()
+    y = ud.get("radarr_refiner_target_movie_year")
+    qraw = ud.get("radarr_refiner_target_queue_id")
+    qid: int | None
+    if isinstance(qraw, int) and qraw > 0:
+        qid = qraw
+    elif isinstance(qraw, str) and qraw.isdigit():
+        qid = int(qraw)
+    else:
+        qid = None
+    return {
+        "enabled": True,
+        "movie_id": mid,
+        "queue_id": qid,
+        "target_title": title[:500],
+        "target_year": int(y) if isinstance(y, int) else None,
+        "expected_runtime_minutes": expected_rt,
+    }
 
 
 def _rules_config_from_settings(row: AppSettings) -> RefinerRulesConfig | None:
@@ -284,9 +333,44 @@ async def run_refiner_pass(
                 if not d1.proceed:
                     meta = _readiness_skip_meta(fp, d1, t_job)
                 else:
+                    wc_ctx: dict[str, Any] | None = None
+                    if not dry and row.radarr_enabled and snap_final.authority_useful:
+                        wc_ctx = await _movie_wrong_content_ctx_for_candidate(fp, row, snap_final)
                     status, meta = await asyncio.to_thread(
-                        _process_one_refiner_file_sync, fp, cfg, dry, watched_root, output_root, work_dir
+                        _process_one_refiner_file_sync,
+                        fp,
+                        cfg,
+                        dry,
+                        watched_root,
+                        output_root,
+                        work_dir,
+                        wc_ctx,
                     )
+                    action_payload = (meta or {}).pop("_radarr_wrong_content_actions", None)
+                    if (
+                        action_payload
+                        and str((meta or {}).get("_refiner_reason_code") or "").strip().lower()
+                        == "radarr_wrong_content"
+                    ):
+                        auto = await execute_radarr_wrong_content_actions(
+                            row,
+                            queue_id=action_payload.get("queue_id"),
+                            movie_id=int(action_payload["movie_id"]),
+                            dry_run=bool(action_payload.get("dry_run")),
+                        )
+                        ctxd = parse_activity_context(str((meta or {}).get("activity_context") or ""))
+                        ctxd.pop("v", None)
+                        errs = auto.get("errors") if isinstance(auto.get("errors"), list) else []
+                        err_s = ";".join(str(x) for x in errs)[:500]
+                        ctxd["radarr_wrong_content_automation"] = {
+                            "queue_delete_ok": bool(auto.get("queue_delete_ok")),
+                            "queue_delete_attempted": bool(auto.get("queue_delete_attempted")),
+                            "queue_blocklist_requested": bool(auto.get("queue_blocklist_requested")),
+                            "movies_search_ok": bool(auto.get("movies_search_ok")),
+                            "dry_run": bool(auto.get("dry_run")),
+                            "error_summary": err_s,
+                        }
+                        meta["activity_context"] = dumps_activity_context(ctxd)
                     fh0 = str((meta or {}).get("failure_hint") or "")
                     if status == "error" and ffprobe_failure_hint_is_read_analyze(fh0):
                         snap_post = await fetch_refiner_queue_snapshot(row)

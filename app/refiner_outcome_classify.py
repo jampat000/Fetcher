@@ -30,6 +30,9 @@ _REASON_CODE_BLOCKED: frozenset[str] = frozenset(
     }
 )
 
+# Exposed for Refiner activity persistence: merge repeat "waiting" rows (same file + reason_code).
+REFINER_BLOCKED_WAIT_REASON_CODES: frozenset[str] = _REASON_CODE_BLOCKED
+
 _FAILURE_NEEDLE_PERMANENT: tuple[tuple[str, RefinerOutcomeClass], ...] = (
     ("no audio streams", RefinerOutcomeClass.PERMANENT_FAILURE),
     ("no audio track would remain", RefinerOutcomeClass.PERMANENT_FAILURE),
@@ -101,6 +104,8 @@ def classify_from_reason_code(reason_code: str | None) -> RefinerOutcomeClass | 
         return None
     if rc in _REASON_CODE_BLOCKED:
         return RefinerOutcomeClass.BLOCKED_WAITING
+    if rc == "radarr_wrong_content":
+        return RefinerOutcomeClass.PERMANENT_FAILURE
     return None
 
 
@@ -115,6 +120,15 @@ def classify_refiner_activity_context(ctx: dict[str, Any], *, status: str) -> tu
 
     rc = classify_from_reason_code(ctx.get("reason_code") if isinstance(ctx.get("reason_code"), str) else None)
     if rc is not None:
+        if rc is RefinerOutcomeClass.PERMANENT_FAILURE and (
+            ctx.get("wrong_content") is True
+            or (str(ctx.get("reason_code") or "").strip().lower() == "radarr_wrong_content")
+        ):
+            return (
+                rc,
+                "Wrong content was handled automatically in Radarr; this file is not retried on schedule.",
+                False,
+            )
         auto = rc in (RefinerOutcomeClass.RETRYABLE, RefinerOutcomeClass.BLOCKED_WAITING)
         return rc, _hint_for_class(rc), auto
 

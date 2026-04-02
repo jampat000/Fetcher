@@ -345,19 +345,16 @@ def build_refiner_activity_row_dict(r: RefinerActivity, tz: str, now: datetime) 
         if ctx.get("commentary_removed") and dry:
             technical_notes.append("Commentary would be affected per rules (see comparison).")
     else:
-        failure_oc, class_hint, failure_suggests_retry = classify_refiner_activity_context(ctx, status=st)
-        failure_class = failure_oc
-        outcome_label = "Failed"
-        outcome_sub = class_hint if class_hint else None
-        if failure_oc is RefinerOutcomeClass.BLOCKED_WAITING:
-            outcome_label = "Waiting"
-            outcome_ui = "waiting"
-            tone = "skip"
-            # No remux ran — size_before on the row is only a file-size hint; do not show
-            # a misleading before/after grid (would imply a failed pipeline with partial output).
-            show_comparison = False
-            compare_rows = []
-        else:
+        rc_wc = (_norm_line(ctx.get("reason_code")) or "").strip().lower()
+        if ctx.get("wrong_content") is True or rc_wc == "radarr_wrong_content":
+            failure_oc = RefinerOutcomeClass.PERMANENT_FAILURE
+            failure_class = failure_oc
+            failure_suggests_retry = False
+            outcome_label = "Wrong content detected"
+            outcome_sub = (
+                "This file does not appear to match the selected movie. The release was failed and blocked in "
+                "Radarr, and a new search was requested."
+            )
             outcome_ui = "failed"
             tone = "fail"
             show_comparison = bool(
@@ -379,6 +376,41 @@ def build_refiner_activity_row_dict(r: RefinerActivity, tz: str, now: datetime) 
                     sbb=sbb,
                     sba=sba,
                 )
+        else:
+            failure_oc, class_hint, failure_suggests_retry = classify_refiner_activity_context(ctx, status=st)
+            failure_class = failure_oc
+            outcome_label = "Failed"
+            outcome_sub = class_hint if class_hint else None
+            if failure_oc is RefinerOutcomeClass.BLOCKED_WAITING:
+                outcome_label = "Waiting"
+                outcome_ui = "waiting"
+                tone = "skip"
+                # No remux ran — size_before on the row is only a file-size hint; do not show
+                # a misleading before/after grid (would imply a failed pipeline with partial output).
+                show_comparison = False
+                compare_rows = []
+            else:
+                outcome_ui = "failed"
+                tone = "fail"
+                show_comparison = bool(
+                    _norm_line(ctx.get("audio_before"))
+                    or _norm_line(ctx.get("audio_after"))
+                    or _norm_line(ctx.get("subs_before"))
+                    or _norm_line(ctx.get("subs_after"))
+                    or sb > 0
+                )
+                if show_comparison:
+                    compare_rows = _compare_rows_audio_subs_size(
+                        ctx=ctx,
+                        sb=sb,
+                        sa=sa,
+                        failed=True,
+                        include_audio_subs=True,
+                        ab=ab,
+                        aa=aa,
+                        sbb=sbb,
+                        sba=sba,
+                    )
         reason = _failure_reason_display(ctx, st)
         if reason:
             first_ln = reason.splitlines()[0].strip()
