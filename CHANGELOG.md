@@ -6,6 +6,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.7.19 — 2026-04-02
+
+### Added
+
+- **Failed import cleanup:** optional per-app **Also remove from download client** (`removeFromClient=true` on queue delete). Stops the same client job from surviving so Radarr/Sonarr cannot put it back in the queue on the next sync. Schema: `sonarr_failed_import_remove_from_client`, `radarr_failed_import_remove_from_client`; **`CURRENT_SCHEMA_VERSION` 38**.
+
+### Documentation
+
+- **README:** Default vs opt-in remove-from-client; master “remove failed imports” does not imply it.
+
+## 3.7.18 — 2026-04-02
+
+### Fixed
+
+- **Failed-import queue delete:** Sonarr/Radarr `DELETE /api/v3/queue/{id}` now sends **`skipRedownload=true`** by default (was effectively false). With **`blocklist=true`**, *arr otherwise often **immediately searches and re-adds** a queue entry, so the same movie/episode looked “still in queue” after a successful cleanup. Refiner wrong-content Radarr queue delete uses the same default.
+
+### Documentation
+
+- **README:** Clarify why an item can reappear (**download client** still holding the release; Activity vs queue).
+
+## 3.7.17 — 2026-04-02
+
+### Added
+
+- **Failed import — “Import failed (other / unclassified)”:** per-app **Remove** and **Blocklist** toggles (Sonarr/Radarr settings matrix). Covers `importFailed` history reasons that do not match a narrower classifier, plus queue text containing **import failed** / **failed to import** (after other scenario checks).
+- Schema: four new `app_settings` booleans (`*_cleanup_import_failed`, `*_blocklist_import_failed`); **`CURRENT_SCHEMA_VERSION` 37**.
+
+### Fixed
+
+- **Download failed (client):** queue rows are classified from stable UI/API phrases and from **`trackedDownloadState` = failed** when message classification is empty, so the download-failed toggles match what operators see.
+- **Unmatched vs import-failed:** `importFailed` **history** reasons that match manual-import / unable-to-import-automatically / grab-history phrases now map to **`UNMATCHED`** (same tables as queue), so the **Unmatched / manual import** toggles apply— not the generic import-failed row.
+
+### Documentation
+
+- **README:** Sonarr/Radarr failed-import **failure-type matrix** (settings row ↔ disposition ↔ history vs queue signals, precedence, pending skip, ambiguous `downloadId`).
+
+### Changed
+
+- Settings matrix and related styling for the expanded failed-import scenario list.
+
 ## 3.7.16 — 2026-04-02
 
 ### Fixed

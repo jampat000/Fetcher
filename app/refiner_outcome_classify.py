@@ -83,6 +83,7 @@ def map_failed_import_disposition_to_refiner_class(
     if disp in (
         FailedImportDisposition.CORRUPT,
         FailedImportDisposition.DOWNLOAD_FAILED,
+        FailedImportDisposition.IMPORT_FAILED,
         FailedImportDisposition.UNMATCHED,
         FailedImportDisposition.QUALITY,
     ):

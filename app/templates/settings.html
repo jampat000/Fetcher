@@ -227,24 +227,42 @@
                 {% call toggle_checkbox("sonarr_search_upgrades", settings.sonarr_search_upgrades) %}Search cutoff-unmet items (upgrade){% endcall %}
               </div>
               <div class="settings-failed-import-block">
-                <div class="small settings-field-hint settings-failed-import-hint">Optional per-scenario cleanup of Sonarr’s <strong>download queue</strong>. Turn on <strong>Remove</strong> for each failure type you want cleared; <strong>Blocklist</strong> sends only that flag on delete (no automatic retry). Does not remove downloads from your download client. Activity logs successful removals.</div>
-                <div class="settings-granular-failed-import" role="group" aria-label="Sonarr failed import scenarios">
-                  <div class="settings-granular-failed-import-row">
-                    {% call toggle_checkbox("sonarr_cleanup_corrupt", settings.sonarr_cleanup_corrupt | default(false)) %}Remove: corrupt / unreadable file{% endcall %}
-                    {% call toggle_checkbox("sonarr_blocklist_corrupt", settings.sonarr_blocklist_corrupt | default(false)) %}Blocklist (corrupt){% endcall %}
+                <p class="small settings-field-hint settings-failed-import-hint settings-failed-import-hint--granular">Clean up Sonarr’s <strong>download queue</strong> by failure type. <strong>Remove</strong> deletes the row; <strong>Blocklist</strong> passes that flag to the API only (no retry). Unless you enable the option below, the underlying job may stay in your download client and Sonarr can re-add the queue row on sync.</p>
+                <div class="settings-granular-failed-import-matrix" role="group" aria-label="Sonarr failed import cleanup by scenario">
+                  <div class="settings-granular-failed-import-matrix-row settings-granular-failed-import-matrix-row--head">
+                    <span class="settings-granular-failed-import-matrix-scenario">Failure type</span>
+                    <span class="settings-granular-failed-import-matrix-colhead">Remove</span>
+                    <span class="settings-granular-failed-import-matrix-colhead">Blocklist</span>
                   </div>
-                  <div class="settings-granular-failed-import-row">
-                    {% call toggle_checkbox("sonarr_cleanup_download_failed", settings.sonarr_cleanup_download_failed | default(false)) %}Remove: download failed (client){% endcall %}
-                    {% call toggle_checkbox("sonarr_blocklist_download_failed", settings.sonarr_blocklist_download_failed | default(false)) %}Blocklist (download failed){% endcall %}
+                  <div class="settings-granular-failed-import-matrix-row">
+                    <span class="settings-granular-failed-import-matrix-scenario" id="sonarr-scen-corrupt">Corrupt / unreadable file</span>
+                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("sonarr_cleanup_corrupt", settings.sonarr_cleanup_corrupt | default(false)) %}Remove{% endcall %}</div>
+                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("sonarr_blocklist_corrupt", settings.sonarr_blocklist_corrupt | default(false)) %}Blocklist{% endcall %}</div>
                   </div>
-                  <div class="settings-granular-failed-import-row">
-                    {% call toggle_checkbox("sonarr_cleanup_unmatched", settings.sonarr_cleanup_unmatched | default(false)) %}Remove: unmatched / manual import{% endcall %}
-                    {% call toggle_checkbox("sonarr_blocklist_unmatched", settings.sonarr_blocklist_unmatched | default(false)) %}Blocklist (unmatched){% endcall %}
+                  <div class="settings-granular-failed-import-matrix-row">
+                    <span class="settings-granular-failed-import-matrix-scenario" id="sonarr-scen-dlfail">Download failed (client)</span>
+                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("sonarr_cleanup_download_failed", settings.sonarr_cleanup_download_failed | default(false)) %}Remove{% endcall %}</div>
+                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("sonarr_blocklist_download_failed", settings.sonarr_blocklist_download_failed | default(false)) %}Blocklist{% endcall %}</div>
                   </div>
-                  <div class="settings-granular-failed-import-row">
-                    {% call toggle_checkbox("sonarr_cleanup_quality", settings.sonarr_cleanup_quality | default(false)) %}Remove: not an upgrade / quality{% endcall %}
-                    {% call toggle_checkbox("sonarr_blocklist_quality", settings.sonarr_blocklist_quality | default(false)) %}Blocklist (quality){% endcall %}
+                  <div class="settings-granular-failed-import-matrix-row">
+                    <span class="settings-granular-failed-import-matrix-scenario" id="sonarr-scen-impfail">Import failed (other / unclassified)</span>
+                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("sonarr_cleanup_import_failed", settings.sonarr_cleanup_import_failed | default(false)) %}Remove{% endcall %}</div>
+                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("sonarr_blocklist_import_failed", settings.sonarr_blocklist_import_failed | default(false)) %}Blocklist{% endcall %}</div>
                   </div>
+                  <div class="settings-granular-failed-import-matrix-row">
+                    <span class="settings-granular-failed-import-matrix-scenario" id="sonarr-scen-unmatched">Unmatched / manual import</span>
+                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("sonarr_cleanup_unmatched", settings.sonarr_cleanup_unmatched | default(false)) %}Remove{% endcall %}</div>
+                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("sonarr_blocklist_unmatched", settings.sonarr_blocklist_unmatched | default(false)) %}Blocklist{% endcall %}</div>
+                  </div>
+                  <div class="settings-granular-failed-import-matrix-row">
+                    <span class="settings-granular-failed-import-matrix-scenario" id="sonarr-scen-quality">Not an upgrade / quality</span>
+                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("sonarr_cleanup_quality", settings.sonarr_cleanup_quality | default(false)) %}Remove{% endcall %}</div>
+                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("sonarr_blocklist_quality", settings.sonarr_blocklist_quality | default(false)) %}Blocklist{% endcall %}</div>
+                  </div>
+                </div>
+                <div class="settings-arr-search-toggles settings-failed-import-remove-client-row">
+                  {% call toggle_checkbox("sonarr_failed_import_remove_from_client", settings.sonarr_failed_import_remove_from_client | default(false)) %}Also remove from download client (removeFromClient){% endcall %}
+                  <div class="small settings-field-hint">When on, queue deletes ask Sonarr to remove the job from SABnzbd, qBittorrent, etc., so the same grab cannot pop back after cleanup.</div>
                 </div>
                 <div class="field settings-failed-import-interval-field">
                   <label for="sonarr_failed_import_cleanup_interval_minutes">Failed import cleanup interval (minutes)</label>
@@ -359,24 +377,42 @@
                 {% call toggle_checkbox("radarr_search_upgrades", settings.radarr_search_upgrades) %}Search cutoff-unmet items (upgrade){% endcall %}
               </div>
               <div class="settings-failed-import-block">
-                <div class="small settings-field-hint settings-failed-import-hint">Optional per-scenario cleanup of Radarr’s <strong>download queue</strong>. Turn on <strong>Remove</strong> for each failure type you want cleared; <strong>Blocklist</strong> sends only that flag on delete (no automatic retry). Does not remove downloads from your download client. Activity logs successful removals.</div>
-                <div class="settings-granular-failed-import" role="group" aria-label="Radarr failed import scenarios">
-                  <div class="settings-granular-failed-import-row">
-                    {% call toggle_checkbox("radarr_cleanup_corrupt", settings.radarr_cleanup_corrupt | default(false)) %}Remove: corrupt / unreadable file{% endcall %}
-                    {% call toggle_checkbox("radarr_blocklist_corrupt", settings.radarr_blocklist_corrupt | default(false)) %}Blocklist (corrupt){% endcall %}
+                <p class="small settings-field-hint settings-failed-import-hint settings-failed-import-hint--granular">Clean up Radarr’s <strong>download queue</strong> by failure type. <strong>Remove</strong> deletes the row; <strong>Blocklist</strong> passes that flag to the API only (no retry). Unless you enable the option below, the underlying job may stay in your download client and Radarr can re-add the queue row on sync.</p>
+                <div class="settings-granular-failed-import-matrix" role="group" aria-label="Radarr failed import cleanup by scenario">
+                  <div class="settings-granular-failed-import-matrix-row settings-granular-failed-import-matrix-row--head">
+                    <span class="settings-granular-failed-import-matrix-scenario">Failure type</span>
+                    <span class="settings-granular-failed-import-matrix-colhead">Remove</span>
+                    <span class="settings-granular-failed-import-matrix-colhead">Blocklist</span>
                   </div>
-                  <div class="settings-granular-failed-import-row">
-                    {% call toggle_checkbox("radarr_cleanup_download_failed", settings.radarr_cleanup_download_failed | default(false)) %}Remove: download failed (client){% endcall %}
-                    {% call toggle_checkbox("radarr_blocklist_download_failed", settings.radarr_blocklist_download_failed | default(false)) %}Blocklist (download failed){% endcall %}
+                  <div class="settings-granular-failed-import-matrix-row">
+                    <span class="settings-granular-failed-import-matrix-scenario" id="radarr-scen-corrupt">Corrupt / unreadable file</span>
+                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("radarr_cleanup_corrupt", settings.radarr_cleanup_corrupt | default(false)) %}Remove{% endcall %}</div>
+                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("radarr_blocklist_corrupt", settings.radarr_blocklist_corrupt | default(false)) %}Blocklist{% endcall %}</div>
                   </div>
-                  <div class="settings-granular-failed-import-row">
-                    {% call toggle_checkbox("radarr_cleanup_unmatched", settings.radarr_cleanup_unmatched | default(false)) %}Remove: unmatched / manual import{% endcall %}
-                    {% call toggle_checkbox("radarr_blocklist_unmatched", settings.radarr_blocklist_unmatched | default(false)) %}Blocklist (unmatched){% endcall %}
+                  <div class="settings-granular-failed-import-matrix-row">
+                    <span class="settings-granular-failed-import-matrix-scenario" id="radarr-scen-dlfail">Download failed (client)</span>
+                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("radarr_cleanup_download_failed", settings.radarr_cleanup_download_failed | default(false)) %}Remove{% endcall %}</div>
+                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("radarr_blocklist_download_failed", settings.radarr_blocklist_download_failed | default(false)) %}Blocklist{% endcall %}</div>
                   </div>
-                  <div class="settings-granular-failed-import-row">
-                    {% call toggle_checkbox("radarr_cleanup_quality", settings.radarr_cleanup_quality | default(false)) %}Remove: not an upgrade / quality{% endcall %}
-                    {% call toggle_checkbox("radarr_blocklist_quality", settings.radarr_blocklist_quality | default(false)) %}Blocklist (quality){% endcall %}
+                  <div class="settings-granular-failed-import-matrix-row">
+                    <span class="settings-granular-failed-import-matrix-scenario" id="radarr-scen-impfail">Import failed (other / unclassified)</span>
+                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("radarr_cleanup_import_failed", settings.radarr_cleanup_import_failed | default(false)) %}Remove{% endcall %}</div>
+                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("radarr_blocklist_import_failed", settings.radarr_blocklist_import_failed | default(false)) %}Blocklist{% endcall %}</div>
                   </div>
+                  <div class="settings-granular-failed-import-matrix-row">
+                    <span class="settings-granular-failed-import-matrix-scenario" id="radarr-scen-unmatched">Unmatched / manual import</span>
+                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("radarr_cleanup_unmatched", settings.radarr_cleanup_unmatched | default(false)) %}Remove{% endcall %}</div>
+                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("radarr_blocklist_unmatched", settings.radarr_blocklist_unmatched | default(false)) %}Blocklist{% endcall %}</div>
+                  </div>
+                  <div class="settings-granular-failed-import-matrix-row">
+                    <span class="settings-granular-failed-import-matrix-scenario" id="radarr-scen-quality">Not an upgrade / quality</span>
+                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("radarr_cleanup_quality", settings.radarr_cleanup_quality | default(false)) %}Remove{% endcall %}</div>
+                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("radarr_blocklist_quality", settings.radarr_blocklist_quality | default(false)) %}Blocklist{% endcall %}</div>
+                  </div>
+                </div>
+                <div class="settings-arr-search-toggles settings-failed-import-remove-client-row">
+                  {% call toggle_checkbox("radarr_failed_import_remove_from_client", settings.radarr_failed_import_remove_from_client | default(false)) %}Also remove from download client (removeFromClient){% endcall %}
+                  <div class="small settings-field-hint">When on, queue deletes ask Radarr to remove the job from SABnzbd, qBittorrent, etc., so the same grab cannot pop back after cleanup.</div>
                 </div>
                 <div class="field settings-failed-import-interval-field">
                   <label for="radarr_failed_import_cleanup_interval_minutes">Failed import cleanup interval (minutes)</label>

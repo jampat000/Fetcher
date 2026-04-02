@@ -223,10 +223,13 @@ async def save_settings(
     sonarr_blocklist_corrupt: bool = Form(False),
     sonarr_cleanup_download_failed: bool = Form(False),
     sonarr_blocklist_download_failed: bool = Form(False),
+    sonarr_cleanup_import_failed: bool = Form(False),
+    sonarr_blocklist_import_failed: bool = Form(False),
     sonarr_cleanup_unmatched: bool = Form(False),
     sonarr_blocklist_unmatched: bool = Form(False),
     sonarr_cleanup_quality: bool = Form(False),
     sonarr_blocklist_quality: bool = Form(False),
+    sonarr_failed_import_remove_from_client: bool = Form(False),
     sonarr_max_items_per_run: int = Form(50),
     sonarr_interval_minutes: int = Form(60),
     sonarr_schedule_enabled: bool = Form(False),
@@ -248,10 +251,13 @@ async def save_settings(
     radarr_blocklist_corrupt: bool = Form(False),
     radarr_cleanup_download_failed: bool = Form(False),
     radarr_blocklist_download_failed: bool = Form(False),
+    radarr_cleanup_import_failed: bool = Form(False),
+    radarr_blocklist_import_failed: bool = Form(False),
     radarr_cleanup_unmatched: bool = Form(False),
     radarr_blocklist_unmatched: bool = Form(False),
     radarr_cleanup_quality: bool = Form(False),
     radarr_blocklist_quality: bool = Form(False),
+    radarr_failed_import_remove_from_client: bool = Form(False),
     radarr_max_items_per_run: int = Form(50),
     radarr_interval_minutes: int = Form(60),
     radarr_schedule_enabled: bool = Form(False),
@@ -318,19 +324,33 @@ async def save_settings(
         s_bc = sonarr_blocklist_corrupt if scope == "sonarr" else _row_bool("sonarr_blocklist_corrupt")
         s_cdf = sonarr_cleanup_download_failed if scope == "sonarr" else _row_bool("sonarr_cleanup_download_failed")
         s_bdf = sonarr_blocklist_download_failed if scope == "sonarr" else _row_bool("sonarr_blocklist_download_failed")
+        s_cif = sonarr_cleanup_import_failed if scope == "sonarr" else _row_bool("sonarr_cleanup_import_failed")
+        s_bif = sonarr_blocklist_import_failed if scope == "sonarr" else _row_bool("sonarr_blocklist_import_failed")
         s_cu = sonarr_cleanup_unmatched if scope == "sonarr" else _row_bool("sonarr_cleanup_unmatched")
         s_bu = sonarr_blocklist_unmatched if scope == "sonarr" else _row_bool("sonarr_blocklist_unmatched")
         s_cq = sonarr_cleanup_quality if scope == "sonarr" else _row_bool("sonarr_cleanup_quality")
         s_bq = sonarr_blocklist_quality if scope == "sonarr" else _row_bool("sonarr_blocklist_quality")
+        s_rfc = (
+            sonarr_failed_import_remove_from_client
+            if scope == "sonarr"
+            else _row_bool("sonarr_failed_import_remove_from_client")
+        )
 
         r_cc = radarr_cleanup_corrupt if scope == "radarr" else _row_bool("radarr_cleanup_corrupt")
         r_bc = radarr_blocklist_corrupt if scope == "radarr" else _row_bool("radarr_blocklist_corrupt")
         r_cdf = radarr_cleanup_download_failed if scope == "radarr" else _row_bool("radarr_cleanup_download_failed")
         r_bdf = radarr_blocklist_download_failed if scope == "radarr" else _row_bool("radarr_blocklist_download_failed")
+        r_cif = radarr_cleanup_import_failed if scope == "radarr" else _row_bool("radarr_cleanup_import_failed")
+        r_bif = radarr_blocklist_import_failed if scope == "radarr" else _row_bool("radarr_blocklist_import_failed")
         r_cu = radarr_cleanup_unmatched if scope == "radarr" else _row_bool("radarr_cleanup_unmatched")
         r_bu = radarr_blocklist_unmatched if scope == "radarr" else _row_bool("radarr_blocklist_unmatched")
         r_cq = radarr_cleanup_quality if scope == "radarr" else _row_bool("radarr_cleanup_quality")
         r_bq = radarr_blocklist_quality if scope == "radarr" else _row_bool("radarr_blocklist_quality")
+        r_rfc = (
+            radarr_failed_import_remove_from_client
+            if scope == "radarr"
+            else _row_bool("radarr_failed_import_remove_from_client")
+        )
 
         data = SettingsIn(
             sonarr_enabled=sonarr_enabled,
@@ -343,10 +363,13 @@ async def save_settings(
             sonarr_blocklist_corrupt=s_bc,
             sonarr_cleanup_download_failed=s_cdf,
             sonarr_blocklist_download_failed=s_bdf,
+            sonarr_cleanup_import_failed=s_cif,
+            sonarr_blocklist_import_failed=s_bif,
             sonarr_cleanup_unmatched=s_cu,
             sonarr_blocklist_unmatched=s_bu,
             sonarr_cleanup_quality=s_cq,
             sonarr_blocklist_quality=s_bq,
+            sonarr_failed_import_remove_from_client=s_rfc,
             sonarr_max_items_per_run=sonarr_max_items_per_run,
             sonarr_interval_minutes=son_im,
             # schedule fields are not in SettingsIn; set on ORM row below
@@ -360,10 +383,13 @@ async def save_settings(
             radarr_blocklist_corrupt=r_bc,
             radarr_cleanup_download_failed=r_cdf,
             radarr_blocklist_download_failed=r_bdf,
+            radarr_cleanup_import_failed=r_cif,
+            radarr_blocklist_import_failed=r_bif,
             radarr_cleanup_unmatched=r_cu,
             radarr_blocklist_unmatched=r_bu,
             radarr_cleanup_quality=r_cq,
             radarr_blocklist_quality=r_bq,
+            radarr_failed_import_remove_from_client=r_rfc,
             radarr_max_items_per_run=radarr_max_items_per_run,
             radarr_interval_minutes=rad_im,
             sonarr_retry_delay_minutes=sonarr_retry_delay_minutes,
@@ -380,10 +406,13 @@ async def save_settings(
             row.sonarr_blocklist_corrupt = data.sonarr_blocklist_corrupt
             row.sonarr_cleanup_download_failed = data.sonarr_cleanup_download_failed
             row.sonarr_blocklist_download_failed = data.sonarr_blocklist_download_failed
+            row.sonarr_cleanup_import_failed = data.sonarr_cleanup_import_failed
+            row.sonarr_blocklist_import_failed = data.sonarr_blocklist_import_failed
             row.sonarr_cleanup_unmatched = data.sonarr_cleanup_unmatched
             row.sonarr_blocklist_unmatched = data.sonarr_blocklist_unmatched
             row.sonarr_cleanup_quality = data.sonarr_cleanup_quality
             row.sonarr_blocklist_quality = data.sonarr_blocklist_quality
+            row.sonarr_failed_import_remove_from_client = data.sonarr_failed_import_remove_from_client
             row.sonarr_max_items_per_run = data.sonarr_max_items_per_run
             row.sonarr_interval_minutes = data.sonarr_interval_minutes
             row.sonarr_retry_delay_minutes = data.sonarr_retry_delay_minutes
@@ -411,10 +440,13 @@ async def save_settings(
             row.radarr_blocklist_corrupt = data.radarr_blocklist_corrupt
             row.radarr_cleanup_download_failed = data.radarr_cleanup_download_failed
             row.radarr_blocklist_download_failed = data.radarr_blocklist_download_failed
+            row.radarr_cleanup_import_failed = data.radarr_cleanup_import_failed
+            row.radarr_blocklist_import_failed = data.radarr_blocklist_import_failed
             row.radarr_cleanup_unmatched = data.radarr_cleanup_unmatched
             row.radarr_blocklist_unmatched = data.radarr_blocklist_unmatched
             row.radarr_cleanup_quality = data.radarr_cleanup_quality
             row.radarr_blocklist_quality = data.radarr_blocklist_quality
+            row.radarr_failed_import_remove_from_client = data.radarr_failed_import_remove_from_client
             row.radarr_max_items_per_run = data.radarr_max_items_per_run
             row.radarr_interval_minutes = data.radarr_interval_minutes
             row.radarr_retry_delay_minutes = data.radarr_retry_delay_minutes

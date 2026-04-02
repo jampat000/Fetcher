@@ -31,6 +31,20 @@ def test_format_parse_roundtrip() -> None:
     assert "Reason: corrupt" in rest
 
 
+def test_remove_from_client_note_in_detail() -> None:
+    d = format_failed_import_cleanup_activity_detail(
+        "radarr",
+        blocklist_applied=True,
+        remove_from_client_applied=True,
+        title="A Film",
+        reason="corrupt",
+    )
+    assert "removeFromClient" in d
+    p = parse_failed_import_cleanup_activity_detail(d)
+    assert p is not None
+    assert "removeFromClient" in p[2]
+
+
 def test_remove_only_copy() -> None:
     d = format_failed_import_cleanup_activity_detail(
         "sonarr",

@@ -1,8 +1,9 @@
 """User-facing copy for failed-import queue cleanup (Sonarr / Radarr *arr download queue only).
 
-Fetcher calls ``DELETE /api/v3/queue/{id}`` with ``blocklist=true`` first, then retries with
-``blocklist=false`` if that fails. ``removeFromClient`` is left false (not passed); cleanup does
-not ask *arr to remove the download from the client.
+Fetcher calls ``DELETE /api/v3/queue/{id}`` with per-toggle ``blocklist``, ``skipRedownload=true``
+(so blocklist does not immediately trigger a replacement grab), and ``removeFromClient`` only when
+the matching per-app Settings checkbox is enabled (otherwise the client job may remain and *arr can
+re-track it).
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ def format_failed_import_cleanup_activity_detail(
     arr_app: str,
     *,
     blocklist_applied: bool,
+    remove_from_client_applied: bool = False,
     title: str = "",
     reason: str = "",
     queue_signal: str | None = None,
@@ -48,6 +50,8 @@ def format_failed_import_cleanup_activity_detail(
     qs = (queue_signal or "").strip()
     if qs:
         tail.append(f"Matched: {qs[:500]}")
+    if remove_from_client_applied:
+        tail.append("Also requested removal from the download client (removeFromClient).")
     if tail:
         body.append("")
         body.extend(tail)

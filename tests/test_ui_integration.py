@@ -209,8 +209,12 @@ def test_settings_page_has_forms(monkeypatch: pytest.MonkeyPatch) -> None:
     assert b"section-trimmer" not in r.content
     assert b"Trimmer settings" in r.content
     assert b"name=\"sonarr_cleanup_corrupt\"" in r.content
+    assert b"name=\"sonarr_failed_import_remove_from_client\"" in r.content
+    assert b"name=\"radarr_failed_import_remove_from_client\"" in r.content
     assert b"name=\"radarr_cleanup_corrupt\"" in r.content
-    assert html.count("Activity logs successful removals.") == 2
+    assert b"name=\"sonarr_cleanup_import_failed\"" in r.content
+    assert b"name=\"radarr_cleanup_import_failed\"" in r.content
+    assert html.count("re-add the queue row on sync.") == 2
     assert html.count('id="sonarr-panel-connection"') == 1
     assert html.count('id="radarr-panel-connection"') == 1
     assert html.count('id="sonarr-panel-search-cleanup"') == 1

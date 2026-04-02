@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -11,6 +12,7 @@ from app.models import ActivityLog, AppSnapshot, JobRunLog
 from app.web_common import activity_display_row
 from app.radarr_failed_import_cleanup import (
     RADARR_CLEANUP_POLICY_ALL_ON,
+    RadarrCleanupPolicy,
     classify_queue_matches_by_download_id,
     import_failed_record_is_pending_waiting_no_eligible,
     is_radarr_import_failed_record,
@@ -18,6 +20,18 @@ from app.radarr_failed_import_cleanup import (
     parse_radarr_import_failed_reason,
     run_radarr_failed_import_queue_cleanup,
     user_visible_text_is_pending_waiting_no_eligible,
+)
+
+# Every scenario except unclassified import-failed (matches pre–import_failed-toggle behavior).
+_RADARR_CLEANUP_WITHOUT_IMPORT_FAILED = RadarrCleanupPolicy(
+    remove_corrupt=True,
+    blocklist_corrupt=True,
+    remove_download_failed=True,
+    blocklist_download_failed=True,
+    remove_unmatched=True,
+    blocklist_unmatched=True,
+    remove_quality=True,
+    blocklist_quality=True,
 )
 
 
@@ -171,7 +185,7 @@ class _FakeRadarrClient:
         }
 
     async def delete_queue_item(self, *, queue_id: int, blocklist: bool = False, **kwargs: Any) -> None:
-        self.delete_calls.append({"queue_id": int(queue_id), "blocklist": bool(blocklist)})
+        self.delete_calls.append({"queue_id": int(queue_id), "blocklist": bool(blocklist), **kwargs})
 
 
 def test_run_cleanup_success_removes_queue_and_writes_activity() -> None:
@@ -195,7 +209,7 @@ async def _run_cleanup_success() -> None:
         )
         await session.commit()
 
-    assert client.delete_calls == [{"queue_id": 42, "blocklist": True}]
+    assert client.delete_calls == [{"queue_id": 42, "blocklist": True, "remove_from_client": False}]
     assert any("failed import cleaned up" in a.lower() for a in actions)
 
     async with SessionLocal() as session:
@@ -216,6 +230,42 @@ async def _run_cleanup_success() -> None:
         assert "Reason: corrupt" in (row.detail or "")
         disp = activity_display_row(row, "UTC", now=row.created_at)
         assert disp["primary_label"] == "Failed import cleaned up"
+        await session.execute(delete(ActivityLog))
+        await session.execute(delete(JobRunLog))
+        await session.commit()
+
+
+def test_run_cleanup_remove_from_client_true_when_policy_set() -> None:
+    asyncio.run(_run_cleanup_success_remove_from_client())
+
+
+async def _run_cleanup_success_remove_from_client() -> None:
+    client = _FakeRadarrClient()
+    actions: list[str] = []
+    policy = replace(RADARR_CLEANUP_POLICY_ALL_ON, remove_from_client=True)
+    async with SessionLocal() as session:
+        log = JobRunLog(ok=True, message="")
+        session.add(log)
+        await session.commit()
+        await session.refresh(log)
+        await run_radarr_failed_import_queue_cleanup(
+            client,
+            session=session,
+            job_run_id=log.id,
+            actions=actions,
+            policy=policy,
+        )
+        await session.commit()
+
+    assert client.delete_calls == [{"queue_id": 42, "blocklist": True, "remove_from_client": True}]
+    async with SessionLocal() as session:
+        row = (
+            (await session.execute(select(ActivityLog).order_by(desc(ActivityLog.id)).limit(1)))
+            .scalars()
+            .first()
+        )
+        assert row is not None
+        assert "removeFromClient" in (row.detail or "")
         await session.execute(delete(ActivityLog))
         await session.execute(delete(JobRunLog))
         await session.commit()
@@ -255,7 +305,7 @@ class _FakeWaitingToImportNoEligibleClient(_FakeRadarrClient):
 
 
 class _FakeUnknownHistoryImportFailedClient(_FakeRadarrClient):
-    """importFailed with non-terminal message → conservative no-op."""
+    """importFailed with message that does not match corrupt/quality/etc. → IMPORT_FAILED scenario."""
 
     async def history_page(self, *, page: int, page_size: int) -> dict[str, Any]:
         if page != 1:
@@ -281,7 +331,7 @@ class _FakeUnknownHistoryImportFailedClient(_FakeRadarrClient):
         }
 
 
-def test_run_cleanup_unknown_history_import_failed_no_delete() -> None:
+def test_run_cleanup_unknown_history_no_delete_without_import_failed_toggle() -> None:
     asyncio.run(_run_unknown_history_no_delete())
 
 
@@ -294,14 +344,37 @@ async def _run_unknown_history_no_delete() -> None:
             session=session,
             job_run_id=None,
             actions=actions,
-            policy=RADARR_CLEANUP_POLICY_ALL_ON,
+            policy=_RADARR_CLEANUP_WITHOUT_IMPORT_FAILED,
         )
         await session.commit()
     assert client.delete_calls == []
 
 
+def test_run_cleanup_unknown_history_removes_when_import_failed_toggle_only() -> None:
+    asyncio.run(_run_unknown_history_import_failed_only())
+
+
+async def _run_unknown_history_import_failed_only() -> None:
+    client = _FakeUnknownHistoryImportFailedClient()
+    actions: list[str] = []
+    policy = RadarrCleanupPolicy(
+        remove_import_failed=True,
+        blocklist_import_failed=True,
+    )
+    async with SessionLocal() as session:
+        await run_radarr_failed_import_queue_cleanup(
+            client,
+            session=session,
+            job_run_id=None,
+            actions=actions,
+            policy=policy,
+        )
+        await session.commit()
+    assert client.delete_calls == [{"queue_id": 55, "blocklist": True, "remove_from_client": False}]
+
+
 class _FakeRadarrQueueGenericImportFailedMessage(_FakeRadarrClient):
-    """Queue-only: vague 'Import failed' without terminal markers → no-op."""
+    """Queue-only: generic 'Import failed' line → IMPORT_FAILED when that toggle is on."""
 
     async def history_page(self, *, page: int, page_size: int) -> dict[str, Any]:
         return {"records": [], "totalRecords": 0}
@@ -322,11 +395,144 @@ class _FakeRadarrQueueGenericImportFailedMessage(_FakeRadarrClient):
         }
 
 
-def test_run_cleanup_queue_only_generic_import_failed_no_delete() -> None:
+class _FakeRadarrQueueDownloadFailedOnly(_FakeRadarrClient):
+    """Queue-only: explicit download-failed copy (no matching history row)."""
+
+    async def history_page(self, *, page: int, page_size: int) -> dict[str, Any]:
+        return {"records": [], "totalRecords": 0}
+
+    async def queue_page(self, *, page: int, page_size: int) -> dict[str, Any]:
+        if page != 1:
+            return {"records": [], "totalRecords": 1}
+        return {
+            "records": [
+                {
+                    "id": 301,
+                    "downloadId": "dl-fail",
+                    "title": "Failed Grab Movie",
+                    "errorMessage": "Download failed",
+                }
+            ],
+            "totalRecords": 1,
+        }
+
+
+def test_run_cleanup_queue_only_download_failed_removes_when_enabled() -> None:
+    asyncio.run(_run_queue_download_failed_only())
+
+
+async def _run_queue_download_failed_only() -> None:
+    client = _FakeRadarrQueueDownloadFailedOnly()
+    actions: list[str] = []
+    policy = RadarrCleanupPolicy(
+        remove_download_failed=True,
+        blocklist_download_failed=True,
+    )
+    async with SessionLocal() as session:
+        await run_radarr_failed_import_queue_cleanup(
+            client,
+            session=session,
+            job_run_id=None,
+            actions=actions,
+            policy=policy,
+        )
+        await session.commit()
+    assert client.delete_calls == [{"queue_id": 301, "blocklist": True, "remove_from_client": False}]
+
+
+def test_run_cleanup_queue_only_download_failed_skipped_when_only_corrupt_enabled() -> None:
+    asyncio.run(_run_queue_download_failed_corrupt_only_policy())
+
+
+async def _run_queue_download_failed_corrupt_only_policy() -> None:
+    client = _FakeRadarrQueueDownloadFailedOnly()
+    actions: list[str] = []
+    policy = RadarrCleanupPolicy(remove_corrupt=True, blocklist_corrupt=True)
+    async with SessionLocal() as session:
+        await run_radarr_failed_import_queue_cleanup(
+            client,
+            session=session,
+            job_run_id=None,
+            actions=actions,
+            policy=policy,
+        )
+        await session.commit()
+    assert client.delete_calls == []
+
+
+class _FakeRadarrTrackedStateFailedOnly(_FakeRadarrClient):
+    """Empty user messages but API tracked state Failed — still terminal download failure."""
+
+    async def history_page(self, *, page: int, page_size: int) -> dict[str, Any]:
+        return {"records": [], "totalRecords": 0}
+
+    async def queue_page(self, *, page: int, page_size: int) -> dict[str, Any]:
+        if page != 1:
+            return {"records": [], "totalRecords": 1}
+        return {
+            "records": [
+                {
+                    "id": 302,
+                    "downloadId": "td-fail",
+                    "title": "Tracked Fail Movie",
+                    "trackedDownloadState": "failed",
+                }
+            ],
+            "totalRecords": 1,
+        }
+
+
+def test_run_cleanup_queue_tracked_state_failed_removes() -> None:
+    asyncio.run(_run_tracked_state_failed())
+
+
+async def _run_tracked_state_failed() -> None:
+    client = _FakeRadarrTrackedStateFailedOnly()
+    actions: list[str] = []
+    policy = RadarrCleanupPolicy(
+        remove_download_failed=True,
+        blocklist_download_failed=True,
+    )
+    async with SessionLocal() as session:
+        await run_radarr_failed_import_queue_cleanup(
+            client,
+            session=session,
+            job_run_id=None,
+            actions=actions,
+            policy=policy,
+        )
+        await session.commit()
+    assert client.delete_calls == [{"queue_id": 302, "blocklist": True, "remove_from_client": False}]
+
+
+def test_run_cleanup_queue_only_generic_import_failed_no_delete_without_toggle() -> None:
     asyncio.run(_run_queue_generic_no_delete())
 
 
 async def _run_queue_generic_no_delete() -> None:
+    client = _FakeRadarrQueueGenericImportFailedMessage()
+    actions: list[str] = []
+    policy = RadarrCleanupPolicy(
+        remove_download_failed=True,
+        blocklist_download_failed=True,
+    )
+    async with SessionLocal() as session:
+        await run_radarr_failed_import_queue_cleanup(
+            client,
+            session=session,
+            job_run_id=None,
+            actions=actions,
+            policy=policy,
+        )
+        await session.commit()
+    assert client.delete_calls == []
+
+
+def test_run_cleanup_queue_only_generic_import_failed_removes_with_all_on() -> None:
+    asyncio.run(_run_queue_generic_all_on())
+
+
+async def _run_queue_generic_all_on() -> None:
     client = _FakeRadarrQueueGenericImportFailedMessage()
     actions: list[str] = []
     async with SessionLocal() as session:
@@ -338,7 +544,7 @@ async def _run_queue_generic_no_delete() -> None:
             policy=RADARR_CLEANUP_POLICY_ALL_ON,
         )
         await session.commit()
-    assert client.delete_calls == []
+    assert client.delete_calls == [{"queue_id": 66, "blocklist": True, "remove_from_client": False}]
 
 
 def test_run_cleanup_skips_waiting_to_import_no_eligible_no_delete() -> None:
@@ -438,6 +644,8 @@ async def _run_ambiguous() -> None:
     client = _FakeAmbiguousClient()
     actions: list[str] = []
     async with SessionLocal() as session:
+        await session.execute(delete(ActivityLog))
+        await session.commit()
         await run_radarr_failed_import_queue_cleanup(
             client,
             session=session,
@@ -446,28 +654,24 @@ async def _run_ambiguous() -> None:
             policy=RADARR_CLEANUP_POLICY_ALL_ON,
         )
         await session.commit()
-    assert client.delete_calls == [
-        {"queue_id": 1, "blocklist": True},
-        {"queue_id": 2, "blocklist": True},
-    ]
-    assert any("multiple queue rows matched" in a.lower() for a in actions)
+    assert client.delete_calls == []
+    assert any("skipped failed-import cleanup" in a.lower() and "ambiguous" in a.lower() for a in actions)
     async with SessionLocal() as session:
         rows = (await session.execute(select(ActivityLog))).scalars().all()
-        assert len(rows) == 2
-        assert all((r.detail or "").startswith(FAILED_IMPORT_ACTIVITY_V1) for r in rows)
+        assert len(rows) == 0
         await session.execute(delete(ActivityLog))
         await session.commit()
 
 
 class _FakeDeleteFailsClient(_FakeRadarrClient):
     async def delete_queue_item(self, *, queue_id: int, blocklist: bool = False, **kwargs: Any) -> None:
-        self.delete_calls.append({"queue_id": int(queue_id), "blocklist": bool(blocklist)})
+        self.delete_calls.append({"queue_id": int(queue_id), "blocklist": bool(blocklist), **kwargs})
         raise RuntimeError("radarr delete failed")
 
 
 class _FakeRadarrBlocklistFailsThenRemoveOk(_FakeRadarrClient):
     async def delete_queue_item(self, *, queue_id: int, blocklist: bool = False, **kwargs: Any) -> None:
-        self.delete_calls.append({"queue_id": int(queue_id), "blocklist": bool(blocklist)})
+        self.delete_calls.append({"queue_id": int(queue_id), "blocklist": bool(blocklist), **kwargs})
         if blocklist:
             raise RuntimeError("blocklist path failed")
 
@@ -490,7 +694,7 @@ async def _run_blocklist_delete_error_radarr() -> None:
             policy=RADARR_CLEANUP_POLICY_ALL_ON,
         )
         await session.commit()
-    assert client.delete_calls == [{"queue_id": 42, "blocklist": True}]
+    assert client.delete_calls == [{"queue_id": 42, "blocklist": True, "remove_from_client": False}]
     async with SessionLocal() as session:
         rows = (await session.execute(select(ActivityLog))).scalars().all()
         assert len(rows) == 1
@@ -519,7 +723,7 @@ async def _run_delete_failure() -> None:
         )
         await session.commit()
 
-    assert client.delete_calls == [{"queue_id": 42, "blocklist": True}]
+    assert client.delete_calls == [{"queue_id": 42, "blocklist": True, "remove_from_client": False}]
     assert any("failed import removal failed" in a.lower() for a in actions)
     async with SessionLocal() as session:
         n = (await session.execute(select(ActivityLog))).scalars().all()
@@ -576,7 +780,7 @@ async def _run_non_upgrade_queue_only() -> None:
         )
         await session.commit()
 
-    assert client.delete_calls == [{"queue_id": 77, "blocklist": True}]
+    assert client.delete_calls == [{"queue_id": 77, "blocklist": True, "remove_from_client": False}]
     assert any("failed import cleaned up" in a.lower() for a in actions)
 
     async with SessionLocal() as session:

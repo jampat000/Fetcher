@@ -21,6 +21,7 @@ class FailedImportDisposition(str, Enum):
     PENDING_WAITING = "pending_waiting"  # Do nothing — release still settling / Refiner delay / etc.
     CORRUPT = "corrupt"
     DOWNLOAD_FAILED = "download_failed"
+    IMPORT_FAILED = "import_failed"  # Generic / unclassified import failure (opt-in toggles)
     UNMATCHED = "unmatched"
     QUALITY = "quality"
     UNKNOWN = "unknown"  # Do nothing — not proven terminal
@@ -184,6 +185,59 @@ _SONARR_UNMATCHED_QUEUE: tuple[tuple[str, str], ...] = (
     ("found matching episode via grab history", "grab history match — manual import required"),
 )
 
+# importFailed history uses the same phrase tables as queue for unmatched / manual-import reasons.
+_RADARR_UNMATCHED_HISTORY: tuple[tuple[str, str], ...] = _RADARR_UNMATCHED_QUEUE
+_SONARR_UNMATCHED_HISTORY: tuple[tuple[str, str], ...] = _SONARR_UNMATCHED_QUEUE
+
+# Radarr queue: download-client / grab failure (parallels history eventType downloadFailed)
+_RADARR_DOWNLOAD_FAILED_QUEUE: tuple[tuple[str, str], ...] = (
+    ("wasn't grabbed by radarr", "release not grabbed by Radarr"),
+    ("was not grabbed by radarr", "release not grabbed by Radarr"),
+    ("download wasn't grabbed by radarr", "release not grabbed by Radarr"),
+    ("the download failed", "download failed"),
+    ("download failed", "download failed"),
+    ("download client failed", "download client failed"),
+    ("download client couldn't import", "download client import failed"),
+    ("download client could not import", "download client import failed"),
+)
+
+# Sonarr queue: download-client / grab failure
+_SONARR_DOWNLOAD_FAILED_QUEUE: tuple[tuple[str, str], ...] = (
+    ("wasn't grabbed by sonarr", "release not grabbed by Sonarr"),
+    ("was not grabbed by sonarr", "release not grabbed by Sonarr"),
+    ("episode wasn't grabbed by sonarr", "episode not grabbed by Sonarr"),
+    ("episode was not grabbed by sonarr", "episode not grabbed by Sonarr"),
+    ("the download failed", "download failed"),
+    ("download failed", "download failed"),
+    ("download client failed", "download client failed"),
+    ("download client couldn't import", "download client import failed"),
+    ("download client could not import", "download client import failed"),
+)
+
+# Radarr queue: generic import-failed wording (after specific scenarios; opt-in toggles)
+_RADARR_IMPORT_FAILED_QUEUE: tuple[tuple[str, str], ...] = (
+    ("failed to import", "import failed"),
+    ("import failed", "import failed"),
+)
+
+# Sonarr queue: generic import-failed wording
+_SONARR_IMPORT_FAILED_QUEUE: tuple[tuple[str, str], ...] = (
+    ("failed to import", "import failed"),
+    ("import failed", "import failed"),
+)
+
+
+def tracked_queue_download_state_is_failed(rec: dict[str, Any]) -> bool:
+    """
+    Radarr/Sonarr ``GET /api/v3/queue`` — ``trackedDownloadState`` ``Failed`` when the client
+    reported a terminal download failure (not importPending / downloading).
+    """
+    raw = rec.get("trackedDownloadState")
+    if isinstance(raw, str):
+        norm = "".join(raw.strip().casefold().split())
+        return norm == "failed"
+    return False
+
 
 def _first_terminal_label(low: str, table: tuple[tuple[str, str], ...]) -> str | None:
     for needle, label in table:
@@ -220,6 +274,8 @@ def radarr_import_failed_history_disposition(
     low = flatten_import_failed_history_text(rec).casefold()
     if _first_terminal_label(low, _RADARR_QUALITY_HISTORY):
         return FailedImportDisposition.QUALITY
+    if _first_terminal_label(low, _RADARR_UNMATCHED_HISTORY):
+        return FailedImportDisposition.UNMATCHED
     if _first_terminal_label(low, _RADARR_CORRUPT_HISTORY):
         return FailedImportDisposition.CORRUPT
     if _read_file_failure_terminal_label(low):
@@ -233,6 +289,9 @@ def radarr_import_failed_history_terminal_label(rec: dict[str, Any]) -> str | No
         return None
     low = flatten_import_failed_history_text(rec).casefold()
     lab = _first_terminal_label(low, _RADARR_QUALITY_HISTORY)
+    if lab:
+        return lab
+    lab = _first_terminal_label(low, _RADARR_UNMATCHED_HISTORY)
     if lab:
         return lab
     lab = _first_terminal_label(low, _RADARR_CORRUPT_HISTORY)
@@ -259,6 +318,12 @@ def radarr_queue_scenario_label(queue_blob: str) -> tuple[FailedImportDispositio
     lab = _read_file_failure_terminal_label(low)
     if lab:
         return FailedImportDisposition.CORRUPT, lab
+    lab = _first_terminal_label(low, _RADARR_DOWNLOAD_FAILED_QUEUE)
+    if lab:
+        return FailedImportDisposition.DOWNLOAD_FAILED, lab
+    lab = _first_terminal_label(low, _RADARR_IMPORT_FAILED_QUEUE)
+    if lab:
+        return FailedImportDisposition.IMPORT_FAILED, lab
     return None
 
 
@@ -275,6 +340,8 @@ def sonarr_import_failed_history_disposition(
     low = flatten_import_failed_history_text(rec).casefold()
     if _first_terminal_label(low, _SONARR_QUALITY_HISTORY):
         return FailedImportDisposition.QUALITY
+    if _first_terminal_label(low, _SONARR_UNMATCHED_HISTORY):
+        return FailedImportDisposition.UNMATCHED
     if _first_terminal_label(low, _SONARR_CORRUPT_HISTORY):
         return FailedImportDisposition.CORRUPT
     if _read_file_failure_terminal_label(low):
@@ -287,6 +354,9 @@ def sonarr_import_failed_history_terminal_label(rec: dict[str, Any]) -> str | No
         return None
     low = flatten_import_failed_history_text(rec).casefold()
     lab = _first_terminal_label(low, _SONARR_QUALITY_HISTORY)
+    if lab:
+        return lab
+    lab = _first_terminal_label(low, _SONARR_UNMATCHED_HISTORY)
     if lab:
         return lab
     lab = _first_terminal_label(low, _SONARR_CORRUPT_HISTORY)
@@ -312,6 +382,12 @@ def sonarr_queue_scenario_label(queue_blob: str) -> tuple[FailedImportDispositio
     lab = _read_file_failure_terminal_label(low)
     if lab:
         return FailedImportDisposition.CORRUPT, lab
+    lab = _first_terminal_label(low, _SONARR_DOWNLOAD_FAILED_QUEUE)
+    if lab:
+        return FailedImportDisposition.DOWNLOAD_FAILED, lab
+    lab = _first_terminal_label(low, _SONARR_IMPORT_FAILED_QUEUE)
+    if lab:
+        return FailedImportDisposition.IMPORT_FAILED, lab
     return None
 
 

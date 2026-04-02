@@ -16,10 +16,13 @@ class SettingsIn(BaseModel):
     sonarr_blocklist_corrupt: bool = False
     sonarr_cleanup_download_failed: bool = False
     sonarr_blocklist_download_failed: bool = False
+    sonarr_cleanup_import_failed: bool = False
+    sonarr_blocklist_import_failed: bool = False
     sonarr_cleanup_unmatched: bool = False
     sonarr_blocklist_unmatched: bool = False
     sonarr_cleanup_quality: bool = False
     sonarr_blocklist_quality: bool = False
+    sonarr_failed_import_remove_from_client: bool = False
     sonarr_max_items_per_run: int = Field(default=50, ge=1, le=1000)
     sonarr_interval_minutes: int = Field(default=60, ge=1, le=7 * 24 * 60)
 
@@ -33,10 +36,13 @@ class SettingsIn(BaseModel):
     radarr_blocklist_corrupt: bool = False
     radarr_cleanup_download_failed: bool = False
     radarr_blocklist_download_failed: bool = False
+    radarr_cleanup_import_failed: bool = False
+    radarr_blocklist_import_failed: bool = False
     radarr_cleanup_unmatched: bool = False
     radarr_blocklist_unmatched: bool = False
     radarr_cleanup_quality: bool = False
     radarr_blocklist_quality: bool = False
+    radarr_failed_import_remove_from_client: bool = False
     radarr_max_items_per_run: int = Field(default=50, ge=1, le=1000)
     radarr_interval_minutes: int = Field(default=60, ge=1, le=7 * 24 * 60)
 

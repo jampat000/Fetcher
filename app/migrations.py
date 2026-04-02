@@ -644,6 +644,36 @@ async def _migrate_039_granular_cleanup(engine: AsyncEngine) -> None:
             )
 
 
+async def _migrate_040_import_failed_cleanup_columns(engine: AsyncEngine) -> None:
+    """Granular remove/blocklist for generic import-failed (unclassified importFailed history / queue text)."""
+    table = "app_settings"
+    new_cols = [
+        "sonarr_cleanup_import_failed",
+        "sonarr_blocklist_import_failed",
+        "radarr_cleanup_import_failed",
+        "radarr_blocklist_import_failed",
+    ]
+    for col in new_cols:
+        if not await _has_column(engine, table=table, column=col):
+            await _add_column(
+                engine,
+                table=table,
+                ddl=f"{col} BOOLEAN NOT NULL DEFAULT 0",
+            )
+
+
+async def _migrate_041_failed_import_remove_from_client(engine: AsyncEngine) -> None:
+    """Optional removeFromClient on failed-import queue delete (stops same client job reappearing)."""
+    table = "app_settings"
+    for col in ("sonarr_failed_import_remove_from_client", "radarr_failed_import_remove_from_client"):
+        if not await _has_column(engine, table=table, column=col):
+            await _add_column(
+                engine,
+                table=table,
+                ddl=f"{col} BOOLEAN NOT NULL DEFAULT 0",
+            )
+
+
 async def migrate(engine: AsyncEngine) -> None:
     await _migrate_001_sonarr_per_app_columns(engine)
     await _migrate_002_radarr_per_app_columns(engine)
@@ -680,6 +710,8 @@ async def migrate(engine: AsyncEngine) -> None:
     await _migrate_037_job_run_log_app_column(engine)
     await _migrate_038_refiner_pass_progress(engine)
     await _migrate_039_granular_cleanup(engine)
+    await _migrate_040_import_failed_cleanup_columns(engine)
+    await _migrate_041_failed_import_remove_from_client(engine)
     await repair_refiner_app_settings_columns(engine)
 
     logger.info(
