@@ -214,11 +214,18 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
 
 
 @router.get("/logs", response_class=HTMLResponse)
-async def logs_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
+async def logs_page(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    app: str | None = Query(None),
+) -> HTMLResponse:
     settings = await get_or_create_settings(session)
     show_setup_wizard = not is_setup_complete(settings)
     logs = (await session.execute(select(JobRunLog).order_by(desc(JobRunLog.id)).limit(200))).scalars().all()
     logs = dedupe_job_run_logs_for_display(logs)
+    log_tab = normalize_activity_tab_query(app)
+    if log_tab and log_tab != "all":
+        logs = [r for r in logs if (r.app or "").strip().lower() == log_tab]
     tz = settings.timezone or "UTC"
     logs_display = [
         {
@@ -255,6 +262,7 @@ async def logs_page(request: Request, session: AsyncSession = Depends(get_sessio
             "csrf_token": await get_csrf_token_for_template(request, session),
             "show_setup_wizard": show_setup_wizard,
             "sidebar_health": sidebar_health_dots(snaps_logs),
+            "log_tab": log_tab,
         },
     )
 

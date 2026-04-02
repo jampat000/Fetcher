@@ -99,6 +99,33 @@ def test_refiner_card_filename_fallback_without_metadata() -> None:
     assert row["refiner_source_file_line"] is None
 
 
+def test_refiner_compare_uses_row_level_matrix_expand_not_per_cell_details() -> None:
+    """Audio/Subtitles expand is one <details> per row so before/after columns stay aligned."""
+    long = " · ".join([f"S{i}" for i in range(6)])
+    r = RefinerActivity(
+        file_name="x.mkv",
+        status="success",
+        size_before_bytes=10_000,
+        size_after_bytes=9000,
+        audio_tracks_before=1,
+        audio_tracks_after=1,
+        subtitle_tracks_before=6,
+        subtitle_tracks_after=6,
+        created_at=datetime(2026, 1, 1, 12, 0, 0),
+        activity_context=_ctx(
+            audio_before="English AAC",
+            audio_after="English AAC",
+            subs_before=long,
+            subs_after=long,
+            finalized=True,
+        ),
+    )
+    html = _render_refiner_card(r)
+    assert "rfn-compare-inner--matrix" in html
+    assert "rfn-compare-matrix-stream" in html
+    assert "rfn-compare-val-details" not in html
+
+
 def test_refiner_card_shows_before_after_when_comparison_enabled() -> None:
     r = RefinerActivity(
         file_name="x.mkv",

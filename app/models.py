@@ -51,6 +51,27 @@ class AppSettings(Base):
     # Radarr-only: when enabled, remove queue rows that match import-failed history by exact downloadId.
     radarr_remove_failed_imports: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Sonarr granular cleanup — each scenario has a remove toggle
+    # and an independent blocklist toggle (all default False).
+    sonarr_cleanup_corrupt: Mapped[bool] = mapped_column(Boolean, default=False)
+    sonarr_blocklist_corrupt: Mapped[bool] = mapped_column(Boolean, default=False)
+    sonarr_cleanup_download_failed: Mapped[bool] = mapped_column(Boolean, default=False)
+    sonarr_blocklist_download_failed: Mapped[bool] = mapped_column(Boolean, default=False)
+    sonarr_cleanup_unmatched: Mapped[bool] = mapped_column(Boolean, default=False)
+    sonarr_blocklist_unmatched: Mapped[bool] = mapped_column(Boolean, default=False)
+    sonarr_cleanup_quality: Mapped[bool] = mapped_column(Boolean, default=False)
+    sonarr_blocklist_quality: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Radarr granular cleanup
+    radarr_cleanup_corrupt: Mapped[bool] = mapped_column(Boolean, default=False)
+    radarr_blocklist_corrupt: Mapped[bool] = mapped_column(Boolean, default=False)
+    radarr_cleanup_download_failed: Mapped[bool] = mapped_column(Boolean, default=False)
+    radarr_blocklist_download_failed: Mapped[bool] = mapped_column(Boolean, default=False)
+    radarr_cleanup_unmatched: Mapped[bool] = mapped_column(Boolean, default=False)
+    radarr_blocklist_unmatched: Mapped[bool] = mapped_column(Boolean, default=False)
+    radarr_cleanup_quality: Mapped[bool] = mapped_column(Boolean, default=False)
+    radarr_blocklist_quality: Mapped[bool] = mapped_column(Boolean, default=False)
+
     # How often Emby Trimmer may run (Trimmer Settings only; independent of Sonarr/Radarr).
     emby_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     emby_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.7.15 — 2026-04-02
+
+### Added
+
+- Granular Sonarr/Radarr failed-import cleanup: per-scenario remove + blocklist toggles (corrupt/unreadable, download failed, unmatched/manual import, quality/not-an-upgrade), shared interval unchanged. Legacy single-toggle columns remain on `app_settings` for migration only (read by policy bridge; not written from the UI).
+- Schema migration adds sixteen boolean `app_settings` columns; `CURRENT_SCHEMA_VERSION` 36.
+
+### Changed
+
+- Failed-import delete calls use a single `blocklist` flag per settings (no try-true-then-false fallback). `removeFromClient` stays false.
+
+### Improved
+
+- Classify import failures into explicit dispositions for cleanup routing; history pass includes `downloadFailed` events when enabled.
+
 ## 3.7.14 — 2026-04-02
 
 ### Added

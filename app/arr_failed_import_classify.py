@@ -19,7 +19,10 @@ class FailedImportDisposition(str, Enum):
     """High-level classification for an importFailed history row or queue message blob."""
 
     PENDING_WAITING = "pending_waiting"  # Do nothing — release still settling / Refiner delay / etc.
-    TERMINAL_CLEANUP = "terminal_cleanup"  # Safe cleanup candidate under Fetcher policy
+    CORRUPT = "corrupt"
+    DOWNLOAD_FAILED = "download_failed"
+    UNMATCHED = "unmatched"
+    QUALITY = "quality"
     UNKNOWN = "unknown"  # Do nothing — not proven terminal
 
 
@@ -86,67 +89,99 @@ def _read_file_failure_terminal_label(low: str) -> str | None:
     return None
 
 
-# (casefold substring, log label) — longest / most specific first.
-_RADARR_TERMINAL_HISTORY: tuple[tuple[str, str], ...] = (
-    ("not a preferred word upgrade for existing movie file", "not a preferred-word upgrade"),
-    ("not an upgrade for existing movie file", "not an upgrade vs existing file"),
-    ("movie file is corrupt", "corrupt or unreadable file"),
-    ("movie file is corrupted", "corrupt or unreadable file"),
+# Radarr history: corrupt/unreadable/damaged file signals
+_RADARR_CORRUPT_HISTORY: tuple[tuple[str, str], ...] = (
+    ("movie file is corrupt", "corrupt file"),
+    ("movie file is corrupted", "corrupt file"),
     ("one or more movies expected", "expected movie files missing"),
     ("hash mismatch", "hash mismatch"),
     ("checksum failed", "checksum failed"),
     ("checksum does not match", "checksum mismatch"),
-    ("file is corrupt", "corrupt or unreadable file"),
+    ("file is corrupt", "corrupt file"),
     ("file may be corrupt", "possibly corrupt file"),
-    ("corrupt", "corrupt or unreadable file"),
+    ("corrupt", "corrupt file"),
     ("damaged", "damaged file"),
 )
 
-_RADARR_TERMINAL_QUEUE: tuple[tuple[str, str], ...] = (
+# Radarr history: quality/upgrade rejection signals
+_RADARR_QUALITY_HISTORY: tuple[tuple[str, str], ...] = (
     ("not a preferred word upgrade for existing movie file", "not a preferred-word upgrade"),
     ("not an upgrade for existing movie file", "not an upgrade vs existing file"),
-    ("movie file is corrupt", "corrupt or unreadable file"),
-    ("movie file is corrupted", "corrupt or unreadable file"),
+)
+
+# Radarr queue: corrupt/unreadable signals
+_RADARR_CORRUPT_QUEUE: tuple[tuple[str, str], ...] = (
+    ("movie file is corrupt", "corrupt file"),
+    ("movie file is corrupted", "corrupt file"),
     ("one or more movies expected", "expected movie files missing"),
     ("hash mismatch", "hash mismatch"),
     ("checksum failed", "checksum failed"),
     ("checksum does not match", "checksum mismatch"),
-    ("file is corrupt", "corrupt or unreadable file"),
+    ("file is corrupt", "corrupt file"),
     ("file may be corrupt", "possibly corrupt file"),
-    ("corrupt", "corrupt or unreadable file"),
+    ("corrupt", "corrupt file"),
     ("damaged", "damaged file"),
 )
-# Queue: omit "unable to parse media info" — often transient / false positive (see tests).
 
+# Radarr queue: quality/upgrade rejection signals
+_RADARR_QUALITY_QUEUE: tuple[tuple[str, str], ...] = (
+    ("not a preferred word upgrade for existing movie file", "not a preferred-word upgrade"),
+    ("not an upgrade for existing movie file", "not an upgrade vs existing file"),
+)
 
-_SONARR_TERMINAL_HISTORY: tuple[tuple[str, str], ...] = (
-    ("not an upgrade for existing episode file", "not an upgrade vs existing file"),
-    ("not a custom format upgrade", "not a custom-format upgrade"),
-    ("episode file is corrupted", "corrupt or unreadable file"),
-    ("episode file is corrupt", "corrupt or unreadable file"),
+# Radarr queue: unmatched / manual import required signals
+_RADARR_UNMATCHED_QUEUE: tuple[tuple[str, str], ...] = (
+    ("manual import required", "manual import required"),
+    ("matched to movie by id", "matched by id — manual import required"),
+    ("unable to import automatically", "unable to import automatically"),
+    ("found matching movie via grab history", "grab history match — manual import required"),
+)
+
+# Sonarr history: corrupt/unreadable/damaged file signals
+_SONARR_CORRUPT_HISTORY: tuple[tuple[str, str], ...] = (
+    ("episode file is corrupted", "corrupt file"),
+    ("episode file is corrupt", "corrupt file"),
     ("one or more episodes expected", "expected episode files missing"),
     ("hash mismatch", "hash mismatch"),
     ("checksum failed", "checksum failed"),
     ("checksum does not match", "checksum mismatch"),
-    ("file is corrupt", "corrupt or unreadable file"),
+    ("file is corrupt", "corrupt file"),
     ("file may be corrupt", "possibly corrupt file"),
-    ("corrupt", "corrupt or unreadable file"),
+    ("corrupt", "corrupt file"),
     ("damaged", "damaged file"),
 )
 
-_SONARR_TERMINAL_QUEUE: tuple[tuple[str, str], ...] = (
+# Sonarr history: quality/upgrade rejection signals
+_SONARR_QUALITY_HISTORY: tuple[tuple[str, str], ...] = (
     ("not an upgrade for existing episode file", "not an upgrade vs existing file"),
     ("not a custom format upgrade", "not a custom-format upgrade"),
-    ("episode file is corrupted", "corrupt or unreadable file"),
-    ("episode file is corrupt", "corrupt or unreadable file"),
+)
+
+# Sonarr queue: corrupt/unreadable signals
+_SONARR_CORRUPT_QUEUE: tuple[tuple[str, str], ...] = (
+    ("episode file is corrupted", "corrupt file"),
+    ("episode file is corrupt", "corrupt file"),
     ("one or more episodes expected", "expected episode files missing"),
     ("hash mismatch", "hash mismatch"),
     ("checksum failed", "checksum failed"),
     ("checksum does not match", "checksum mismatch"),
-    ("file is corrupt", "corrupt or unreadable file"),
+    ("file is corrupt", "corrupt file"),
     ("file may be corrupt", "possibly corrupt file"),
-    ("corrupt", "corrupt or unreadable file"),
+    ("corrupt", "corrupt file"),
     ("damaged", "damaged file"),
+)
+
+# Sonarr queue: quality/upgrade rejection signals
+_SONARR_QUALITY_QUEUE: tuple[tuple[str, str], ...] = (
+    ("not an upgrade for existing episode file", "not an upgrade vs existing file"),
+    ("not a custom format upgrade", "not a custom-format upgrade"),
+)
+
+# Sonarr queue: unmatched / manual import required signals
+_SONARR_UNMATCHED_QUEUE: tuple[tuple[str, str], ...] = (
+    ("manual import required", "manual import required"),
+    ("unable to import automatically", "unable to import automatically"),
+    ("found matching episode via grab history", "grab history match — manual import required"),
 )
 
 
@@ -157,45 +192,93 @@ def _first_terminal_label(low: str, table: tuple[tuple[str, str], ...]) -> str |
     return None
 
 
-def radarr_import_failed_history_disposition(rec: dict[str, Any]) -> FailedImportDisposition:
+def is_radarr_download_failed_record(rec: dict[str, Any]) -> bool:
+    """History record with eventType == 'downloadFailed' (integer 4 or string)."""
+    et = rec.get("eventType")
+    if isinstance(et, str):
+        return et.strip().casefold() == "downloadfailed"
+    if isinstance(et, int):
+        return et == 4
+    return False
+
+
+def is_sonarr_download_failed_record(rec: dict[str, Any]) -> bool:
+    """History record with eventType == 'downloadFailed' (integer 4 or string)."""
+    et = rec.get("eventType")
+    if isinstance(et, str):
+        return et.strip().casefold() == "downloadfailed"
+    if isinstance(et, int):
+        return et == 4
+    return False
+
+
+def radarr_import_failed_history_disposition(
+    rec: dict[str, Any],
+) -> FailedImportDisposition:
     if import_failed_record_is_pending_waiting_no_eligible(rec):
         return FailedImportDisposition.PENDING_WAITING
     low = flatten_import_failed_history_text(rec).casefold()
-    if _first_terminal_label(low, _RADARR_TERMINAL_HISTORY):
-        return FailedImportDisposition.TERMINAL_CLEANUP
+    if _first_terminal_label(low, _RADARR_QUALITY_HISTORY):
+        return FailedImportDisposition.QUALITY
+    if _first_terminal_label(low, _RADARR_CORRUPT_HISTORY):
+        return FailedImportDisposition.CORRUPT
     if _read_file_failure_terminal_label(low):
-        return FailedImportDisposition.TERMINAL_CLEANUP
+        return FailedImportDisposition.CORRUPT
     return FailedImportDisposition.UNKNOWN
 
 
 def radarr_import_failed_history_terminal_label(rec: dict[str, Any]) -> str | None:
-    """None when not TERMINAL_CLEANUP (caller already handled PENDING)."""
+    """None when not a terminal disposition (caller already handled PENDING)."""
     if import_failed_record_is_pending_waiting_no_eligible(rec):
         return None
     low = flatten_import_failed_history_text(rec).casefold()
-    lab = _first_terminal_label(low, _RADARR_TERMINAL_HISTORY)
+    lab = _first_terminal_label(low, _RADARR_QUALITY_HISTORY)
+    if lab:
+        return lab
+    lab = _first_terminal_label(low, _RADARR_CORRUPT_HISTORY)
     if lab:
         return lab
     return _read_file_failure_terminal_label(low)
+
+
+def radarr_queue_scenario_label(queue_blob: str) -> tuple[FailedImportDisposition, str] | None:
+    """
+    Return (scenario, label) for the first matching queue signal, or None.
+    Checks quality first (most specific), then unmatched, then corrupt.
+    """
+    low = (queue_blob or "").casefold()
+    lab = _first_terminal_label(low, _RADARR_QUALITY_QUEUE)
+    if lab:
+        return FailedImportDisposition.QUALITY, lab
+    lab = _first_terminal_label(low, _RADARR_UNMATCHED_QUEUE)
+    if lab:
+        return FailedImportDisposition.UNMATCHED, lab
+    lab = _first_terminal_label(low, _RADARR_CORRUPT_QUEUE)
+    if lab:
+        return FailedImportDisposition.CORRUPT, lab
+    lab = _read_file_failure_terminal_label(low)
+    if lab:
+        return FailedImportDisposition.CORRUPT, lab
+    return None
 
 
 def radarr_queue_terminal_cleanup_label(queue_blob: str) -> str | None:
-    """``queue_blob``: flattened statusMessages + errorMessage."""
-    low = (queue_blob or "").casefold()
-    lab = _first_terminal_label(low, _RADARR_TERMINAL_QUEUE)
-    if lab:
-        return lab
-    return _read_file_failure_terminal_label(low)
+    result = radarr_queue_scenario_label(queue_blob)
+    return result[1] if result else None
 
 
-def sonarr_import_failed_history_disposition(rec: dict[str, Any]) -> FailedImportDisposition:
+def sonarr_import_failed_history_disposition(
+    rec: dict[str, Any],
+) -> FailedImportDisposition:
     if import_failed_record_is_pending_waiting_no_eligible(rec):
         return FailedImportDisposition.PENDING_WAITING
     low = flatten_import_failed_history_text(rec).casefold()
-    if _first_terminal_label(low, _SONARR_TERMINAL_HISTORY):
-        return FailedImportDisposition.TERMINAL_CLEANUP
+    if _first_terminal_label(low, _SONARR_QUALITY_HISTORY):
+        return FailedImportDisposition.QUALITY
+    if _first_terminal_label(low, _SONARR_CORRUPT_HISTORY):
+        return FailedImportDisposition.CORRUPT
     if _read_file_failure_terminal_label(low):
-        return FailedImportDisposition.TERMINAL_CLEANUP
+        return FailedImportDisposition.CORRUPT
     return FailedImportDisposition.UNKNOWN
 
 
@@ -203,15 +286,35 @@ def sonarr_import_failed_history_terminal_label(rec: dict[str, Any]) -> str | No
     if import_failed_record_is_pending_waiting_no_eligible(rec):
         return None
     low = flatten_import_failed_history_text(rec).casefold()
-    lab = _first_terminal_label(low, _SONARR_TERMINAL_HISTORY)
+    lab = _first_terminal_label(low, _SONARR_QUALITY_HISTORY)
+    if lab:
+        return lab
+    lab = _first_terminal_label(low, _SONARR_CORRUPT_HISTORY)
     if lab:
         return lab
     return _read_file_failure_terminal_label(low)
+
+
+def sonarr_queue_scenario_label(queue_blob: str) -> tuple[FailedImportDisposition, str] | None:
+    """
+    Return (scenario, label) for the first matching queue signal, or None.
+    """
+    low = (queue_blob or "").casefold()
+    lab = _first_terminal_label(low, _SONARR_QUALITY_QUEUE)
+    if lab:
+        return FailedImportDisposition.QUALITY, lab
+    lab = _first_terminal_label(low, _SONARR_UNMATCHED_QUEUE)
+    if lab:
+        return FailedImportDisposition.UNMATCHED, lab
+    lab = _first_terminal_label(low, _SONARR_CORRUPT_QUEUE)
+    if lab:
+        return FailedImportDisposition.CORRUPT, lab
+    lab = _read_file_failure_terminal_label(low)
+    if lab:
+        return FailedImportDisposition.CORRUPT, lab
+    return None
 
 
 def sonarr_queue_terminal_cleanup_label(queue_blob: str) -> str | None:
-    low = (queue_blob or "").casefold()
-    lab = _first_terminal_label(low, _SONARR_TERMINAL_QUEUE)
-    if lab:
-        return lab
-    return _read_file_failure_terminal_label(low)
+    result = sonarr_queue_scenario_label(queue_blob)
+    return result[1] if result else None

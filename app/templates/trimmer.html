@@ -10,20 +10,35 @@
 
   {{ trimmer_area_tabs('review') }}
 
-  {% if not settings.emby_enabled %}
-  <div class="banner banner-ok trimmer-mode-banner banner--soft" role="status">
-    <strong>Trimmer off</strong> — Turn on <strong>Enable Trimmer</strong> in <a class="ink-link" href="/trimmer/settings">Settings</a> to use dry run or live mode.
-  </div>
+  {% if trimmer_overview.connection == 'Missing' or error == trimmer_error_missing_connection %}
+  {% set trimmer_connection_status = 'Missing' %}
+  {% elif trimmer_overview.connection == 'Configured' %}
+  {% set trimmer_connection_status = 'Connected' %}
+  {% else %}
+  {% set trimmer_connection_status = trimmer_overview.connection %}
   {% endif %}
 
-  {% if error == trimmer_error_missing_connection %}
-  <div class="trimmer-page-top-notices" role="region" aria-label="Trimmer setup notice">
-    <div class="trimmer-validation-notice trimmer-validation-notice--top" role="status">
-      <div class="trimmer-validation-notice__title">Connection required</div>
-      <p class="trimmer-validation-notice__body">
-        Configure a media server URL and API key in <a class="ink-link" href="/trimmer/settings#trimmer-connection">Settings</a> to use Trimmer.
-      </p>
-    </div>
+  {% if not settings.emby_enabled and trimmer_connection_status in ('Not configured', 'Missing') %}
+  <div class="banner banner-warn" role="alert">
+    <strong>Trimmer needs two things before it can run:</strong>
+    <ol style="margin: 6px 0 0 1.2em; padding: 0; font-size: 13px; line-height: 1.7;">
+      <li>A media server connection — add your Emby URL and API key under
+          <a class="ink-link" href="/trimmer/settings">Trimmer settings</a>.</li>
+      <li>Enable Trimmer — turn on the toggle in
+          <a class="ink-link" href="/trimmer/settings">Trimmer settings</a>.</li>
+    </ol>
+  </div>
+  {% elif not settings.emby_enabled %}
+  <div class="banner banner-ok" role="status">
+    Trimmer off — Turn on Enable Trimmer in
+    <a class="ink-link" href="/trimmer/settings">Settings</a>
+    to use dry run or live mode.
+  </div>
+  {% elif trimmer_connection_status in ('Not configured', 'Missing') %}
+  <div class="banner banner-warn" role="alert">
+    <strong>Connection required</strong> — Configure a media server URL and
+    API key in <a class="ink-link" href="/trimmer/settings">Settings</a>
+    to use Trimmer.
   </div>
   {% endif %}
 
@@ -36,11 +51,23 @@
         <div class="overview-kv-stack">
           <div class="overview-kv-row">
             <div class="label">Trimmer enabled</div>
-            <div class="value">{{ trimmer_overview.enabled }}</div>
+            <div class="value">
+              {% if settings.emby_enabled %}
+              <span class="overview-badge overview-badge--on">On</span>
+              {% else %}
+              <span class="overview-badge overview-badge--off">Off</span>
+              {% endif %}
+            </div>
           </div>
           <div class="overview-kv-row">
             <div class="label">Mode</div>
-            <div class="value {% if settings.emby_dry_run %}mode-safe{% else %}mode-live{% endif %}">{{ trimmer_overview.mode }}</div>
+            <div class="value">
+              {% if settings.emby_dry_run %}
+              <span class="overview-badge overview-badge--dryrun">Dry run</span>
+              {% else %}
+              <span class="overview-badge overview-badge--live">Live delete</span>
+              {% endif %}
+            </div>
           </div>
         </div>
       </section>
@@ -50,7 +77,15 @@
         <div class="overview-kv-stack">
           <div class="overview-kv-row">
             <div class="label">Connection</div>
-            <div class="value {% if trimmer_overview.connection == 'Missing' %}mode-live{% endif %}">{{ trimmer_overview.connection }}</div>
+            <div class="value">
+              {% if trimmer_connection_status == 'Connected' %}
+              <span class="overview-badge overview-badge--on">Connected</span>
+              {% elif trimmer_connection_status == 'Not configured' or trimmer_connection_status == 'Missing' %}
+              <span class="overview-badge overview-badge--missing">Missing</span>
+              {% else %}
+              <span class="overview-badge overview-badge--off">{{ trimmer_connection_status }}</span>
+              {% endif %}
+            </div>
           </div>
           <div class="overview-kv-row">
             <div class="label">User</div>

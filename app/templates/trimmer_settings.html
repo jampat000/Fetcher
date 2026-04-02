@@ -20,19 +20,42 @@
   <div class="banner banner-warn" role="alert">Could not save (Trimmer settings). Try again. ({{ request.query_params.get('reason', 'error') | e }})</div>
   {% endif %}
 
-  {% if settings.emby_enabled %}
-  {% if settings.emby_dry_run %}
+  {% if not (settings.emby_url or '').strip() or not template_emby_api_key %}
+  {% set trimmer_connection_status = 'Not configured' %}
+  {% elif emby and emby.ok %}
+  {% set trimmer_connection_status = 'Connected' %}
+  {% elif emby %}
+  {% set trimmer_connection_status = 'Not connected' %}
+  {% else %}
+  {% set trimmer_connection_status = 'Configured' %}
+  {% endif %}
+
+  {% if not settings.emby_enabled and trimmer_connection_status in ('Not configured', 'Missing') %}
+  <div class="banner banner-warn" role="alert">
+    <strong>Trimmer needs two things before it can run:</strong>
+    <ol style="margin: 6px 0 0 1.2em; padding: 0; font-size: 13px; line-height: 1.7;">
+      <li>Add your Emby URL and API key on the
+          <strong>Emby connection</strong> tab below.</li>
+      <li>Enable Trimmer using the toggle on the
+          <strong>Emby connection</strong> tab.</li>
+    </ol>
+  </div>
+  {% elif not settings.emby_enabled %}
+  <div class="banner banner-ok trimmer-mode-banner banner--soft" role="status">
+    Trimmer off — Turn on Enable Trimmer below to use dry run or live mode.
+  </div>
+  {% elif trimmer_connection_status in ('Not configured', 'Missing') %}
+  <div class="banner banner-warn" role="alert">
+    <strong>Connection required</strong> — add your Emby URL and API key
+    on the Emby connection tab below.
+  </div>
+  {% elif settings.emby_dry_run %}
   <div class="banner banner-ok trimmer-mode-banner" role="status">
     <strong>Dry run (safe)</strong> — Fetcher will <em>not</em> delete anything in Emby. Review matches under <a class="ink-link" href="/logs">Logs</a> or <a class="ink-link" href="/trimmer?scan=1">Trimmer</a>; uncheck dry run only when you intend real deletes.
   </div>
   {% else %}
   <div class="banner banner-warn trimmer-mode-banner" role="alert">
     <strong>Live delete</strong> — Matching items can be <em>removed</em> from Emby on schedule or when you run Trimmer. Re‑enable <strong>Dry run</strong> below if you only want previews.
-  </div>
-  {% endif %}
-  {% else %}
-  <div class="banner banner-ok trimmer-mode-banner banner--soft" role="status">
-    <strong>Trimmer off</strong> — Turn on <strong>Enable Trimmer</strong> below to use dry run or live mode.
   </div>
   {% endif %}
 

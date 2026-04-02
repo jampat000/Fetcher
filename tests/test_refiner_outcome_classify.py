@@ -21,9 +21,13 @@ def test_map_failed_import_disposition_bridge() -> None:
     assert map_failed_import_disposition_to_refiner_class(FailedImportDisposition.PENDING_WAITING) == (
         RefinerOutcomeClass.BLOCKED_WAITING
     )
-    assert map_failed_import_disposition_to_refiner_class(FailedImportDisposition.TERMINAL_CLEANUP) == (
-        RefinerOutcomeClass.MANUAL_ACTION
-    )
+    for disp in (
+        FailedImportDisposition.CORRUPT,
+        FailedImportDisposition.DOWNLOAD_FAILED,
+        FailedImportDisposition.UNMATCHED,
+        FailedImportDisposition.QUALITY,
+    ):
+        assert map_failed_import_disposition_to_refiner_class(disp) == RefinerOutcomeClass.MANUAL_ACTION
     assert map_failed_import_disposition_to_refiner_class(FailedImportDisposition.UNKNOWN) == RefinerOutcomeClass.RETRYABLE
 
 

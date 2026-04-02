@@ -42,7 +42,13 @@
         <div class="overview-kv-stack">
           <div class="overview-kv-row">
             <div class="label">Status</div>
-            <div class="value">{% if settings.refiner_enabled %}On{% else %}Off{% endif %}</div>
+            <div class="value">
+              {% if settings.refiner_enabled %}
+              <span class="overview-badge overview-badge--on">On</span>
+              {% else %}
+              <span class="overview-badge overview-badge--off">Off</span>
+              {% endif %}
+            </div>
           </div>
           <div class="overview-kv-row">
             <div class="label">Ready</div>
@@ -50,29 +56,31 @@
           </div>
           <div class="overview-kv-row">
             <div class="label">Mode</div>
-            <div class="value {% if settings.refiner_dry_run %}mode-safe{% else %}mode-live{% endif %}">{{ "Dry run" if settings.refiner_dry_run else "Live" }}</div>
+            <div class="value">
+              {% if settings.refiner_dry_run %}
+              <span class="overview-badge overview-badge--dryrun">Dry run</span>
+              {% else %}
+              <span class="overview-badge overview-badge--live">Live</span>
+              {% endif %}
+            </div>
           </div>
         </div>
       </section>
 
       <section class="overview-section refiner-overview-section">
         <div class="overview-section-heading">Last 30 days</div>
-        <div class="overview-kv-stack">
-          <div class="overview-kv-row">
-            <div class="label">Files processed</div>
-            <div class="value">{{ refiner_stats_30d.total }}</div>
+        <div class="refiner-stats-grid">
+          <div class="refiner-stat-card">
+            <span class="refiner-stat-label">Files processed</span>
+            <span class="refiner-stat-value{% if refiner_stats_30d.total == 0 %} refiner-stat-value--muted{% endif %}">{{ refiner_stats_30d.total }}</span>
           </div>
-          <div class="overview-kv-row">
-            <div class="label">Succeeded</div>
-            <div class="value">{{ refiner_stats_30d.success }}</div>
+          <div class="refiner-stat-card">
+            <span class="refiner-stat-label">Success rate</span>
+            <span class="refiner-stat-value{% if refiner_stats_30d.success_rate == '—' %} refiner-stat-value--muted{% endif %}">{{ refiner_stats_30d.success_rate }}</span>
           </div>
-          <div class="overview-kv-row">
-            <div class="label">Success rate</div>
-            <div class="value">{{ refiner_stats_30d.success_rate }}</div>
-          </div>
-          <div class="overview-kv-row">
-            <div class="label">Space saved</div>
-            <div class="value{% if refiner_stats_30d.bytes_saved != '—' %} mode-safe{% endif %}">{{ refiner_stats_30d.bytes_saved }}</div>
+          <div class="refiner-stat-card">
+            <span class="refiner-stat-label">Space saved</span>
+            <span class="refiner-stat-value{% if refiner_stats_30d.bytes_saved == '—' %} refiner-stat-value--muted{% else %} refiner-stat-value--savings{% endif %}">{{ refiner_stats_30d.bytes_saved }}</span>
           </div>
         </div>
       </section>

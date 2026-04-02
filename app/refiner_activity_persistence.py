@@ -13,10 +13,12 @@ from app.log_sanitize import redact_sensitive_text
 from app.models import RefinerActivity
 from app.refiner_activity_context import dumps_activity_context, parse_activity_context
 from app.refiner_media_identity import provisional_media_title_before_probe
+from app.refiner_outcome_classify import REFINER_BLOCKED_WAIT_REASON_CODES
 from app.time_util import utc_now_naive
 
 logger = logging.getLogger(__name__)
 
+# Queue-active codes only — used by refiner_service for per-pass waiting= counts in JobRunLog.
 _UPSTREAM_WAIT_REASON_CODES: frozenset[str] = frozenset(
     {
         "radarr_queue_active_download",
@@ -74,24 +76,30 @@ async def _dedupe_upstream_wait_row(
     meta: dict[str, Any],
     exclude_id: int | None = None,
 ) -> bool:
-    """If a prior failed row exists with the same file+reason+message, merge into it. Returns True if merged."""
-    q = select(RefinerActivity).where(
-        RefinerActivity.file_name == file_name,
-        RefinerActivity.status == "failed",
-    )
+    """If a prior failed row exists with the same file + blocked-waiting reason_code, merge into it.
+
+    Upstream/user-facing failure text may change between passes; we key on reason_code only so
+    scheduled passes do not spam duplicate Activity rows for the same waiting candidate.
+    """
+    rc = (reason_code or "").strip().lower()
+    if rc not in REFINER_BLOCKED_WAIT_REASON_CODES:
+        return False
+    q = select(RefinerActivity).where(RefinerActivity.file_name == file_name)
     if exclude_id is not None:
         q = q.where(RefinerActivity.id != exclude_id)
     prior = (await session.execute(q.order_by(RefinerActivity.id.desc()).limit(1))).scalars().first()
-    if prior is None:
+    if prior is None or prior.status != "failed":
         return False
     prev_ctx = parse_activity_context(prior.activity_context)
     prev_rc = str(prev_ctx.get("reason_code") or "").strip().lower()
-    prev_failure = str(prev_ctx.get("failure_reason") or "").strip()
-    if prev_rc != reason_code or prev_failure != failure_new:
+    if prev_rc != rc or prev_rc not in REFINER_BLOCKED_WAIT_REASON_CODES:
         return False
     repeats = int(prev_ctx.get("wait_repeat_count") or 1) + 1
     prev_ctx["wait_repeat_count"] = repeats
     prev_ctx["wait_last_seen_at"] = utc_now_naive().isoformat()
+    prev_ctx["failure_reason"] = (failure_new or "").strip()[:8000]
+    if rc:
+        prev_ctx["reason_code"] = rc[:128]
     ptm = meta.get("processing_time_ms")
     ptm_i = int(ptm) if ptm is not None else None
     await session.execute(
@@ -129,7 +137,7 @@ async def _update_refiner_activity_row(row_id: int, meta: dict[str, Any]) -> Non
         reason_code = str(ctx_new.get("reason_code") or "").strip().lower()
         failure_new = str(ctx_new.get("failure_reason") or "").strip()
         async with SessionLocal() as session:
-            if st == "failed" and reason_code in _UPSTREAM_WAIT_REASON_CODES and fn:
+            if st == "failed" and reason_code in REFINER_BLOCKED_WAIT_REASON_CODES and fn:
                 merged = await _dedupe_upstream_wait_row(
                     session,
                     file_name=fn,
@@ -180,7 +188,7 @@ async def _persist_refiner_activity_safe(meta: dict[str, Any]) -> None:
         reason_code = str(ctx_new.get("reason_code") or "").strip().lower()
         failure_new = str(ctx_new.get("failure_reason") or "").strip()
         async with SessionLocal() as session:
-            if st == "failed" and reason_code in _UPSTREAM_WAIT_REASON_CODES and fn:
+            if st == "failed" and reason_code in REFINER_BLOCKED_WAIT_REASON_CODES and fn:
                 merged = await _dedupe_upstream_wait_row(
                     session,
                     file_name=fn,

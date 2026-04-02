@@ -13,7 +13,7 @@ def test_radarr_disposition_terminal_not_upgrade() -> None:
         "downloadId": "x",
         "reason": "Not an upgrade for existing movie file. Existing quality: WEBDL-1080p",
     }
-    assert radarr_import_failed_history_disposition(rec) == FailedImportDisposition.TERMINAL_CLEANUP
+    assert radarr_import_failed_history_disposition(rec) == FailedImportDisposition.QUALITY
 
 
 def test_radarr_disposition_pending_waiting() -> None:
@@ -38,7 +38,7 @@ def test_radarr_disposition_unable_to_read_with_media_path_is_terminal() -> None
         "downloadId": "p",
         "reason": "Unable to read file /movies/foo.mkv",
     }
-    assert radarr_import_failed_history_disposition(rec) == FailedImportDisposition.TERMINAL_CLEANUP
+    assert radarr_import_failed_history_disposition(rec) == FailedImportDisposition.CORRUPT
 
 
 def test_sonarr_disposition_ambiguous_could_not_read_is_unknown() -> None:
@@ -52,7 +52,7 @@ def test_sonarr_disposition_read_failure_with_media_extension_is_terminal() -> N
         "downloadId": "v",
         "reason": "Could not read file /data/tv/Show.S01E01.mkv",
     }
-    assert sonarr_import_failed_history_disposition(rec) == FailedImportDisposition.TERMINAL_CLEANUP
+    assert sonarr_import_failed_history_disposition(rec) == FailedImportDisposition.CORRUPT
 
 
 def test_sonarr_disposition_read_failure_video_file_phrase_is_terminal() -> None:
@@ -61,12 +61,12 @@ def test_sonarr_disposition_read_failure_video_file_phrase_is_terminal() -> None
         "downloadId": "w",
         "reason": "Unable to read the video file",
     }
-    assert sonarr_import_failed_history_disposition(rec) == FailedImportDisposition.TERMINAL_CLEANUP
+    assert sonarr_import_failed_history_disposition(rec) == FailedImportDisposition.CORRUPT
 
 
 def test_sonarr_disposition_terminal_corrupt() -> None:
     rec = {"eventType": "importFailed", "downloadId": "c", "reason": "File is corrupt"}
-    assert sonarr_import_failed_history_disposition(rec) == FailedImportDisposition.TERMINAL_CLEANUP
+    assert sonarr_import_failed_history_disposition(rec) == FailedImportDisposition.CORRUPT
 
 
 def test_sonarr_disposition_episode_file_corrupted_phrase() -> None:
@@ -75,12 +75,12 @@ def test_sonarr_disposition_episode_file_corrupted_phrase() -> None:
         "downloadId": "e",
         "reason": "Episode file is corrupted",
     }
-    assert sonarr_import_failed_history_disposition(rec) == FailedImportDisposition.TERMINAL_CLEANUP
+    assert sonarr_import_failed_history_disposition(rec) == FailedImportDisposition.CORRUPT
 
 
 def test_radarr_disposition_movie_file_corrupt_phrase() -> None:
     rec = {"eventType": "importFailed", "downloadId": "m", "reason": "Movie file is corrupt"}
-    assert radarr_import_failed_history_disposition(rec) == FailedImportDisposition.TERMINAL_CLEANUP
+    assert radarr_import_failed_history_disposition(rec) == FailedImportDisposition.CORRUPT
 
 
 def test_sonarr_disposition_unknown() -> None:

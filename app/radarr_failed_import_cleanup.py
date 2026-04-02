@@ -1,16 +1,16 @@
 """
-Radarr-only opt-in: delete terminal failed-import rows from Radarr’s download queue.
+Radarr-only opt-in: delete failed-import rows from Radarr’s download queue by scenario.
 
-Matches history/queue by ``downloadId``, classifies terminal vs waiting vs unknown, then calls
-``DELETE /api/v3/queue/{id}`` (``blocklist=true`` first, ``false`` on fallback). No
-``removeFromClient``. Activity rows only after a successful delete.
-
-See tests/test_radarr_failed_import_cleanup.py for intended behavior.
+Matches history/queue by ``downloadId`` or queue signals, applies per-scenario remove/blocklist
+settings, then calls ``DELETE /api/v3/queue/{id}`` once per item with the chosen ``blocklist``
+flag (no true-then-false fallback). No ``removeFromClient``. Activity rows only after a
+successful delete.
 """
 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any, Literal, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +19,9 @@ from app.arr_client import ArrClient
 from app.arr_failed_import_classify import (
     FailedImportDisposition,
     import_failed_record_is_pending_waiting_no_eligible,
+    is_radarr_download_failed_record,
     radarr_import_failed_history_disposition,
+    radarr_queue_scenario_label,
     radarr_queue_terminal_cleanup_label,
     user_visible_text_is_pending_waiting_no_eligible,
 )
@@ -33,6 +35,142 @@ from app.models import ActivityLog
 logger = logging.getLogger(__name__)
 
 MatchKind = Literal["none", "one", "many"]
+
+
+@dataclass(frozen=True)
+class RadarrCleanupPolicy:
+    remove_corrupt: bool = False
+    blocklist_corrupt: bool = False
+    remove_download_failed: bool = False
+    blocklist_download_failed: bool = False
+    remove_unmatched: bool = False
+    blocklist_unmatched: bool = False
+    remove_quality: bool = False
+    blocklist_quality: bool = False
+
+
+# Opt-in all scenarios with blocklist for tests and manual callers.
+RADARR_CLEANUP_POLICY_ALL_ON = RadarrCleanupPolicy(
+    remove_corrupt=True,
+    blocklist_corrupt=True,
+    remove_download_failed=True,
+    blocklist_download_failed=True,
+    remove_unmatched=True,
+    blocklist_unmatched=True,
+    remove_quality=True,
+    blocklist_quality=True,
+)
+
+
+def radarr_cleanup_policy_from_settings(settings: Any) -> RadarrCleanupPolicy:
+    if getattr(settings, "radarr_remove_failed_imports", False):
+        return RadarrCleanupPolicy(
+            remove_corrupt=True,
+            blocklist_corrupt=True,
+            remove_download_failed=True,
+            blocklist_download_failed=True,
+            remove_unmatched=True,
+            blocklist_unmatched=True,
+            remove_quality=True,
+            blocklist_quality=True,
+        )
+    return RadarrCleanupPolicy(
+        remove_corrupt=bool(getattr(settings, "radarr_cleanup_corrupt", False)),
+        blocklist_corrupt=bool(getattr(settings, "radarr_blocklist_corrupt", False)),
+        remove_download_failed=bool(getattr(settings, "radarr_cleanup_download_failed", False)),
+        blocklist_download_failed=bool(getattr(settings, "radarr_blocklist_download_failed", False)),
+        remove_unmatched=bool(getattr(settings, "radarr_cleanup_unmatched", False)),
+        blocklist_unmatched=bool(getattr(settings, "radarr_blocklist_unmatched", False)),
+        remove_quality=bool(getattr(settings, "radarr_cleanup_quality", False)),
+        blocklist_quality=bool(getattr(settings, "radarr_blocklist_quality", False)),
+    )
+
+
+def _radarr_policy_for_scenario(
+    policy: RadarrCleanupPolicy, scenario: FailedImportDisposition
+) -> tuple[bool, bool]:
+    if scenario is FailedImportDisposition.CORRUPT:
+        return policy.remove_corrupt, policy.blocklist_corrupt
+    if scenario is FailedImportDisposition.DOWNLOAD_FAILED:
+        return policy.remove_download_failed, policy.blocklist_download_failed
+    if scenario is FailedImportDisposition.UNMATCHED:
+        return policy.remove_unmatched, policy.blocklist_unmatched
+    if scenario is FailedImportDisposition.QUALITY:
+        return policy.remove_quality, policy.blocklist_quality
+    return False, False
+
+
+async def _delete_queue_item_for_scenario(
+    client: Any,
+    *,
+    queue_id: int,
+    blocklist: bool,
+    scenario: str,
+    arr: str,
+    actions: list[str],
+    session: Any,
+    job_run_id: int | None,
+    title: str = "",
+    reason: str = "",
+    queue_signal: str | None = None,
+) -> bool:
+    """
+    Delete one queue item with the given blocklist value. No fallback.
+    Returns True on success, False on failure (failure is logged and
+    appended to actions; an ActivityLog failure row is written).
+    """
+    app_key = arr.lower()
+    try:
+        await client.delete_queue_item(queue_id=queue_id, blocklist=blocklist)
+    except Exception as exc:
+        hint = format_http_error_detail(exc)
+        suffix = f" ({title})" if title else ""
+        actions.append(f"{arr}: Failed import removal failed{suffix}: {hint}")
+        session.add(
+            ActivityLog(
+                job_run_id=job_run_id,
+                app=app_key,
+                kind="cleanup",
+                status="failed",
+                count=0,
+                detail=f"Failed import removal failed: {title or 'item'} — {hint}",
+            )
+        )
+        logger.warning(
+            "%s failed-import cleanup: delete failed queue_id=%s blocklist=%s scenario=%s: %s",
+            arr,
+            queue_id,
+            blocklist,
+            scenario,
+            hint,
+        )
+        return False
+
+    detail = format_failed_import_cleanup_activity_detail(
+        app_key,
+        blocklist_applied=blocklist,
+        title=title,
+        reason=reason,
+        queue_signal=queue_signal,
+    )
+    session.add(
+        ActivityLog(
+            job_run_id=job_run_id,
+            app=app_key,
+            kind="cleanup",
+            count=1,
+            status="ok",
+            detail=detail,
+        )
+    )
+    actions.append(
+        failed_import_cleanup_action_success(
+            arr,
+            blocklist_applied=blocklist,
+            label=title if title else f"queue id {queue_id}",
+        )
+    )
+    return True
 
 
 def is_radarr_import_failed_record(rec: dict[str, Any]) -> bool:
@@ -119,11 +257,11 @@ def is_radarr_queue_non_quality_upgrade_rejection(q: dict[str, Any]) -> bool:
     """
     Permanent import rejection: new file is not a quality (or preferred-word) upgrade vs existing.
 
-    Used by tests and queue-only cleanup (terminal label table covers the same phrases).
+    Used by tests and queue-only cleanup (scenario QUALITY).
     """
     blob = _flatten_radarr_queue_user_messages(q)
-    lbl = radarr_queue_terminal_cleanup_label(blob)
-    return lbl in ("not an upgrade vs existing file", "not a preferred-word upgrade")
+    res = radarr_queue_scenario_label(blob)
+    return res is not None and res[0] is FailedImportDisposition.QUALITY
 
 
 def queue_item_label(q: dict[str, Any]) -> str:
@@ -223,8 +361,21 @@ async def run_radarr_failed_import_queue_cleanup(
     session: AsyncSession,
     job_run_id: int | None,
     actions: list[str],
+    policy: RadarrCleanupPolicy = RadarrCleanupPolicy(),
 ) -> None:
-    logger.info("Radarr failed-import cleanup: scan started")
+    logger.info("Radarr failed-import cleanup: scan started (policy=%r)", policy)
+
+    if not any(
+        [
+            policy.remove_corrupt,
+            policy.remove_download_failed,
+            policy.remove_unmatched,
+            policy.remove_quality,
+        ]
+    ):
+        logger.info("Radarr failed-import cleanup: all remove toggles off — skipping scan")
+        return
+
     queue_records = await _paginate_records(
         client.queue_page,
         page_size=200,
@@ -241,46 +392,63 @@ async def run_radarr_failed_import_queue_cleanup(
         len(history_records),
     )
 
-    processed_download_ids: set[str] = set()
     removed_queue_ids: set[int] = set()
+    processed_download_ids: set[str] = set()
     eligible_from_history = 0
     eligible_from_queue = 0
     ineligible = 0
 
+    # PASS 1: History-driven removals (importFailed + downloadFailed)
     for rec in history_records:
         if not isinstance(rec, dict):
-            continue
-        if not is_radarr_import_failed_record(rec):
             continue
         raw_did = rec.get("downloadId")
         if raw_did is None:
             continue
         download_id = str(raw_did).strip()
-        if not download_id:
+        if not download_id or download_id in processed_download_ids:
             continue
-        if download_id in processed_download_ids:
+
+        scenario: FailedImportDisposition | None = None
+        if is_radarr_download_failed_record(rec):
+            scenario = FailedImportDisposition.DOWNLOAD_FAILED
+        elif is_radarr_import_failed_record(rec):
+            if import_failed_record_is_pending_waiting_no_eligible(rec):
+                logger.info(
+                    "Radarr failed-import cleanup: skip downloadId=%s — pending waiting",
+                    download_id,
+                )
+                processed_download_ids.add(download_id)
+                continue
+            disp = radarr_import_failed_history_disposition(rec)
+            if disp is FailedImportDisposition.UNKNOWN:
+                logger.info(
+                    "Radarr failed-import cleanup: skip downloadId=%s — unknown disposition",
+                    download_id,
+                )
+                processed_download_ids.add(download_id)
+                continue
+            scenario = disp
+        else:
             continue
+
         processed_download_ids.add(download_id)
 
-        disp = radarr_import_failed_history_disposition(rec)
-        if disp == FailedImportDisposition.PENDING_WAITING:
+        remove, blocklist = _radarr_policy_for_scenario(policy, scenario)
+        if not remove:
             logger.info(
-                "Radarr failed-import cleanup: skip downloadId=%s — pending waiting-to-import / no eligible files yet",
+                "Radarr failed-import cleanup: skip downloadId=%s — scenario=%s remove=False",
                 download_id,
-            )
-            continue
-        if disp == FailedImportDisposition.UNKNOWN:
-            logger.info(
-                "Radarr failed-import cleanup: skip downloadId=%s — importFailed not classified as terminal (safe default)",
-                download_id,
+                scenario.value,
             )
             continue
 
         kind, qid = classify_queue_matches_by_download_id(download_id, queue_records)
         if kind == "none":
             logger.info(
-                "Radarr failed-import cleanup: ineligible (history has downloadId=%s; queue has no match)",
+                "Radarr failed-import cleanup: no queue match for downloadId=%s (history scenario=%s)",
                 download_id,
+                scenario.value,
             )
             continue
 
@@ -298,82 +466,35 @@ async def run_radarr_failed_import_queue_cleanup(
         reason = parse_radarr_import_failed_reason(rec)
         for target_qid in qids:
             logger.info(
-                "Radarr failed-import cleanup: eligible queue id=%s via history importFailed (downloadId=%s)",
+                "Radarr failed-import cleanup: eligible queue id=%s via history (downloadId=%s scenario=%s)",
                 target_qid,
                 download_id,
+                scenario.value,
             )
-            try:
-                await client.delete_queue_item(queue_id=target_qid, blocklist=True)
-                blocklist_mode = "requested"
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    "Radarr failed-import cleanup: delete failed for queue id=%s with blocklist=true: %s",
-                    target_qid,
-                    format_http_error_detail(exc),
-                )
-                try:
-                    await client.delete_queue_item(queue_id=target_qid, blocklist=False)
-                    blocklist_mode = "failed; removed queue without blocklist"
-                except Exception as exc2:  # noqa: BLE001
-                    suffix = f" ({title})" if title else ""
-                    actions.append(
-                        f"Radarr: Failed import removal failed{suffix}: {format_http_error_detail(exc2)}"
-                    )
-                    session.add(
-                        ActivityLog(
-                            job_run_id=job_run_id,
-                            app="radarr",
-                            kind="cleanup",
-                            status="failed",
-                            count=0,
-                            detail=f"Failed import removal failed: {title or 'item'} — {format_http_error_detail(exc2)}",
-                        )
-                    )
-                    logger.warning(
-                        "Radarr failed-import cleanup: delete fallback failed for queue id=%s: %s",
-                        target_qid,
-                        format_http_error_detail(exc2),
-                    )
-                    continue
-
-            removed_queue_ids.add(target_qid)
-            eligible_from_history += 1
-
-            detail = format_failed_import_cleanup_activity_detail(
-                "radarr",
-                blocklist_applied=blocklist_mode == "requested",
+            ok = await _delete_queue_item_for_scenario(
+                client,
+                queue_id=target_qid,
+                blocklist=blocklist,
+                scenario=scenario.value,
+                arr="Radarr",
+                actions=actions,
+                session=session,
+                job_run_id=job_run_id,
                 title=title,
                 reason=reason,
                 queue_signal=None,
             )
-            session.add(
-                ActivityLog(
-                    job_run_id=job_run_id,
-                    app="radarr",
-                    kind="cleanup",
-                    count=1,
-                    status="ok",
-                    detail=detail,
-                )
-            )
-            label = title if title else f"queue id {target_qid}"
-            actions.append(
-                failed_import_cleanup_action_success(
-                    "Radarr",
-                    blocklist_applied=blocklist_mode == "requested",
-                    label=label,
-                )
-            )
+            if ok:
+                removed_queue_ids.add(target_qid)
+                eligible_from_history += 1
 
         queue_records = [
             q
             for q in queue_records
-            if not (
-                isinstance(q, dict)
-                and str(q.get("downloadId") or "").strip() == download_id
-            )
+            if not (isinstance(q, dict) and str(q.get("downloadId") or "").strip() == download_id)
         ]
 
+    # PASS 2: Queue-signal removals (no matching history pass above)
     for q in list(queue_records):
         if not isinstance(q, dict):
             continue
@@ -389,13 +510,23 @@ async def run_radarr_failed_import_queue_cleanup(
             )
             continue
         q_blob = _flatten_radarr_queue_user_messages(q)
-        q_signal = radarr_queue_terminal_cleanup_label(q_blob)
-        if not q_signal:
+        scenario_label = radarr_queue_scenario_label(q_blob)
+        if scenario_label is None:
             ineligible += 1
             logger.info(
                 "Radarr failed-import cleanup: ineligible queue id=%s (%s): no failed-import signal",
                 qid,
                 queue_item_label(q) or "unknown",
+            )
+            continue
+
+        scenario, q_signal = scenario_label
+        remove, blocklist = _radarr_policy_for_scenario(policy, scenario)
+        if not remove:
+            logger.info(
+                "Radarr failed-import cleanup: skip queue id=%s — scenario=%s remove=False",
+                qid,
+                scenario.value,
             )
             continue
 
@@ -406,74 +537,27 @@ async def run_radarr_failed_import_queue_cleanup(
             label or "unknown",
             q_signal,
         )
-        try:
-            await client.delete_queue_item(queue_id=qid, blocklist=True)
-            blocklist_mode = "requested"
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "Radarr failed-import cleanup: queue-signal delete failed for queue id=%s with blocklist=true: %s",
-                qid,
-                format_http_error_detail(exc),
-            )
-            try:
-                await client.delete_queue_item(queue_id=qid, blocklist=False)
-                blocklist_mode = "failed; removed queue without blocklist"
-            except Exception as exc2:  # noqa: BLE001
-                suffix = f" ({label})" if label else ""
-                actions.append(
-                    f"Radarr: Failed import removal failed{suffix}: {format_http_error_detail(exc2)}"
-                )
-                session.add(
-                    ActivityLog(
-                        job_run_id=job_run_id,
-                        app="radarr",
-                        kind="cleanup",
-                        status="failed",
-                        count=0,
-                        detail=f"Failed import removal failed: {label or 'item'} — {format_http_error_detail(exc2)}",
-                    )
-                )
-                logger.warning(
-                    "Radarr failed-import cleanup: queue-signal delete fallback failed for queue id=%s: %s",
-                    qid,
-                    format_http_error_detail(exc2),
-                )
-                continue
-
-        removed_queue_ids.add(qid)
-        eligible_from_queue += 1
-
-        detail = format_failed_import_cleanup_activity_detail(
-            "radarr",
-            blocklist_applied=blocklist_mode == "requested",
+        ok = await _delete_queue_item_for_scenario(
+            client,
+            queue_id=qid,
+            blocklist=blocklist,
+            scenario=scenario.value,
+            arr="Radarr",
+            actions=actions,
+            session=session,
+            job_run_id=job_run_id,
             title=label,
             reason="",
             queue_signal=q_signal,
         )
-        session.add(
-            ActivityLog(
-                job_run_id=job_run_id,
-                app="radarr",
-                kind="cleanup",
-                count=1,
-                status="ok",
-                detail=detail,
-            )
-        )
-        lab = label if label else f"queue id {qid}"
-        actions.append(
-            failed_import_cleanup_action_success(
-                "Radarr",
-                blocklist_applied=blocklist_mode == "requested",
-                label=lab,
-            )
-        )
-
-        queue_records = [
-            x
-            for x in queue_records
-            if not (isinstance(x, dict) and _queue_row_id(x) == qid)
-        ]
+        if ok:
+            removed_queue_ids.add(qid)
+            eligible_from_queue += 1
+            queue_records = [
+                x
+                for x in queue_records
+                if not (isinstance(x, dict) and _queue_row_id(x) == qid)
+            ]
 
     if ineligible > 0:
         logger.info(

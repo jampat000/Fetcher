@@ -80,7 +80,12 @@ def map_failed_import_disposition_to_refiner_class(
     """Bridge *arr failed-import disposition to Refiner-style operator classes."""
     if disp is FailedImportDisposition.PENDING_WAITING:
         return RefinerOutcomeClass.BLOCKED_WAITING
-    if disp is FailedImportDisposition.TERMINAL_CLEANUP:
+    if disp in (
+        FailedImportDisposition.CORRUPT,
+        FailedImportDisposition.DOWNLOAD_FAILED,
+        FailedImportDisposition.UNMATCHED,
+        FailedImportDisposition.QUALITY,
+    ):
         return RefinerOutcomeClass.MANUAL_ACTION
     return RefinerOutcomeClass.RETRYABLE
 

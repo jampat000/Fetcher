@@ -1,17 +1,70 @@
 {# Shared dashboard + activity list row. ``e``: primary_label, time_local, app, kind, count, detail_lines (list[str]). #}
-{% macro rfn_compare_stream_val(row, col) %}
-{% set pk = 'before' if col == 'before' else 'after' %}
-{% set fk = 'before_full' if col == 'before' else 'after_full' %}
-{% set preview = row[pk] %}
-{% set full = row[fk] if fk in row else none %}
-{% if row.label != 'File size' and full is not none and full != preview %}
-<details class="rfn-compare-val-details">
-  <summary class="rfn-compare-val-summary"><span class="rfn-compare-val-preview-text">{{ preview }}</span><span class="rfn-compare-val-toggle" aria-hidden="true"></span></summary>
-  <div class="rfn-compare-val-expanded">{{ full }}</div>
-</details>
-{% else %}
-{{ preview }}
-{% endif %}
+{# Refiner compare: row-level expand for Audio/Subtitles so before/after stay aligned (one <details> per stream row). #}
+{% macro rfn_compare_matrix_rows(_rows, premium) %}
+{% set pl_class = ' rfn-compare-line--premium' if premium else '' %}
+{% set ch_suffix = ' rfn-compare-col-head--premium' if premium else '' %}
+<div class="rfn-compare-inner{% if premium %} rfn-compare-inner--success{% endif %} rfn-compare-inner--matrix">
+  <div class="rfn-compare-matrix-h-before rfn-compare-col-head{{ ch_suffix }}">Before</div>
+  <div class="rfn-compare-matrix-h-corner" aria-hidden="true"></div>
+  <div class="rfn-compare-matrix-h-after rfn-compare-col-head{{ ch_suffix }}">After</div>
+  {% for row in _rows %}
+    {% set is_stream = row.label in ['Audio', 'Subtitles'] %}
+    {% set need_bf = 'before_full' in row and row.before_full and row.before_full != row.before %}
+    {% set need_af = 'after_full' in row and row.after_full and row.after_full != row.after %}
+    {% set can_expand = row.label != 'File size' and (need_bf or need_af) %}
+    {% if can_expand %}
+    <details class="rfn-compare-matrix-stream">
+      <summary class="rfn-compare-matrix-stream-summary">
+        <div class="rfn-compare-matrix-summary-main">
+          <div class="rfn-compare-line{{ pl_class }}{% if is_stream %} rfn-compare-line--stream{% endif %}">
+            <span class="rfn-compare-line-label">{{ row.label }}</span>
+            <span class="rfn-compare-line-val">{{ row.before }}</span>
+          </div>
+          <div class="rfn-compare-matrix-arrow" aria-hidden="true">
+            {% if premium %}<i data-lucide="arrow-right" class="rfn-compare-arrow-icon"></i>{% else %}<span class="rfn-compare-matrix-arrow-char">→</span>{% endif %}
+          </div>
+          <div class="rfn-compare-line{{ pl_class }}{% if is_stream %} rfn-compare-line--stream{% endif %}">
+            <span class="rfn-compare-line-label">{{ row.label }}</span>
+            <span class="rfn-compare-line-val rfn-compare-line-val--after">{{ row.after }}</span>
+          </div>
+        </div>
+        <div class="rfn-compare-matrix-toggle-line" aria-hidden="true"><span class="rfn-compare-matrix-toggle-hint"></span></div>
+      </summary>
+      <div class="rfn-compare-matrix-stream-body">
+        <div class="rfn-compare-matrix-body-main">
+          <div class="rfn-compare-line{{ pl_class }}{% if is_stream %} rfn-compare-line--stream{% endif %}">
+            <span class="rfn-compare-line-label">{{ row.label }}</span>
+            <span class="rfn-compare-line-val rfn-compare-matrix-full-val">{% if need_bf %}{{ row.before_full }}{% else %}{{ row.before }}{% endif %}</span>
+          </div>
+          <div class="rfn-compare-matrix-arrow" aria-hidden="true">
+            {% if premium %}<i data-lucide="arrow-right" class="rfn-compare-arrow-icon"></i>{% else %}<span class="rfn-compare-matrix-arrow-char">→</span>{% endif %}
+          </div>
+          <div class="rfn-compare-line{{ pl_class }}{% if is_stream %} rfn-compare-line--stream{% endif %}">
+            <span class="rfn-compare-line-label">{{ row.label }}</span>
+            <span class="rfn-compare-line-val rfn-compare-line-val--after rfn-compare-matrix-full-val">{% if need_af %}{{ row.after_full }}{% else %}{{ row.after }}{% endif %}</span>
+          </div>
+        </div>
+      </div>
+    </details>
+    {% else %}
+    <div class="rfn-compare-matrix-plain">
+      <div class="rfn-compare-matrix-plain-main">
+        <div class="rfn-compare-line{{ pl_class }}{% if is_stream %} rfn-compare-line--stream{% endif %}">
+          <span class="rfn-compare-line-label">{{ row.label }}</span>
+          <span class="rfn-compare-line-val">{{ row.before }}</span>
+        </div>
+        <div class="rfn-compare-matrix-arrow" aria-hidden="true">
+          {% if premium %}<i data-lucide="arrow-right" class="rfn-compare-arrow-icon"></i>{% else %}<span class="rfn-compare-matrix-arrow-char">→</span>{% endif %}
+        </div>
+        <div class="rfn-compare-line{{ pl_class }}{% if is_stream %} rfn-compare-line--stream{% endif %}">
+          <span class="rfn-compare-line-label">{{ row.label }}</span>
+          <span class="rfn-compare-line-val rfn-compare-line-val--after">{{ row.after }}</span>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  {% endfor %}
+</div>
 {% endmacro %}
 
 {% macro activity_row(e, preview_lines) %}
@@ -95,56 +148,14 @@
               </div>
               {% endif %}
               <div class="rfn-compare-card rfn-compare-card--success activity-refiner-compare" role="group" aria-label="Before and after">
-                <div class="rfn-compare-inner rfn-compare-inner--success">
-                  <div class="rfn-compare-col rfn-compare-col--success-before">
-                    <div class="rfn-compare-col-head rfn-compare-col-head--premium">Before</div>
-                    {% for row in _rows %}
-                    <div class="rfn-compare-line rfn-compare-line--premium{% if row.label in ['Audio', 'Subtitles'] %} rfn-compare-line--stream{% endif %}">
-                      <span class="rfn-compare-line-label">{{ row.label }}</span>
-                      <span class="rfn-compare-line-val">{{ rfn_compare_stream_val(row, 'before') }}</span>
-                    </div>
-                    {% endfor %}
-                  </div>
-                  <div class="rfn-compare-arrow-col" aria-hidden="true">
-                    <i data-lucide="arrow-right" class="rfn-compare-arrow-icon"></i>
-                  </div>
-                  <div class="rfn-compare-col rfn-compare-col--success-after">
-                    <div class="rfn-compare-col-head rfn-compare-col-head--premium">After</div>
-                    {% for row in _rows %}
-                    <div class="rfn-compare-line rfn-compare-line--premium{% if row.label in ['Audio', 'Subtitles'] %} rfn-compare-line--stream{% endif %}">
-                      <span class="rfn-compare-line-label">{{ row.label }}</span>
-                      <span class="rfn-compare-line-val rfn-compare-line-val--after">{{ rfn_compare_stream_val(row, 'after') }}</span>
-                    </div>
-                    {% endfor %}
-                  </div>
-                </div>
+                {{ rfn_compare_matrix_rows(_rows, true) }}
               </div>
             </div>
             {% else %}
             <details class="activity-refiner-compare-details">
               <summary class="activity-refiner-compare-summary">Before / after detail</summary>
               <div class="rfn-compare-card rfn-compare-card--in-details" role="group" aria-label="Before and after">
-                <div class="rfn-compare-inner">
-                  <div class="rfn-compare-col rfn-compare-col--before">
-                    <div class="rfn-compare-col-head">Before</div>
-                    {% for row in _rows %}
-                    <div class="rfn-compare-line{% if row.label in ['Audio', 'Subtitles'] %} rfn-compare-line--stream{% endif %}">
-                      <span class="rfn-compare-line-label">{{ row.label }}</span>
-                      <span class="rfn-compare-line-val">{{ rfn_compare_stream_val(row, 'before') }}</span>
-                    </div>
-                    {% endfor %}
-                  </div>
-                  <div class="rfn-compare-arrow" aria-hidden="true">→</div>
-                  <div class="rfn-compare-col rfn-compare-col--after">
-                    <div class="rfn-compare-col-head">After</div>
-                    {% for row in _rows %}
-                    <div class="rfn-compare-line{% if row.label in ['Audio', 'Subtitles'] %} rfn-compare-line--stream{% endif %}">
-                      <span class="rfn-compare-line-label">{{ row.label }}</span>
-                      <span class="rfn-compare-line-val rfn-compare-line-val--after">{{ rfn_compare_stream_val(row, 'after') }}</span>
-                    </div>
-                    {% endfor %}
-                  </div>
-                </div>
+                {{ rfn_compare_matrix_rows(_rows, false) }}
               </div>
             </details>
             {% endif %}

@@ -9,35 +9,62 @@
   </div>
 
   <div class="card gc">
-    <div class="gc-title">Logs</div>
+    <div class="gc-title">Run history</div>
     <div class="hint">Recent service runs and outcomes.</div>
+    <div class="activity-filters log-filters" role="tablist"
+         aria-label="Filter by service" style="margin-bottom: 10px;">
+      <a href="/logs" class="pill{% if log_tab == 'all' %} active{% endif %}"
+         role="tab">All</a>
+      <a href="/logs?app=sonarr"
+         class="pill{% if log_tab == 'sonarr' %} active{% endif %}"
+         role="tab">Sonarr</a>
+      <a href="/logs?app=radarr"
+         class="pill{% if log_tab == 'radarr' %} active{% endif %}"
+         role="tab">Radarr</a>
+      <a href="/logs?app=refiner"
+         class="pill{% if log_tab == 'refiner' %} active{% endif %}"
+         role="tab">Refiner</a>
+      <a href="/logs?app=trimmer"
+         class="pill{% if log_tab == 'trimmer' %} active{% endif %}"
+         role="tab">Trimmer</a>
+    </div>
     {% if logs %}
     <div class="log-list" role="list" id="logs-live-root">
       {% for r in logs %}
       <div class="log-entry" role="listitem">
         <span class="log-time muted">{{ r.started_local }}</span>
-        <span class="log-dot {% if r.ok %}l-ok{% else %}l-fail{% endif %}" aria-hidden="true"></span>
+        <span class="log-dot {% if r.ok %}l-ok{% else %}l-fail{% endif %}"
+              aria-hidden="true"></span>
         <span class="log-msg">{{ r.message }}</span>
       </div>
       {% endfor %}
     </div>
     {% else %}
-    <p class="small muted" id="logs-live-root">No runs yet. It will populate after scheduled cycles.</p>
-    {% endif %}
-    {% if log_files %}
-    <div style="margin-top: 1.5rem;">
-      <div class="gc-title" style="margin-bottom: 0.5rem;">Log files</div>
-      <div class="hint" style="margin-bottom: 0.75rem;">
-        Raw rotating log files from this machine.
+    <div class="empty-state" id="logs-live-root">
+      <div class="empty-state-icon">
+        <i data-lucide="scroll-text"></i>
       </div>
+      <p class="empty-state-title">No runs yet</p>
+      <p class="empty-state-sub">Service run history will appear here
+        after the first scheduled cycle.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if log_files %}
+  <div class="card gc">
+    <div class="gc-title">Log files</div>
+    <div class="hint">Raw rotating log files from this machine.</div>
+    <div class="log-files-list">
       {% for fname in log_files %}
-      <div style="margin-bottom: 0.25rem;">
-        <a class="ink-link" href="/logs/file?name={{ fname | urlencode }}"
+      <div class="log-file-item">
+        <a class="ink-link log-file-link"
+           href="/logs/file?name={{ fname | urlencode }}"
            target="_blank" rel="noopener">{{ fname }}</a>
       </div>
       {% endfor %}
     </div>
-    {% endif %}
   </div>
+  {% endif %}
 </div>
 {% endblock %}
