@@ -40,6 +40,8 @@ _FAILURE_NEEDLE_PERMANENT: tuple[tuple[str, RefinerOutcomeClass], ...] = (
 )
 
 _FAILURE_NEEDLE_MANUAL: tuple[tuple[str, RefinerOutcomeClass], ...] = (
+    ("external subtitle preservation blocked", RefinerOutcomeClass.MANUAL_ACTION),
+    ("source folder removal failed after successful file cleanup", RefinerOutcomeClass.MANUAL_ACTION),
     ("output file already exists", RefinerOutcomeClass.MANUAL_ACTION),
     ("output path is a directory", RefinerOutcomeClass.MANUAL_ACTION),
     ("output path points to a folder", RefinerOutcomeClass.MANUAL_ACTION),
@@ -112,6 +114,8 @@ def classify_from_reason_code(reason_code: str | None) -> RefinerOutcomeClass | 
         return RefinerOutcomeClass.BLOCKED_WAITING
     if rc == "radarr_wrong_content":
         return RefinerOutcomeClass.PERMANENT_FAILURE
+    if rc in {"source_cleanup_failed", "source_folder_removal_failed"}:
+        return RefinerOutcomeClass.MANUAL_ACTION
     return None
 
 

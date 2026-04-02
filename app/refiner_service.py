@@ -67,6 +67,43 @@ logger = logging.getLogger(__name__)
 _refiner_lock = asyncio.Lock()
 
 
+async def _should_suppress_duplicate_waiting_activity_log(
+    session: AsyncSession,
+    *,
+    trigger: str,
+    detail: str,
+    status: str,
+    ok_c: int,
+    dry_c: int,
+    wait_c: int,
+    cleanup_c: int,
+    err_c: int,
+) -> bool:
+    """Suppress consecutive identical scheduled waiting-only batch ActivityLog rows."""
+    if trigger != "scheduled":
+        return False
+    if not (wait_c > 0 and ok_c == 0 and dry_c == 0 and cleanup_c == 0 and err_c == 0):
+        return False
+    try:
+        prev = (
+            (
+                await session.execute(
+                    select(ActivityLog)
+                    .where(ActivityLog.kind == "refiner")
+                    .order_by(ActivityLog.id.desc())
+                    .limit(1)
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if prev is None:
+            return False
+        return (prev.status or "") == status and (prev.detail or "") == detail
+    except Exception:
+        return False
+
+
 async def _movie_wrong_content_ctx_for_candidate(
     fp: Path, row: AppSettings, snap: RefinerQueueSnapshot
 ) -> dict[str, Any] | None:
@@ -261,9 +298,10 @@ async def run_refiner_pass(
             await session.commit()
             return {"ok": False, "ran": False, "error": "output_folder_invalid"}
         files = _gather_watched_files(watched_root)
+        dry = bool(row.refiner_dry_run)
         await _reconcile_interrupted_refiner_processing_rows_before_pass()
         # Clean orphaned temp files from prior crashed/failed remux passes
-        if work_dir.is_dir():
+        if not dry and work_dir.is_dir():
             import time as _time_mod
             _stale_cutoff = _time_mod.time() - REFINER_FFMPEG_TIMEOUT_S
             try:
@@ -277,6 +315,8 @@ async def run_refiner_pass(
                             logger.warning("Refiner: could not remove stale work file %s (%s)", _wf.name, _we)
             except OSError:
                 pass
+        elif dry and work_dir.is_dir():
+            logger.info("Refiner: dry-run — skipping stale work-file cleanup in %s", work_dir)
         if not files:
             logger.info("Refiner: watched folder has no supported media files — nothing to do.")
             session.add(
@@ -293,11 +333,12 @@ async def run_refiner_pass(
         row.refiner_current_pass_total = len(files)
         row.refiner_current_pass_done = 0
         await session.commit()
-        dry = bool(row.refiner_dry_run)
-        ok_c = dry_c = err_c = wait_c = 0
+        ok_c = dry_c = err_c = wait_c = cleanup_c = 0
         noop_c = 0  # log field unchanged=0 (no in-place “skipped” live passes without pipeline finalize)
         failure_notes: list[str] = []
         waiting_notes: list[str] = []
+        waiting_reason_codes: list[str] = []
+        cleanup_notes: list[str] = []
         for fp in files:
             t_job = time.perf_counter()
             snap_pre = await fetch_refiner_queue_snapshot(row)
@@ -314,6 +355,7 @@ async def run_refiner_pass(
                 if rc0 in _UPSTREAM_WAIT_REASON_CODES:
                     wait_c += 1
                     waiting_notes.append(line0)
+                    waiting_reason_codes.append(rc0)
                 else:
                     err_c += 1
                     failure_notes.append(line0)
@@ -441,6 +483,12 @@ async def run_refiner_pass(
                 ok_c += 1
             elif status == "dry_run":
                 dry_c += 1
+            elif status == "cleanup_needed":
+                hint = (meta or {}).get("failure_hint") or "Post-finalize cleanup did not fully complete."
+                rc_note = str((meta or {}).get("_refiner_reason_code") or "").strip().lower()
+                line_c = format_per_file_job_log_line(fp.name, str(hint), reason_code=rc_note)
+                cleanup_c += 1
+                cleanup_notes.append(line_c)
             else:
                 hint = (meta or {}).get("failure_hint") or "Processing failed."
                 rc_note = str((meta or {}).get("_refiner_reason_code") or "").strip().lower()
@@ -448,6 +496,7 @@ async def run_refiner_pass(
                 if rc_note in _UPSTREAM_WAIT_REASON_CODES:
                     wait_c += 1
                     waiting_notes.append(line_e)
+                    waiting_reason_codes.append(rc_note)
                 else:
                     err_c += 1
                     failure_notes.append(line_e)
@@ -462,35 +511,57 @@ async def run_refiner_pass(
         row.updated_at = utc_now_naive()
         detail = (
             f"Refiner ({trigger}): processed={ok_c} unchanged={noop_c} "
-            f"dry_run_items={dry_c} waiting={wait_c} errors={err_c}"
+            f"dry_run_items={dry_c} waiting={wait_c} cleanup_needed={cleanup_c} errors={err_c}"
         )
+        if wait_c > 0:
+            reason_bits = ",".join(sorted(set(rc for rc in waiting_reason_codes if rc)))
+            if reason_bits:
+                detail = f"{detail} wait_reasons={reason_bits}"
         job_lines = [detail]
         if waiting_notes:
             job_lines.append("Per-file upstream waits:")
             for note in waiting_notes[:25]:
                 job_lines.append(f"  · {note.replace(chr(10), ' — ')}")
+        if cleanup_notes:
+            job_lines.append("Per-file cleanup needed:")
+            for note in cleanup_notes[:25]:
+                job_lines.append(f"  · {note.replace(chr(10), ' — ')}")
         if failure_notes:
             job_lines.append("Per-file failures:")
             for note in failure_notes[:25]:
                 job_lines.append(f"  · {note.replace(chr(10), ' — ')}")
+        job_message = _refiner_job_log_text("\n".join(job_lines))
         session.add(
             JobRunLog(
                 started_at=t_start,
                 finished_at=utc_now_naive(),
-                ok=(err_c == 0),
-                message=_refiner_job_log_text("\n".join(job_lines)),
+                ok=(err_c == 0 and cleanup_c == 0),
+                message=job_message,
                 app="refiner",
             )
         )
-        session.add(
-            ActivityLog(
-                app="refiner",
-                kind="refiner",
-                status="failed" if err_c > 0 else "ok",
-                count=ok_c,
-                detail=detail,
-            )
+        agg_status = "failed" if (err_c > 0 or cleanup_c > 0) else "ok"
+        suppress_waiting_log = await _should_suppress_duplicate_waiting_activity_log(
+            session,
+            trigger=trigger,
+            detail=detail,
+            status=agg_status,
+            ok_c=ok_c,
+            dry_c=dry_c,
+            wait_c=wait_c,
+            cleanup_c=cleanup_c,
+            err_c=err_c,
         )
+        if not suppress_waiting_log:
+            session.add(
+                ActivityLog(
+                    app="refiner",
+                    kind="refiner",
+                    status=agg_status,
+                    count=ok_c,
+                    detail=detail,
+                )
+            )
         await session.commit()
         try:
             from app.scheduler import notify_dashboard_changed
@@ -499,11 +570,12 @@ async def run_refiner_pass(
         except Exception:
             pass
         return {
-            "ok": err_c == 0,
+            "ok": (err_c == 0 and cleanup_c == 0),
             "ran": True,
             "remuxed": ok_c,
             "unchanged": noop_c,
             "dry_run_items": dry_c,
             "waiting": wait_c,
+            "cleanup_needed": cleanup_c,
             "errors": err_c,
         }

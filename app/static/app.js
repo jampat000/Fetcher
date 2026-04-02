@@ -682,27 +682,34 @@ function applyDashboardAutomationStatus(data) {
     connStat.textContent = String(data.trimmer_connection_status);
   }
 
-  function setNextTick(tickId, relId, localVal, relVal) {
+  function setNextTick(tickId, relId, localVal, relVal, displayObj) {
     const tick = document.getElementById(tickId);
     const rel = relId ? document.getElementById(relId) : null;
+    const block = tick ? tick.closest(".automation-next-run-block") : null;
+    if (displayObj && typeof displayObj === "object" && tick && rel) {
+      tick.textContent = String(displayObj.primary || "");
+      rel.textContent = String(displayObj.secondary || "");
+      if (block) block.setAttribute("data-next-run-state", String(displayObj.state || ""));
+      return;
+    }
     if (tick) {
       if (localVal) tick.textContent = localVal;
-      else tick.innerHTML = '<span class="muted automation-value-pending">Scheduled</span>';
+      else tick.textContent = "Always on";
     }
     if (rel) {
       if (relVal) {
-        rel.textContent = `(${relVal})`;
-        rel.hidden = false;
+        rel.textContent = String(relVal);
       } else {
-        rel.textContent = "";
-        rel.hidden = true;
+        rel.textContent = "No schedule configured";
       }
     }
+    if (block) block.setAttribute("data-next-run-state", "enabled_unscheduled");
   }
 
-  setNextTick("dash-next-sonarr-tick", "dash-next-sonarr-rel", data.next_sonarr_tick_local, data.next_sonarr_relative);
-  setNextTick("dash-next-radarr-tick", "dash-next-radarr-rel", data.next_radarr_tick_local, data.next_radarr_relative);
-  setNextTick("dash-next-trimmer-tick", "dash-next-trimmer-rel", data.next_trimmer_tick_local, data.next_trimmer_relative);
+  setNextTick("dash-next-sonarr-tick", "dash-next-sonarr-rel", data.next_sonarr_tick_local, data.next_sonarr_relative, data.next_sonarr_display);
+  setNextTick("dash-next-radarr-tick", "dash-next-radarr-rel", data.next_radarr_tick_local, data.next_radarr_relative, data.next_radarr_display);
+  setNextTick("dash-next-refiner-tick", "dash-next-refiner-rel", data.next_refiner_tick_local, data.next_refiner_relative, data.next_refiner_display);
+  setNextTick("dash-next-trimmer-tick", "dash-next-trimmer-rel", data.next_trimmer_tick_local, data.next_trimmer_relative, data.next_trimmer_display);
 
   const lastSonarr = document.getElementById("dash-last-sonarr-run");
   if (lastSonarr) {

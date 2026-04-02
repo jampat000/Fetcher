@@ -64,6 +64,7 @@ def test_dry_run_no_file_changes(monkeypatch: pytest.MonkeyPatch, tmp_path) -> N
             row.refiner_enabled = True
             row.refiner_dry_run = True
             row.refiner_primary_audio_lang = "eng"
+            row.sonarr_enabled = True
             row.refiner_watched_folder = str(watched)
             row.refiner_output_folder = str(output)
             await session.commit()
@@ -175,7 +176,10 @@ def test_live_no_remux_leaves_folder_when_other_files_remain(
         sub.mkdir(parents=True)
         f = sub / "one.mkv"
         f.write_bytes(b"x")
+        nested = sub / "nested"
+        nested.mkdir()
         (sub / "keep.txt").write_text("hold", encoding="utf-8")
+        (nested / "keep2.txt").write_text("hold2", encoding="utf-8")
         output.mkdir()
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
@@ -188,8 +192,7 @@ def test_live_no_remux_leaves_folder_when_other_files_remain(
             await run_refiner_pass(session, trigger="scheduled")
         assert not f.exists()
         assert (output / "sub" / "one.mkv").exists()
-        assert sub.is_dir()
-        assert (sub / "keep.txt").exists()
+        assert not sub.exists()
 
     asyncio.run(_go())
 
@@ -230,6 +233,78 @@ def test_try_remove_empty_skips_watch_root(tmp_path: Path) -> None:
         _try_remove_empty_watch_subfolder(source_parent=watched, watched_root=watched)
         == "skipped_watch_root"
     )
+
+
+def test_live_no_remux_source_folder_tree_removed_with_nested_dirs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_single_eng())
+    monkeypatch.setattr("app.refiner_pipeline.is_remux_required", lambda *_a, **_k: False)
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        sub = watched / "sub"
+        nested = sub / "nested" / "deep"
+        nested.mkdir(parents=True)
+        f = sub / "movie.mkv"
+        f.write_bytes(b"x")
+        (nested / "junk.txt").write_text("junk", encoding="utf-8")
+        output.mkdir()
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = False
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            r = await run_refiner_pass(session, trigger="scheduled")
+        assert r.get("errors") == 0
+        assert (output / "sub" / "movie.mkv").exists()
+        assert not sub.exists()
+        assert watched.exists()
+
+    asyncio.run(_go())
+
+
+def test_live_remux_source_folder_tree_removed_with_nested_dirs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    def _fake_remux(*, src, work_dir, plan):  # noqa: ANN001
+        work_dir.mkdir(parents=True, exist_ok=True)
+        out = work_dir / f"{src.stem}.tmp{src.suffix}"
+        out.write_bytes(b"remuxed")
+        return out
+
+    monkeypatch.setattr("app.refiner_pipeline.remux_to_temp_file", _fake_remux)
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        sub = watched / "sub"
+        nested = sub / "child"
+        nested.mkdir(parents=True)
+        f = sub / "m.mkv"
+        f.write_bytes(b"src")
+        (nested / "x.jpg").write_bytes(b"img")
+        output.mkdir()
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = False
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            r = await run_refiner_pass(session, trigger="scheduled")
+        assert r.get("remuxed") == 1
+        assert (output / "sub" / "m.mkv").exists()
+        assert not sub.exists()
+        assert watched.exists()
+
+    asyncio.run(_go())
 
 
 def test_source_preserved_on_failure(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
@@ -922,8 +997,19 @@ def test_refiner_waiting_upstream_repeat_dedupes_same_candidate_reason(
             row.refiner_enabled = True
             row.refiner_dry_run = True
             row.refiner_primary_audio_lang = "eng"
+            row.sonarr_enabled = True
             row.refiner_watched_folder = str(watched)
             row.refiner_output_folder = str(output)
+            await session.commit()
+            session.add(
+                ActivityLog(
+                    app="refiner",
+                    kind="refiner",
+                    status="ok",
+                    count=0,
+                    detail="Refiner (scheduled): processed=0 unchanged=0 dry_run_items=0 waiting=0 cleanup_needed=0 errors=0",
+                )
+            )
             await session.commit()
             await run_refiner_pass(session, trigger="scheduled")
             await run_refiner_pass(session, trigger="scheduled")
@@ -976,6 +1062,26 @@ def test_refiner_scheduled_pass_waiting_only_no_failed_aggregate(
         output.mkdir()
         (watched / "Hold.2024.1080p.mkv").write_bytes(b"x" * 500)
         async with SessionLocal() as session:
+            base_id = int(
+                (
+                    (
+                        await session.execute(
+                            select(ActivityLog.id).order_by(ActivityLog.id.desc()).limit(1)
+                        )
+                    ).scalar()
+                )
+                or 0
+            )
+            session.add(
+                ActivityLog(
+                    app="refiner",
+                    kind="refiner",
+                    status="ok",
+                    count=0,
+                    detail="Refiner (scheduled): processed=0 unchanged=0 dry_run_items=0 waiting=0 cleanup_needed=0 errors=0",
+                )
+            )
+            await session.commit()
             row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = True
@@ -1141,5 +1247,926 @@ def test_refiner_final_gate_wait_dedupes_across_passes_not_only_persist_path(
             ctx = parse_activity_context(rows[0].activity_context)
             assert ctx.get("reason_code") == "radarr_queue_active_download_title"
             assert int(ctx.get("wait_repeat_count") or 0) >= 2
+
+    asyncio.run(_go())
+
+
+def test_refiner_scheduled_waiting_only_duplicate_batch_activity_suppressed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_fetch(_row):  # noqa: ANN001
+        return RefinerQueueSnapshot(
+            True,
+            False,
+            True,
+            False,
+            (
+                {
+                    "status": "paused",
+                    "sizeleft": 8_000_000,
+                    "title": "Hold.2024.1080p",
+                },
+            ),
+            (),
+        )
+
+    monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", fake_fetch)
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        (watched / "Hold.2024.1080p.mkv").write_bytes(b"x" * 500)
+        async with SessionLocal() as session:
+            base_id = int(
+                (
+                    (
+                        await session.execute(
+                            select(ActivityLog.id).order_by(ActivityLog.id.desc()).limit(1)
+                        )
+                    ).scalar()
+                )
+                or 0
+            )
+            session.add(
+                ActivityLog(
+                    app="refiner",
+                    kind="refiner",
+                    status="ok",
+                    count=0,
+                    detail="Refiner (scheduled): processed=0 unchanged=0 dry_run_items=0 waiting=0 cleanup_needed=0 errors=0",
+                )
+            )
+            await session.commit()
+            row = await get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = True
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            await run_refiner_pass(session, trigger="scheduled")
+            await run_refiner_pass(session, trigger="scheduled")
+            logs = (
+                (
+                    await session.execute(
+                        select(ActivityLog)
+                        .where(ActivityLog.kind == "refiner")
+                        .where(ActivityLog.id > base_id)
+                        .order_by(ActivityLog.id.asc())
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            waiting_only = [
+                l
+                for l in logs
+                if "waiting=1" in str(l.detail or "") and "errors=0" in str(l.detail or "")
+            ]
+            assert len(waiting_only) == 1
+
+    asyncio.run(_go())
+
+
+def test_refiner_scheduled_waiting_reason_change_creates_new_batch_activity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    phase = {"n": 0}
+
+    async def fake_fetch(_row):  # noqa: ANN001
+        phase["n"] += 1
+        if phase["n"] % 2 == 1:
+            return RefinerQueueSnapshot(
+                True,
+                False,
+                True,
+                False,
+                (
+                    {
+                        "status": "paused",
+                        "sizeleft": 8_000_000,
+                        "title": "HoldA.2024.1080p",
+                    },
+                ),
+                (),
+            )
+        return RefinerQueueSnapshot(
+            True,
+            False,
+            True,
+            False,
+            (
+                {
+                    "status": "paused",
+                    "sizeleft": 8_000_000,
+                    "title": "HoldA.2024.1080p",
+                    "outputPath": str(tmp_path / "watched" / "HoldA.2024.1080p.mkv"),
+                },
+            ),
+            (),
+        )
+
+    monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", fake_fetch)
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        (watched / "HoldA.2024.1080p.mkv").write_bytes(b"x" * 500)
+        async with SessionLocal() as session:
+            base_id = int(
+                (
+                    (
+                        await session.execute(
+                            select(ActivityLog.id).order_by(ActivityLog.id.desc()).limit(1)
+                        )
+                    ).scalar()
+                )
+                or 0
+            )
+            session.add(
+                ActivityLog(
+                    app="refiner",
+                    kind="refiner",
+                    status="ok",
+                    count=0,
+                    detail="Refiner (scheduled): processed=0 unchanged=0 dry_run_items=0 waiting=0 cleanup_needed=0 errors=0",
+                )
+            )
+            await session.commit()
+            row = await get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = True
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            await run_refiner_pass(session, trigger="scheduled")
+            await run_refiner_pass(session, trigger="scheduled")
+            logs = (
+                (
+                    await session.execute(
+                        select(ActivityLog)
+                        .where(ActivityLog.kind == "refiner")
+                        .where(ActivityLog.id > base_id)
+                        .order_by(ActivityLog.id.asc())
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            waiting_only = [
+                l
+                for l in logs
+                if "waiting=1" in str(l.detail or "") and "errors=0" in str(l.detail or "")
+            ]
+            assert len(waiting_only) == 2
+
+    asyncio.run(_go())
+
+
+def test_refiner_scheduled_waiting_reentry_after_transition_creates_new_batch_activity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def wait_fetch(_row):  # noqa: ANN001
+        return RefinerQueueSnapshot(
+            True,
+            False,
+            True,
+            False,
+            (
+                {
+                    "status": "paused",
+                    "sizeleft": 8_000_000,
+                    "title": "Reenter.2024.1080p",
+                },
+            ),
+            (),
+        )
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        (watched / "Reenter.2024.1080p.mkv").write_bytes(b"x" * 500)
+        async with SessionLocal() as session:
+            base_id = int(
+                (
+                    (
+                        await session.execute(
+                            select(ActivityLog.id).order_by(ActivityLog.id.desc()).limit(1)
+                        )
+                    ).scalar()
+                )
+                or 0
+            )
+            row = await get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = True
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            session.add(
+                ActivityLog(
+                    app="refiner",
+                    kind="refiner",
+                    status="ok",
+                    count=0,
+                    detail="Refiner (scheduled): processed=0 unchanged=0 dry_run_items=0 waiting=0 cleanup_needed=0 errors=0",
+                )
+            )
+            await session.commit()
+            monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", wait_fetch)
+            await run_refiner_pass(session, trigger="scheduled")
+            session.add(
+                ActivityLog(
+                    app="refiner",
+                    kind="refiner",
+                    status="ok",
+                    count=0,
+                    detail="Refiner (scheduled): processed=0 unchanged=0 dry_run_items=1 waiting=0 cleanup_needed=0 errors=0",
+                )
+            )
+            await session.commit()
+            monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", wait_fetch)
+            await run_refiner_pass(session, trigger="scheduled")
+            logs = (
+                (
+                    await session.execute(
+                        select(ActivityLog)
+                        .where(ActivityLog.kind == "refiner")
+                        .where(ActivityLog.id > base_id)
+                        .order_by(ActivityLog.id.asc())
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            waiting_only = [
+                l
+                for l in logs
+                if "waiting=1" in str(l.detail or "") and "errors=0" in str(l.detail or "")
+            ]
+            assert len(waiting_only) == 2
+
+    asyncio.run(_go())
+
+
+def test_wrong_content_stop_leaves_watched_item_untouched_end_to_end(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_single_eng())
+
+    async def fake_fetch(_row):  # noqa: ANN001
+        return RefinerQueueSnapshot(True, False, True, False, (), ())
+
+    async def fake_wc_ctx(_fp, _row, _snap):  # noqa: ANN001
+        return {
+            "enabled": True,
+            "movie_id": 123,
+            "queue_id": 456,
+            "target_title": "Target Movie",
+            "target_year": 2024,
+            "expected_runtime_minutes": 130.0,
+        }
+
+    class _WC:
+        wrong_content = True
+        triggered_reason = "runtime mismatch"
+        score = 99
+        hard_trigger = True
+        probed_runtime_minutes = 20.0
+        expected_runtime_minutes = 130.0
+        runtime_ratio = 0.15
+        token_overlap_summary = "tokens mismatch"
+
+    monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", fake_fetch)
+    monkeypatch.setattr("app.refiner_service._movie_wrong_content_ctx_for_candidate", fake_wc_ctx)
+    monkeypatch.setattr("app.refiner_pipeline.evaluate_movie_wrong_content", lambda *_a, **_k: _WC())
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        job = watched / "JobFolder"
+        job.mkdir()
+        media = job / "movie.mkv"
+        media.write_bytes(b"x")
+        leftover = job / "leftover.txt"
+        leftover.write_text("keep", encoding="utf-8")
+        sibling = watched / "SiblingFolder"
+        sibling.mkdir()
+        sibling_file = sibling / "sibling.txt"
+        sibling_file.write_text("stay", encoding="utf-8")
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = False
+            row.refiner_primary_audio_lang = "eng"
+            row.radarr_enabled = True
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            r = await run_refiner_pass(session, trigger="scheduled")
+            act = (
+                (
+                    await session.execute(
+                        select(RefinerActivity)
+                        .where(RefinerActivity.file_name == "movie.mkv")
+                        .order_by(RefinerActivity.id.desc())
+                        .limit(1)
+                    )
+                )
+                .scalars()
+                .first()
+            )
+        assert r.get("ok") is False
+        assert r.get("errors") == 1
+        assert not (output / "JobFolder" / "movie.mkv").exists()
+        assert media.exists()
+        assert leftover.exists()
+        assert job.exists()
+        assert sibling_file.read_text(encoding="utf-8") == "stay"
+        assert act is not None
+        ctx = parse_activity_context(act.activity_context)
+        assert ctx.get("reason_code") == "radarr_wrong_content"
+
+    asyncio.run(_go())
+
+
+def test_live_no_remux_keep_selected_preserves_external_srt_next_to_output(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_single_eng())
+    monkeypatch.setattr("app.refiner_pipeline.is_remux_required", lambda *_a, **_k: False)
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        sub = watched / "sub"
+        sub.mkdir(parents=True)
+        f = sub / "clean.file.name.1080p.mkv"
+        f.write_bytes(b"payload")
+        (sub / "clean.file.name.1080p.en.srt").write_text("subtext", encoding="utf-8")
+        (sub / "clean.file.name.1080p.forced.vtt").write_text("WEBVTT\n", encoding="utf-8")
+        output.mkdir()
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = False
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_subtitle_mode = "keep_selected"
+            row.refiner_subtitle_langs_csv = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            r = await run_refiner_pass(session, trigger="scheduled")
+        assert r.get("errors") == 0
+        assert (output / "sub" / "clean.file.name.1080p.mkv").read_bytes() == b"payload"
+        assert (output / "sub" / "clean.file.name.1080p.en.srt").read_text(encoding="utf-8") == "subtext"
+        assert (output / "sub" / "clean.file.name.1080p.forced.vtt").read_text(encoding="utf-8") == "WEBVTT\n"
+        assert not (sub / "clean.file.name.1080p.en.srt").exists()
+        assert not (sub / "clean.file.name.1080p.forced.vtt").exists()
+        async with SessionLocal() as session:
+            row = (
+                (
+                    await session.execute(
+                        select(RefinerActivity)
+                        .where(RefinerActivity.file_name == "clean.file.name.1080p.mkv")
+                        .order_by(RefinerActivity.id.desc())
+                        .limit(1)
+                    )
+                )
+                .scalars()
+                .first()
+            )
+            assert row is not None
+            ctx = parse_activity_context(row.activity_context)
+            assert ctx.get("subtitle_sidecars_preserved") == [
+                "clean.file.name.1080p.en.srt",
+                "clean.file.name.1080p.forced.vtt",
+            ]
+
+    asyncio.run(_go())
+
+
+def test_live_no_remux_subtitle_target_collision_fails_without_finalize(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_single_eng())
+    monkeypatch.setattr("app.refiner_pipeline.is_remux_required", lambda *_a, **_k: False)
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        f = watched / "only.mkv"
+        f.write_bytes(b"data")
+        (watched / "only.en.srt").write_text("s", encoding="utf-8")
+        (output / "only.en.srt").write_text("exists", encoding="utf-8")
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = False
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_subtitle_mode = "keep_selected"
+            row.refiner_subtitle_langs_csv = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            r = await run_refiner_pass(session, trigger="scheduled")
+        assert r.get("errors") == 1
+        assert not (output / "only.mkv").exists()
+        assert f.exists()
+
+    asyncio.run(_go())
+
+
+def test_live_no_remux_finalize_failure_rolls_back_preserved_sidecars(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_single_eng())
+    monkeypatch.setattr("app.refiner_pipeline.is_remux_required", lambda *_a, **_k: False)
+
+    def _finalize_boom(_src: Path, _dst: Path) -> None:
+        raise RuntimeError("finalize exploded")
+
+    monkeypatch.setattr("app.refiner_pipeline._finalize_output_file", _finalize_boom)
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        f = watched / "only.mkv"
+        f.write_bytes(b"data")
+        (watched / "only.en.srt").write_text("s", encoding="utf-8")
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = False
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_subtitle_mode = "keep_selected"
+            row.refiner_subtitle_langs_csv = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            r = await run_refiner_pass(session, trigger="scheduled")
+        assert r.get("errors") == 1
+        assert not (output / "only.mkv").exists()
+        assert not (output / "only.en.srt").exists()
+        assert f.exists()
+
+    asyncio.run(_go())
+
+
+def test_live_no_remux_remove_all_does_not_copy_external_srt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_single_eng())
+    monkeypatch.setattr("app.refiner_pipeline.is_remux_required", lambda *_a, **_k: False)
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        sub = watched / "sub"
+        sub.mkdir(parents=True)
+        f = sub / "a.mkv"
+        f.write_bytes(b"x")
+        (sub / "a.en.srt").write_text("s", encoding="utf-8")
+        output.mkdir()
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = False
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_subtitle_mode = "remove_all"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            await run_refiner_pass(session, trigger="scheduled")
+        assert (output / "sub" / "a.mkv").exists()
+        assert not (output / "sub" / "a.en.srt").exists()
+        assert not (sub / "a.en.srt").exists()
+
+    asyncio.run(_go())
+
+
+def test_live_remux_keep_selected_preserves_external_srt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    def _fake_remux(*, src, work_dir, plan):  # noqa: ANN001
+        work_dir.mkdir(parents=True, exist_ok=True)
+        out = work_dir / f"{src.stem}.tmp{src.suffix}"
+        out.write_bytes(b"remuxed")
+        return out
+
+    monkeypatch.setattr("app.refiner_pipeline.remux_to_temp_file", _fake_remux)
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        f = watched / "m.mkv"
+        f.write_bytes(b"src")
+        (watched / "m.en.srt").write_text("side", encoding="utf-8")
+        sibling = tmp_path / "sibling"
+        sibling.mkdir()
+        (sibling / "unrelated.other.srt").write_text("leave", encoding="utf-8")
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = False
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_subtitle_mode = "keep_selected"
+            row.refiner_subtitle_langs_csv = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            r = await run_refiner_pass(session, trigger="scheduled")
+        assert r.get("remuxed") == 1
+        assert (output / "m.mkv").read_bytes() == b"remuxed"
+        assert (output / "m.en.srt").read_text(encoding="utf-8") == "side"
+        assert not (output / "unrelated.other.srt").exists()
+        assert (sibling / "unrelated.other.srt").read_text(encoding="utf-8") == "leave"
+
+    asyncio.run(_go())
+
+
+def test_live_remux_subtitle_collision_removes_output_and_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    def _fake_remux(*, src, work_dir, plan):  # noqa: ANN001
+        work_dir.mkdir(parents=True, exist_ok=True)
+        out = work_dir / f"{src.stem}.tmp{src.suffix}"
+        out.write_bytes(b"remuxed")
+        return out
+
+    monkeypatch.setattr("app.refiner_pipeline.remux_to_temp_file", _fake_remux)
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        (output / "m.en.srt").write_text("block", encoding="utf-8")
+        f = watched / "m.mkv"
+        f.write_bytes(b"src")
+        (watched / "m.en.srt").write_text("side", encoding="utf-8")
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = False
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_subtitle_mode = "keep_selected"
+            row.refiner_subtitle_langs_csv = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            r = await run_refiner_pass(session, trigger="scheduled")
+        assert r.get("errors") == 1
+        assert not (output / "m.mkv").exists()
+
+    asyncio.run(_go())
+
+
+def test_dry_run_keep_selected_does_not_copy_external_srt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_single_eng())
+    monkeypatch.setattr("app.refiner_pipeline.is_remux_required", lambda *_a, **_k: False)
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        f = watched / "solo.mkv"
+        f.write_bytes(b"orig")
+        (watched / "solo.en.srt").write_text("sub", encoding="utf-8")
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = True
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_subtitle_mode = "keep_selected"
+            row.refiner_subtitle_langs_csv = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            await run_refiner_pass(session, trigger="scheduled")
+        assert not (output / "solo.mkv").exists()
+        assert not (output / "solo.en.srt").exists()
+        assert (watched / "solo.en.srt").exists()
+
+    asyncio.run(_go())
+
+
+def test_live_keep_selected_does_not_touch_sibling_folder(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_single_eng())
+    monkeypatch.setattr("app.refiner_pipeline.is_remux_required", lambda *_a, **_k: False)
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        other = watched / "Other.Release"
+        other.mkdir(parents=True)
+        (other / "ghost.en.srt").write_text("untouched", encoding="utf-8")
+        job = watched / "Job.Folder"
+        job.mkdir(parents=True)
+        f = job / "Movie.2024.mkv"
+        f.write_bytes(b"v")
+        (job / "Movie.2024.en.srt").write_text("keepme", encoding="utf-8")
+        output.mkdir()
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = False
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_subtitle_mode = "keep_selected"
+            row.refiner_subtitle_langs_csv = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            await run_refiner_pass(session, trigger="scheduled")
+        assert (other / "ghost.en.srt").read_text(encoding="utf-8") == "untouched"
+        assert not (output / "Other.Release").exists()
+        assert (output / "Job.Folder" / "Movie.2024.en.srt").read_text(encoding="utf-8") == "keepme"
+
+    asyncio.run(_go())
+
+
+def test_refiner_failure_path_does_not_copy_subtitles(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    monkeypatch.setattr("app.refiner_pipeline.remux_to_temp_file", lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("ffmpeg failed")))
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        f = watched / "m.mkv"
+        f.write_bytes(b"x")
+        (watched / "m.en.srt").write_text("s", encoding="utf-8")
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = False
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_subtitle_mode = "keep_selected"
+            row.refiner_subtitle_langs_csv = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            await run_refiner_pass(session, trigger="scheduled")
+        assert not (output / "m.mkv").exists()
+        assert not (output / "m.en.srt").exists()
+
+    asyncio.run(_go())
+
+
+def test_dry_run_keeps_stale_refiner_work_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+    monkeypatch.setattr("app.refiner_service.REFINER_FFMPEG_TIMEOUT_S", 0)
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        work = tmp_path / "work"
+        watched.mkdir()
+        output.mkdir()
+        work.mkdir()
+        stale = work / "movie.refiner.stale.tmp.mkv"
+        stale.write_bytes(b"stale")
+        (watched / "m.mkv").write_bytes(b"x")
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = True
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            row.refiner_work_folder = str(work)
+            await session.commit()
+            r = await run_refiner_pass(session, trigger="scheduled")
+        assert int(r.get("dry_run_items") or 0) >= 1
+        assert stale.exists()
+
+    asyncio.run(_go())
+
+
+def test_live_run_deletes_stale_refiner_work_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_multi_audio())
+    monkeypatch.setattr("app.refiner_service.REFINER_FFMPEG_TIMEOUT_S", 0)
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        work = tmp_path / "work"
+        watched.mkdir()
+        output.mkdir()
+        work.mkdir()
+        stale = work / "movie.refiner.stale.tmp.mkv"
+        stale.write_bytes(b"stale")
+        (watched / "m.mkv").write_bytes(b"x")
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = False
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            row.refiner_work_folder = str(work)
+            await session.commit()
+            await run_refiner_pass(session, trigger="scheduled")
+        assert not stale.exists()
+
+    asyncio.run(_go())
+
+
+def test_live_no_remux_source_cleanup_failure_is_reported_and_siblings_untouched(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_single_eng())
+    monkeypatch.setattr("app.refiner_pipeline.is_remux_required", lambda *_a, **_k: False)
+
+    def _cleanup_boom(*_a, **_k) -> int:
+        raise RuntimeError("Source folder cleanup failed after successful output finalize; could not delete: keep.txt")
+
+    calls = {"folder": 0}
+
+    def _folder_marker(*_a, **_k) -> str:
+        calls["folder"] += 1
+        return "removed_source_folder"
+
+    monkeypatch.setattr("app.refiner_pipeline._cleanup_refiner_source_sidecar_artifacts_after_success", _cleanup_boom)
+    monkeypatch.setattr("app.refiner_pipeline._try_remove_empty_watch_subfolder", _folder_marker)
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        f = watched / "m.mkv"
+        f.write_bytes(b"x")
+        (watched / "keep.txt").write_text("hold", encoding="utf-8")
+        sibling = tmp_path / "sibling"
+        sibling.mkdir()
+        (sibling / "stay.txt").write_text("stay", encoding="utf-8")
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = False
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            r = await run_refiner_pass(session, trigger="scheduled")
+            recent = (
+                (await session.execute(select(RefinerActivity).order_by(RefinerActivity.id.desc()).limit(1)))
+                .scalars()
+                .first()
+            )
+            batch = (
+                (
+                    await session.execute(
+                        select(ActivityLog)
+                        .where(ActivityLog.kind == "refiner")
+                        .order_by(ActivityLog.id.desc())
+                        .limit(1)
+                    )
+                )
+                .scalars()
+                .first()
+            )
+        assert r.get("errors") == 0
+        assert r.get("cleanup_needed") == 1
+        assert r.get("ok") is False
+        assert (output / "m.mkv").exists()
+        assert (sibling / "stay.txt").read_text(encoding="utf-8") == "stay"
+        assert recent is not None
+        ctx = parse_activity_context(recent.activity_context)
+        assert ctx.get("reason_code") == "source_cleanup_failed"
+        assert calls["folder"] == 0
+        assert batch is not None
+        assert "cleanup_needed=1" in (batch.detail or "")
+        assert "errors=0" in (batch.detail or "")
+
+    asyncio.run(_go())
+
+
+def test_live_no_remux_watch_root_media_keeps_watched_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_single_eng())
+    monkeypatch.setattr("app.refiner_pipeline.is_remux_required", lambda *_a, **_k: False)
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        media = watched / "rootitem.mkv"
+        media.write_bytes(b"data")
+        (watched / "rootitem.en.srt").write_text("s", encoding="utf-8")
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = False
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_subtitle_mode = "remove_all"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            r = await run_refiner_pass(session, trigger="scheduled")
+            recent = (
+                (await session.execute(select(RefinerActivity).order_by(RefinerActivity.id.desc()).limit(1)))
+                .scalars()
+                .first()
+            )
+        assert r.get("errors") == 0
+        assert watched.exists() and watched.is_dir()
+        assert (output / "rootitem.mkv").exists()
+        assert recent is not None
+        ctx = parse_activity_context(recent.activity_context)
+        assert ctx.get("folder_cleanup") == "skipped_watch_root"
+
+    asyncio.run(_go())
+
+
+def test_live_no_remux_folder_removal_failure_is_reported(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_single_eng())
+    monkeypatch.setattr("app.refiner_pipeline.is_remux_required", lambda *_a, **_k: False)
+
+    def _folder_fail(*_a, **_k) -> str:
+        raise RuntimeError("Source folder removal failed after successful file cleanup; could not remove 'job'.")
+
+    monkeypatch.setattr("app.refiner_pipeline._try_remove_empty_watch_subfolder", _folder_fail)
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        job = watched / "job"
+        job.mkdir()
+        media = job / "m.mkv"
+        media.write_bytes(b"x")
+        sibling = watched / "other"
+        sibling.mkdir()
+        (sibling / "keep.txt").write_text("stay", encoding="utf-8")
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = False
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            await session.commit()
+            r = await run_refiner_pass(session, trigger="scheduled")
+            recent = (
+                (await session.execute(select(RefinerActivity).order_by(RefinerActivity.id.desc()).limit(1)))
+                .scalars()
+                .first()
+            )
+            batch = (
+                (
+                    await session.execute(
+                        select(ActivityLog)
+                        .where(ActivityLog.kind == "refiner")
+                        .order_by(ActivityLog.id.desc())
+                        .limit(1)
+                    )
+                )
+                .scalars()
+                .first()
+            )
+        assert r.get("errors") == 0
+        assert r.get("cleanup_needed") == 1
+        assert r.get("ok") is False
+        assert (output / "job" / "m.mkv").exists()
+        assert (sibling / "keep.txt").read_text(encoding="utf-8") == "stay"
+        assert recent is not None
+        ctx = parse_activity_context(recent.activity_context)
+        assert ctx.get("reason_code") == "source_folder_removal_failed"
+        assert batch is not None
+        assert "cleanup_needed=1" in (batch.detail or "")
+        assert "errors=0" in (batch.detail or "")
 
     asyncio.run(_go())

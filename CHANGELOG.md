@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.7.20 — 2026-04-02
+
+### Fixed
+
+- **Refiner outcome semantics:** post-finalize cleanup issues (`source_cleanup_failed`, `source_folder_removal_failed`) now report as **cleanup needed** (manual-action style) instead of ordinary processing errors, while keeping reason-code truthfulness and preserving all file-operation behavior.
+- **Refiner waiting activity noise:** scheduled passes no longer append duplicate waiting-only batch activity rows when state is unchanged; meaningful waiting transitions still create new entries.
+- **Dashboard automation cards:** normalize Next Run display states and footer secondary-content structure across Sonarr/Radarr/Refiner/Trimmer with a shared two-line Next Run model and consistent footer region for notes/actions.
+
 ## 3.7.19 — 2026-04-02
 
 ### Added

@@ -3682,6 +3682,17 @@ textarea.input:focus {
   line-height: 1.42;
   color: rgba(168, 184, 200, 0.86);
 }
+.automation-cards .automation-footer-shell {
+  min-height: 46px;
+}
+.automation-cards .automation-footer-note-slot {
+  min-height: 18px;
+  width: 100%;
+}
+.automation-cards .automation-footer-action-slot {
+  min-height: 16px;
+  width: 100%;
+}
 .automation-cards .automation-tile-footer .automation-footer-note.dash-summary-tile-hint {
   margin: 0;
   padding: 0;
@@ -3706,6 +3717,27 @@ textarea.input:focus {
 }
 .automation-cards .automation-card-subline {
   color: rgba(214, 223, 237, 0.96);
+}
+.automation-cards .automation-next-run-block {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  min-height: 34px;
+  line-height: 1.32;
+}
+.automation-cards .automation-next-run-primary {
+  font-size: 12.5px;
+  font-weight: 620;
+  color: rgba(226, 232, 240, 0.95);
+}
+.automation-cards .automation-next-run-secondary {
+  font-size: 10.75px;
+  font-weight: 500;
+  color: rgba(148, 163, 184, 0.85) !important;
+}
+.automation-cards .automation-next-run-block[data-next-run-state="scheduled"] .automation-next-run-primary {
+  color: rgba(248, 250, 252, 0.97);
 }
 .automation-value-pending {
   color: rgba(148, 163, 184, 0.62);
