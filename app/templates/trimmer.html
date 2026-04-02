@@ -18,29 +18,32 @@
   {% set trimmer_connection_status = trimmer_overview.connection %}
   {% endif %}
 
+  <div class="trimmer-page-top-notices">
   {% if not settings.emby_enabled and trimmer_connection_status in ('Not configured', 'Missing') %}
-  <div class="banner banner-warn" role="alert">
+  <div class="trimmer-validation-notice trimmer-validation-notice--top banner banner-warn" role="alert">
     <strong>Trimmer needs two things before it can run:</strong>
     <ol style="margin: 6px 0 0 1.2em; padding: 0; font-size: 13px; line-height: 1.7;">
       <li>A media server connection — add your Emby URL and API key under
-          <a class="ink-link" href="/trimmer/settings">Trimmer settings</a>.</li>
+          <a class="ink-link" href="/trimmer/settings#trimmer-connection">Trimmer settings</a>.</li>
       <li>Enable Trimmer — turn on the toggle in
           <a class="ink-link" href="/trimmer/settings">Trimmer settings</a>.</li>
     </ol>
   </div>
   {% elif not settings.emby_enabled %}
-  <div class="banner banner-ok" role="status">
+  <div class="trimmer-validation-notice trimmer-validation-notice--top banner banner-ok" role="status">
     Trimmer off — Turn on Enable Trimmer in
     <a class="ink-link" href="/trimmer/settings">Settings</a>
     to use dry run or live mode.
   </div>
   {% elif trimmer_connection_status in ('Not configured', 'Missing') %}
-  <div class="banner banner-warn" role="alert">
-    <strong>Connection required</strong> — Configure a media server URL and
-    API key in <a class="ink-link" href="/trimmer/settings">Settings</a>
-    to use Trimmer.
+  <div class="trimmer-validation-notice trimmer-validation-notice--top" role="alert">
+    <div class="trimmer-validation-notice__title">Connection required</div>
+    <div class="trimmer-validation-notice__body">
+      Configure a media server URL and API key in <a class="ink-link" href="/trimmer/settings#trimmer-connection">Settings</a> to use Trimmer.
+    </div>
   </div>
   {% endif %}
+  </div>
 
   <div class="card gc trimmer-overview-summary-card">
     <div class="gc-title">Trimmer overview</div>

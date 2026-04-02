@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.7.16 — 2026-04-02
+
+### Fixed
+
+- CI: Trimmer overview connection notice restored (`trimmer-page-top-notices` / `trimmer-validation-notice`, contiguous “Configure a media server URL and API key”, `#trimmer-connection` link). Overview isolation test seeds Trimmer enabled with missing connection so the scenario is deterministic.
+
 ## 3.7.15 — 2026-04-02
 
 ### Added
