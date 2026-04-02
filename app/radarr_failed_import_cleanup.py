@@ -74,20 +74,6 @@ RADARR_CLEANUP_POLICY_ALL_ON = RadarrCleanupPolicy(
 
 def radarr_cleanup_policy_from_settings(settings: Any) -> RadarrCleanupPolicy:
     rfc = bool(getattr(settings, "radarr_failed_import_remove_from_client", False))
-    if getattr(settings, "radarr_remove_failed_imports", False):
-        return RadarrCleanupPolicy(
-            remove_corrupt=True,
-            blocklist_corrupt=True,
-            remove_download_failed=True,
-            blocklist_download_failed=True,
-            remove_import_failed=True,
-            blocklist_import_failed=True,
-            remove_unmatched=True,
-            blocklist_unmatched=True,
-            remove_quality=True,
-            blocklist_quality=True,
-            remove_from_client=rfc,
-        )
     return RadarrCleanupPolicy(
         remove_corrupt=bool(getattr(settings, "radarr_cleanup_corrupt", False)),
         blocklist_corrupt=bool(getattr(settings, "radarr_blocklist_corrupt", False)),

@@ -386,9 +386,7 @@ async def _migrate_022_refresh_token_columns(engine: AsyncEngine) -> None:
 
 
 async def _migrate_023_radarr_remove_failed_imports(engine: AsyncEngine) -> None:
-    table = "app_settings"
-    if not await _has_column(engine, table=table, column="radarr_remove_failed_imports"):
-        await _add_column(engine, table=table, ddl="radarr_remove_failed_imports BOOLEAN NOT NULL DEFAULT 0")
+    """Legacy migration — column removed from ORM model; no-op to preserve migration chain."""
 
 
 async def _migrate_024_arr_retry_delay_columns(engine: AsyncEngine) -> None:
@@ -429,9 +427,7 @@ async def _migrate_024_arr_retry_delay_columns(engine: AsyncEngine) -> None:
 
 
 async def _migrate_025_sonarr_remove_failed_imports(engine: AsyncEngine) -> None:
-    table = "app_settings"
-    if not await _has_column(engine, table=table, column="sonarr_remove_failed_imports"):
-        await _add_column(engine, table=table, ddl="sonarr_remove_failed_imports BOOLEAN NOT NULL DEFAULT 0")
+    """Legacy migration — column removed from ORM model; no-op to preserve migration chain."""
 
 
 async def _migrate_029_refiner_activity(engine: AsyncEngine) -> None:

@@ -1801,15 +1801,14 @@ def test_sonarr_save_preserves_radarr_interval_when_post_includes_wrong_radarr_i
     asyncio.run(verify_db())
 
 
-def test_sonarr_granular_cleanup_saves_without_touching_radarr_legacy_flags(
+def test_sonarr_granular_cleanup_saves_without_touching_radarr_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def seed() -> None:
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
             row.sonarr_cleanup_corrupt = False
-            row.sonarr_remove_failed_imports = False
-            row.radarr_remove_failed_imports = True
+            row.radarr_cleanup_corrupt = True
             await session.commit()
 
     asyncio.run(seed())
@@ -1835,8 +1834,7 @@ def test_sonarr_granular_cleanup_saves_without_touching_radarr_legacy_flags(
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
             assert row.sonarr_cleanup_corrupt is True
-            assert row.sonarr_remove_failed_imports is False
-            assert row.radarr_remove_failed_imports is True
+            assert row.radarr_cleanup_corrupt is True
 
     asyncio.run(verify())
 

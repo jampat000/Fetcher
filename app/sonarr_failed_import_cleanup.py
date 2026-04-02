@@ -70,20 +70,6 @@ SONARR_CLEANUP_POLICY_ALL_ON = SonarrCleanupPolicy(
 
 def sonarr_cleanup_policy_from_settings(settings: Any) -> SonarrCleanupPolicy:
     sfc = bool(getattr(settings, "sonarr_failed_import_remove_from_client", False))
-    if getattr(settings, "sonarr_remove_failed_imports", False):
-        return SonarrCleanupPolicy(
-            remove_corrupt=True,
-            blocklist_corrupt=True,
-            remove_download_failed=True,
-            blocklist_download_failed=True,
-            remove_import_failed=True,
-            blocklist_import_failed=True,
-            remove_unmatched=True,
-            blocklist_unmatched=True,
-            remove_quality=True,
-            blocklist_quality=True,
-            remove_from_client=sfc,
-        )
     return SonarrCleanupPolicy(
         remove_corrupt=bool(getattr(settings, "sonarr_cleanup_corrupt", False)),
         blocklist_corrupt=bool(getattr(settings, "sonarr_blocklist_corrupt", False)),

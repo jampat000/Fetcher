@@ -11,7 +11,6 @@ class SettingsIn(BaseModel):
     sonarr_api_key: str = ""
     sonarr_search_missing: bool = True
     sonarr_search_upgrades: bool = True
-    sonarr_remove_failed_imports: bool = False
     sonarr_cleanup_corrupt: bool = False
     sonarr_blocklist_corrupt: bool = False
     sonarr_cleanup_download_failed: bool = False
@@ -31,7 +30,6 @@ class SettingsIn(BaseModel):
     radarr_api_key: str = ""
     radarr_search_missing: bool = True
     radarr_search_upgrades: bool = True
-    radarr_remove_failed_imports: bool = False
     radarr_cleanup_corrupt: bool = False
     radarr_blocklist_corrupt: bool = False
     radarr_cleanup_download_failed: bool = False

@@ -31,8 +31,6 @@ class AppSettings(Base):
     # Minutes between Sonarr runs when schedule allows (minimum 1; invalid/low values coerced to 60 on startup/save).
     sonarr_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     sonarr_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    # Sonarr-only: when enabled, remove queue rows that match import-failed history by exact downloadId.
-    sonarr_remove_failed_imports: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Radarr
     radarr_url: Mapped[str] = mapped_column(String(512), default="")
@@ -48,8 +46,6 @@ class AppSettings(Base):
     # Minutes between Radarr runs when schedule allows (minimum 1; invalid/low values coerced to 60 on startup/save).
     radarr_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     radarr_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    # Radarr-only: when enabled, remove queue rows that match import-failed history by exact downloadId.
-    radarr_remove_failed_imports: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Sonarr granular cleanup — each scenario has a remove toggle
     # and an independent blocklist toggle (all default False).
