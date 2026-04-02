@@ -52,6 +52,11 @@ In **Settings → Sonarr** and **Settings → Radarr**, under **Search and clean
 
 Phrase lists differ slightly between **Radarr** (movies) and **Sonarr** (episodes); behavior is otherwise parallel.
 
+**Why a title can still appear in *arr after “Failed import cleaned up”**
+
+1. **Download client** — Fetcher does **not** set `removeFromClient` on queue delete. If the release is still in SABnzbd, qBittorrent, etc., the next client sync can **re-create** the same queue row. Clear or remove the job in the client, or remove the queue item from the *arr UI with “remove from download client” if you want it gone there too.
+2. **Activity vs queue** — Radarr/Sonarr **Activity** history keeps past events; that is not the live download queue.
+
 ---
 
 ## Required environment variables

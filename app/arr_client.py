@@ -218,12 +218,16 @@ class ArrClient:
         queue_id: int,
         remove_from_client: bool = False,
         blocklist: bool = False,
+        skip_redownload: bool = True,
     ) -> None:
         """Delete one row from the *arr download queue (``DELETE /api/v3/queue/{id}``).
 
-        Query params: ``removeFromClient`` (default false here), ``blocklist``. Failed-import
-        cleanup uses ``blocklist=true`` first, then ``false`` on retry; it does not enable
-        ``removeFromClient``.
+        ``removeFromClient`` defaults false here so Fetcher does not remove the underlying
+        download from the client unless the caller opts in.
+
+        ``skipRedownload`` defaults **true**: when combined with blocklist, Radarr/Sonarr otherwise
+        may immediately search and re-add a queue item (same movie/show looks “still in queue”).
+        Set false only if you explicitly want that automatic follow-up behavior.
         """
         r = await self._req(
             "DELETE",
@@ -232,7 +236,7 @@ class ArrClient:
                 "removeFromClient": "true" if remove_from_client else "false",
                 "blocklist": "true" if blocklist else "false",
                 "changeCategory": "false",
-                "skipRedownload": "false",
+                "skipRedownload": "true" if skip_redownload else "false",
             },
         )
         r.raise_for_status()

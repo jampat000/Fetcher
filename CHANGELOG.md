@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.7.18 — 2026-04-02
+
+### Fixed
+
+- **Failed-import queue delete:** Sonarr/Radarr `DELETE /api/v3/queue/{id}` now sends **`skipRedownload=true`** by default (was effectively false). With **`blocklist=true`**, *arr otherwise often **immediately searches and re-adds** a queue entry, so the same movie/episode looked “still in queue” after a successful cleanup. Refiner wrong-content Radarr queue delete uses the same default.
+
+### Documentation
+
+- **README:** Clarify why an item can reappear (**download client** still holding the release; Activity vs queue).
+
 ## 3.7.17 — 2026-04-02
 
 ### Added
