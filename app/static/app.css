@@ -3707,9 +3707,9 @@ textarea.input:focus {
   font-weight: 560;
   color: rgba(248, 250, 252, 0.97);
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   align-items: flex-start;
-  gap: 5px 7px;
+  gap: 3px;
   line-height: 1.42;
 }
 .automation-cards .dash-summary-meta-dd strong,
@@ -3720,14 +3720,8 @@ textarea.input:focus {
 }
 .automation-cards .dash-summary-run-line {
   display: inline-flex;
-  flex-wrap: wrap;
   align-items: baseline;
   gap: 0 4px;
-}
-.automation-cards .dash-summary-run-clock {
-  font-weight: 520;
-  font-size: 12px;
-  color: rgba(196, 210, 226, 0.92) !important;
 }
 .automation-cards .dash-summary-empty-state {
   font-size: 13px;

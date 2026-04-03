@@ -78,8 +78,8 @@ def test_build_dashboard_status_has_per_app_last_run_status(monkeypatch) -> None
             assert data["next_radarr_tick_local"] != ""
             assert data["next_trimmer_tick_local"] != ""
             assert data["next_sonarr_display"]["state"] == "scheduled"
-            assert data["next_sonarr_display"]["primary"] == data["next_sonarr_tick_local"]
-            assert data["next_sonarr_display"]["secondary"] == data["next_sonarr_relative"]
+            assert data["next_sonarr_display"]["primary"] == data["next_sonarr_relative"]
+            assert data["next_sonarr_display"]["secondary"] == ""
             assert data["next_radarr_display"]["state"] == "scheduled"
             assert data["next_trimmer_display"]["state"] == "scheduled"
             assert data["last_sonarr_run"]["relative"] != ""

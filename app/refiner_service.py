@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.arr_client import ArrClient, ArrConfig
 from app.db import db_path
-from app.models import ActivityLog, AppSettings, JobRunLog
+from app.models import AppSettings, JobRunLog
 from app.refiner_activity_context import dumps_activity_context, parse_activity_context
 from app.refiner_radarr_wrong_content_actions import execute_radarr_wrong_content_actions
 from app.resolvers.api_keys import resolve_radarr_api_key
@@ -65,36 +65,6 @@ from app.time_util import utc_now_naive
 logger = logging.getLogger(__name__)
 
 _refiner_lock = asyncio.Lock()
-
-
-def _should_suppress_refiner_activity_log(
-    *,
-    ok_c: int,
-    dry_c: int,
-    wait_c: int,
-    cleanup_c: int,
-    err_c: int,
-) -> bool:
-    """Suppress Refiner ActivityLog rows when nothing meaningful happened.
-
-    Suppressed:
-    - No-op pass: nothing processed, no errors, no waiting (folder had
-      files but none needed work or all were skipped).
-    - Waiting-only pass: files present but all blocked by active downloads.
-      Users see the before/after card on success and a failure row on error;
-      waiting state is silent noise.
-
-    NOT suppressed:
-    - Any pass with errors (err_c > 0)
-    - Any pass with cleanup_needed (cleanup_c > 0)
-    - Mixed passes with both ok_c > 0 and wait_c > 0
-    """
-    if err_c > 0 or cleanup_c > 0:
-        return False
-    if ok_c == 0 and dry_c == 0 and err_c == 0 and cleanup_c == 0:
-        # No-op or waiting-only — suppress regardless of wait_c
-        return True
-    return False
 
 
 async def _movie_wrong_content_ctx_for_candidate(
@@ -533,24 +503,6 @@ async def run_refiner_pass(
                 app="refiner",
             )
         )
-        agg_status = "failed" if (err_c > 0 or cleanup_c > 0) else "ok"
-        suppress_log = _should_suppress_refiner_activity_log(
-            ok_c=ok_c,
-            dry_c=dry_c,
-            wait_c=wait_c,
-            cleanup_c=cleanup_c,
-            err_c=err_c,
-        )
-        if not suppress_log:
-            session.add(
-                ActivityLog(
-                    app="refiner",
-                    kind="refiner",
-                    status=agg_status,
-                    count=ok_c,
-                    detail=detail,
-                )
-            )
         await session.commit()
         try:
             from app.scheduler import notify_dashboard_changed

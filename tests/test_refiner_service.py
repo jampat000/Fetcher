@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 
 from app.db import SessionLocal, get_or_create_settings
 from app.models import ActivityLog, JobRunLog, RefinerActivity
@@ -1001,18 +1001,28 @@ def test_refiner_waiting_upstream_repeat_dedupes_same_candidate_reason(
             row.refiner_watched_folder = str(watched)
             row.refiner_output_folder = str(output)
             await session.commit()
-            session.add(
-                ActivityLog(
-                    app="refiner",
-                    kind="refiner",
-                    status="ok",
-                    count=0,
-                    detail="Refiner (scheduled): processed=0 unchanged=0 dry_run_items=0 waiting=0 cleanup_needed=0 errors=0",
-                )
+            base_id = int(
+                (
+                    await session.execute(
+                        select(func.max(ActivityLog.id)).where(ActivityLog.kind == "refiner")
+                    )
+                ).scalar()
+                or 0
             )
-            await session.commit()
             await run_refiner_pass(session, trigger="scheduled")
             await run_refiner_pass(session, trigger="scheduled")
+            batch_after = (
+                (
+                    await session.execute(
+                        select(ActivityLog.id)
+                        .where(ActivityLog.kind == "refiner")
+                        .where(ActivityLog.id > base_id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert batch_after == []
             rows = (
                 (
                     await session.execute(
@@ -1062,26 +1072,6 @@ def test_refiner_scheduled_pass_waiting_only_no_failed_aggregate(
         output.mkdir()
         (watched / "Hold.2024.1080p.mkv").write_bytes(b"x" * 500)
         async with SessionLocal() as session:
-            session.add(
-                ActivityLog(
-                    app="refiner",
-                    kind="refiner",
-                    status="ok",
-                    count=0,
-                    detail="Refiner (scheduled): processed=0 unchanged=0 dry_run_items=0 waiting=0 cleanup_needed=0 errors=0",
-                )
-            )
-            await session.commit()
-            after_seed_id = int(
-                (
-                    (
-                        await session.execute(
-                            select(ActivityLog.id).order_by(ActivityLog.id.desc()).limit(1)
-                        )
-                    ).scalar()
-                )
-                or 0
-            )
             row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = True
@@ -1089,20 +1079,27 @@ def test_refiner_scheduled_pass_waiting_only_no_failed_aggregate(
             row.refiner_watched_folder = str(watched)
             row.refiner_output_folder = str(output)
             await session.commit()
+            base_id = int(
+                (
+                    await session.execute(
+                        select(func.max(ActivityLog.id)).where(ActivityLog.kind == "refiner")
+                    )
+                ).scalar()
+                or 0
+            )
             await run_refiner_pass(session, trigger="scheduled")
             log = (
                 (
                     await session.execute(
                         select(ActivityLog)
                         .where(ActivityLog.kind == "refiner")
-                        .where(ActivityLog.id > after_seed_id)
+                        .where(ActivityLog.id > base_id)
                         .order_by(ActivityLog.id.desc())
                     )
                 )
                 .scalars()
                 .first()
             )
-            # Waiting-only passes no longer write ActivityLog rows.
             assert log is None
 
     asyncio.run(_go())
@@ -1111,7 +1108,7 @@ def test_refiner_scheduled_pass_waiting_only_no_failed_aggregate(
 def test_refiner_mixed_refined_and_waiting_counts_waiting_separate(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """One file refines, one file blocked upstream — batch log must not count wait as errors."""
+    """One file refines, one file blocked upstream — no batch ActivityLog; per-file rows cover outcomes."""
 
     async def fake_fetch(_row):  # noqa: ANN001
         return RefinerQueueSnapshot(
@@ -1170,21 +1167,28 @@ def test_refiner_mixed_refined_and_waiting_counts_waiting_separate(
             row.refiner_watched_folder = str(watched)
             row.refiner_output_folder = str(output)
             await session.commit()
+            base_id = int(
+                (
+                    await session.execute(
+                        select(func.max(ActivityLog.id)).where(ActivityLog.kind == "refiner")
+                    )
+                ).scalar()
+                or 0
+            )
             await run_refiner_pass(session, trigger="scheduled")
             log = (
                 (
                     await session.execute(
-                        select(ActivityLog).where(ActivityLog.kind == "refiner").order_by(ActivityLog.id.desc())
+                        select(ActivityLog)
+                        .where(ActivityLog.kind == "refiner")
+                        .where(ActivityLog.id > base_id)
+                        .order_by(ActivityLog.id.desc())
                     )
                 )
                 .scalars()
                 .first()
             )
-            assert log is not None
-            assert log.status == "ok"
-            assert "processed=1" in (log.detail or "")
-            assert "waiting=1" in (log.detail or "")
-            assert "errors=0" in (log.detail or "")
+            assert log is None
 
     asyncio.run(_go())
 
@@ -1280,26 +1284,6 @@ def test_refiner_scheduled_waiting_only_duplicate_batch_activity_suppressed(
         output.mkdir()
         (watched / "Hold.2024.1080p.mkv").write_bytes(b"x" * 500)
         async with SessionLocal() as session:
-            base_id = int(
-                (
-                    (
-                        await session.execute(
-                            select(ActivityLog.id).order_by(ActivityLog.id.desc()).limit(1)
-                        )
-                    ).scalar()
-                )
-                or 0
-            )
-            session.add(
-                ActivityLog(
-                    app="refiner",
-                    kind="refiner",
-                    status="ok",
-                    count=0,
-                    detail="Refiner (scheduled): processed=0 unchanged=0 dry_run_items=0 waiting=0 cleanup_needed=0 errors=0",
-                )
-            )
-            await session.commit()
             row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = True
@@ -1307,6 +1291,14 @@ def test_refiner_scheduled_waiting_only_duplicate_batch_activity_suppressed(
             row.refiner_watched_folder = str(watched)
             row.refiner_output_folder = str(output)
             await session.commit()
+            base_id = int(
+                (
+                    await session.execute(
+                        select(func.max(ActivityLog.id)).where(ActivityLog.kind == "refiner")
+                    )
+                ).scalar()
+                or 0
+            )
             await run_refiner_pass(session, trigger="scheduled")
             await run_refiner_pass(session, trigger="scheduled")
             logs = (
@@ -1321,12 +1313,7 @@ def test_refiner_scheduled_waiting_only_duplicate_batch_activity_suppressed(
                 .scalars()
                 .all()
             )
-            waiting_only = [
-                l
-                for l in logs
-                if "waiting=1" in str(l.detail or "") and "errors=0" in str(l.detail or "")
-            ]
-            assert len(waiting_only) == 0
+            assert logs == []
 
     asyncio.run(_go())
 
@@ -1378,26 +1365,6 @@ def test_refiner_scheduled_waiting_reason_change_creates_new_batch_activity(
         output.mkdir()
         (watched / "HoldA.2024.1080p.mkv").write_bytes(b"x" * 500)
         async with SessionLocal() as session:
-            base_id = int(
-                (
-                    (
-                        await session.execute(
-                            select(ActivityLog.id).order_by(ActivityLog.id.desc()).limit(1)
-                        )
-                    ).scalar()
-                )
-                or 0
-            )
-            session.add(
-                ActivityLog(
-                    app="refiner",
-                    kind="refiner",
-                    status="ok",
-                    count=0,
-                    detail="Refiner (scheduled): processed=0 unchanged=0 dry_run_items=0 waiting=0 cleanup_needed=0 errors=0",
-                )
-            )
-            await session.commit()
             row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = True
@@ -1405,6 +1372,14 @@ def test_refiner_scheduled_waiting_reason_change_creates_new_batch_activity(
             row.refiner_watched_folder = str(watched)
             row.refiner_output_folder = str(output)
             await session.commit()
+            base_id = int(
+                (
+                    await session.execute(
+                        select(func.max(ActivityLog.id)).where(ActivityLog.kind == "refiner")
+                    )
+                ).scalar()
+                or 0
+            )
             await run_refiner_pass(session, trigger="scheduled")
             await run_refiner_pass(session, trigger="scheduled")
             logs = (
@@ -1419,12 +1394,7 @@ def test_refiner_scheduled_waiting_reason_change_creates_new_batch_activity(
                 .scalars()
                 .all()
             )
-            waiting_only = [
-                l
-                for l in logs
-                if "waiting=1" in str(l.detail or "") and "errors=0" in str(l.detail or "")
-            ]
-            assert len(waiting_only) == 0
+            assert logs == []
 
     asyncio.run(_go())
 
@@ -1455,16 +1425,6 @@ def test_refiner_scheduled_waiting_reentry_after_transition_creates_new_batch_ac
         output.mkdir()
         (watched / "Reenter.2024.1080p.mkv").write_bytes(b"x" * 500)
         async with SessionLocal() as session:
-            base_id = int(
-                (
-                    (
-                        await session.execute(
-                            select(ActivityLog.id).order_by(ActivityLog.id.desc()).limit(1)
-                        )
-                    ).scalar()
-                )
-                or 0
-            )
             row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = True
@@ -1472,28 +1432,16 @@ def test_refiner_scheduled_waiting_reentry_after_transition_creates_new_batch_ac
             row.refiner_watched_folder = str(watched)
             row.refiner_output_folder = str(output)
             await session.commit()
-            session.add(
-                ActivityLog(
-                    app="refiner",
-                    kind="refiner",
-                    status="ok",
-                    count=0,
-                    detail="Refiner (scheduled): processed=0 unchanged=0 dry_run_items=0 waiting=0 cleanup_needed=0 errors=0",
-                )
+            base_id = int(
+                (
+                    await session.execute(
+                        select(func.max(ActivityLog.id)).where(ActivityLog.kind == "refiner")
+                    )
+                ).scalar()
+                or 0
             )
-            await session.commit()
             monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", wait_fetch)
             await run_refiner_pass(session, trigger="scheduled")
-            session.add(
-                ActivityLog(
-                    app="refiner",
-                    kind="refiner",
-                    status="ok",
-                    count=0,
-                    detail="Refiner (scheduled): processed=0 unchanged=0 dry_run_items=1 waiting=0 cleanup_needed=0 errors=0",
-                )
-            )
-            await session.commit()
             monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", wait_fetch)
             await run_refiner_pass(session, trigger="scheduled")
             logs = (
@@ -1508,12 +1456,7 @@ def test_refiner_scheduled_waiting_reentry_after_transition_creates_new_batch_ac
                 .scalars()
                 .all()
             )
-            waiting_only = [
-                l
-                for l in logs
-                if "waiting=1" in str(l.detail or "") and "errors=0" in str(l.detail or "")
-            ]
-            assert len(waiting_only) == 0
+            assert logs == []
 
     asyncio.run(_go())
 
@@ -2036,6 +1979,14 @@ def test_live_no_remux_source_cleanup_failure_is_reported_and_siblings_untouched
             row.refiner_watched_folder = str(watched)
             row.refiner_output_folder = str(output)
             await session.commit()
+            base_id = int(
+                (
+                    await session.execute(
+                        select(func.max(ActivityLog.id)).where(ActivityLog.kind == "refiner")
+                    )
+                ).scalar()
+                or 0
+            )
             r = await run_refiner_pass(session, trigger="scheduled")
             recent = (
                 (await session.execute(select(RefinerActivity).order_by(RefinerActivity.id.desc()).limit(1)))
@@ -2047,6 +1998,7 @@ def test_live_no_remux_source_cleanup_failure_is_reported_and_siblings_untouched
                     await session.execute(
                         select(ActivityLog)
                         .where(ActivityLog.kind == "refiner")
+                        .where(ActivityLog.id > base_id)
                         .order_by(ActivityLog.id.desc())
                         .limit(1)
                     )
@@ -2063,9 +2015,7 @@ def test_live_no_remux_source_cleanup_failure_is_reported_and_siblings_untouched
         ctx = parse_activity_context(recent.activity_context)
         assert ctx.get("reason_code") == "source_cleanup_failed"
         assert calls["folder"] == 0
-        assert batch is not None
-        assert "cleanup_needed=1" in (batch.detail or "")
-        assert "errors=0" in (batch.detail or "")
+        assert batch is None
 
     asyncio.run(_go())
 
@@ -2140,6 +2090,14 @@ def test_live_no_remux_folder_removal_failure_is_reported(
             row.refiner_watched_folder = str(watched)
             row.refiner_output_folder = str(output)
             await session.commit()
+            base_id = int(
+                (
+                    await session.execute(
+                        select(func.max(ActivityLog.id)).where(ActivityLog.kind == "refiner")
+                    )
+                ).scalar()
+                or 0
+            )
             r = await run_refiner_pass(session, trigger="scheduled")
             recent = (
                 (await session.execute(select(RefinerActivity).order_by(RefinerActivity.id.desc()).limit(1)))
@@ -2151,6 +2109,7 @@ def test_live_no_remux_folder_removal_failure_is_reported(
                     await session.execute(
                         select(ActivityLog)
                         .where(ActivityLog.kind == "refiner")
+                        .where(ActivityLog.id > base_id)
                         .order_by(ActivityLog.id.desc())
                         .limit(1)
                     )
@@ -2166,8 +2125,6 @@ def test_live_no_remux_folder_removal_failure_is_reported(
         assert recent is not None
         ctx = parse_activity_context(recent.activity_context)
         assert ctx.get("reason_code") == "source_folder_removal_failed"
-        assert batch is not None
-        assert "cleanup_needed=1" in (batch.detail or "")
-        assert "errors=0" in (batch.detail or "")
+        assert batch is None
 
     asyncio.run(_go())

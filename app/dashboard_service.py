@@ -55,8 +55,8 @@ def _next_run_display(
     if next_local:
         return {
             "state": "scheduled",
-            "primary": next_local,
-            "secondary": next_relative or "",
+            "primary": next_relative or next_local,
+            "secondary": "",
         }
     if not schedule_enabled:
         return {
@@ -66,8 +66,8 @@ def _next_run_display(
         }
     return {
         "state": "scheduled",
-        "primary": "Scheduled",
-        "secondary": "Next run pending",
+        "primary": "Next run pending",
+        "secondary": "",
     }
 
 

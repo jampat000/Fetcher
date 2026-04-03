@@ -767,7 +767,7 @@ function applyDashboardAutomationStatus(data) {
           : r.ok === false
             ? ' <span class="status-pill status-pill-fail">Failed</span>'
             : "";
-      lastSonarr.innerHTML = `<span class="dash-summary-run-line"><strong class="dash-summary-time-emphasis" id="dash-last-sonarr-rel">${rel}</strong><span class="small muted dash-summary-run-clock"> · ${escapeHtml(r.time_local)}</span></span>${ok}`;
+      lastSonarr.innerHTML = `<strong class="dash-summary-time-emphasis" id="dash-last-sonarr-rel">${rel}</strong>${ok}`;
     } else lastSonarr.innerHTML = '<span class="dash-summary-empty-state">Not yet run</span>';
   }
   const lastRadarr = document.getElementById("dash-last-radarr-run");
@@ -781,7 +781,7 @@ function applyDashboardAutomationStatus(data) {
           : r.ok === false
             ? ' <span class="status-pill status-pill-fail">Failed</span>'
             : "";
-      lastRadarr.innerHTML = `<span class="dash-summary-run-line"><strong class="dash-summary-time-emphasis" id="dash-last-radarr-rel">${rel}</strong><span class="small muted dash-summary-run-clock"> · ${escapeHtml(r.time_local)}</span></span>${ok}`;
+      lastRadarr.innerHTML = `<strong class="dash-summary-time-emphasis" id="dash-last-radarr-rel">${rel}</strong>${ok}`;
     } else lastRadarr.innerHTML = '<span class="dash-summary-empty-state">Not yet run</span>';
   }
   const lastTrimmer = document.getElementById("dash-last-trimmer-run");
@@ -795,7 +795,7 @@ function applyDashboardAutomationStatus(data) {
           : r.ok === false
             ? ' <span class="status-pill status-pill-fail">Failed</span>'
             : "";
-      lastTrimmer.innerHTML = `<span class="dash-summary-run-line"><strong class="dash-summary-time-emphasis" id="dash-last-trimmer-rel">${rel}</strong><span class="small muted dash-summary-run-clock"> · ${escapeHtml(r.time_local)}</span></span>${ok}`;
+      lastTrimmer.innerHTML = `<strong class="dash-summary-time-emphasis" id="dash-last-trimmer-rel">${rel}</strong>${ok}`;
     } else lastTrimmer.innerHTML = '<span class="dash-summary-empty-state">Not yet run</span>';
   }
   const lastRefiner = document.getElementById("dash-last-refiner-run");
@@ -811,10 +811,7 @@ function applyDashboardAutomationStatus(data) {
               ? ' <span class="status-pill status-pill-idle">Waiting</span>'
             : "";
       lastRefiner.innerHTML =
-        `<span class="dash-summary-run-line"><strong class="dash-summary-time-emphasis" ` +
-        `id="dash-last-refiner-rel">${escapeHtml(r.relative || r.time_local)}</strong>` +
-        `<span class="small muted dash-summary-run-clock"> · ${escapeHtml(r.time_local)}</span>` +
-        `</span>${ok}`;
+        `<strong class="dash-summary-time-emphasis" id="dash-last-refiner-rel">${escapeHtml(r.relative || r.time_local)}</strong>${ok}`;
     } else {
       lastRefiner.innerHTML = '<span class="dash-summary-empty-state">Not yet run</span>';
     }

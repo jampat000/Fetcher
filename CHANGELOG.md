@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.9.1 — 2026-04-03
+
+### Fixed
+
+- **Dashboard automation cards:** Removed full date/time from Last run — cards now show relative time and status pill only. No wrapping possible at any card width.
+- **Dashboard automation cards:** Next run now shows relative time only ("in 47 minutes") — no date/time string, no wrapping possible.
+
 ## 3.9.0 — 2026-04-03
 
 ### Fixed

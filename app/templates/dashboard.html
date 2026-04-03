@@ -112,7 +112,7 @@
             <dt>Last run</dt>
             <dd class="dash-summary-meta-dd" id="dash-last-sonarr-run">
               {% if av.last_sonarr_run.time_local %}
-                <span class="dash-summary-run-line"><strong class="dash-summary-time-emphasis" id="dash-last-sonarr-rel">{{ av.last_sonarr_run.relative }}</strong><span class="small muted dash-summary-run-clock"> · {{ av.last_sonarr_run.time_local }}</span></span>
+                <strong class="dash-summary-time-emphasis" id="dash-last-sonarr-rel">{{ av.last_sonarr_run.relative }}</strong>
                 {% if av.last_sonarr_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif av.last_sonarr_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
               {% else %}<span class="dash-summary-empty-state">Not yet run</span>{% endif %}
             </dd>
@@ -138,7 +138,7 @@
             <dt>Last run</dt>
             <dd class="dash-summary-meta-dd" id="dash-last-radarr-run">
               {% if av.last_radarr_run.time_local %}
-                <span class="dash-summary-run-line"><strong class="dash-summary-time-emphasis" id="dash-last-radarr-rel">{{ av.last_radarr_run.relative }}</strong><span class="small muted dash-summary-run-clock"> · {{ av.last_radarr_run.time_local }}</span></span>
+                <strong class="dash-summary-time-emphasis" id="dash-last-radarr-rel">{{ av.last_radarr_run.relative }}</strong>
                 {% if av.last_radarr_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif av.last_radarr_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
               {% else %}<span class="dash-summary-empty-state">Not yet run</span>{% endif %}
             </dd>
@@ -164,12 +164,7 @@
             <dt>Last run</dt>
             <dd class="dash-summary-meta-dd" id="dash-last-refiner-run">
               {% if av.last_refiner_run.time_local %}
-                <span class="dash-summary-run-line">
-                  <strong class="dash-summary-time-emphasis" id="dash-last-refiner-rel">
-                    {{ av.last_refiner_run.relative }}</strong>
-                  <span class="small muted dash-summary-run-clock">
-                    · {{ av.last_refiner_run.time_local }}</span>
-                </span>
+                <strong class="dash-summary-time-emphasis" id="dash-last-refiner-rel">{{ av.last_refiner_run.relative }}</strong>
                 {% if av.last_refiner_run.ok is sameas true %}
                   <span class="status-pill status-pill-ok">Succeeded</span>
                 {% elif av.last_refiner_run.ok is sameas false %}
@@ -209,7 +204,7 @@
             <dt>Last run</dt>
             <dd class="dash-summary-meta-dd" id="dash-last-trimmer-run">
               {% if av.last_trimmer_run.time_local %}
-                <span class="dash-summary-run-line"><strong class="dash-summary-time-emphasis" id="dash-last-trimmer-rel">{{ av.last_trimmer_run.relative }}</strong><span class="small muted dash-summary-run-clock"> · {{ av.last_trimmer_run.time_local }}</span></span>
+                <strong class="dash-summary-time-emphasis" id="dash-last-trimmer-rel">{{ av.last_trimmer_run.relative }}</strong>
                 {% if av.last_trimmer_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif av.last_trimmer_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
               {% else %}<span class="dash-summary-empty-state">Not yet run</span>{% endif %}
             </dd>
