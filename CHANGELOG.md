@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 3.9.0 — 2026-04-03
+
+### Fixed
+
+- **Settings → Global log viewer:** Filter pills (All, Sonarr, Radarr, Refiner, Trimmer) filter in-place without a full page reload (client-side), matching Activity behaviour.
+
+### Added
+
+- **Settings → Global:** Run history and log file download on the Global tab; `/logs` redirects to Settings → Global.
+- **Log retention:** Default reduced from 90 to 14 days (range 3–90); controls DB pruning (rotating log files on disk unchanged).
+
+### Changed
+
+- **Refiner Activity:** Waiting-only and no-op passes no longer write `ActivityLog` rows; per-file failure/success rows unchanged; `JobRunLog` still written every pass.
+- **Refiner dashboard card:** Shows **Watching for files** and **Scans every Xm/Xs** from `refiner_interval_seconds` instead of a fixed-schedule style next run.
+- **Settings → Global layout:** Four stacked cards — Global (retention, timezone), Application logs, Backup & restore, Software updates — including moving Software updates into the Global tab panel.
+- **Settings:** Removed unused `log_tab` server context; initial log filter still follows `?app=` read client-side on the log viewer hub.
+
 ## 3.8.1 — 2026-04-03
 
 ### Changed
