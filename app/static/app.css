@@ -2379,8 +2379,94 @@ h2.gc-title,
   gap: 6px;
   margin-top: 4px;
 }
+/* Settings → Global: four stacked cards (settings, logs, backup, updates) inside one tab panel. */
+.settings-tab-target[data-settings-panel="global"].is-active {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+/* Run history / log files use inset panels inside the Application logs card. */
+.settings-global-logs-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 6px;
+}
+.settings-logs-inset {
+  padding: 14px 16px;
+  border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+}
+.settings-logs-inset .gc-title.gc-title--sm {
+  margin-bottom: var(--space-2);
+}
+.settings-logs-filters {
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+/* Run history: scroll the list; single-line timestamps (no wrap). */
+.settings-logs-inset--run-history .settings-run-history-list {
+  gap: 2px;
+  max-height: min(42vh, 360px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.settings-logs-inset--run-history .log-entry.log-entry--compact {
+  grid-template-columns: max-content 12px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 4px 8px;
+}
+.settings-logs-inset--run-history .log-entry.log-entry--compact .log-dot {
+  margin-top: 0;
+  align-self: center;
+}
+.settings-logs-inset--run-history .settings-run-history-time {
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+}
+.settings-logs-inset--run-history .log-entry.log-entry--compact .log-msg {
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.settings-logs-inset--files .log-files-list {
+  margin-top: 6px;
+}
 .log-file-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+}
+.log-file-item:last-child {
+  border-bottom: none;
+}
+.log-file-name {
   font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+.log-file-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.btn-sm {
+  padding: 3px 10px;
+  font-size: 12px;
 }
 .log-file-link {
   font-weight: 500;
@@ -4434,6 +4520,10 @@ form[action="/trimmer/settings/cleaner"] .card.gc .toggle-label {
 }
 
 .activity-row.hidden-filter {
+  display: none;
+}
+
+.log-entry.hidden-filter {
   display: none;
 }
 

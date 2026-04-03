@@ -87,7 +87,7 @@ class AppSettings(Base):
     sonarr_failed_import_cleanup_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     radarr_failed_import_cleanup_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # Activity, job_run_log, app_snapshot pruning window (days); clamped 7–3650 when pruning.
-    log_retention_days: Mapped[int] = mapped_column(Integer, default=90)
+    log_retention_days: Mapped[int] = mapped_column(Integer, default=14)
     timezone: Mapped[str] = mapped_column(String(64), default="UTC")  # IANA e.g. America/New_York
 
     # Emby Trimmer

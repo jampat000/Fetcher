@@ -571,7 +571,7 @@ async def prune_old_records(session: AsyncSession, settings: AppSettings | None 
     """Delete old log/snapshot rows in one transaction batch (committed with the next run commit).
 
     - ``arr_action_log``: older than ``max(sonarr_retry_delay_minutes, radarr_retry_delay_minutes) * 2`` (minutes).
-    - ``activity_log``, ``job_run_log``, ``app_snapshot``: older than ``log_retention_days`` (clamped 7–3650).
+    - ``activity_log``, ``job_run_log``, ``app_snapshot``: older than ``log_retention_days`` (clamped 3–90).
 
     Pass ``settings`` when already loaded to avoid a duplicate ``AppSettings`` query (e.g. from ``run_once``).
 
@@ -600,7 +600,7 @@ async def prune_old_records(session: AsyncSession, settings: AppSettings | None 
             stored_ret = int(row.log_retention_days)
         except (TypeError, ValueError):
             stored_ret = 90
-        ret_days = max(7, min(3650, stored_ret))
+        ret_days = max(3, min(90, stored_ret))
         ret_cutoff = now - timedelta(days=ret_days)
 
         # Batched deletes (SQLite/aiosqlite: one statement per execute; same transaction until commit).

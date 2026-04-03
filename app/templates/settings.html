@@ -78,8 +78,8 @@
       <div class="settings-stack settings-global-stack">
         <div class="field settings-global-field">
           <label for="log_retention_days">Log retention (days)</label>
-          <input class="number settings-global-number" id="log_retention_days" type="number" name="log_retention_days" value="{{ settings.log_retention_days|default(90, true) }}" min="7" max="3650" />
-          <div class="small settings-field-hint">Keeps activity, job logs, and snapshots for this many days.</div>
+          <input class="number settings-global-number" id="log_retention_days" type="number" name="log_retention_days" value="{{ settings.log_retention_days|default(14, true) }}" min="3" max="90" />
+          <div class="small settings-field-hint">How many days to keep activity, job logs, and run history. Default is 14 days.</div>
         </div>
         <div class="field settings-global-field">
           <label>Timezone</label>
@@ -96,11 +96,80 @@
         <button class="btn" type="submit">Save global settings</button>
         <a class="btn secondary" href="/">Back to dashboard</a>
       </div>
-      <p class="small muted">Saves only log retention and timezone on this tab.</p>
+      <p class="small muted">Saves log retention, timezone, and does not affect log files on disk.</p>
     </form>
-    <div class="settings-section-divider"></div>
-    <div class="gc-title">Global operations</div>
-    <div class="card backup-restore-card gc">
+    </div>
+
+    <div class="card gc stripe-gray log-viewer-card" id="log-viewer-hub" data-log-viewer-hub="1">
+    <div class="gc-title">Application logs</div>
+    <div class="hint">Service run history and raw log files for troubleshooting.</div>
+
+    <div class="settings-global-logs-section">
+      <div class="settings-logs-inset settings-logs-inset--run-history">
+        <div class="gc-title gc-title--sm">Run history</div>
+        <div class="hint">Recent service runs and outcomes. Filter by service using the tabs.</div>
+        <div class="activity-filters log-filters settings-logs-filters" role="tablist"
+             aria-label="Filter by service" style="margin-bottom: 10px;">
+          <span class="pill active" data-log-pill-filter="all"
+                role="tab" tabindex="0">All</span>
+          <span class="pill" data-log-pill-filter="sonarr"
+                role="tab" tabindex="0">Sonarr</span>
+          <span class="pill" data-log-pill-filter="radarr"
+                role="tab" tabindex="0">Radarr</span>
+          <span class="pill" data-log-pill-filter="refiner"
+                role="tab" tabindex="0">Refiner</span>
+          <span class="pill" data-log-pill-filter="trimmer"
+                role="tab" tabindex="0">Trimmer</span>
+        </div>
+        {% if logs_display %}
+        <div class="log-list settings-run-history-list" role="list">
+          {% for r in logs_display %}
+          <div class="log-entry log-entry--compact anim-in" role="listitem"
+               data-log-app="{{ r.app | default('') }}">
+            <span class="log-time settings-run-history-time"
+                  title="{{ r.started_line | e }}">{{ r.started_line }}</span>
+            <span class="log-dot {% if r.ok %}l-ok{% else %}l-fail{% endif %}"
+                  aria-hidden="true"></span>
+            <span class="log-msg" title="{{ r.message | e }}">{{ r.message }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <div class="empty-state-icon">
+            <i data-lucide="scroll-text"></i>
+          </div>
+          <p class="empty-state-title">No runs yet</p>
+          <p class="empty-state-sub">Service run history will appear here
+            after the first scheduled cycle.</p>
+        </div>
+        {% endif %}
+      </div>
+
+      {% if log_files %}
+      <div class="settings-logs-inset settings-logs-inset--files">
+        <div class="gc-title gc-title--sm">Log files</div>
+        <div class="hint">Raw rotating log files from this machine. Click to view or download.</div>
+        <div class="log-files-list">
+          {% for fname in log_files %}
+          <div class="log-file-item">
+            <span class="log-file-name">{{ fname }}</span>
+            <div class="log-file-actions">
+              <a class="btn secondary btn-sm"
+                 href="/logs/file?name={{ fname | urlencode }}"
+                 target="_blank" rel="noopener">View</a>
+              <a class="btn secondary btn-sm"
+                 href="/logs/file/download?name={{ fname | urlencode }}">Download</a>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    </div>
+
+    <div class="card gc stripe-gray" id="section-global-backup">
     <div class="gc-title">Backup &amp; restore</div>
     <p class="hint backup-restore-lead">Backs up all Fetcher and Trimmer settings to one file. Keep this file private because it contains API keys. This backup includes your password hash and session credentials — store it securely.</p>
 
@@ -171,6 +240,357 @@
       })();
     </script>
     </div>
+
+    <div class="card gc stripe-gray" id="updates-card">
+    <div class="gc-title">Software updates</div>
+    <p class="hint updates-lead">Checks this PC against the latest GitHub release and runs <code class="code-inline">FetcherSetup.exe</code> for upgrades.</p>
+
+    <div class="backup-panels updates-panels">
+      <div class="backup-panel backup-panel-updates-status">
+        <div class="backup-panel-head">
+          <span class="backup-panel-icon" aria-hidden="true">◉</span>
+          <div class="gc-title">Release status</div>
+        </div>
+        <p class="small backup-panel-desc">Shows installed version, latest tag, and installer availability.</p>
+        <div class="btn-row">
+          <button type="button" class="btn secondary" id="updates-check-btn">Check for updates</button>
+        </div>
+        <div id="updates-panel" class="updates-panel-inner" data-check-url="/api/updates/check" data-apply-url="/api/updates/apply">
+          <p class="small muted updates-loading">Checking GitHub…</p>
+        </div>
+      </div>
+
+      <div class="backup-panel backup-panel-upgrades-actions">
+        <div class="backup-panel-head">
+          <span class="backup-panel-icon" aria-hidden="true">⬆</span>
+          <div class="gc-title">Apply upgrade</div>
+        </div>
+        <p class="small backup-panel-desc">Confirms and runs the installer when a newer release is available.</p>
+        <p class="small muted updates-idle-hint" id="updates-idle-hint">No action needed until a newer release is detected.</p>
+        <div class="settings-step-group" id="updates-upgrade-shell" role="group" aria-labelledby="updates-apply-step-confirm" hidden>
+          <p class="settings-step-legend" id="updates-apply-step-confirm">Confirm upgrade</p>
+          <div class="settings-commit-panel">
+            <label class="toggle-field settings-commit-toggle" id="updates-confirm-wrap" hidden>
+              <input type="checkbox" id="updates-confirm" class="toggle-input" />
+              <span class="toggle" aria-hidden="true"><span class="toggle-knob"></span></span>
+              <span class="toggle-label">I understand the <strong>Fetcher</strong> service restarts and this page disconnects until the upgrade finishes.</span>
+            </label>
+            <p class="small muted updates-upgrade-cta-hint" id="updates-upgrade-cta-hint" hidden>Turn the confirmation on, then use <strong>Upgrade now</strong> or <strong>Release notes</strong>.</p>
+            <p class="small muted" id="updates-manual-install-hint" hidden>Automatic upgrade isn’t available for this run. Use <strong>Download FetcherSetup.exe</strong> under <strong>Release status</strong> (left), or install from <strong>Release notes</strong>.</p>
+            <div class="settings-commit-actions settings-commit-actions--row" id="updates-actions" hidden>
+              <button type="button" class="btn backup-panel-btn" id="updates-apply-btn" disabled>Upgrade now</button>
+              <a class="btn secondary backup-panel-btn" id="updates-notes-link" href="#" target="_blank" rel="noopener noreferrer">Release notes</a>
+            </div>
+          </div>
+        </div>
+        <p class="small muted backup-panel-desc updates-dev-hint" id="updates-dev-hint" hidden><strong>Development:</strong> in-app upgrade is off unless you set <code class="code-inline">FETCHER_ALLOW_DEV_UPGRADE=1</code>.</p>
+      </div>
+    </div>
+    <script>
+      (function () {
+        var panel = document.getElementById("updates-panel");
+        if (!panel) return;
+        var checkUrl = panel.getAttribute("data-check-url") || "/api/updates/check";
+        var applyUrl = panel.getAttribute("data-apply-url") || "/api/updates/apply";
+        var upgradeShell = document.getElementById("updates-upgrade-shell");
+        var confirmWrap = document.getElementById("updates-confirm-wrap");
+        var confirmCb = document.getElementById("updates-confirm");
+        var actions = document.getElementById("updates-actions");
+        var applyBtn = document.getElementById("updates-apply-btn");
+        var checkBtn = document.getElementById("updates-check-btn");
+        var notesLink = document.getElementById("updates-notes-link");
+        var devHint = document.getElementById("updates-dev-hint");
+        var idleHint = document.getElementById("updates-idle-hint");
+        var confirmLegend = document.getElementById("updates-apply-step-confirm");
+        var ctaHint = document.getElementById("updates-upgrade-cta-hint");
+        var manualInstallHint = document.getElementById("updates-manual-install-hint");
+
+        function esc(s) {
+          var d = document.createElement("div");
+          d.textContent = s;
+          return d.innerHTML;
+        }
+
+        function normVer(v) {
+          return String(v == null ? "" : v).trim();
+        }
+
+        /** Poll /healthz until the service reports the new version (or any change), then reload the page. */
+        function watchUpgradeThenReload(previousVersion, targetVersion) {
+          var healthzUrl = "/healthz";
+          var started = Date.now();
+          var maxMs = 6 * 60 * 1000;
+          /* Slightly slower than 2s — fewer /healthz hits while the service restarts. */
+          var intervalMs = 3000;
+          var prev = normVer(previousVersion);
+          var tgt = normVer(targetVersion);
+          function doneWaiting() {
+            if (applyBtn) {
+              applyBtn.disabled = false;
+              applyBtn.textContent = "Upgrade now";
+            }
+          }
+          function tick() {
+            if (Date.now() - started > maxMs) {
+              panel.insertAdjacentHTML(
+                "beforeend",
+                "<div class=\"banner banner-warn updates-status-msg\" role=\"alert\">Still waiting for the new version. When the <strong>Fetcher</strong> service is back, refresh this page manually.</div>"
+              );
+              doneWaiting();
+              return;
+            }
+            fetch(healthzUrl, { cache: "no-store", credentials: "same-origin" })
+              .then(function (r) {
+                return r.json().then(function (j) {
+                  return { ok: r.ok, j: j };
+                });
+              })
+              .then(function (res) {
+                if (!res.ok || !res.j || res.j.status !== "ok") {
+                  setTimeout(tick, intervalMs);
+                  return;
+                }
+                var v = normVer(res.j.version);
+                if (tgt && v === tgt) {
+                  window.location.reload();
+                  return;
+                }
+                if (prev && v && v !== prev) {
+                  window.location.reload();
+                  return;
+                }
+                setTimeout(tick, intervalMs);
+              })
+              .catch(function () {
+                setTimeout(tick, intervalMs);
+              });
+          }
+          if (applyBtn) {
+            applyBtn.textContent = "Waiting for restart…";
+          }
+          tick();
+        }
+
+        function setIdleVisible(show) {
+          if (idleHint) idleHint.hidden = !show;
+        }
+
+        function resetUpgradeChrome() {
+          if (upgradeShell) upgradeShell.hidden = true;
+          if (confirmLegend) confirmLegend.hidden = false;
+          if (confirmWrap) confirmWrap.hidden = true;
+          if (actions) actions.hidden = true;
+          if (confirmCb) {
+            confirmCb.checked = false;
+            confirmCb.onchange = null;
+          }
+          if (applyBtn) {
+            applyBtn.style.display = "";
+            applyBtn.disabled = true;
+            applyBtn.textContent = "Upgrade now";
+            applyBtn.onclick = null;
+          }
+          if (devHint) devHint.hidden = true;
+          if (ctaHint) ctaHint.hidden = true;
+          if (manualInstallHint) manualInstallHint.hidden = true;
+        }
+
+        function render(data) {
+          panel.querySelector(".updates-loading") && panel.querySelector(".updates-loading").remove();
+          setIdleVisible(false);
+          resetUpgradeChrome();
+
+          var ver = esc(String(data.current_version || "?"));
+          var kvStart = "<dl class=\"updates-kv\"><dt>Installed version</dt><dd>" + ver + "</dd>";
+          var notesHref = esc(data.release_notes_url || "#");
+
+          if (!data.platform_supported) {
+            panel.innerHTML =
+              kvStart +
+              "</dl><p class=\"small updates-status-foot\">" +
+              esc(data.message || "In-app updates are only available on Windows.") +
+              "</p>";
+            return;
+          }
+
+          if (!data.ok) {
+            panel.innerHTML =
+              kvStart +
+              "</dl><div class=\"banner banner-warn updates-status-msg\" role=\"alert\"><strong>Update check failed.</strong> " +
+              esc(data.check_error || "Unknown error.") +
+              "</div><p class=\"small updates-status-foot\"><a class=\"text-link\" href=\"" +
+              notesHref +
+              "\">View releases on GitHub</a></p>";
+            if (notesLink && data.release_notes_url) notesLink.href = data.release_notes_url;
+            return;
+          }
+
+          var latest = data.latest_version != null ? String(data.latest_version) : (data.tag_name || "?");
+          var html =
+            kvStart +
+            "<dt>Latest release</dt><dd>" +
+            esc(latest) +
+            "</dd></dl>";
+
+          if (data.asset_missing) {
+            html +=
+              "<div class=\"banner banner-warn updates-status-msg\" role=\"alert\">This release has no <code class=\"code-inline\">FetcherSetup.exe</code> file attached.</div>";
+          }
+
+          panel.innerHTML = html;
+
+          if (data.download_url && data.update_available) {
+            var href = String(data.download_url).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+            panel.insertAdjacentHTML(
+              "beforeend",
+              "<p class=\"small updates-status-foot\"><a class=\"text-link\" href=\"" +
+                href +
+                "\" target=\"_blank\" rel=\"noopener noreferrer\">Download FetcherSetup.exe</a> (manual install)</p>"
+            );
+          }
+
+          if (notesLink && data.release_notes_url) {
+            notesLink.href = data.release_notes_url;
+          }
+          var canApply = data.apply_supported === true;
+          if (!canApply && devHint && data.update_available) {
+            devHint.hidden = false;
+          }
+          if (data.update_available && upgradeShell && actions) {
+            upgradeShell.hidden = false;
+            if (canApply && confirmWrap && applyBtn && confirmCb) {
+              if (confirmLegend) confirmLegend.hidden = false;
+              if (manualInstallHint) manualInstallHint.hidden = true;
+              if (ctaHint) ctaHint.hidden = false;
+              confirmWrap.hidden = false;
+              actions.hidden = false;
+              applyBtn.style.display = "";
+              applyBtn.disabled = !confirmCb.checked;
+              confirmCb.onchange = function () {
+                applyBtn.disabled = !confirmCb.checked;
+              };
+              applyBtn.onclick = function () {
+                if (!confirmCb.checked) return;
+                var installedBefore = normVer(data.current_version);
+                applyBtn.disabled = true;
+                applyBtn.textContent = "Starting…";
+                fetch(applyUrl, {
+                  method: "POST",
+                  headers: {
+                    Accept: "application/json",
+                    "X-CSRF-Token": typeof getCSRFToken === "function" ? getCSRFToken() : ""
+                  },
+                  cache: "no-store"
+                })
+                  .then(function (r) {
+                    return r.json().then(function (j) {
+                      return { ok: r.ok, body: j };
+                    });
+                  })
+                  .then(function (res) {
+                    if (res.body && res.body.ok) {
+                      panel.insertAdjacentHTML(
+                        "beforeend",
+                        "<p class=\"banner banner-ok updates-status-msg\" role=\"status\">" +
+                          esc(res.body.message || "Upgrade started.") +
+                          " This page will reload when the new version is live.</p>"
+                      );
+                      watchUpgradeThenReload(
+                        res.body.previous_version != null ? res.body.previous_version : installedBefore,
+                        res.body.target_version != null ? res.body.target_version : latest
+                      );
+                    } else {
+                      applyBtn.disabled = false;
+                      applyBtn.textContent = "Upgrade now";
+                      var err = (res.body && res.body.error) || "Request failed";
+                      panel.insertAdjacentHTML(
+                        "beforeend",
+                        "<div class=\"banner banner-warn updates-status-msg\" role=\"alert\">" + esc(err) + "</div>"
+                      );
+                    }
+                  })
+                  .catch(function () {
+                    applyBtn.disabled = false;
+                    applyBtn.textContent = "Upgrade now";
+                    panel.insertAdjacentHTML(
+                      "beforeend",
+                      "<div class=\"banner banner-warn updates-status-msg\" role=\"alert\">Network error.</div>"
+                    );
+                  });
+              };
+            } else {
+              if (confirmLegend) confirmLegend.hidden = true;
+              if (confirmWrap) confirmWrap.hidden = true;
+              if (ctaHint) ctaHint.hidden = true;
+              if (manualInstallHint) manualInstallHint.hidden = false;
+              actions.hidden = false;
+              if (applyBtn) {
+                applyBtn.style.display = "none";
+                applyBtn.disabled = true;
+              }
+            }
+          }
+          if (data.ok && !data.update_available && !data.asset_missing) {
+            panel.insertAdjacentHTML(
+              "beforeend",
+              "<p class=\"banner banner-ok updates-status-msg\" role=\"status\">You are up to date.</p>"
+            );
+            setIdleVisible(true);
+          }
+        }
+
+        function runCheck(fromUser) {
+          if (checkBtn) {
+            checkBtn.disabled = true;
+            checkBtn.textContent = "Checking…";
+          }
+          var url = checkUrl;
+          if (fromUser) {
+            url += (checkUrl.indexOf("?") >= 0 ? "&" : "?") + "refresh=1";
+          }
+          fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" })
+            .then(function (r) {
+              return r.text().then(function (text) {
+                var ct = (r.headers.get("content-type") || "").toLowerCase();
+                if (!r.ok) {
+                  var bit = text ? text.replace(/^\s+|\s+$/g, "").slice(0, 240) : "";
+                  throw new Error("HTTP " + r.status + (bit ? " — " + bit : ""));
+                }
+                if (ct.indexOf("json") < 0 && text.charCodeAt(0) !== 123) {
+                  throw new Error("Update service returned non-JSON (check server / reverse proxy).");
+                }
+                try {
+                  return JSON.parse(text);
+                } catch (e) {
+                  throw new Error("Invalid JSON from update service.");
+                }
+              });
+            })
+            .then(render)
+            .catch(function (err) {
+              var msg =
+                err && err.message
+                  ? esc(err.message)
+                  : "Could not reach the update service.";
+              panel.innerHTML =
+                "<p class=\"banner banner-warn\" role=\"alert\">" + msg + "</p>";
+            })
+            .finally(function () {
+              if (checkBtn) {
+                checkBtn.disabled = false;
+                checkBtn.textContent = "Check for updates";
+              }
+            });
+        }
+
+        if (checkBtn) {
+          checkBtn.addEventListener("click", function () {
+            runCheck(true);
+          });
+        }
+        runCheck(false);
+      })();
+    </script>
     </div>
     </div>
 
@@ -571,360 +991,6 @@
   <form id="test-radarr" method="post" action="/test/radarr" data-fetcher-async-test="1" data-fetcher-test-panel="radarr">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
   </form>
-
-  <div class="settings-panel-slice" data-settings-panel="global">
-  <div class="card updates-card gc" id="updates-card">
-    <div class="gc-title">Software updates</div>
-    <p class="hint updates-lead">Checks this PC against the latest GitHub release and runs <code class="code-inline">FetcherSetup.exe</code> for upgrades.</p>
-
-    <div class="backup-panels updates-panels">
-      <div class="backup-panel backup-panel-updates-status">
-        <div class="backup-panel-head">
-          <span class="backup-panel-icon" aria-hidden="true">◉</span>
-          <div class="gc-title">Release status</div>
-        </div>
-        <p class="small backup-panel-desc">Shows installed version, latest tag, and installer availability.</p>
-        <div class="btn-row">
-          <button type="button" class="btn secondary" id="updates-check-btn">Check for updates</button>
-        </div>
-        <div id="updates-panel" class="updates-panel-inner" data-check-url="/api/updates/check" data-apply-url="/api/updates/apply">
-          <p class="small muted updates-loading">Checking GitHub…</p>
-        </div>
-      </div>
-
-      <div class="backup-panel backup-panel-upgrades-actions">
-        <div class="backup-panel-head">
-          <span class="backup-panel-icon" aria-hidden="true">⬆</span>
-          <div class="gc-title">Apply upgrade</div>
-        </div>
-        <p class="small backup-panel-desc">Confirms and runs the installer when a newer release is available.</p>
-        <p class="small muted updates-idle-hint" id="updates-idle-hint">No action needed until a newer release is detected.</p>
-        <div class="settings-step-group" id="updates-upgrade-shell" role="group" aria-labelledby="updates-apply-step-confirm" hidden>
-          <p class="settings-step-legend" id="updates-apply-step-confirm">Confirm upgrade</p>
-          <div class="settings-commit-panel">
-            <label class="toggle-field settings-commit-toggle" id="updates-confirm-wrap" hidden>
-              <input type="checkbox" id="updates-confirm" class="toggle-input" />
-              <span class="toggle" aria-hidden="true"><span class="toggle-knob"></span></span>
-              <span class="toggle-label">I understand the <strong>Fetcher</strong> service restarts and this page disconnects until the upgrade finishes.</span>
-            </label>
-            <p class="small muted updates-upgrade-cta-hint" id="updates-upgrade-cta-hint" hidden>Turn the confirmation on, then use <strong>Upgrade now</strong> or <strong>Release notes</strong>.</p>
-            <p class="small muted" id="updates-manual-install-hint" hidden>Automatic upgrade isn’t available for this run. Use <strong>Download FetcherSetup.exe</strong> under <strong>Release status</strong> (left), or install from <strong>Release notes</strong>.</p>
-            <div class="settings-commit-actions settings-commit-actions--row" id="updates-actions" hidden>
-              <button type="button" class="btn backup-panel-btn" id="updates-apply-btn" disabled>Upgrade now</button>
-              <a class="btn secondary backup-panel-btn" id="updates-notes-link" href="#" target="_blank" rel="noopener noreferrer">Release notes</a>
-            </div>
-          </div>
-        </div>
-        <p class="small muted backup-panel-desc updates-dev-hint" id="updates-dev-hint" hidden><strong>Development:</strong> in-app upgrade is off unless you set <code class="code-inline">FETCHER_ALLOW_DEV_UPGRADE=1</code>.</p>
-      </div>
-    </div>
-    <script>
-      (function () {
-        var panel = document.getElementById("updates-panel");
-        if (!panel) return;
-        var checkUrl = panel.getAttribute("data-check-url") || "/api/updates/check";
-        var applyUrl = panel.getAttribute("data-apply-url") || "/api/updates/apply";
-        var upgradeShell = document.getElementById("updates-upgrade-shell");
-        var confirmWrap = document.getElementById("updates-confirm-wrap");
-        var confirmCb = document.getElementById("updates-confirm");
-        var actions = document.getElementById("updates-actions");
-        var applyBtn = document.getElementById("updates-apply-btn");
-        var checkBtn = document.getElementById("updates-check-btn");
-        var notesLink = document.getElementById("updates-notes-link");
-        var devHint = document.getElementById("updates-dev-hint");
-        var idleHint = document.getElementById("updates-idle-hint");
-        var confirmLegend = document.getElementById("updates-apply-step-confirm");
-        var ctaHint = document.getElementById("updates-upgrade-cta-hint");
-        var manualInstallHint = document.getElementById("updates-manual-install-hint");
-
-        function esc(s) {
-          var d = document.createElement("div");
-          d.textContent = s;
-          return d.innerHTML;
-        }
-
-        function normVer(v) {
-          return String(v == null ? "" : v).trim();
-        }
-
-        /** Poll /healthz until the service reports the new version (or any change), then reload the page. */
-        function watchUpgradeThenReload(previousVersion, targetVersion) {
-          var healthzUrl = "/healthz";
-          var started = Date.now();
-          var maxMs = 6 * 60 * 1000;
-          /* Slightly slower than 2s — fewer /healthz hits while the service restarts. */
-          var intervalMs = 3000;
-          var prev = normVer(previousVersion);
-          var tgt = normVer(targetVersion);
-          function doneWaiting() {
-            if (applyBtn) {
-              applyBtn.disabled = false;
-              applyBtn.textContent = "Upgrade now";
-            }
-          }
-          function tick() {
-            if (Date.now() - started > maxMs) {
-              panel.insertAdjacentHTML(
-                "beforeend",
-                "<div class=\"banner banner-warn updates-status-msg\" role=\"alert\">Still waiting for the new version. When the <strong>Fetcher</strong> service is back, refresh this page manually.</div>"
-              );
-              doneWaiting();
-              return;
-            }
-            fetch(healthzUrl, { cache: "no-store", credentials: "same-origin" })
-              .then(function (r) {
-                return r.json().then(function (j) {
-                  return { ok: r.ok, j: j };
-                });
-              })
-              .then(function (res) {
-                if (!res.ok || !res.j || res.j.status !== "ok") {
-                  setTimeout(tick, intervalMs);
-                  return;
-                }
-                var v = normVer(res.j.version);
-                if (tgt && v === tgt) {
-                  window.location.reload();
-                  return;
-                }
-                if (prev && v && v !== prev) {
-                  window.location.reload();
-                  return;
-                }
-                setTimeout(tick, intervalMs);
-              })
-              .catch(function () {
-                setTimeout(tick, intervalMs);
-              });
-          }
-          if (applyBtn) {
-            applyBtn.textContent = "Waiting for restart…";
-          }
-          tick();
-        }
-
-        function setIdleVisible(show) {
-          if (idleHint) idleHint.hidden = !show;
-        }
-
-        function resetUpgradeChrome() {
-          if (upgradeShell) upgradeShell.hidden = true;
-          if (confirmLegend) confirmLegend.hidden = false;
-          if (confirmWrap) confirmWrap.hidden = true;
-          if (actions) actions.hidden = true;
-          if (confirmCb) {
-            confirmCb.checked = false;
-            confirmCb.onchange = null;
-          }
-          if (applyBtn) {
-            applyBtn.style.display = "";
-            applyBtn.disabled = true;
-            applyBtn.textContent = "Upgrade now";
-            applyBtn.onclick = null;
-          }
-          if (devHint) devHint.hidden = true;
-          if (ctaHint) ctaHint.hidden = true;
-          if (manualInstallHint) manualInstallHint.hidden = true;
-        }
-
-        function render(data) {
-          panel.querySelector(".updates-loading") && panel.querySelector(".updates-loading").remove();
-          setIdleVisible(false);
-          resetUpgradeChrome();
-
-          var ver = esc(String(data.current_version || "?"));
-          var kvStart = "<dl class=\"updates-kv\"><dt>Installed version</dt><dd>" + ver + "</dd>";
-          var notesHref = esc(data.release_notes_url || "#");
-
-          if (!data.platform_supported) {
-            panel.innerHTML =
-              kvStart +
-              "</dl><p class=\"small updates-status-foot\">" +
-              esc(data.message || "In-app updates are only available on Windows.") +
-              "</p>";
-            return;
-          }
-
-          if (!data.ok) {
-            panel.innerHTML =
-              kvStart +
-              "</dl><div class=\"banner banner-warn updates-status-msg\" role=\"alert\"><strong>Update check failed.</strong> " +
-              esc(data.check_error || "Unknown error.") +
-              "</div><p class=\"small updates-status-foot\"><a class=\"text-link\" href=\"" +
-              notesHref +
-              "\">View releases on GitHub</a></p>";
-            if (notesLink && data.release_notes_url) notesLink.href = data.release_notes_url;
-            return;
-          }
-
-          var latest = data.latest_version != null ? String(data.latest_version) : (data.tag_name || "?");
-          var html =
-            kvStart +
-            "<dt>Latest release</dt><dd>" +
-            esc(latest) +
-            "</dd></dl>";
-
-          if (data.asset_missing) {
-            html +=
-              "<div class=\"banner banner-warn updates-status-msg\" role=\"alert\">This release has no <code class=\"code-inline\">FetcherSetup.exe</code> file attached.</div>";
-          }
-
-          panel.innerHTML = html;
-
-          if (data.download_url && data.update_available) {
-            var href = String(data.download_url).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-            panel.insertAdjacentHTML(
-              "beforeend",
-              "<p class=\"small updates-status-foot\"><a class=\"text-link\" href=\"" +
-                href +
-                "\" target=\"_blank\" rel=\"noopener noreferrer\">Download FetcherSetup.exe</a> (manual install)</p>"
-            );
-          }
-
-          if (notesLink && data.release_notes_url) {
-            notesLink.href = data.release_notes_url;
-          }
-          var canApply = data.apply_supported === true;
-          if (!canApply && devHint && data.update_available) {
-            devHint.hidden = false;
-          }
-          if (data.update_available && upgradeShell && actions) {
-            upgradeShell.hidden = false;
-            if (canApply && confirmWrap && applyBtn && confirmCb) {
-              if (confirmLegend) confirmLegend.hidden = false;
-              if (manualInstallHint) manualInstallHint.hidden = true;
-              if (ctaHint) ctaHint.hidden = false;
-              confirmWrap.hidden = false;
-              actions.hidden = false;
-              applyBtn.style.display = "";
-              applyBtn.disabled = !confirmCb.checked;
-              confirmCb.onchange = function () {
-                applyBtn.disabled = !confirmCb.checked;
-              };
-              applyBtn.onclick = function () {
-                if (!confirmCb.checked) return;
-                var installedBefore = normVer(data.current_version);
-                applyBtn.disabled = true;
-                applyBtn.textContent = "Starting…";
-                fetch(applyUrl, {
-                  method: "POST",
-                  headers: {
-                    Accept: "application/json",
-                    "X-CSRF-Token": typeof getCSRFToken === "function" ? getCSRFToken() : ""
-                  },
-                  cache: "no-store"
-                })
-                  .then(function (r) {
-                    return r.json().then(function (j) {
-                      return { ok: r.ok, body: j };
-                    });
-                  })
-                  .then(function (res) {
-                    if (res.body && res.body.ok) {
-                      panel.insertAdjacentHTML(
-                        "beforeend",
-                        "<p class=\"banner banner-ok updates-status-msg\" role=\"status\">" +
-                          esc(res.body.message || "Upgrade started.") +
-                          " This page will reload when the new version is live.</p>"
-                      );
-                      watchUpgradeThenReload(
-                        res.body.previous_version != null ? res.body.previous_version : installedBefore,
-                        res.body.target_version != null ? res.body.target_version : latest
-                      );
-                    } else {
-                      applyBtn.disabled = false;
-                      applyBtn.textContent = "Upgrade now";
-                      var err = (res.body && res.body.error) || "Request failed";
-                      panel.insertAdjacentHTML(
-                        "beforeend",
-                        "<div class=\"banner banner-warn updates-status-msg\" role=\"alert\">" + esc(err) + "</div>"
-                      );
-                    }
-                  })
-                  .catch(function () {
-                    applyBtn.disabled = false;
-                    applyBtn.textContent = "Upgrade now";
-                    panel.insertAdjacentHTML(
-                      "beforeend",
-                      "<div class=\"banner banner-warn updates-status-msg\" role=\"alert\">Network error.</div>"
-                    );
-                  });
-              };
-            } else {
-              if (confirmLegend) confirmLegend.hidden = true;
-              if (confirmWrap) confirmWrap.hidden = true;
-              if (ctaHint) ctaHint.hidden = true;
-              if (manualInstallHint) manualInstallHint.hidden = false;
-              actions.hidden = false;
-              if (applyBtn) {
-                applyBtn.style.display = "none";
-                applyBtn.disabled = true;
-              }
-            }
-          }
-          if (data.ok && !data.update_available && !data.asset_missing) {
-            panel.insertAdjacentHTML(
-              "beforeend",
-              "<p class=\"banner banner-ok updates-status-msg\" role=\"status\">You are up to date.</p>"
-            );
-            setIdleVisible(true);
-          }
-        }
-
-        function runCheck(fromUser) {
-          if (checkBtn) {
-            checkBtn.disabled = true;
-            checkBtn.textContent = "Checking…";
-          }
-          var url = checkUrl;
-          if (fromUser) {
-            url += (checkUrl.indexOf("?") >= 0 ? "&" : "?") + "refresh=1";
-          }
-          fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" })
-            .then(function (r) {
-              return r.text().then(function (text) {
-                var ct = (r.headers.get("content-type") || "").toLowerCase();
-                if (!r.ok) {
-                  var bit = text ? text.replace(/^\s+|\s+$/g, "").slice(0, 240) : "";
-                  throw new Error("HTTP " + r.status + (bit ? " — " + bit : ""));
-                }
-                if (ct.indexOf("json") < 0 && text.charCodeAt(0) !== 123) {
-                  throw new Error("Update service returned non-JSON (check server / reverse proxy).");
-                }
-                try {
-                  return JSON.parse(text);
-                } catch (e) {
-                  throw new Error("Invalid JSON from update service.");
-                }
-              });
-            })
-            .then(render)
-            .catch(function (err) {
-              var msg =
-                err && err.message
-                  ? esc(err.message)
-                  : "Could not reach the update service.";
-              panel.innerHTML =
-                "<p class=\"banner banner-warn\" role=\"alert\">" + msg + "</p>";
-            })
-            .finally(function () {
-              if (checkBtn) {
-                checkBtn.disabled = false;
-                checkBtn.textContent = "Check for updates";
-              }
-            });
-        }
-
-        if (checkBtn) {
-          checkBtn.addEventListener("click", function () {
-            runCheck(true);
-          });
-        }
-        runCheck(false);
-      })();
-    </script>
-  </div>
-  </div>
 
 </div>
 {% endblock %}

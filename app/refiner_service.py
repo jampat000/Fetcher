@@ -67,41 +67,34 @@ logger = logging.getLogger(__name__)
 _refiner_lock = asyncio.Lock()
 
 
-async def _should_suppress_duplicate_waiting_activity_log(
-    session: AsyncSession,
+def _should_suppress_refiner_activity_log(
     *,
-    trigger: str,
-    detail: str,
-    status: str,
     ok_c: int,
     dry_c: int,
     wait_c: int,
     cleanup_c: int,
     err_c: int,
 ) -> bool:
-    """Suppress consecutive identical scheduled waiting-only batch ActivityLog rows."""
-    if trigger != "scheduled":
+    """Suppress Refiner ActivityLog rows when nothing meaningful happened.
+
+    Suppressed:
+    - No-op pass: nothing processed, no errors, no waiting (folder had
+      files but none needed work or all were skipped).
+    - Waiting-only pass: files present but all blocked by active downloads.
+      Users see the before/after card on success and a failure row on error;
+      waiting state is silent noise.
+
+    NOT suppressed:
+    - Any pass with errors (err_c > 0)
+    - Any pass with cleanup_needed (cleanup_c > 0)
+    - Mixed passes with both ok_c > 0 and wait_c > 0
+    """
+    if err_c > 0 or cleanup_c > 0:
         return False
-    if not (wait_c > 0 and ok_c == 0 and dry_c == 0 and cleanup_c == 0 and err_c == 0):
-        return False
-    try:
-        prev = (
-            (
-                await session.execute(
-                    select(ActivityLog)
-                    .where(ActivityLog.kind == "refiner")
-                    .order_by(ActivityLog.id.desc())
-                    .limit(1)
-                )
-            )
-            .scalars()
-            .first()
-        )
-        if prev is None:
-            return False
-        return (prev.status or "") == status and (prev.detail or "") == detail
-    except Exception:
-        return False
+    if ok_c == 0 and dry_c == 0 and err_c == 0 and cleanup_c == 0:
+        # No-op or waiting-only — suppress regardless of wait_c
+        return True
+    return False
 
 
 async def _movie_wrong_content_ctx_for_candidate(
@@ -541,18 +534,14 @@ async def run_refiner_pass(
             )
         )
         agg_status = "failed" if (err_c > 0 or cleanup_c > 0) else "ok"
-        suppress_waiting_log = await _should_suppress_duplicate_waiting_activity_log(
-            session,
-            trigger=trigger,
-            detail=detail,
-            status=agg_status,
+        suppress_log = _should_suppress_refiner_activity_log(
             ok_c=ok_c,
             dry_c=dry_c,
             wait_c=wait_c,
             cleanup_c=cleanup_c,
             err_c=err_c,
         )
-        if not suppress_waiting_log:
+        if not suppress_log:
             session.add(
                 ActivityLog(
                     app="refiner",

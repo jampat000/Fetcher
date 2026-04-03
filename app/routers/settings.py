@@ -7,6 +7,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from sqlalchemy import desc, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,9 +23,10 @@ from app.branding import APP_NAME, APP_TAGLINE
 from app.constants import _TIMEZONE_CHOICES
 from app.connection_test_service import ConnectionTestService
 from app.db import get_or_create_settings, fetch_latest_app_snapshots, get_session
-from app.display_helpers import fmt_local, normalize_hhmm, now_local, time_select_orphan
+from app.display_helpers import fmt_local_run_log_line, normalize_hhmm, now_local, time_select_orphan
+from app.paths import resolved_logs_dir
 from app.form_helpers import _normalize_base_url, _people_credit_types_csv_from_form, _resolve_timezone_name
-from app.models import AppSnapshot
+from app.models import AppSnapshot, JobRunLog
 from app.resolvers.api_keys import resolve_radarr_api_key, resolve_sonarr_api_key
 from app.schemas import SettingsIn
 from app.schedule import normalize_schedule_days_csv, schedule_time_dropdown_choices
@@ -32,11 +34,13 @@ from app.security_utils import encrypt_secret_for_storage
 from app.time_util import utc_now_naive
 from app.ui_templates import templates
 from app.web_common import (
+    dedupe_job_run_logs_for_display,
     is_setup_complete,
     schedule_days_csv_from_named_day_checks,
     schedule_weekdays_selected_dict,
     sidebar_health_dots,
     try_commit_and_reschedule,
+    user_visible_job_run_message,
 )
 
 from app.routers.deps import AUTH_DEPS, AUTH_FORM_DEPS
@@ -58,10 +62,33 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
     show_setup_wizard = not is_setup_complete(settings)
     template_sonarr_api_key = resolve_sonarr_api_key(settings)
     template_radarr_api_key = resolve_radarr_api_key(settings)
+    tz = settings.timezone or "UTC"
     snaps = await fetch_latest_app_snapshots(session)
+    try:
+        _logs_dir = resolved_logs_dir()
+        log_files = sorted(
+            [f.name for f in _logs_dir.iterdir() if f.is_file() and f.suffix in (".log",)],
+            reverse=True,
+        )
+    except OSError:
+        log_files = []
+    logs_raw = (await session.execute(select(JobRunLog).order_by(desc(JobRunLog.id)).limit(60))).scalars().all()
+    logs_raw = dedupe_job_run_logs_for_display(logs_raw)
+    logs_display = [
+        {
+            "started_line": fmt_local_run_log_line(r.started_at, tz),
+            "ok": r.ok,
+            "message": user_visible_job_run_message(
+                message=r.message,
+                ok=bool(r.ok),
+                finished_at=r.finished_at,
+            ),
+            "app": (r.app or "").strip().lower(),
+        }
+        for r in logs_raw
+    ]
     sonarr_snap = snaps.get("sonarr")
     radarr_snap = snaps.get("radarr")
-    tz = settings.timezone or "UTC"
     time_choices = schedule_time_dropdown_choices(step_minutes=30)
     time_choice_keys = {v for v, _ in time_choices}
     sn_days = normalize_schedule_days_csv(settings.sonarr_schedule_days or "")
@@ -109,6 +136,8 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
             "template_sonarr_api_key": template_sonarr_api_key,
             "template_radarr_api_key": template_radarr_api_key,
             "sidebar_health": sidebar_health_dots(snaps),
+            "log_files": log_files,
+            "logs_display": logs_display,
         },
     )
     # Simple Browser / embedded WebViews often cache HTML; force reload of Settings.
@@ -273,7 +302,7 @@ async def save_settings(
     sonarr_retry_delay_minutes: int = Form(1440),
     radarr_retry_delay_minutes: int = Form(1440),
     failed_import_cleanup_interval_minutes: int = Form(60),
-    log_retention_days: int = Form(90),
+    log_retention_days: int = Form(14),
     timezone: str = Form("UTC"),
     save_scope: str = Form(""),
     session: AsyncSession = Depends(get_session),
@@ -463,7 +492,7 @@ async def save_settings(
             row.radarr_schedule_end = normalize_hhmm(radarr_schedule_end, "23:59")
 
         if scope == "global":
-            row.log_retention_days = max(7, min(3650, int(log_retention_days or 90)))
+            row.log_retention_days = max(3, min(90, int(log_retention_days or 14)))
             row.timezone = _resolve_timezone_name(timezone)
 
         row.updated_at = utc_now_naive()
