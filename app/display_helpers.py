@@ -89,6 +89,30 @@ def fmt_local(dt: datetime, tz_name: str) -> str:
     return dt.astimezone(tz).strftime("%d-%m-%Y %I:%M %p")
 
 
+def fmt_local_run_log_split(dt: datetime, tz_name: str) -> tuple[str, str]:
+    """Readable date + clock lines for job run history lists (e.g. Settings → Global).
+
+    Returns ``(date_line, time_line)`` such as ``("Fri, 04 Apr 2026", "2:05 PM")``.
+    """
+    try:
+        tz = ZoneInfo(_resolve_timezone_name(tz_name))
+    except Exception:
+        tz = ZoneInfo("UTC")
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+    local = dt.astimezone(tz)
+    date_line = local.strftime("%a, %d %b %Y")
+    clock = local.strftime("%I:%M %p")
+    time_line = clock.lstrip("0").replace(" 0", " ")
+    return date_line, time_line
+
+
+def fmt_local_run_log_line(dt: datetime, tz_name: str) -> str:
+    """One-line timestamp for job run rows (no line-break in the label)."""
+    d, t = fmt_local_run_log_split(dt, tz_name)
+    return f"{d} · {t}"
+
+
 def _as_utc_naive(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         return dt

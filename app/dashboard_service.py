@@ -467,14 +467,23 @@ async def build_dashboard_status(
         next_local=next_trimmer_local,
         next_relative=next_trimmer_relative,
     )
-    next_refiner_display = _next_run_display(
-        enabled=bool(settings.refiner_enabled),
-        schedule_enabled=bool(settings.refiner_schedule_enabled),
-        next_local=next_refiner_local,
-        next_relative=next_refiner_relative,
-        unscheduled_state="enabled_unscheduled_live",
-        unscheduled_secondary="Runs when items are ready",
-    )
+    if not settings.refiner_enabled:
+        next_refiner_display = {
+            "state": "disabled",
+            "primary": "Off",
+            "secondary": "Automation disabled",
+        }
+    else:
+        _refiner_interval_s = int(getattr(settings, "refiner_interval_seconds", 60) or 60)
+        if _refiner_interval_s >= 60:
+            _interval_label = f"{_refiner_interval_s // 60}m"
+        else:
+            _interval_label = f"{_refiner_interval_s}s"
+        next_refiner_display = {
+            "state": "watching",
+            "primary": "Watching for files",
+            "secondary": f"Scans every {_interval_label}",
+        }
 
     job_intervals = compute_job_intervals_minutes(settings)
     job_msg = (last_run.message or "") if last_run else ""

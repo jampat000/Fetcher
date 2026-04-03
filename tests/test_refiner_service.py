@@ -1062,16 +1062,6 @@ def test_refiner_scheduled_pass_waiting_only_no_failed_aggregate(
         output.mkdir()
         (watched / "Hold.2024.1080p.mkv").write_bytes(b"x" * 500)
         async with SessionLocal() as session:
-            base_id = int(
-                (
-                    (
-                        await session.execute(
-                            select(ActivityLog.id).order_by(ActivityLog.id.desc()).limit(1)
-                        )
-                    ).scalar()
-                )
-                or 0
-            )
             session.add(
                 ActivityLog(
                     app="refiner",
@@ -1082,6 +1072,16 @@ def test_refiner_scheduled_pass_waiting_only_no_failed_aggregate(
                 )
             )
             await session.commit()
+            after_seed_id = int(
+                (
+                    (
+                        await session.execute(
+                            select(ActivityLog.id).order_by(ActivityLog.id.desc()).limit(1)
+                        )
+                    ).scalar()
+                )
+                or 0
+            )
             row = await get_or_create_settings(session)
             row.refiner_enabled = True
             row.refiner_dry_run = True
@@ -1093,16 +1093,17 @@ def test_refiner_scheduled_pass_waiting_only_no_failed_aggregate(
             log = (
                 (
                     await session.execute(
-                        select(ActivityLog).where(ActivityLog.kind == "refiner").order_by(ActivityLog.id.desc())
+                        select(ActivityLog)
+                        .where(ActivityLog.kind == "refiner")
+                        .where(ActivityLog.id > after_seed_id)
+                        .order_by(ActivityLog.id.desc())
                     )
                 )
                 .scalars()
                 .first()
             )
-            assert log is not None
-            assert log.status == "ok"
-            assert "waiting=1" in (log.detail or "")
-            assert "errors=0" in (log.detail or "")
+            # Waiting-only passes no longer write ActivityLog rows.
+            assert log is None
 
     asyncio.run(_go())
 
@@ -1325,7 +1326,7 @@ def test_refiner_scheduled_waiting_only_duplicate_batch_activity_suppressed(
                 for l in logs
                 if "waiting=1" in str(l.detail or "") and "errors=0" in str(l.detail or "")
             ]
-            assert len(waiting_only) == 1
+            assert len(waiting_only) == 0
 
     asyncio.run(_go())
 
@@ -1423,7 +1424,7 @@ def test_refiner_scheduled_waiting_reason_change_creates_new_batch_activity(
                 for l in logs
                 if "waiting=1" in str(l.detail or "") and "errors=0" in str(l.detail or "")
             ]
-            assert len(waiting_only) == 2
+            assert len(waiting_only) == 0
 
     asyncio.run(_go())
 
@@ -1512,7 +1513,7 @@ def test_refiner_scheduled_waiting_reentry_after_transition_creates_new_batch_ac
                 for l in logs
                 if "waiting=1" in str(l.detail or "") and "errors=0" in str(l.detail or "")
             ]
-            assert len(waiting_only) == 2
+            assert len(waiting_only) == 0
 
     asyncio.run(_go())
 

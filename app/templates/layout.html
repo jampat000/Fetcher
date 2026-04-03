@@ -42,11 +42,6 @@
             <i data-lucide="activity" class="sidebar-icon"></i>
             <span>Activity</span>
           </a>
-          <a href="/logs" class="sidebar-link sidebar-link--muted" tabindex="-1"
-             aria-disabled="true" title="Complete setup to access logs">
-            <i data-lucide="scroll-text" class="sidebar-icon"></i>
-            <span>Logs</span>
-          </a>
           <a href="/settings" class="sidebar-link sidebar-link--muted" tabindex="-1"
              aria-disabled="true" title="Complete setup to access settings">
             <i data-lucide="settings" class="sidebar-icon"></i>
@@ -70,10 +65,6 @@
           <a href="/activity" class="sidebar-link {% if request.url.path == '/activity' %}active{% endif %}">
             <i data-lucide="activity" class="sidebar-icon"></i>
             <span>Activity</span>
-          </a>
-          <a href="/logs" class="sidebar-link {% if request.url.path == '/logs' %}active{% endif %}">
-            <i data-lucide="scroll-text" class="sidebar-icon"></i>
-            <span>Logs</span>
           </a>
           <a href="/settings" class="sidebar-link {% if request.url.path == '/settings' %}active{% endif %}">
             <i data-lucide="settings" class="sidebar-icon"></i>

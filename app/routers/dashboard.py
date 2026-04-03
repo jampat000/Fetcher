@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,7 +12,6 @@ from app.auth import get_csrf_token_for_template
 from app.branding import APP_NAME, APP_TAGLINE
 from app.db import get_or_create_settings, fetch_latest_app_snapshots, get_session
 from app.display_helpers import (
-    fmt_local,
     now_local,
     schedule_days_display,
     schedule_time_range_friendly,
@@ -23,14 +22,13 @@ from app.emby_rules import (
     parse_movie_people_credit_types_csv,
     parse_movie_people_phrases,
 )
-from app.models import ActivityLog, JobRunLog, RefinerActivity
+from app.models import ActivityLog, RefinerActivity
 from app.paths import is_safe_path, resolved_logs_dir
 from app.time_util import utc_now_naive
 from app.dashboard_service import build_dashboard_status
 from app.ui_templates import templates
 from app.web_common import (
     ACTIVITY_DETAIL_PREVIEW_LINES,
-    dedupe_job_run_logs_for_display,
     filter_activity_display_for_search,
     filter_activity_display_for_tab,
     is_setup_complete,
@@ -38,7 +36,6 @@ from app.web_common import (
     movie_credit_types_summary,
     normalize_activity_tab_query,
     sidebar_health_dots,
-    user_visible_job_run_message,
 )
 
 from app.routers.deps import AUTH_DEPS
@@ -247,57 +244,9 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
 
 
 @router.get("/logs", response_class=HTMLResponse)
-async def logs_page(
-    request: Request,
-    session: AsyncSession = Depends(get_session),
-    app: str | None = Query(None),
-) -> HTMLResponse:
-    settings = await get_or_create_settings(session)
-    show_setup_wizard = not is_setup_complete(settings)
-    logs = (await session.execute(select(JobRunLog).order_by(desc(JobRunLog.id)).limit(200))).scalars().all()
-    logs = dedupe_job_run_logs_for_display(logs)
-    log_tab = normalize_activity_tab_query(app)
-    if log_tab and log_tab != "all":
-        logs = [r for r in logs if (r.app or "").strip().lower() == log_tab]
-    tz = settings.timezone or "UTC"
-    logs_display = [
-        {
-            "started_local": fmt_local(r.started_at, tz),
-            "ok": r.ok,
-            "message": user_visible_job_run_message(
-                message=r.message, ok=bool(r.ok), finished_at=r.finished_at
-            ),
-        }
-        for r in logs
-    ]
-    try:
-        _logs_dir = resolved_logs_dir()
-        log_files = sorted(
-            [f.name for f in _logs_dir.iterdir() if f.is_file() and f.suffix in (".log",)],
-            reverse=True,
-        )
-    except OSError:
-        log_files = []
-    snaps_logs = await fetch_latest_app_snapshots(session)
-    return templates.TemplateResponse(
-        request,
-        "logs.html",
-        {
-            "app_name": APP_NAME,
-            "app_tagline": APP_TAGLINE,
-            "title": f"{APP_NAME} — Logs",
-            "subtitle": "Service run history",
-            "logs": logs_display,
-            "log_files": log_files,
-            "now": utc_now_naive(),
-            "now_local": now_local(tz),
-            "timezone": tz,
-            "csrf_token": await get_csrf_token_for_template(request, session),
-            "show_setup_wizard": show_setup_wizard,
-            "sidebar_health": sidebar_health_dots(snaps_logs),
-            "log_tab": log_tab,
-        },
-    )
+async def logs_page(request: Request) -> RedirectResponse:
+    """Redirect legacy /logs URL to Settings → Global tab."""
+    return RedirectResponse(url="/settings?tab=global", status_code=301)
 
 
 @router.get("/logs/file", response_class=PlainTextResponse, dependencies=AUTH_DEPS)
@@ -323,6 +272,35 @@ async def logs_file(name: str, _request: Request) -> PlainTextResponse:
             status_code=500,
         )
     return PlainTextResponse(text)
+
+
+@router.get("/logs/file/download", dependencies=AUTH_DEPS)
+async def logs_file_download(name: str, _request: Request) -> Response:
+    """Serve a log file as a download attachment."""
+    logs_root = resolved_logs_dir()
+    safe_name = Path(name).name
+    candidate = (logs_root / safe_name).resolve()
+    if not is_safe_path(candidate, logs_root.resolve()):
+        raise HTTPException(
+            status_code=403,
+            detail="That file path is not allowed.",
+        )
+    if not candidate.is_file():
+        raise HTTPException(status_code=404, detail="Log file not found.")
+    try:
+        content = candidate.read_bytes()
+    except OSError:
+        raise HTTPException(
+            status_code=500,
+            detail="Could not read the log file from disk.",
+        )
+    return Response(
+        content=content,
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_name}"',
+        },
+    )
 
 
 @router.get("/activity", response_class=HTMLResponse)

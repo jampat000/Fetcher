@@ -254,7 +254,11 @@ def test_settings_backup_restore_upgrade_are_global_only(monkeypatch: pytest.Mon
     with _client(monkeypatch) as client:
         r = client.get("/settings")
     html = r.text
-    assert 'class="settings-panel-slice" data-settings-panel="global"' in html
+    assert 'data-settings-panel="global"' in html
+    assert 'id="section-global"' in html
+    assert 'id="log-viewer-hub"' in html
+    assert 'id="section-global-backup"' in html
+    assert 'id="updates-card"' in html
     assert "Backup &amp; restore" in html
     assert "Software updates" in html
 
@@ -1728,7 +1732,7 @@ def test_global_save_updates_only_retention_timezone(monkeypatch: pytest.MonkeyP
             assert row.sonarr_max_items_per_run == 50
             assert row.sonarr_retry_delay_minutes == 1440
             assert row.radarr_retry_delay_minutes == 1440
-            assert row.log_retention_days == 120
+            assert row.log_retention_days == 90
             assert row.timezone == "Europe/Berlin"
             assert (row.sonarr_url or "").strip() == ""
 

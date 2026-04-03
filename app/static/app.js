@@ -432,6 +432,51 @@ function initActivityFilterPills() {
   applyActivityPillFilter(currentActivityPillFilterFromDom());
 }
 
+function initLogViewerFilterPills() {
+  const hub = document.getElementById("log-viewer-hub");
+  if (!hub) return;
+
+  function applyLogFilter(f) {
+    const filter = f || "all";
+    hub.querySelectorAll("[data-log-pill-filter]").forEach((p) => {
+      p.classList.toggle("active", p.getAttribute("data-log-pill-filter") === filter);
+    });
+    hub.querySelectorAll(".log-entry[data-log-app]").forEach((row) => {
+      if (filter === "all") {
+        row.classList.remove("hidden-filter");
+        return;
+      }
+      const app = (row.getAttribute("data-log-app") || "").trim().toLowerCase();
+      row.classList.toggle("hidden-filter", app !== filter);
+    });
+  }
+
+  // Set initial filter from URL param (matches server-side log_tab logic).
+  const sp = new URLSearchParams(window.location.search);
+  const raw = (sp.get("app") || "").trim().toLowerCase();
+  const allowed = new Set(["all", "sonarr", "radarr", "refiner", "trimmer"]);
+  applyLogFilter(allowed.has(raw) ? raw : "all");
+
+  // Click delegation on the hub.
+  hub.addEventListener("click", (ev) => {
+    const pill = ev.target.closest("[data-log-pill-filter]");
+    if (!pill) return;
+    ev.preventDefault();
+    const f = pill.getAttribute("data-log-pill-filter") || "all";
+    applyLogFilter(f);
+  });
+
+  // Keyboard support (Enter/Space on tabindex="0" pills).
+  hub.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter" && ev.key !== " ") return;
+    const pill = ev.target.closest("[data-log-pill-filter]");
+    if (!pill) return;
+    ev.preventDefault();
+    const f = pill.getAttribute("data-log-pill-filter") || "all";
+    applyLogFilter(f);
+  });
+}
+
 function initActivityPageSearchControls() {
   const input = document.getElementById("activity-search-input");
   const clearBtn = document.getElementById("activity-search-clear");
@@ -2288,9 +2333,7 @@ function initFetcherSettingsAsyncTest() {
 
 function initSettingsTabs() {
   const tabButtons = document.querySelectorAll(".settings-tab-btn[data-settings-tab]");
-  const panels = document.querySelectorAll(
-    ".settings-tab-target[data-settings-panel], .settings-panel-slice[data-settings-panel]",
-  );
+  const panels = document.querySelectorAll(".settings-tab-target[data-settings-panel]");
   if (!tabButtons.length || !panels.length) return;
 
   const validKeys = new Set(
@@ -2441,6 +2484,7 @@ window.addEventListener("DOMContentLoaded", () => {
   bindRevealButtons();
   bindDashboardDismissibles();
   initActivityFilterPills();
+  initLogViewerFilterPills();
   initActivityPageSearchControls();
   initActivityDetailExpand();
   refreshActivityLucideIcons(document.body);

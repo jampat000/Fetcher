@@ -236,17 +236,17 @@ def test_prune_failure_does_not_raise(prune_session, monkeypatch: pytest.MonkeyP
     asyncio.run(run())
 
 
-def test_log_retention_days_below_minimum_uses_seven_days_for_prune(prune_session, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_log_retention_days_minimum_three_day_window_for_prune(prune_session, monkeypatch: pytest.MonkeyPatch) -> None:
     factory, _ = prune_session
     monkeypatch.setattr("app.service_logic.utc_now_naive", lambda: ANCHOR)
 
     async def run():
         async with factory() as session:
             await _seed_settings(session, log_retention_days=3)
-            # Stored 3 but prune clamps to 7 — record 8 days old should be pruned
+            # Retention 3 days — record 4 days old pruned; 2 days old kept
             session.add(
                 ActivityLog(
-                    created_at=ANCHOR - timedelta(days=8),
+                    created_at=ANCHOR - timedelta(days=4),
                     app="sonarr",
                     kind="missing",
                     status="ok",
@@ -256,7 +256,7 @@ def test_log_retention_days_below_minimum_uses_seven_days_for_prune(prune_sessio
             )
             session.add(
                 ActivityLog(
-                    created_at=ANCHOR - timedelta(days=5),
+                    created_at=ANCHOR - timedelta(days=2),
                     app="sonarr",
                     kind="missing",
                     status="ok",
