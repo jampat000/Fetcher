@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 4.0.2 — 2026-04-04
+
+### Fixed
+
+- **Refiner / ffprobe (Windows):** Decode ffprobe JSON stdout as UTF-8 (`encoding="utf-8"`, `errors="replace"`) so stream metadata with non-Latin characters no longer decodes with the system ANSI code page and surfaces as empty or invalid probe output.
+- **Refiner (movies / Radarr):** When Radarr queue authority is reachable but reports no owning movie for the file, skip processing instead of emitting output with no tracked movie (e.g. disowned queue item after a failed download).
+
 ## 4.0.0 — 2026-04-04
 
 ### Added

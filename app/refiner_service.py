@@ -404,12 +404,44 @@ async def run_refiner_pass(
                     pass
                 continue
 
+            # Radarr ownership guard — applies on both live and
+            # dry runs. If Radarr is reachable and authoritative
+            # but has no association for this file, it has been
+            # disowned (e.g. SAB post-processing failure cleared
+            # the queue item). Skip rather than produce orphan
+            # output.
+            snap: RefinerQueueSnapshot | None = None
+            if row.radarr_enabled:
+                snap = await fetch_refiner_queue_snapshot(row)
+                if snap.authority_useful:
+                    _, _, _, own_diag = upstream_analyze_path(fp, snap)
+                    if own_diag.get("radarr_refiner_target_movie_id") is None:
+                        logger.info(
+                            "Refiner: skipping %s — Radarr authority"
+                            " is reachable but reports no owning"
+                            " movie for this file (radarr_disowned)."
+                            " File may be from a failed download."
+                            " Manual review recommended.",
+                            fp.name,
+                        )
+                        row.refiner_current_pass_done += 1
+                        try:
+                            await session.commit()
+                        except Exception:
+                            pass
+                        continue
+
             act_id = await _insert_refiner_processing_row(fp.name)
             status: str = "error"
             meta: dict[str, Any] | None = None
             try:
                 wc_ctx: dict[str, Any] | None = None
-                if not dry and row.radarr_enabled:
+                if not dry and row.radarr_enabled and snap is not None:
+                    if snap.authority_useful:
+                        wc_ctx = await _movie_wrong_content_ctx_for_candidate(
+                            fp, row, snap
+                        )
+                elif not dry and row.radarr_enabled and snap is None:
                     snap = await fetch_refiner_queue_snapshot(row)
                     if snap.authority_useful:
                         wc_ctx = await _movie_wrong_content_ctx_for_candidate(
