@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy import delete
 
 from app.db import SessionLocal, get_or_create_settings
-from app.models import AppSnapshot, RefinerActivity
+from app.models import AppSnapshot, JobRunLog, RefinerActivity
 from app.dashboard_service import build_dashboard_status, fetch_live_dashboard_queue_totals
 
 
@@ -41,6 +41,22 @@ async def _seed_refiner_last_run_and_rows(*rows: RefinerActivity) -> None:
         st.refiner_last_run_at = datetime(2026, 3, 24, 10, 45, 0)
         for r in rows:
             s.add(r)
+        await s.commit()
+
+
+async def _seed_refiner_job_log(*, ok: bool) -> None:
+    async with SessionLocal() as s:
+        await s.execute(delete(JobRunLog).where(JobRunLog.app == "refiner"))
+        t = datetime(2026, 3, 24, 11, 0, 0)
+        s.add(
+            JobRunLog(
+                started_at=t,
+                finished_at=t,
+                ok=ok,
+                message="Refiner: batch",
+                app="refiner",
+            )
+        )
         await s.commit()
 
 
@@ -229,7 +245,8 @@ def test_build_dashboard_status_live_queue_totals_override_snapshot(monkeypatch)
     asyncio.run(_go())
 
 
-def test_dashboard_refiner_waiting_outcome_from_blocked_context(monkeypatch) -> None:
+def test_dashboard_refiner_ok_from_job_log_not_stale_per_file_activity(monkeypatch) -> None:
+    """Latest Refiner JobRunLog wins; old per-file RefinerActivity does not pin the pill."""
     class _FakeScheduler:
         @staticmethod
         def next_runs_by_job():
@@ -261,17 +278,18 @@ def test_dashboard_refiner_waiting_outcome_from_blocked_context(monkeypatch) -> 
             )
         )
     )
+    asyncio.run(_seed_refiner_job_log(ok=True))
 
     async def _go():
         async with SessionLocal() as s:
             data = await build_dashboard_status(s, "UTC")
-            assert data["last_refiner_run"]["outcome"] == "waiting"
-            assert data["last_refiner_run"]["ok"] is None
+            assert data["last_refiner_run"]["outcome"] == "none"
+            assert data["last_refiner_run"]["ok"] is True
 
     asyncio.run(_go())
 
 
-def test_dashboard_refiner_failed_outcome_from_non_wait_failure(monkeypatch) -> None:
+def test_dashboard_refiner_failed_from_latest_job_log(monkeypatch) -> None:
     class _FakeScheduler:
         @staticmethod
         def next_runs_by_job():
@@ -287,33 +305,19 @@ def test_dashboard_refiner_failed_outcome_from_non_wait_failure(monkeypatch) -> 
     monkeypatch.setattr("app.dashboard_service.fetch_live_dashboard_queue_totals", _no_live)
     monkeypatch.setattr("app.dashboard_service.scheduler", _FakeScheduler())
     asyncio.run(_seed_snapshot_state())
-    asyncio.run(
-        _seed_refiner_last_run_and_rows(
-            RefinerActivity(
-                file_name="y.mkv",
-                media_title="Y",
-                status="failed",
-                size_before_bytes=0,
-                size_after_bytes=0,
-                audio_tracks_before=0,
-                audio_tracks_after=0,
-                subtitle_tracks_before=0,
-                subtitle_tracks_after=0,
-                activity_context='{"reason_code":"","failure_reason":"disk is full"}',
-            )
-        )
-    )
+    asyncio.run(_seed_refiner_last_run_and_rows())
+    asyncio.run(_seed_refiner_job_log(ok=False))
 
     async def _go():
         async with SessionLocal() as s:
             data = await build_dashboard_status(s, "UTC")
-            assert data["last_refiner_run"]["outcome"] == "failed"
+            assert data["last_refiner_run"]["outcome"] == "none"
             assert data["last_refiner_run"]["ok"] is False
 
     asyncio.run(_go())
 
 
-def test_dashboard_refiner_success_outcome(monkeypatch) -> None:
+def test_dashboard_refiner_success_from_latest_job_log(monkeypatch) -> None:
     class _FakeScheduler:
         @staticmethod
         def next_runs_by_job():
@@ -329,27 +333,13 @@ def test_dashboard_refiner_success_outcome(monkeypatch) -> None:
     monkeypatch.setattr("app.dashboard_service.fetch_live_dashboard_queue_totals", _no_live)
     monkeypatch.setattr("app.dashboard_service.scheduler", _FakeScheduler())
     asyncio.run(_seed_snapshot_state())
-    asyncio.run(
-        _seed_refiner_last_run_and_rows(
-            RefinerActivity(
-                file_name="z.mkv",
-                media_title="Z",
-                status="success",
-                size_before_bytes=1,
-                size_after_bytes=1,
-                audio_tracks_before=0,
-                audio_tracks_after=0,
-                subtitle_tracks_before=0,
-                subtitle_tracks_after=0,
-                activity_context="{}",
-            )
-        )
-    )
+    asyncio.run(_seed_refiner_last_run_and_rows())
+    asyncio.run(_seed_refiner_job_log(ok=True))
 
     async def _go():
         async with SessionLocal() as s:
             data = await build_dashboard_status(s, "UTC")
-            assert data["last_refiner_run"]["outcome"] == "success"
+            assert data["last_refiner_run"]["outcome"] == "none"
             assert data["last_refiner_run"]["ok"] is True
 
     asyncio.run(_go())
@@ -375,6 +365,7 @@ def test_dashboard_refiner_no_rows_preserves_fallback(monkeypatch) -> None:
     async def _go():
         async with SessionLocal() as s:
             await s.execute(delete(RefinerActivity))
+            await s.execute(delete(JobRunLog).where(JobRunLog.app == "refiner"))
             st = await get_or_create_settings(s)
             st.refiner_last_run_at = datetime(2026, 3, 24, 10, 45, 0)
             await s.commit()
@@ -382,5 +373,99 @@ def test_dashboard_refiner_no_rows_preserves_fallback(monkeypatch) -> None:
             assert data["last_refiner_run"]["ok"] is None
             assert data["last_refiner_run"]["outcome"] == "none"
             assert data["last_refiner_run"]["time_local"] != ""
+
+    asyncio.run(_go())
+
+
+def test_build_dashboard_status_includes_sonarr_refiner_keys(monkeypatch) -> None:
+    """Sonarr Refiner pipeline keys are present in dashboard status even when disabled."""
+
+    class _FakeScheduler:
+        @staticmethod
+        def next_runs_by_job():
+            return {
+                "sonarr": None,
+                "radarr": None,
+                "trimmer": None,
+                "refiner": None,
+                "sonarr_refiner": None,
+            }
+
+        @staticmethod
+        def is_run_in_progress():
+            return False
+
+    async def _no_live(_settings):
+        return {}
+
+    monkeypatch.setattr(
+        "app.dashboard_service.fetch_live_dashboard_queue_totals",
+        _no_live,
+    )
+    monkeypatch.setattr("app.dashboard_service.scheduler", _FakeScheduler())
+
+    async def _go() -> None:
+        async with SessionLocal() as s:
+            row = await get_or_create_settings(s)
+            row.sonarr_refiner_enabled = False
+            await s.commit()
+            data = await build_dashboard_status(s, "UTC")
+            assert "last_sonarr_refiner_run" in data
+            assert "next_sonarr_refiner_display" in data
+            assert "sonarr_refiner_sparkline" in data
+            assert "sonarr_refiner_live_total" in data
+            assert "sonarr_refiner_live_done" in data
+            assert "sonarr_refiner_enabled" in data
+            assert data["next_sonarr_refiner_display"] == {
+                "state": "disabled",
+                "primary": "Off",
+                "secondary": "Automation disabled",
+            }
+            assert data["sonarr_refiner_enabled"] is False
+
+    asyncio.run(_go())
+
+
+def test_build_dashboard_status_sonarr_refiner_watching_when_enabled(monkeypatch) -> None:
+    """When Sonarr Refiner is enabled, next run shows Watching for files."""
+
+    class _FakeScheduler:
+        @staticmethod
+        def next_runs_by_job():
+            return {
+                "sonarr": None,
+                "radarr": None,
+                "trimmer": None,
+                "refiner": None,
+                "sonarr_refiner": None,
+            }
+
+        @staticmethod
+        def is_run_in_progress():
+            return False
+
+    async def _no_live(_settings):
+        return {}
+
+    monkeypatch.setattr(
+        "app.dashboard_service.fetch_live_dashboard_queue_totals",
+        _no_live,
+    )
+    monkeypatch.setattr("app.dashboard_service.scheduler", _FakeScheduler())
+
+    async def _go() -> None:
+        async with SessionLocal() as s:
+            row = await get_or_create_settings(s)
+            row.sonarr_refiner_enabled = True
+            row.sonarr_refiner_primary_audio_lang = "eng"
+            row.sonarr_refiner_interval_seconds = 30
+            await s.commit()
+            data = await build_dashboard_status(s, "UTC")
+            assert data["next_sonarr_refiner_display"] == {
+                "state": "watching",
+                "primary": "Watching for files",
+                "secondary": "Scans every 30s",
+            }
+            assert data["sonarr_refiner_enabled"] is True
 
     asyncio.run(_go())

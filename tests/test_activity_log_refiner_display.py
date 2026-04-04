@@ -70,40 +70,30 @@ def test_humanize_refiner_batch_detail_readable() -> None:
     assert "scheduled" in lines[0]
 
 
-def test_refiner_batch_primary_label_waiting_only_aggregate() -> None:
-    ts = datetime(2026, 1, 1, 12, 0, 0)
-    e = ActivityLog(
-        id=1,
-        job_run_id=None,
-        created_at=ts,
-        app="refiner",
-        kind="refiner",
-        status="ok",
-        count=0,
-        detail="Refiner (scheduled): processed=0 unchanged=0 dry_run_items=0 waiting=2 errors=0",
+def test_refiner_batch_waiting_field_parses_as_zero_when_absent() -> None:
+    """Rows written by 4.0.0+ omit waiting= — parser returns 0."""
+    detail = (
+        "Refiner (scheduled): processed=2 unchanged=0 "
+        "dry_run_items=0 cleanup_needed=0 errors=0"
     )
-    assert _activity_primary_label(e) == "Refiner waiting"
-    assert _activity_log_outcome_class(e) == "waiting"
+    from app.web_common import parse_refiner_batch_activity_detail
+
+    parsed = parse_refiner_batch_activity_detail(detail)
+    assert parsed is not None
+    _trigger, proc, _noop, _dry, wait, _cleanup, _err = parsed
+    assert proc == 2
+    assert wait == 0
 
 
-def test_refiner_batch_primary_label_mixed_refined_and_waiting_not_failed() -> None:
-    ts = datetime(2026, 1, 1, 12, 0, 0)
-    e = ActivityLog(
-        id=1,
-        job_run_id=None,
-        created_at=ts,
-        app="refiner",
-        kind="refiner",
-        status="ok",
-        count=1,
-        detail="Refiner (scheduled): processed=1 unchanged=0 dry_run_items=0 waiting=1 errors=0",
+def test_refiner_batch_waiting_field_still_parses_from_old_rows() -> None:
+    """Old rows with waiting= still parse correctly."""
+    detail = (
+        "Refiner (scheduled): processed=0 unchanged=0 "
+        "dry_run_items=0 waiting=3 errors=0"
     )
-    assert _activity_primary_label(e) == "Refiner completed"
-    assert _activity_log_outcome_class(e) == "success"
+    from app.web_common import parse_refiner_batch_activity_detail
 
-
-def test_humanize_batch_includes_waiting_counts() -> None:
-    detail = "Refiner (manual): processed=0 unchanged=0 dry_run_items=0 waiting=3 errors=0"
-    lines = _humanize_refiner_batch_log_detail(detail)
-    assert lines is not None
-    assert "3 waiting on upstream" in lines[0]
+    parsed = parse_refiner_batch_activity_detail(detail)
+    assert parsed is not None
+    _trigger, _proc, _noop, _dry, wait, _cleanup, _err = parsed
+    assert wait == 3

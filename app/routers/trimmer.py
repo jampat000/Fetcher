@@ -184,7 +184,7 @@ async def trimmer_settings_page(request: Request, session: AsyncSession = Depend
             "csrf_token": await get_csrf_token_for_template(request, session),
             "show_setup_wizard": show_setup_wizard,
             "template_emby_api_key": template_emby_api_key,
-            "sidebar_health": sidebar_health_dots(snaps_trimmer_settings),
+            "sidebar_health": sidebar_health_dots(snaps_trimmer_settings, settings),
         },
     )
 
@@ -243,7 +243,7 @@ async def trimmer_page(request: Request, session: AsyncSession = Depends(get_ses
             "show_setup_wizard": show_setup_wizard,
             "trimmer_overview": build_trimmer_overview_config(settings),
             "trimmer_recent_activity_summary": trimmer_recent_activity_summary,
-            "sidebar_health": sidebar_health_dots(snaps_trimmer),
+            "sidebar_health": sidebar_health_dots(snaps_trimmer, settings),
         },
     )
 

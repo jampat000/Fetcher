@@ -87,6 +87,17 @@ def _dependency_override_require_auth(request: pytest.FixtureRequest) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _refiner_minimum_age_clamped_to_zero_for_tests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Refiner file-age gate defaults to 10s minimum; tests use fresh files — bypass in refiner_service."""
+    monkeypatch.setattr(
+        "app.refiner_service.clamp_refiner_minimum_age_seconds",
+        lambda _raw: 0,
+    )
+
+
+@pytest.fixture(autouse=True)
 def _dependency_override_require_csrf(request: pytest.FixtureRequest) -> None:
     from app.auth import require_csrf
     from app.main import app

@@ -87,15 +87,6 @@ class TrimmerReviewService:
             result.error = TRIMMER_REVIEW_ERROR_MISSING_CONNECTION
             return result
 
-        if (
-            result.movie_rating_below <= 0
-            and result.movie_unwatched_days <= 0
-            and (not result.tv_delete_watched)
-            and result.tv_unwatched_days <= 0
-        ):
-            result.error = "No rules are enabled. Set at least one Trimmer rule in Trimmer settings."
-            return result
-
         if not run_emby_scan:
             # Fast path: sidebar / default navigation should not scan the whole library.
             result.scan_prompt = True

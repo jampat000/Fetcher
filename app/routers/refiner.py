@@ -31,10 +31,13 @@ from app.schedule import schedule_time_dropdown_choices
 from app.refiner_readiness import (
     get_refiner_state,
     refiner_validate_settings_save_section,
+    sonarr_refiner_validate_settings_save_section,
 )
 from app.refiner_watch_config import (
+    REFINER_MINIMUM_AGE_SEC_DEFAULT,
     REFINER_WATCH_INTERVAL_SEC_DEFAULT,
     clamp_refiner_interval_seconds,
+    clamp_refiner_minimum_age_seconds,
 )
 from app.refiner_lang_display import (
     STREAM_LANGUAGE_OPTIONS,
@@ -54,6 +57,7 @@ from app.web_common import (
     refiner_settings_redirect_url,
     schedule_days_csv_from_named_day_checks,
     schedule_weekdays_selected_dict,
+    sonarr_refiner_settings_redirect_url,
     try_commit_and_reschedule,
 )
 from app.routers.deps import AUTH_DEPS, AUTH_FORM_DEPS
@@ -197,6 +201,16 @@ def _refiner_default_work_folder_path() -> str:
         return str(p)
 
 
+def _sonarr_refiner_default_work_folder_path() -> str:
+    """Resolved path shown when Sonarr temp/work folder is
+    left empty (matches refiner_service default)."""
+    p = db_path().parent / "refiner-sonarr-work"
+    try:
+        return str(p.resolve())
+    except OSError:
+        return str(p)
+
+
 @router.get("/refiner", response_class=HTMLResponse)
 async def refiner_overview_page(request: Request, session: AsyncSession = Depends(get_session)) -> HTMLResponse:
     settings = await get_or_create_settings(session)
@@ -261,7 +275,7 @@ async def refiner_overview_page(request: Request, session: AsyncSession = Depend
                 "bytes_saved": bytes_saved_display,
                 "success_rate": success_rate_30d,
             },
-            "sidebar_health": sidebar_health_dots(snaps_ref_overview),
+            "sidebar_health": sidebar_health_dots(snaps_ref_overview, settings),
         },
     )
 
@@ -283,8 +297,8 @@ async def refiner_settings_page(request: Request, session: AsyncSession = Depend
         {
             "app_name": APP_NAME,
             "app_tagline": APP_TAGLINE,
-            "title": f"{APP_NAME} — Refiner settings",
-            "subtitle": "Configure Refiner workflow and schedule",
+            "title": f"{APP_NAME} — Movies Settings",
+            "subtitle": "Configure Movies Refiner workflow and schedule",
             "settings": settings,
             "timezone": tz,
             "now_local": now_local(tz),
@@ -309,9 +323,235 @@ async def refiner_settings_page(request: Request, session: AsyncSession = Depend
             "csrf_token": await get_csrf_token_for_template(request, session),
             "show_setup_wizard": show_setup_wizard,
             "refiner_state": get_refiner_state(settings),
-            "sidebar_health": sidebar_health_dots(snaps_ref_settings),
+            "sidebar_health": sidebar_health_dots(snaps_ref_settings, settings),
         },
     )
+
+
+@router.get("/refiner/sonarr/settings", response_class=HTMLResponse)
+async def sonarr_refiner_settings_page(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> HTMLResponse:
+    settings = await get_or_create_settings(session)
+    show_setup_wizard = not is_setup_complete(settings)
+    tz = settings.timezone or "UTC"
+    time_choices = schedule_time_dropdown_choices(step_minutes=30)
+    time_choice_keys = {v for v, _ in time_choices}
+    schedule_days_norm = normalize_schedule_days_csv(
+        getattr(settings, "sonarr_refiner_schedule_days", "") or ""
+    )
+    schedule_start_hhmm = normalize_hhmm(
+        getattr(settings, "sonarr_refiner_schedule_start", "00:00"),
+        "00:00",
+    )
+    schedule_end_hhmm = normalize_hhmm(
+        getattr(settings, "sonarr_refiner_schedule_end", "23:59"),
+        "23:59",
+    )
+    snaps = await fetch_latest_app_snapshots(session)
+    return templates.TemplateResponse(
+        request,
+        "refiner_sonarr_settings.html",
+        {
+            "app_name": APP_NAME,
+            "app_tagline": APP_TAGLINE,
+            "title": f"{APP_NAME} — TV Settings",
+            "subtitle": "Configure TV Refiner workflow and schedule",
+            "settings": settings,
+            "timezone": tz,
+            "now_local": now_local(tz),
+            "schedule_time_choices": time_choices,
+            "sonarr_refiner_schedule_days_normalized": schedule_days_norm,
+            "sonarr_refiner_schedule_days_selected": schedule_weekdays_selected_dict(
+                getattr(settings, "sonarr_refiner_schedule_days", "") or ""
+            ),
+            "sonarr_refiner_schedule_start_hhmm": schedule_start_hhmm,
+            "sonarr_refiner_schedule_end_hhmm": schedule_end_hhmm,
+            "sonarr_refiner_start_orphan": time_select_orphan(
+                schedule_start_hhmm,
+                time_choice_keys,
+                fallback_display="12:00 AM",
+            ),
+            "sonarr_refiner_end_orphan": time_select_orphan(
+                schedule_end_hhmm,
+                time_choice_keys,
+                fallback_display="11:59 PM",
+            ),
+            "sonarr_selected_stream_subtitle_langs": list(
+                parse_subtitle_langs_csv(
+                    getattr(settings, "sonarr_refiner_subtitle_langs_csv", "") or ""
+                )
+            ),
+            "stream_language_options": STREAM_LANGUAGE_OPTIONS,
+            "sonarr_refiner_default_work_folder_path": (
+                _sonarr_refiner_default_work_folder_path()
+            ),
+            "csrf_token": await get_csrf_token_for_template(
+                request, session
+            ),
+            "show_setup_wizard": show_setup_wizard,
+            "sidebar_health": sidebar_health_dots(snaps, settings),
+        },
+    )
+
+
+@router.post(
+    "/refiner/sonarr/settings/save",
+    dependencies=AUTH_FORM_DEPS,
+    response_model=None,
+)
+async def sonarr_refiner_settings_save(
+    request: Request,
+    sonarr_refiner_enabled: bool = Form(False),
+    sonarr_refiner_dry_run: bool = Form(False),
+    sonarr_refiner_primary_audio_lang: str = Form(""),
+    sonarr_refiner_secondary_audio_lang: str = Form(""),
+    sonarr_refiner_tertiary_audio_lang: str = Form(""),
+    sonarr_refiner_default_audio_slot: str = Form("primary"),
+    sonarr_refiner_remove_commentary: bool = Form(False),
+    sonarr_refiner_subtitle_mode: str = Form("remove_all"),
+    sonarr_refiner_subtitle_langs: list[str] = Form(default=[]),
+    sonarr_refiner_preserve_forced_subs: bool = Form(False),
+    sonarr_refiner_preserve_default_subs: bool = Form(False),
+    sonarr_refiner_audio_preference_mode: str = Form(
+        "preferred_langs_quality"
+    ),
+    sonarr_refiner_watched_folder: str = Form(""),
+    sonarr_refiner_output_folder: str = Form(""),
+    sonarr_refiner_work_folder: str = Form(""),
+    sonarr_refiner_interval_seconds: int = Form(
+        REFINER_WATCH_INTERVAL_SEC_DEFAULT
+    ),
+    sonarr_refiner_minimum_age_seconds: int = Form(
+        REFINER_MINIMUM_AGE_SEC_DEFAULT
+    ),
+    sonarr_refiner_schedule_enabled: bool = Form(False),
+    sonarr_refiner_schedule_Mon: bool = Form(False),
+    sonarr_refiner_schedule_Tue: bool = Form(False),
+    sonarr_refiner_schedule_Wed: bool = Form(False),
+    sonarr_refiner_schedule_Thu: bool = Form(False),
+    sonarr_refiner_schedule_Fri: bool = Form(False),
+    sonarr_refiner_schedule_Sat: bool = Form(False),
+    sonarr_refiner_schedule_Sun: bool = Form(False),
+    sonarr_refiner_schedule_start: str = Form("00:00"),
+    sonarr_refiner_schedule_end: str = Form("23:59"),
+    refiner_section: Annotated[str | None, Query()] = None,
+    session: AsyncSession = Depends(get_session),
+) -> RedirectResponse | JSONResponse:
+    want_json = _refiner_want_inplace_json(request)
+    ui_sec = _refiner_ui_section(refiner_section)
+
+    def respond(
+        *, saved: bool, reason: str | None = None, message: str | None = None
+    ) -> RedirectResponse | JSONResponse:
+        if want_json:
+            out: dict[str, object] = {"ok": saved, "section": ui_sec}
+            if not saved:
+                out["reason"] = reason or "error"
+                if message:
+                    out["message"] = message
+            return JSONResponse(out)
+        if saved:
+            return RedirectResponse(
+                sonarr_refiner_settings_redirect_url(
+                    saved=True, section=refiner_section
+                ),
+                status_code=303,
+            )
+        return RedirectResponse(
+            sonarr_refiner_settings_redirect_url(
+                saved=False, reason=reason, section=refiner_section
+            ),
+            status_code=303,
+        )
+
+    try:
+        row = await get_or_create_settings(session)
+        slot = (sonarr_refiner_default_audio_slot or "primary").strip().lower()
+        if slot not in ("primary", "secondary"):
+            slot = "primary"
+        mode = (sonarr_refiner_subtitle_mode or "remove_all").strip().lower()
+        if mode not in ("remove_all", "keep_selected"):
+            mode = "remove_all"
+        pref = normalize_audio_preference_mode(sonarr_refiner_audio_preference_mode)
+        lang_set = sorted(
+            {str(v).strip() for v in sonarr_refiner_subtitle_langs if str(v).strip()}
+        )
+        sim = clamp_refiner_interval_seconds(sonarr_refiner_interval_seconds)
+        min_age = clamp_refiner_minimum_age_seconds(sonarr_refiner_minimum_age_seconds)
+        watched_folder = (sonarr_refiner_watched_folder or "").strip()
+        output_folder = (sonarr_refiner_output_folder or "").strip()
+        primary_stripped = (sonarr_refiner_primary_audio_lang or "").strip()
+        val_reason, val_msg = sonarr_refiner_validate_settings_save_section(
+            ui_sec,
+            enabled=sonarr_refiner_enabled,
+            primary_lang=primary_stripped,
+            watched_folder=watched_folder,
+            output_folder=output_folder,
+        )
+        if val_reason:
+            return respond(saved=False, reason=val_reason, message=val_msg)
+        row.sonarr_refiner_enabled = sonarr_refiner_enabled
+        row.sonarr_refiner_dry_run = sonarr_refiner_dry_run
+        row.sonarr_refiner_primary_audio_lang = primary_stripped[:16]
+        row.sonarr_refiner_secondary_audio_lang = (
+            (sonarr_refiner_secondary_audio_lang or "").strip()[:16]
+        )
+        row.sonarr_refiner_tertiary_audio_lang = (
+            (sonarr_refiner_tertiary_audio_lang or "").strip()[:16]
+        )
+        row.sonarr_refiner_default_audio_slot = slot
+        row.sonarr_refiner_remove_commentary = sonarr_refiner_remove_commentary
+        row.sonarr_refiner_subtitle_mode = mode
+        row.sonarr_refiner_subtitle_langs_csv = ",".join(lang_set)
+        row.sonarr_refiner_audio_preference_mode = pref
+        row.sonarr_refiner_preserve_forced_subs = sonarr_refiner_preserve_forced_subs
+        row.sonarr_refiner_preserve_default_subs = sonarr_refiner_preserve_default_subs
+        row.sonarr_refiner_watched_folder = watched_folder[:8000]
+        row.sonarr_refiner_output_folder = output_folder[:8000]
+        row.sonarr_refiner_work_folder = (sonarr_refiner_work_folder or "").strip()[:8000]
+        row.sonarr_refiner_interval_seconds = sim
+        row.sonarr_refiner_minimum_age_seconds = min_age
+        row.sonarr_refiner_schedule_enabled = sonarr_refiner_schedule_enabled
+        row.sonarr_refiner_schedule_days = schedule_days_csv_from_named_day_checks(
+            sonarr_refiner_schedule_Mon,
+            sonarr_refiner_schedule_Tue,
+            sonarr_refiner_schedule_Wed,
+            sonarr_refiner_schedule_Thu,
+            sonarr_refiner_schedule_Fri,
+            sonarr_refiner_schedule_Sat,
+            sonarr_refiner_schedule_Sun,
+        )
+        row.sonarr_refiner_schedule_start = normalize_hhmm(
+            sonarr_refiner_schedule_start, "00:00"
+        )
+        row.sonarr_refiner_schedule_end = normalize_hhmm(
+            sonarr_refiner_schedule_end, "23:59"
+        )
+        row.sonarr_refiner_schedule_days = normalize_schedule_days_csv(
+            row.sonarr_refiner_schedule_days or ""
+        )
+        row.updated_at = utc_now_naive()
+        if not await try_commit_and_reschedule(session, targets={"sonarr_refiner"}):
+            return respond(saved=False, reason="db_busy")
+        return respond(saved=True)
+    except SQLAlchemyError:
+        logger.exception("POST sonarr refiner save SQLAlchemyError")
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+        return respond(saved=False, reason="db_error")
+    except Exception:
+        logger.exception("POST sonarr refiner save failed")
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+        if (os.environ.get("FETCHER_LOG_LEVEL") or "").upper() == "DEBUG":
+            raise
+        return respond(saved=False, reason="error")
 
 
 @router.post("/refiner/settings/save", dependencies=AUTH_FORM_DEPS, response_model=None)
@@ -333,6 +573,7 @@ async def refiner_settings_save(
     refiner_output_folder: str = Form(""),
     refiner_work_folder: str = Form(""),
     refiner_interval_seconds: int = Form(REFINER_WATCH_INTERVAL_SEC_DEFAULT),
+    refiner_minimum_age_seconds: int = Form(REFINER_MINIMUM_AGE_SEC_DEFAULT),
     refiner_schedule_enabled: bool = Form(False),
     refiner_schedule_Mon: bool = Form(False),
     refiner_schedule_Tue: bool = Form(False),
@@ -381,6 +622,7 @@ async def refiner_settings_save(
         pref = normalize_audio_preference_mode(refiner_audio_preference_mode)
         lang_set = sorted({str(v).strip() for v in refiner_subtitle_langs if str(v).strip()})
         sim = clamp_refiner_interval_seconds(refiner_interval_seconds)
+        min_age_rad = clamp_refiner_minimum_age_seconds(refiner_minimum_age_seconds)
         watched_folder = (refiner_watched_folder or "").strip()
         output_folder = (refiner_output_folder or "").strip()
         primary_stripped = (refiner_primary_audio_lang or "").strip()
@@ -409,6 +651,7 @@ async def refiner_settings_save(
         row.refiner_output_folder = output_folder[:8000]
         row.refiner_work_folder = (refiner_work_folder or "").strip()[:8000]
         row.refiner_interval_seconds = sim
+        row.refiner_minimum_age_seconds = min_age_rad
         row.refiner_schedule_enabled = refiner_schedule_enabled
         row.refiner_schedule_days = schedule_days_csv_from_named_day_checks(
             refiner_schedule_Mon,

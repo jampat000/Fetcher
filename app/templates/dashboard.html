@@ -105,6 +105,10 @@
       <p class="dashboard-fetcher-state-detail" id="dash-fetcher-phase-detail">{{ av.fetcher_phase_detail }}</p>
     </div>
     <div class="automation-cards">
+
+      <div class="automation-group-label">Fetching</div>
+      <div class="automation-group-label">Processing</div>
+
       <div class="automation-card dash-summary-tile" data-automation-card="sonarr">
         <div class="dash-summary-tile-head"><span class="dash-summary-tile-title">Sonarr</span></div>
         <dl class="dash-summary-meta">
@@ -159,40 +163,87 @@
 
       <div class="automation-card dash-summary-tile" data-automation-card="refiner">
         <div class="dash-summary-tile-head"><span class="dash-summary-tile-title">Refiner</span></div>
-        <dl class="dash-summary-meta">
-          <div class="dash-summary-meta-row">
-            <dt>Last run</dt>
-            <dd class="dash-summary-meta-dd" id="dash-last-refiner-run">
+
+        {% if av.refiner_enabled and av.sonarr_refiner_enabled %}
+          {% set nm = av.next_refiner_display or {} %}
+          {% set nt = av.next_sonarr_refiner_display or {} %}
+          <div class="refiner-dual-stack">
+          <div class="refiner-pipeline-section">
+            <div class="refiner-pipeline-label">Movies</div>
+            <div class="refiner-pipeline-last-run" id="dash-last-refiner-run">
               {% if av.last_refiner_run.time_local %}
                 <strong class="dash-summary-time-emphasis" id="dash-last-refiner-rel">{{ av.last_refiner_run.relative }}</strong>
-                {% if av.last_refiner_run.ok is sameas true %}
-                  <span class="status-pill status-pill-ok">Succeeded</span>
-                {% elif av.last_refiner_run.ok is sameas false %}
-                  <span class="status-pill status-pill-fail">Failed</span>
-                {% elif av.last_refiner_run.outcome == 'waiting' %}
-                  <span class="status-pill status-pill-idle">Waiting</span>
+                {% if av.last_refiner_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>
+                {% elif av.last_refiner_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
+              {% else %}<span class="dash-summary-empty-state">Not yet run</span>{% endif %}
+            </div>
+            <div class="refiner-pipeline-next-run" data-next-run-state="{{ nm.get('state', '') }}">
+              <span class="automation-next-run-primary" id="dash-next-refiner-tick">{{ nm.get('primary', '') }}</span><span class="refiner-pipeline-next-run-sep" aria-hidden="true"{% if not nm.get('secondary') %} hidden{% endif %}> · </span><span class="automation-next-run-secondary small muted" id="dash-next-refiner-rel">{{ nm.get('secondary', '') }}</span>
+            </div>
+          </div>
+          <div class="refiner-pipeline-section">
+            <div class="refiner-pipeline-label">TV</div>
+            <div class="refiner-pipeline-last-run" id="dash-last-sonarr-refiner-run">
+              {% if av.last_sonarr_refiner_run.time_local %}
+                <strong class="dash-summary-time-emphasis" id="dash-last-sonarr-refiner-rel">{{ av.last_sonarr_refiner_run.relative }}</strong>
+                {% if av.last_sonarr_refiner_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>
+                {% elif av.last_sonarr_refiner_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
+              {% else %}<span class="dash-summary-empty-state">Not yet run</span>{% endif %}
+            </div>
+            <div class="refiner-pipeline-next-run" data-next-run-state="{{ nt.get('state', '') }}">
+              <span class="automation-next-run-primary" id="dash-next-sonarr-refiner-tick">{{ nt.get('primary', '') }}</span><span class="refiner-pipeline-next-run-sep" aria-hidden="true"{% if not nt.get('secondary') %} hidden{% endif %}> · </span><span class="automation-next-run-secondary small muted" id="dash-next-sonarr-refiner-rel">{{ nt.get('secondary', '') }}</span>
+            </div>
+          </div>
+          </div>
+
+        {% else %}
+          <dl class="dash-summary-meta">
+            <div class="dash-summary-meta-row">
+              <dt>Last run</dt>
+              <dd class="dash-summary-meta-dd" id="dash-last-refiner-run">
+                {% if av.refiner_enabled %}
+                  {% if av.last_refiner_run.time_local %}
+                    <strong class="dash-summary-time-emphasis" id="dash-last-refiner-rel">{{ av.last_refiner_run.relative }}</strong>
+                    {% if av.last_refiner_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>
+                    {% elif av.last_refiner_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
+                  {% else %}<span class="dash-summary-empty-state">Not yet run</span>{% endif %}
+                {% elif av.sonarr_refiner_enabled %}
+                  {% if av.last_sonarr_refiner_run.time_local %}
+                    <strong class="dash-summary-time-emphasis" id="dash-last-sonarr-refiner-rel">{{ av.last_sonarr_refiner_run.relative }}</strong>
+                    {% if av.last_sonarr_refiner_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>
+                    {% elif av.last_sonarr_refiner_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
+                  {% else %}<span class="dash-summary-empty-state">Not yet run</span>{% endif %}
+                {% else %}
+                  <span class="dash-summary-empty-state">Not configured</span>
                 {% endif %}
-              {% else %}
-                <span class="dash-summary-empty-state">Not yet run</span>
-              {% endif %}
-            </dd>
-          </div>
-          <div class="dash-summary-meta-row">
-            <dt>Next run</dt>
-            <dd class="dash-summary-meta-dd automation-card-subline">{{ next_run_block(av.next_refiner_display, "dash-next-refiner-tick", "dash-next-refiner-rel") }}</dd>
-          </div>
-        </dl>
+              </dd>
+            </div>
+            <div class="dash-summary-meta-row">
+              <dt>Next run</dt>
+              <dd class="dash-summary-meta-dd automation-card-subline">
+                {% if av.sonarr_refiner_enabled %}
+                  {{ next_run_block(av.next_sonarr_refiner_display, "dash-next-sonarr-refiner-tick", "dash-next-sonarr-refiner-rel") }}
+                {% else %}
+                  {{ next_run_block(av.next_refiner_display, "dash-next-refiner-tick", "dash-next-refiner-rel") }}
+                {% endif %}
+              </dd>
+            </div>
+          </dl>
+        {% endif %}
+
         {{ automation_sparkline_block(av, "refiner", "Refiner") }}
         <div class="dash-summary-tile-footer automation-tile-footer automation-footer-shell">
           <div class="automation-footer-note-slot">
-            <div id="dash-refiner-live-progress" {% if not av.refiner_live_total %}hidden{% endif %}
+            <div id="dash-refiner-live-progress"
+                 {% if not av.refiner_live_total %}hidden{% endif %}
                  class="automation-footer-note small">
               Remuxing {{ av.refiner_live_done }} of {{ av.refiner_live_total }} files…
             </div>
-            <div class="automation-footer-note dash-summary-tile-hint small muted automation-app-hint" id="dash-refiner-hint" hidden></div>
           </div>
           <div class="automation-footer-action-slot">
-            {%- if not av.refiner_enabled -%}<a class="ink-link automation-footer-action" href="/refiner/settings">Refiner settings</a>{%- endif -%}
+            {%- if not av.refiner_enabled and not av.sonarr_refiner_enabled -%}
+              <a class="ink-link automation-footer-action" href="/refiner/settings">Refiner settings</a>
+            {%- endif -%}
           </div>
         </div>
       </div>
@@ -224,6 +275,7 @@
           </div>
         </div>
       </div>
+
     </div>
   </div>
 

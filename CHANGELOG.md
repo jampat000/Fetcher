@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 4.0.0 — 2026-04-04
+
+### Added
+
+- **Refiner — dual pipeline:** Movies (`refiner_*`) and TV (`sonarr_refiner_*`) pipelines with separate settings, locks, interval jobs, and job logs (`app=refiner` vs `app=sonarr_refiner`). Schema adds `refiner_minimum_age_seconds` and Sonarr fields; **`CURRENT_SCHEMA_VERSION` 40**.
+- **Refiner — Sonarr runner (Phase 3):** `run_sonarr_refiner_pass` with file-age gate and scheduler integration; Sonarr wrong-content handling deferred.
+- **Refiner — Sonarr scheduler (Phase 4):** APScheduler job `fetcher_sonarr_refiner` independent of Radarr Refiner (`fetcher_refiner`).
+- **Refiner — Sonarr settings UI (Phase 5):** `/refiner/sonarr/settings` with save validation and reschedule; Refiner area tabs **TV (Sonarr)** / **Movies (Radarr)**; Movies folders expose **Minimum file age (seconds)**.
+- **Refiner — dashboard card (Phase 6):** One automation card shows both pipelines when enabled, per-pipeline next run and labels, **Not configured** when both off (grid stays four columns).
+
+### Changed
+
+- **Refiner — readiness (Phase 2):** File-age and size-stability gate replaces Radarr queue as the work gate; queue still used for wrong-content detection only; `waiting` / upstream-block logic removed from the Radarr pipeline.
+- **Sidebar health:** Refiner dots ordered Sonarr (left) then Radarr (right), matching Settings; Emby dot may show **ok** when Trimmer is enabled with URL and API key but no `AppSnapshot` row yet.
+- **Refiner settings pages:** Main headings **TV Settings** and **Movies Settings** (document `title` aligned).
+
 ## 3.9.1 — 2026-04-03
 
 ### Fixed

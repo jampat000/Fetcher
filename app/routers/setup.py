@@ -102,7 +102,7 @@ async def setup_wizard_page(
             "template_sonarr_api_key": template_sonarr_api_key,
             "template_radarr_api_key": template_radarr_api_key,
             "template_emby_api_key": template_emby_api_key,
-            "sidebar_health": sidebar_health_dots(snaps_setup),
+            "sidebar_health": sidebar_health_dots(snaps_setup, settings),
         },
     )
 

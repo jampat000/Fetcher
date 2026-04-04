@@ -59,7 +59,7 @@ async def login_get(
             "error": (error or "").strip(),
             "login_next": login_next,
             "show_setup_wizard": show_setup_wizard,
-            "sidebar_health": sidebar_health_dots({}),
+            "sidebar_health": sidebar_health_dots({}, settings),
         },
     )
 
@@ -121,7 +121,7 @@ async def login_post(
             "error": result.message,
             "login_next": next_dest,
             "show_setup_wizard": show_setup_wizard,
-            "sidebar_health": sidebar_health_dots({}),
+            "sidebar_health": sidebar_health_dots({}, settings),
         },
     )
 

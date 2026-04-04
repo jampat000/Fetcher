@@ -72,6 +72,41 @@ def refiner_validate_settings_save_section(
     return None, None
 
 
+def sonarr_refiner_validate_settings_save_section(
+    section: str,
+    *,
+    enabled: bool,
+    primary_lang: str,
+    watched_folder: str,
+    output_folder: str,
+) -> tuple[str | None, str | None]:
+    """Validate only the section being saved for the Sonarr
+    Refiner pipeline. Returns (reason_code, user_message)
+    or (None, None)."""
+    sec = (section or "").strip().lower()
+    if sec == "processing":
+        return None, None
+    if sec == "folders":
+        if enabled and (not watched_folder or not output_folder):
+            return (
+                "watched_output_required",
+                "Watched folder and output folder are both "
+                "required while Sonarr Refiner is on. Set them "
+                "in this section, or turn Sonarr Refiner off "
+                "under Processing first.",
+            )
+        return None, None
+    if sec == "audio":
+        if enabled and not normalize_lang(primary_lang):
+            return (
+                "primary_audio_required",
+                "Primary audio language is required while Sonarr "
+                "Refiner is on. Choose one in this section.",
+            )
+        return None, None
+    return None, None
+
+
 def refiner_readiness_issues(row: AppSettings) -> list[tuple[str, str]]:
     """Human-readable issues when Refiner is enabled but not ready to process. (fragment id, message)."""
     if not getattr(row, "refiner_enabled", False):
@@ -139,5 +174,28 @@ def refiner_scheduler_should_run(row: AppSettings) -> bool:
     if not (getattr(row, "refiner_watched_folder", "") or "").strip():
         return False
     if not (getattr(row, "refiner_output_folder", "") or "").strip():
+        return False
+    return True
+
+
+def sonarr_refiner_scheduler_should_run(
+    row: AppSettings,
+) -> bool:
+    """True when Sonarr Refiner is on and minimum fields are
+    set so the interval job may run (execution still validates
+    paths)."""
+    if not getattr(row, "sonarr_refiner_enabled", False):
+        return False
+    if not normalize_lang(
+        getattr(row, "sonarr_refiner_primary_audio_lang", "") or ""
+    ):
+        return False
+    if not (
+        getattr(row, "sonarr_refiner_watched_folder", "") or ""
+    ).strip():
+        return False
+    if not (
+        getattr(row, "sonarr_refiner_output_folder", "") or ""
+    ).strip():
         return False
     return True

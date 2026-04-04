@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import time
 from pathlib import Path
 
 import pytest
@@ -15,6 +17,7 @@ from app.refiner_source_readiness import (
     fetch_refiner_queue_snapshot,
     iter_queue_path_strings,
     queue_record_upstream_active,
+    refiner_file_age_gate,
     refiner_file_level_gate,
     upstream_analyze_path,
     upstream_blocks_path,
@@ -661,3 +664,86 @@ def test_fetch_snapshot_uses_queue_page(monkeypatch: pytest.MonkeyPatch) -> None
         assert len(snap.radarr_records) == 1
 
     asyncio.run(_run())
+
+
+def test_file_age_gate_rejects_recently_modified_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """File modified just now is not ready."""
+    f = tmp_path / "new.mkv"
+    f.write_bytes(b"x" * 1000)
+    # mtime is right now — age is ~0s
+    ok, why = refiner_file_age_gate(f, minimum_age_seconds=60)
+    assert ok is False
+    assert "minimum age" in why.lower() or "waiting" in why.lower()
+
+
+def test_file_age_gate_accepts_old_stable_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """File last modified well before minimum age passes."""
+    f = tmp_path / "old.mkv"
+    f.write_bytes(b"x" * 1000)
+    # Set mtime to 120 seconds ago
+    old_time = time.time() - 120
+    os.utime(f, (old_time, old_time))
+    ok, why = refiner_file_age_gate(f, minimum_age_seconds=60)
+    assert ok is True
+    assert why == ""
+
+
+def test_file_age_gate_rejects_missing_file(
+    tmp_path: Path,
+) -> None:
+    """Missing file is not ready."""
+    f = tmp_path / "missing.mkv"
+    ok, why = refiner_file_age_gate(f, minimum_age_seconds=60)
+    assert ok is False
+    assert "missing" in why.lower() or "not a regular file" in why.lower()
+
+
+def test_file_age_gate_rejects_empty_file(
+    tmp_path: Path,
+) -> None:
+    """Empty file is not ready."""
+    f = tmp_path / "empty.mkv"
+    f.write_bytes(b"")
+    old_time = time.time() - 120
+    os.utime(f, (old_time, old_time))
+    ok, why = refiner_file_age_gate(f, minimum_age_seconds=60)
+    assert ok is False
+    assert "empty" in why.lower()
+
+
+def test_file_age_gate_rejects_growing_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """File that grows between samples is not ready."""
+    import pathlib
+
+    f = (tmp_path / "growing.mkv").resolve()
+    f.write_bytes(b"x" * 1000)
+    old_time = time.time() - 120
+    os.utime(f, (old_time, old_time))
+    call_count = {"n": 0}
+    real_path_stat = pathlib.Path.stat
+
+    def patched_path_stat(self: Path, *, follow_symlinks: bool = True):
+        r = real_path_stat(self, follow_symlinks=follow_symlinks)
+        try:
+            same = self.resolve() == f
+        except OSError:
+            same = False
+        if not same:
+            return r
+        call_count["n"] += 1
+        if call_count["n"] == 2:
+            seq = list(r)
+            seq[6] = int(r.st_size) + 1000
+            return os.stat_result(seq)
+        return r
+
+    monkeypatch.setattr(pathlib.Path, "stat", patched_path_stat)
+    ok, why = refiner_file_age_gate(f, minimum_age_seconds=60)
+    assert ok is False
+    assert "changing" in why.lower() or "still" in why.lower()

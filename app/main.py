@@ -28,13 +28,18 @@ from app.models import Base
 from app.schema_validation import (
     validate_app_settings_schema_version,
     validate_refiner_app_settings_schema,
+    validate_sonarr_refiner_app_settings_schema,
 )
 from app.paths import STATIC_DIR, resolved_logs_dir
 from app.rate_limit import limiter
 from app.refiner_service import reconcile_refiner_processing_rows_on_worker_boot
 from app.scheduler import scheduler
 from app.security_utils import resolve_fetcher_jwt_secret_at_startup, warn_if_data_encryption_key_missing
-from app.web_common import refiner_settings_redirect_url, trimmer_settings_redirect_url
+from app.web_common import (
+    refiner_settings_redirect_url,
+    sonarr_refiner_settings_redirect_url,
+    trimmer_settings_redirect_url,
+)
 from app import updates as app_updates
 from app.routers import api as api_router
 from app.routers import auth as auth_router
@@ -79,6 +84,7 @@ async def _lifespan(_app: FastAPI):
             logger.info("Startup: Refiner worker reconcile (processing rows)")
             await reconcile_refiner_processing_rows_on_worker_boot()
             await validate_refiner_app_settings_schema(engine)
+            await validate_sonarr_refiner_app_settings_schema(engine)
             last_err = None
             break
         except SQLAlchemyError as e:
@@ -189,6 +195,16 @@ async def _form_validation_redirect(request: Request, exc: RequestValidationErro
             return JSONResponse({"ok": False, "reason": "invalid", "section": ui_sec})
         return RedirectResponse(
             refiner_settings_redirect_url(saved=False, reason="invalid", section=rsec),
+            status_code=303,
+        )
+    if request.method == "POST" and request.url.path == "/refiner/sonarr/settings/save":
+        rs = (request.query_params.get("refiner_section") or "").strip().lower()
+        rsec = rs if rs in ("processing", "folders", "audio", "subtitles", "schedule") else None
+        ui_sec = rsec or "processing"
+        if (request.headers.get("x-fetcher-refiner-settings-async") or "").strip() == "1":
+            return JSONResponse({"ok": False, "reason": "invalid", "section": ui_sec})
+        return RedirectResponse(
+            sonarr_refiner_settings_redirect_url(saved=False, reason="invalid", section=rsec),
             status_code=303,
         )
     if request.method == "POST" and request.url.path.startswith("/settings/auth"):

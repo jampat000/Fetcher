@@ -12,8 +12,14 @@ from typing import FrozenSet
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.migrations import repair_refiner_app_settings_columns
+from app.migrations import (
+    repair_refiner_app_settings_columns,
+    repair_sonarr_refiner_app_settings_columns,
+)
 from app.refiner_app_settings_contract import REFINER_APP_SETTINGS_SQLITE_SPECS
+from app.sonarr_refiner_app_settings_contract import (
+    SONARR_REFINER_APP_SETTINGS_SQLITE_SPECS,
+)
 from app.schema_version import CURRENT_SCHEMA_VERSION
 
 logger = logging.getLogger(__name__)
@@ -21,6 +27,10 @@ logger = logging.getLogger(__name__)
 # All ``refiner_*`` columns enforced by strict validation (same set as SQLite repair DDL).
 REQUIRED_REFINER_APP_SETTINGS_COLUMNS: FrozenSet[str] = frozenset(
     name for name, _ in REFINER_APP_SETTINGS_SQLITE_SPECS
+)
+
+REQUIRED_SONARR_REFINER_APP_SETTINGS_COLUMNS: FrozenSet[str] = frozenset(
+    name for name, _ in SONARR_REFINER_APP_SETTINGS_SQLITE_SPECS
 )
 
 _RUNTIME_ERROR_DETAIL = (
@@ -84,6 +94,68 @@ async def validate_refiner_app_settings_schema(engine: AsyncEngine) -> None:
     logger.info(
         "Startup: Refiner app_settings strict validation OK (%s columns).",
         len(REQUIRED_REFINER_APP_SETTINGS_COLUMNS),
+    )
+
+
+async def validate_sonarr_refiner_app_settings_schema(
+    engine: AsyncEngine,
+) -> None:
+    """Strict check after upgrade: always run idempotent repair,
+    then require full sonarr_refiner surface.
+    Mirrors validate_refiner_app_settings_schema exactly."""
+    if engine.dialect.name != "sqlite":
+        logger.error(
+            "Sonarr Refiner schema validation failed: "
+            "expected SQLite, got dialect %r.",
+            engine.dialect.name,
+        )
+        raise RuntimeError(
+            f"Fetcher requires SQLite for database schema "
+            f"checks; got dialect "
+            f"{engine.dialect.name!r}."
+        )
+
+    logger.info(
+        "Startup: strict validation — Sonarr Refiner "
+        "app_settings (idempotent repair, then assert)"
+    )
+    await repair_sonarr_refiner_app_settings_columns(engine)
+
+    exists, cols = await _app_settings_column_names(engine)
+    if not exists:
+        missing = ", ".join(
+            sorted(REQUIRED_SONARR_REFINER_APP_SETTINGS_COLUMNS)
+        )
+        logger.error(
+            "Sonarr Refiner schema validation failed: "
+            "app_settings table missing after repair."
+        )
+        raise RuntimeError(
+            f"This Fetcher build requires sonarr_refiner_* "
+            f"columns. Missing: {missing}."
+        )
+
+    missing_set = (
+        REQUIRED_SONARR_REFINER_APP_SETTINGS_COLUMNS - cols
+    )
+    if missing_set:
+        missing_list = ", ".join(sorted(missing_set))
+        logger.error(
+            "Sonarr Refiner schema validation failed: "
+            "required sonarr_refiner_* columns still missing "
+            "after repair: %s.",
+            missing_list,
+        )
+        raise RuntimeError(
+            f"This Fetcher build requires sonarr_refiner_* "
+            f"columns. Still missing after repair: "
+            f"{missing_list}."
+        )
+
+    logger.info(
+        "Startup: Sonarr Refiner app_settings strict "
+        "validation OK (%s columns).",
+        len(REQUIRED_SONARR_REFINER_APP_SETTINGS_COLUMNS),
     )
 
 

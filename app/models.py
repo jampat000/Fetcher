@@ -146,6 +146,85 @@ class AppSettings(Base):
     refiner_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     refiner_current_pass_total: Mapped[int] = mapped_column(Integer, default=0)
     refiner_current_pass_done: Mapped[int] = mapped_column(Integer, default=0)
+    # Minimum seconds since last file modification before Refiner
+    # will process a file (FileFlows-style age gate).
+    refiner_minimum_age_seconds: Mapped[int] = mapped_column(
+        Integer, default=60
+    )
+
+    # Sonarr Refiner pipeline — independent from Radarr pipeline
+    sonarr_refiner_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False
+    )
+    sonarr_refiner_dry_run: Mapped[bool] = mapped_column(
+        Boolean, default=True
+    )
+    sonarr_refiner_primary_audio_lang: Mapped[str] = mapped_column(
+        String(16), default=""
+    )
+    sonarr_refiner_secondary_audio_lang: Mapped[str] = mapped_column(
+        String(16), default=""
+    )
+    sonarr_refiner_tertiary_audio_lang: Mapped[str] = mapped_column(
+        String(16), default=""
+    )
+    sonarr_refiner_default_audio_slot: Mapped[str] = mapped_column(
+        String(16), default="primary"
+    )
+    sonarr_refiner_remove_commentary: Mapped[bool] = mapped_column(
+        Boolean, default=False
+    )
+    sonarr_refiner_subtitle_mode: Mapped[str] = mapped_column(
+        String(24), default="remove_all"
+    )
+    sonarr_refiner_subtitle_langs_csv: Mapped[str] = mapped_column(
+        Text, default=""
+    )
+    sonarr_refiner_preserve_forced_subs: Mapped[bool] = mapped_column(
+        Boolean, default=True
+    )
+    sonarr_refiner_preserve_default_subs: Mapped[bool] = mapped_column(
+        Boolean, default=True
+    )
+    sonarr_refiner_watched_folder: Mapped[str] = mapped_column(
+        Text, default=""
+    )
+    sonarr_refiner_output_folder: Mapped[str] = mapped_column(
+        Text, default=""
+    )
+    sonarr_refiner_work_folder: Mapped[str] = mapped_column(
+        Text, default=""
+    )
+    sonarr_refiner_audio_preference_mode: Mapped[str] = mapped_column(
+        String(24), default="preferred_langs_quality"
+    )
+    sonarr_refiner_minimum_age_seconds: Mapped[int] = mapped_column(
+        Integer, default=60
+    )
+    sonarr_refiner_interval_seconds: Mapped[int] = mapped_column(
+        Integer, default=60
+    )
+    sonarr_refiner_schedule_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False
+    )
+    sonarr_refiner_schedule_days: Mapped[str] = mapped_column(
+        Text, default=""
+    )
+    sonarr_refiner_schedule_start: Mapped[str] = mapped_column(
+        String(5), default="00:00"
+    )
+    sonarr_refiner_schedule_end: Mapped[str] = mapped_column(
+        String(5), default="23:59"
+    )
+    sonarr_refiner_last_run_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
+    sonarr_refiner_current_pass_total: Mapped[int] = mapped_column(
+        Integer, default=0
+    )
+    sonarr_refiner_current_pass_done: Mapped[int] = mapped_column(
+        Integer, default=0
+    )
 
     # Web UI authentication (bcrypt password hash; TimestampSigner session secret)
     auth_username: Mapped[str] = mapped_column(Text, default="admin")

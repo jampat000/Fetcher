@@ -947,6 +947,53 @@ def log_refiner_readiness_diagnostic(
     logger.warning("Refiner readiness diagnostic %s", json.dumps(payload, ensure_ascii=True))
 
 
+def refiner_file_age_gate(
+    path: Path,
+    minimum_age_seconds: int,
+) -> tuple[bool, str]:
+    """FileFlows-style age gate: file must not have been
+    modified in the last ``minimum_age_seconds`` seconds,
+    and must be non-empty with stable size.
+
+    Returns (ready, reason_string).
+    reason_string is empty on success.
+    """
+    if not path.is_file():
+        return False, "Source is missing or not a regular file."
+    try:
+        st = path.stat()
+    except OSError as e:
+        return False, f"Could not read file metadata ({e})."
+    if st.st_size <= 0:
+        return False, (
+            "Source file is empty (still writing or incomplete)."
+        )
+    age_seconds = time.time() - st.st_mtime
+    if age_seconds < minimum_age_seconds:
+        remaining = int(minimum_age_seconds - age_seconds)
+        return False, (
+            f"File was modified {int(age_seconds)}s ago — "
+            f"waiting for {minimum_age_seconds}s minimum age "
+            f"({remaining}s remaining)."
+        )
+    # Stability check: size must not change over a short sample.
+    time.sleep(0.12)
+    try:
+        st2 = path.stat()
+    except OSError as e:
+        return (
+            False,
+            f"File became unreadable during readiness check ({e}).",
+        )
+    if st2.st_size != st.st_size:
+        return False, "File size is still changing — not ready yet."
+    if st2.st_size <= 0:
+        return False, (
+            "Source file is empty (still writing or incomplete)."
+        )
+    return True, ""
+
+
 def refiner_file_level_gate(path: Path, *, strict: bool) -> tuple[bool, str]:
     """Conservative local checks: non-empty file with stable size and mtime across short windows."""
     if not path.is_file():

@@ -203,6 +203,7 @@
     <p class="small muted overview-activity-log-link"><a class="ink-link" href="/activity?app=trimmer">View full activity log</a></p>
   </div>
 
+  {% if not trimmer_overview.rules_collapsed %}
   <div class="trimmer-page-below-overview trimmer-page-validation-and-results">
   {% if not dry_run %}
   <div class="section">
@@ -257,5 +258,6 @@
   </div>
   {% endif %}
   </div>
+  {% endif %}
 </div>
 {% endblock %}
