@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re as _re
 import time
 from pathlib import Path
 from typing import Any, Literal
@@ -65,50 +66,48 @@ _refiner_lock = asyncio.Lock()
 _sonarr_refiner_lock = asyncio.Lock()
 
 
-def _find_movie_id_in_inactive_rows(
-    fp: Path, snap: RefinerQueueSnapshot
-) -> int | None:
-    """Match Radarr queue rows that upstream_analyze_path skips for movie ID (e.g. importPending).
+def _any_queue_row_matches_file(fp: Path, snap: RefinerQueueSnapshot) -> bool:
+    """Return True if any Radarr queue row (any state —
+    downloading, importPending, completed, warning, etc)
+    matches this file by title.
 
-    Path match wins for any row (Radarr still owns the file). Title fallback skips rows that
-    look actively downloading to reduce false positives.
+    Used as the ownership sanity check. If zero rows match,
+    the file is disowned — e.g. SAB post-processing failed
+    and Radarr cleared the queue item.
+
+    importPending/warning rows DO match and correctly
+    return True, allowing Refiner to process files that
+    Radarr is waiting to import from the output folder.
+
+    Fail open: returns True when snap has zero records,
+    because an empty queue cannot confirm disownership.
     """
-    from app.refiner_source_readiness import (
-        _normalize_releaseish_title,
-        _resolved_key,
-        derive_title_fallback_candidate,
-        path_matches_queue_record,
-    )
+    def _norm(s: str) -> str:
+        s = s.lower()
+        s = _re.sub(r"[^a-z0-9]", " ", s)
+        s = _re.sub(r" +", " ", s).strip()
+        return s
 
-    file_key = _resolved_key(fp)
-    candidate_title_raw, _ = derive_title_fallback_candidate(fp)
-    candidate_norm = _normalize_releaseish_title(candidate_title_raw)
-    stem_norm = _normalize_releaseish_title(fp.stem)
+    if not snap.radarr_records:
+        return True  # empty queue — cannot confirm disowned, proceed
+
+    candidate = _norm(fp.stem)
+    if len(candidate) < 4:
+        return True  # too short to match reliably, proceed
 
     for rec in snap.radarr_records:
         if not isinstance(rec, dict):
             continue
-        mov = rec.get("movie") if isinstance(rec.get("movie"), dict) else {}
-        mid = mov.get("id")
-        if not isinstance(mid, int) or mid <= 0:
-            continue
-        if path_matches_queue_record(file_key, rec):
-            return mid
-        state = str(rec.get("trackedDownloadState") or "").strip().lower()
-        status = str(rec.get("status") or "").strip().lower()
-        if state == "downloading" or status == "downloading":
-            continue
         title = str(rec.get("title") or "").strip()
-        if title:
-            title_norm = _normalize_releaseish_title(title)
-            if title_norm and (
-                candidate_norm.startswith(title_norm)
-                or title_norm.startswith(candidate_norm)
-                or stem_norm.startswith(title_norm)
-                or title_norm.startswith(stem_norm)
-            ):
-                return mid
-    return None
+        if not title:
+            continue
+        row_norm = _norm(title)
+        if len(row_norm) < 4:
+            continue
+        short = min(len(row_norm), len(candidate))
+        if candidate.startswith(row_norm[:short]) or row_norm.startswith(candidate[:short]):
+            return True
+    return False
 
 
 async def _movie_wrong_content_ctx_for_candidate(
@@ -120,8 +119,6 @@ async def _movie_wrong_content_ctx_for_candidate(
     _, _, _, ud = upstream_analyze_path(fp, snap)
     mid = ud.get("radarr_refiner_target_movie_id")
     if not isinstance(mid, int) or mid <= 0:
-        mid = _find_movie_id_in_inactive_rows(fp, snap)
-    if not isinstance(mid, int) or mid is None or mid <= 0:
         return None
     url = (row.radarr_url or "").strip()
     key = resolve_radarr_api_key(row)
@@ -452,52 +449,56 @@ async def run_refiner_pass(
                     pass
                 continue
 
-            # Radarr ownership guard — applies on both live and
-            # dry runs. If Radarr is reachable and authoritative
-            # but has no association for this file, it has been
-            # disowned (e.g. SAB post-processing failure cleared
-            # the queue item). Skip rather than produce orphan
-            # output.
+            # Radarr ownership guard.
+            # Fires on live and dry runs.
+            # Only skips when ALL of these are true:
+            #   - Radarr is enabled and reachable
+            #   - Queue fetch succeeded (authority_useful)
+            #   - Queue has at least one record
+            #   - Zero records match this file by title
+            # importPending/warning rows still have a title
+            # match so they proceed correctly. Truly disowned
+            # files (SAB failed, Radarr cleared the item)
+            # have no matching row and are skipped.
+            # Fail open when Radarr is unavailable.
             snap: RefinerQueueSnapshot | None = None
             if row.radarr_enabled:
                 snap = await fetch_refiner_queue_snapshot(row)
-                if snap.authority_useful:
-                    _, _, _, own_diag = upstream_analyze_path(fp, snap)
-                    if own_diag.get("radarr_refiner_target_movie_id") is None:
-                        # importPending and similar rows are inactive in upstream_analyze_path,
-                        # so movie ID may be unset there — still Radarr-owned.
-                        if _find_movie_id_in_inactive_rows(fp, snap) is None:
-                            logger.info(
-                                "Refiner: skipping %s — Radarr authority"
-                                " is reachable but reports no owning"
-                                " movie for this file (radarr_disowned)."
-                                " File may be from a failed download."
-                                " Manual review recommended.",
-                                fp.name,
-                            )
-                            row.refiner_current_pass_done += 1
-                            try:
-                                await session.commit()
-                            except Exception:
-                                pass
-                            continue
+                if (
+                    snap.authority_useful
+                    and len(snap.radarr_records) > 0
+                    and not _any_queue_row_matches_file(fp, snap)
+                ):
+                    logger.info(
+                        "Refiner: skipping %s — Radarr queue"
+                        " has records but none match this file"
+                        " (radarr_disowned). File may be from"
+                        " a failed or cleared download.",
+                        fp.name,
+                    )
+                    row.refiner_current_pass_done += 1
+                    try:
+                        await session.commit()
+                    except Exception:
+                        pass
+                    continue
 
             act_id = await _insert_refiner_processing_row(fp.name)
             status: str = "error"
             meta: dict[str, Any] | None = None
             try:
                 wc_ctx: dict[str, Any] | None = None
-                if not dry and row.radarr_enabled and snap is not None:
-                    if snap.authority_useful:
+                if not dry and row.radarr_enabled:
+                    if snap is not None and snap.authority_useful:
                         wc_ctx = await _movie_wrong_content_ctx_for_candidate(
                             fp, row, snap
                         )
-                elif not dry and row.radarr_enabled and snap is None:
-                    snap = await fetch_refiner_queue_snapshot(row)
-                    if snap.authority_useful:
-                        wc_ctx = await _movie_wrong_content_ctx_for_candidate(
-                            fp, row, snap
-                        )
+                    elif snap is None:
+                        snap = await fetch_refiner_queue_snapshot(row)
+                        if snap.authority_useful:
+                            wc_ctx = await _movie_wrong_content_ctx_for_candidate(
+                                fp, row, snap
+                            )
                 status, meta = await asyncio.to_thread(
                     _process_one_refiner_file_sync,
                     fp,

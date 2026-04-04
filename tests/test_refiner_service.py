@@ -908,6 +908,7 @@ def test_wrong_content_stop_leaves_watched_item_untouched_end_to_end(
             "sizeLeft": 0,
             "sizeleft": 0,
             "outputPath": str(media.resolve()),
+            "title": "movie.1080p.bluray.x264",
             "movie": {"id": 123, "title": "Target Movie", "year": 2024},
             "id": 456,
         }
@@ -1686,9 +1687,9 @@ def test_sonarr_refiner_pass_independent_of_radarr_lock(
 def test_refiner_pass_skips_radarr_disowned_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """File passes age gate but Radarr authority returns no
-    owner — skip with radarr_disowned, no activity row,
-    no error count."""
+    """File passes age gate but Radarr queue has rows and none
+    match this file — skip with radarr_disowned, no activity
+    row, no error count."""
     import os as _os, time as _time
 
     async def _fake_snap(row):
@@ -1698,7 +1699,13 @@ def test_refiner_pass_skips_radarr_disowned_file(
             sonarr_configured=False,
             radarr_fetch_succeeded=True,
             sonarr_fetch_succeeded=False,
-            radarr_records=(),  # empty — no queue items
+            radarr_records=(
+                {
+                    "title": "Some.Other.Movie.2020.1080p.BluRay",
+                    "trackedDownloadState": "downloading",
+                    "status": "downloading",
+                },
+            ),
             sonarr_records=(),
         )
 
@@ -1749,7 +1756,7 @@ def test_refiner_pass_skips_radarr_disowned_file(
 def test_refiner_pass_disowned_check_skips_on_dry_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Dry run also skips radarr_disowned files."""
+    """Dry run skips when queue has records but none match the file."""
     import os as _os, time as _time
 
     async def _fake_snap(row):
@@ -1759,7 +1766,13 @@ def test_refiner_pass_disowned_check_skips_on_dry_run(
             sonarr_configured=False,
             radarr_fetch_succeeded=True,
             sonarr_fetch_succeeded=False,
-            radarr_records=(),
+            radarr_records=(
+                {
+                    "title": "Some.Other.Movie.2020.1080p.BluRay",
+                    "trackedDownloadState": "downloading",
+                    "status": "downloading",
+                },
+            ),
             sonarr_records=(),
         )
 
@@ -1882,6 +1895,71 @@ def test_refiner_pass_proceeds_when_radarr_disabled(
             row.refiner_output_folder = str(output)
             row.refiner_minimum_age_seconds = 60
             row.radarr_enabled = False
+            await session.commit()
+            result = await run_refiner_pass(
+                session, trigger="scheduled"
+            )
+            assert result["dry_run_items"] == 1
+            assert result["errors"] == 0
+
+    asyncio.run(_go())
+
+
+def test_refiner_pass_proceeds_for_import_pending_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """importPending file with matching title proceeds —
+    the core workflow: Radarr waits for Refiner to
+    deliver the file to the output folder before it
+    can import."""
+    import os as _os
+    import time as _time
+
+    async def _fake_snap(row):
+        from app.refiner_source_readiness import RefinerQueueSnapshot
+        return RefinerQueueSnapshot(
+            radarr_configured=True,
+            sonarr_configured=False,
+            radarr_fetch_succeeded=True,
+            sonarr_fetch_succeeded=False,
+            radarr_records=(
+                {
+                    "title": "orphan.2006.1080p.bluray",
+                    "trackedDownloadState": "importPending",
+                    "status": "completed",
+                    "trackedDownloadStatus": "warning",
+                },
+            ),
+            sonarr_records=(),
+        )
+
+    monkeypatch.setattr(
+        "app.refiner_service.fetch_refiner_queue_snapshot",
+        _fake_snap,
+    )
+    monkeypatch.setattr(
+        "app.refiner_pipeline.ffprobe_json",
+        lambda _p: _fake_probe_multi_audio(),
+    )
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        f = watched / "orphan.2006.1080p.bluray.mkv"
+        f.write_bytes(b"x" * 500)
+        old_t = _time.time() - 120
+        _os.utime(f, (old_t, old_t))
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = True
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            row.refiner_minimum_age_seconds = 60
+            row.radarr_enabled = True
             await session.commit()
             result = await run_refiner_pass(
                 session, trigger="scheduled"
