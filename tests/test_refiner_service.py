@@ -13,13 +13,13 @@ from sqlalchemy import delete, func, select
 from app.db import SessionLocal, get_or_create_settings
 from app.models import ActivityLog, JobRunLog, RefinerActivity
 from app.refiner_activity_context import parse_activity_context
+from app.refiner_cleanup import _try_remove_empty_watch_subfolder
+from app.refiner_pipeline import _finalize_output_file
 from app.time_util import utc_now_naive
 from app.refiner_service import (
-    _finalize_output_file,
     _pipeline_from_settings,
     _reconcile_interrupted_refiner_processing_rows_before_pass,
     _rules_config_from_settings,
-    _try_remove_empty_watch_subfolder,
     reconcile_refiner_processing_rows_on_worker_boot,
     run_refiner_pass,
     run_sonarr_refiner_pass,

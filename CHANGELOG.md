@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 4.0.6 — 2026-04-04
+
+### Changed
+
+- **Internal cleanup (no behavior change):** Removed dead dashboard automation CSS for a legacy `sonarr_refiner` card rule, an unused scheduler interval helper, and a stale dashboard sparkline key; added a short comment on the Refiner single-pipeline dashboard branch. Dropped unused imports in `refiner_service`; tests now import cleanup/pipeline helpers from their defining modules.
+
+### Notes
+
+- Audit only: `refiner_minimum_age_seconds` remains a processing gate, not part of configuration readiness — no change required. No schema migration, no feature work, no legacy column purge in this release.
+
 ## 4.0.5 — 2026-04-04
 
 ### Added

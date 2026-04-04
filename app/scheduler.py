@@ -126,13 +126,6 @@ class ServiceScheduler:
             "radarr_failed_import_cleanup": "fetcher_radarr_failed_import_cleanup",
         }
 
-    async def _current_job_intervals_minutes(self) -> dict[str, int]:
-        async with SessionLocal() as session:
-            settings = (await session.execute(select(AppSettings).order_by(AppSettings.id.asc()).limit(1))).scalars().first()
-            if not settings:
-                return {}
-            return compute_job_intervals_minutes(settings)
-
     async def _current_scheduler_intervals(
         self,
     ) -> tuple[dict[str, int], int | None, int | None, int | None, int | None]:

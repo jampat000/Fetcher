@@ -707,7 +707,7 @@ function renderDashboardAutomationSparkline(elId, spark) {
 
 function applyDashboardAutomationSparklines(data) {
   if (!data) return;
-  ["sonarr", "radarr", "refiner", "sonarr_refiner", "trimmer"].forEach((app) => {
+  ["sonarr", "radarr", "refiner", "trimmer"].forEach((app) => {
     const key = `${app}_sparkline`;
     if (!Array.isArray(data[key])) return;
     renderDashboardAutomationSparkline(`dash-sparkline-${app}`, data[key]);
@@ -845,7 +845,12 @@ function applyDashboardAutomationStatus(data) {
       lastRefinerTv.innerHTML = tvOn
         ? refinerLastRunInnerHtml(rTv, "dash-last-sonarr-refiner-rel")
         : '<span class="dash-summary-empty-state">Not configured</span>';
-    } else if (lastRefinerMovies && !lastRefinerTv) {
+    }
+    // Single-pipeline: only one of Movies/TV Refiner enabled.
+    // Template renders a single dd container (dash-last-refiner-run).
+    // moviesOn/tvOn come from next_run display state — if both
+    // are off (not configured) show the empty state.
+    else if (lastRefinerMovies && !lastRefinerTv) {
       const lastRefinerDd = lastRefinerMovies;
       if (moviesOn) {
         lastRefinerDd.innerHTML = `<span id="dash-last-refiner-rel">${refinerLastRunInnerHtml(rMovies, "")}</span>`;
