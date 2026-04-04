@@ -6,24 +6,15 @@
 {% set _ref_saved = (request.query_params.get('refiner_saved') or '') %}
 {% set _ref_fail_sec = (request.query_params.get('refiner_section') or '') %}
 <div class="wrap refiner-settings-content">
-  <div class="page-head">
+  <div class="page-head page-head--minimal">
     <div>
-      <h1 class="ph-title">Movies Settings</h1>
-      <p>Configure <strong>Movies Refiner</strong> here.
-        <strong>TV</strong> is configured separately under
-        <a class="ink-link" href="/refiner/sonarr/settings">TV Settings</a>.
-        <strong>Trimmer</strong> is configured separately under
-        <a class="ink-link" href="/trimmer/settings">Trimmer settings</a>.</p>
+      <h1 class="ph-title">Movies Refiner</h1>
     </div>
   </div>
 
   {{ refiner_area_tabs('settings') }}
 
-  <div class="banner banner-ok banner--soft" role="note">
-    <strong>Refiner</strong> processes movie files
-    independently of the <strong>TV</strong> pipeline. Configure
-    watched folder, audio rules, and schedule below.
-  </div>
+  <p class="settings-cross-nav muted small"><a class="ink-link" href="/trimmer/settings">Trimmer settings</a></p>
 
   <div
     id="refiner-banner-readiness"
@@ -40,11 +31,12 @@
     <p class="small muted refiner-readiness-hint">Movies Refiner will not run until these are resolved. You can enable Processing first and finish Audio and Folders next.</p>
   </div>
 
-  <p class="hint refiner-settings-page-hint">Set processing, folders, audio, subtitles, and schedule in the sections below.</p>
-
-  <nav class="settings-tabs trimmer-settings-section-tabs" aria-label="Movies Settings sections">
+  <nav class="settings-tabs trimmer-settings-section-tabs" aria-label="Movies Refiner sections">
     <a href="#refiner-processing" class="settings-tab">
       <span class="settings-tab-dot gray" aria-hidden="true"></span>Processing
+    </a>
+    <a href="#refiner-movies-watched-timing" class="settings-tab">
+      <span class="settings-tab-dot gray" aria-hidden="true"></span>Watched folder
     </a>
     <a href="#refiner-folders" class="settings-tab">
       <span class="settings-tab-dot gray" aria-hidden="true"></span>Folders
@@ -68,21 +60,21 @@
   >
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
 
-    <div class="card gc stripe-amber refiner-settings-anchor refiner-settings-card" id="refiner-processing">
-      <div class="gc-title">Processing</div>
+    <div class="card gc stripe-amber refiner-settings-anchor refiner-settings-card trimmer-section-card" id="refiner-processing">
+      <h2 class="settings-premium-card-title trimmer-section-card-title">Processing</h2>
       <div class="settings-async-feedback" hidden aria-live="polite"></div>
       {% if request.query_params.get('saved') == '1' and _ref_saved == 'processing' %}
-      <div class="banner banner-ok refiner-section-save-feedback" role="status">Refiner settings saved (Processing).</div>
+      <div class="banner banner-ok refiner-section-save-feedback" role="status">Movies Refiner settings saved (Processing).</div>
       {% elif request.query_params.get('saved') == '1' and not _ref_saved %}
-      <div class="banner banner-ok refiner-section-save-feedback" role="status">Refiner settings saved.</div>
+      <div class="banner banner-ok refiner-section-save-feedback" role="status">Movies Refiner settings saved.</div>
       {% elif request.query_params.get('saved') == '1' and _ref_saved not in ['folders', 'audio', 'subtitles', 'schedule'] %}
-      <div class="banner banner-ok refiner-section-save-feedback" role="status">Refiner settings saved.</div>
+      <div class="banner banner-ok refiner-section-save-feedback" role="status">Movies Refiner settings saved.</div>
       {% elif request.query_params.get('save') == 'fail' and _ref_fail_sec == 'processing' %}
       <div class="banner banner-warn refiner-section-save-feedback" role="alert">Could not save (Processing). Try again. ({{ request.query_params.get('reason', 'error') | e }})</div>
       {% endif %}
-      <p class="small muted lead-muted">Turns Refiner on or off and sets dry run or live output.</p>
+      <p class="settings-section-blurb settings-section-blurb--tight">Turn Movies Refiner on or off and choose dry run or live output.</p>
       <div class="settings-toggle-group">
-        {% call toggle_checkbox("refiner_enabled", settings.refiner_enabled) %}<strong>Enable Refiner</strong>{% endcall %}
+        {% call toggle_checkbox("refiner_enabled", settings.refiner_enabled) %}<strong>Enable Movies Refiner</strong>{% endcall %}
         {% call toggle_checkbox("refiner_dry_run", settings.refiner_dry_run) %}<strong>Dry run (safe preview)</strong> — no files are moved or deleted{% endcall %}
       </div>
       <div class="refiner-settings-processing-deletion" role="note">
@@ -93,15 +85,31 @@
       </div>
     </div>
 
-    <div class="card gc stripe-gray refiner-settings-anchor" id="refiner-folders">
-      <div class="gc-title">Folders</div>
+    <div class="card gc stripe-gray refiner-settings-anchor settings-premium-style-card" id="refiner-movies-watched-timing">
+      <h2 class="settings-premium-card-title">Movies watched folder</h2>
+      <p class="settings-section-blurb">Controls how often Movies Refiner checks the movie watched folder for items that are ready to process.</p>
+      <div class="settings-async-feedback" hidden aria-live="polite"></div>
+      <div class="settings-premium-card-body">
+        <div class="settings-sentence-row settings-sentence-row--number">
+          <span class="settings-sentence-lead">Check the watched folder for movies every</span>
+          <input id="refiner-watched-folder-interval-sec" class="number settings-inline-number" type="number" name="movie_refiner_interval_seconds" value="{{ settings.movie_refiner_interval_seconds or 60 }}" min="5" max="604800" placeholder="60" autocomplete="off" inputmode="numeric" aria-label="Movie watched folder interval seconds" />
+          <span class="settings-sentence-tail">seconds</span>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn" type="submit" formaction="/refiner/settings/save?refiner_section=folders">Save watched folder timing</button>
+      </div>
+    </div>
+
+    <div class="card gc stripe-gray refiner-settings-anchor trimmer-section-card" id="refiner-folders">
+      <h2 class="settings-premium-card-title trimmer-section-card-title">Folders</h2>
       <div class="settings-async-feedback" hidden aria-live="polite"></div>
       {% if request.query_params.get('saved') == '1' and _ref_saved == 'folders' %}
-      <div class="banner banner-ok refiner-section-save-feedback" role="status">Refiner settings saved (Folders).</div>
+      <div class="banner banner-ok refiner-section-save-feedback" role="status">Movies Refiner settings saved (Folders).</div>
       {% elif request.query_params.get('save') == 'fail' and _ref_fail_sec == 'folders' %}
       <div class="banner banner-warn refiner-section-save-feedback" role="alert">Could not save (Folders). Try again. ({{ request.query_params.get('reason', 'error') | e }})</div>
       {% endif %}
-      <p class="small muted lead-muted">Sets watched and output folders, check interval, and optional work folder.</p>
+      <p class="settings-section-blurb settings-section-blurb--tight">Watched and output paths, minimum file age, and optional work folder.</p>
       <div class="settings-stack">
         <div class="row refiner-folder-paths-row">
           <div class="field">
@@ -116,13 +124,6 @@
           </div>
         </div>
         <div class="small settings-field-hint refiner-folders-paths-hint">Reads from the watched folder and writes finished files to the output folder.</div>
-        <div class="refiner-folders-interval-wrap">
-          <div class="field refiner-folders-interval-field">
-            <label for="refiner-watched-folder-interval-sec">Watched folder check interval (seconds)</label>
-            <input id="refiner-watched-folder-interval-sec" class="input number" type="number" name="refiner_interval_seconds" value="{{ settings.refiner_interval_seconds or 60 }}" min="5" max="604800" placeholder="60" autocomplete="off" inputmode="numeric" />
-            <div class="small settings-field-hint">Checks the watched folder on this interval and processes ready files.</div>
-          </div>
-        </div>
         <div class="refiner-folders-interval-wrap">
           <div class="field refiner-folders-interval-field">
             <label for="refiner-minimum-age-sec">Minimum file age (seconds)</label>
@@ -154,21 +155,21 @@
       </div>
     </div>
 
-    <div class="card gc stripe-amber refiner-settings-anchor" id="refiner-audio">
-      <div class="gc-title">Audio</div>
+    <div class="card gc stripe-amber refiner-settings-anchor trimmer-section-card" id="refiner-audio">
+      <h2 class="settings-premium-card-title trimmer-section-card-title">Audio</h2>
       <div class="settings-async-feedback" hidden aria-live="polite"></div>
       {% if request.query_params.get('saved') == '1' and _ref_saved == 'audio' %}
-      <div class="banner banner-ok refiner-section-save-feedback" role="status">Refiner settings saved (Audio).</div>
+      <div class="banner banner-ok refiner-section-save-feedback" role="status">Movies Refiner settings saved (Audio).</div>
       {% elif request.query_params.get('save') == 'fail' and _ref_fail_sec == 'audio' %}
       <div class="banner banner-warn refiner-section-save-feedback" role="alert">Could not save (Audio). Try again. ({{ request.query_params.get('reason', 'error') | e }})</div>
       {% endif %}
-      <p class="small muted lead-muted">Keeps selected languages and removes unselected audio tracks.</p>
+      <p class="settings-section-blurb settings-section-blurb--tight">Keeps the languages you want and drops the rest on each movie.</p>
       <div class="settings-stack refiner-audio-stack">
         <div class="refiner-audio-lang-grid" role="group" aria-label="Audio language priority">
           <div class="field refiner-audio-lang-cell">
             <label>Primary audio language</label>
             <select class="input" name="refiner_primary_audio_lang">
-              <option value="" {% if (settings.refiner_primary_audio_lang or '') == '' %}selected{% endif %}>Required when Refiner is on</option>
+              <option value="" {% if (settings.refiner_primary_audio_lang or '') == '' %}selected{% endif %}>Required when Movies Refiner is on</option>
               {% for code, label in stream_language_options %}
               <option value="{{ code }}" {% if (settings.refiner_primary_audio_lang or '') == code %}selected{% endif %}>{{ label }}</option>
               {% endfor %}
@@ -196,7 +197,7 @@
         <div class="field refiner-audio-policy-field">
           <label>Audio selection policy</label>
           <div class="small settings-field-hint refiner-audio-policy-explainer" role="note">
-            <p class="refiner-audio-policy-lead">Choose how Refiner selects the final audio track:</p>
+            <p class="refiner-audio-policy-lead">Choose how Movies Refiner selects the final audio track:</p>
             <ul class="refiner-audio-policy-options">
               <li>
                 <div class="refiner-audio-policy-option-head">
@@ -246,15 +247,15 @@
       </div>
     </div>
 
-    <div class="card gc stripe-gray refiner-settings-anchor" id="refiner-subtitles">
-      <div class="gc-title">Subtitles</div>
+    <div class="card gc stripe-gray refiner-settings-anchor trimmer-section-card" id="refiner-subtitles">
+      <h2 class="settings-premium-card-title trimmer-section-card-title">Subtitles</h2>
       <div class="settings-async-feedback" hidden aria-live="polite"></div>
       {% if request.query_params.get('saved') == '1' and _ref_saved == 'subtitles' %}
-      <div class="banner banner-ok refiner-section-save-feedback" role="status">Refiner settings saved (Subtitles).</div>
+      <div class="banner banner-ok refiner-section-save-feedback" role="status">Movies Refiner settings saved (Subtitles).</div>
       {% elif request.query_params.get('save') == 'fail' and _ref_fail_sec == 'subtitles' %}
       <div class="banner banner-warn refiner-section-save-feedback" role="alert">Could not save (Subtitles). Try again. ({{ request.query_params.get('reason', 'error') | e }})</div>
       {% endif %}
-      <p class="small muted lead-muted">Removes all subtitles or keeps selected subtitle languages.</p>
+      <p class="settings-section-blurb settings-section-blurb--tight">Strip subtitles entirely or keep only the languages you choose.</p>
       <div class="settings-stack">
         <div class="field">
           <label>Subtitle mode</label>
@@ -281,17 +282,17 @@
       </div>
     </div>
 
-    <div class="card gc stripe-amber refiner-settings-anchor" id="refiner-schedule">
-      <div class="gc-title">Schedule</div>
+    <div class="card gc stripe-amber refiner-settings-anchor trimmer-section-card" id="refiner-schedule">
+      <h2 class="settings-premium-card-title trimmer-section-card-title">Schedule</h2>
       <div class="settings-async-feedback" hidden aria-live="polite"></div>
       {% if request.query_params.get('saved') == '1' and _ref_saved == 'schedule' %}
-      <div class="banner banner-ok refiner-section-save-feedback" role="status">Refiner settings saved (Schedule &amp; limits).</div>
+      <div class="banner banner-ok refiner-section-save-feedback" role="status">Movies Refiner settings saved (Schedule &amp; limits).</div>
       {% elif request.query_params.get('save') == 'fail' and _ref_fail_sec == 'schedule' %}
       <div class="banner banner-warn refiner-section-save-feedback" role="alert">Could not save (Schedule &amp; limits). Try again. ({{ request.query_params.get('reason', 'error') | e }})</div>
       {% endif %}
-      <p class="small muted lead-muted">Limits processing to the selected days and times.</p>
+      <p class="settings-section-blurb settings-section-blurb--tight">Optional window: Movies Refiner only runs inside the days and times you pick.</p>
       <div class="settings-stack">
-        {% call toggle_checkbox("refiner_schedule_enabled", settings.refiner_schedule_enabled) %}Enable Refiner schedule window{% endcall %}
+        {% call toggle_checkbox("refiner_schedule_enabled", settings.refiner_schedule_enabled) %}Only process during these hours{% endcall %}
         <div class="small settings-field-hint">Limits processing to the selected days and times when enabled.</div>
         <div>
           <label>Days</label>

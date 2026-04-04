@@ -1,4 +1,4 @@
-"""Refiner settings — isolated from Trimmer service logic."""
+"""Movies Refiner and TV Refiner settings — isolated from Trimmer service logic."""
 
 from __future__ import annotations
 
@@ -48,6 +48,7 @@ from app.refiner_rules import (
     normalize_audio_preference_mode,
     parse_subtitle_langs_csv,
 )
+from app.settings_canonical import movie_refiner_interval_seconds_read
 from app.time_util import utc_now_naive
 from app.ui_templates import templates
 from app.models import RefinerActivity
@@ -176,7 +177,7 @@ def build_refiner_overview_config(settings, refiner_state) -> dict[str, object]:
         "watched_folder": watched_disp,
         "output_folder": output_disp,
         "work_folder_line": work_line,
-        "scan_interval": f"{int(settings.refiner_interval_seconds or 60)}s",
+        "scan_interval": f"{movie_refiner_interval_seconds_read(settings)}s",
         "audio_tracks_mode": audio_tracks_mode,
         "audio_languages": audio_langs,
         "audio_policy": audio_policy,
@@ -297,7 +298,7 @@ async def refiner_settings_page(request: Request, session: AsyncSession = Depend
         {
             "app_name": APP_NAME,
             "app_tagline": APP_TAGLINE,
-            "title": f"{APP_NAME} — Movies Settings",
+            "title": f"{APP_NAME} — Movies Refiner",
             "subtitle": "Configure Movies Refiner workflow and schedule",
             "settings": settings,
             "timezone": tz,
@@ -356,7 +357,7 @@ async def sonarr_refiner_settings_page(
         {
             "app_name": APP_NAME,
             "app_tagline": APP_TAGLINE,
-            "title": f"{APP_NAME} — TV Settings",
+            "title": f"{APP_NAME} — TV Refiner",
             "subtitle": "Configure TV Refiner workflow and schedule",
             "settings": settings,
             "timezone": tz,
@@ -420,7 +421,7 @@ async def sonarr_refiner_settings_save(
     sonarr_refiner_watched_folder: str = Form(""),
     sonarr_refiner_output_folder: str = Form(""),
     sonarr_refiner_work_folder: str = Form(""),
-    sonarr_refiner_interval_seconds: int = Form(
+    tv_refiner_interval_seconds: int = Form(
         REFINER_WATCH_INTERVAL_SEC_DEFAULT
     ),
     sonarr_refiner_minimum_age_seconds: int = Form(
@@ -478,7 +479,7 @@ async def sonarr_refiner_settings_save(
         lang_set = sorted(
             {str(v).strip() for v in sonarr_refiner_subtitle_langs if str(v).strip()}
         )
-        sim = clamp_refiner_interval_seconds(sonarr_refiner_interval_seconds)
+        sim = clamp_refiner_interval_seconds(tv_refiner_interval_seconds)
         min_age = clamp_refiner_minimum_age_seconds(sonarr_refiner_minimum_age_seconds)
         watched_folder = (sonarr_refiner_watched_folder or "").strip()
         output_folder = (sonarr_refiner_output_folder or "").strip()
@@ -511,7 +512,7 @@ async def sonarr_refiner_settings_save(
         row.sonarr_refiner_watched_folder = watched_folder[:8000]
         row.sonarr_refiner_output_folder = output_folder[:8000]
         row.sonarr_refiner_work_folder = (sonarr_refiner_work_folder or "").strip()[:8000]
-        row.sonarr_refiner_interval_seconds = sim
+        row.tv_refiner_interval_seconds = sim
         row.sonarr_refiner_minimum_age_seconds = min_age
         row.sonarr_refiner_schedule_enabled = sonarr_refiner_schedule_enabled
         row.sonarr_refiner_schedule_days = schedule_days_csv_from_named_day_checks(
@@ -572,7 +573,7 @@ async def refiner_settings_save(
     refiner_watched_folder: str = Form(""),
     refiner_output_folder: str = Form(""),
     refiner_work_folder: str = Form(""),
-    refiner_interval_seconds: int = Form(REFINER_WATCH_INTERVAL_SEC_DEFAULT),
+    movie_refiner_interval_seconds: int = Form(REFINER_WATCH_INTERVAL_SEC_DEFAULT),
     refiner_minimum_age_seconds: int = Form(REFINER_MINIMUM_AGE_SEC_DEFAULT),
     refiner_schedule_enabled: bool = Form(False),
     refiner_schedule_Mon: bool = Form(False),
@@ -621,7 +622,7 @@ async def refiner_settings_save(
             mode = "remove_all"
         pref = normalize_audio_preference_mode(refiner_audio_preference_mode)
         lang_set = sorted({str(v).strip() for v in refiner_subtitle_langs if str(v).strip()})
-        sim = clamp_refiner_interval_seconds(refiner_interval_seconds)
+        sim = clamp_refiner_interval_seconds(movie_refiner_interval_seconds)
         min_age_rad = clamp_refiner_minimum_age_seconds(refiner_minimum_age_seconds)
         watched_folder = (refiner_watched_folder or "").strip()
         output_folder = (refiner_output_folder or "").strip()
@@ -650,7 +651,7 @@ async def refiner_settings_save(
         row.refiner_watched_folder = watched_folder[:8000]
         row.refiner_output_folder = output_folder[:8000]
         row.refiner_work_folder = (refiner_work_folder or "").strip()[:8000]
-        row.refiner_interval_seconds = sim
+        row.movie_refiner_interval_seconds = sim
         row.refiner_minimum_age_seconds = min_age_rad
         row.refiner_schedule_enabled = refiner_schedule_enabled
         row.refiner_schedule_days = schedule_days_csv_from_named_day_checks(

@@ -133,12 +133,12 @@ def test_migrate_035_rewrites_activity_log_emby_to_trimmer(tmp_path: Path) -> No
 
 def test_trimmer_connection_status_display_variants() -> None:
     empty = AppSettings()
-    assert trimmer_connection_status_display(empty, None) == ("Emby", "Not configured")
+    assert trimmer_connection_status_display(empty, None) == ("Trimmer", "Not configured")
 
     configured = AppSettings()
     configured.emby_url = "http://localhost:8096"
     configured.emby_api_key = "secret"
-    assert trimmer_connection_status_display(configured, None) == ("Emby", "Configured")
+    assert trimmer_connection_status_display(configured, None) == ("Trimmer", "Configured")
 
     snap_ok = AppSnapshot(
         app="emby",
@@ -147,7 +147,7 @@ def test_trimmer_connection_status_display_variants() -> None:
         missing_total=0,
         cutoff_unmet_total=0,
     )
-    assert trimmer_connection_status_display(configured, snap_ok) == ("Emby", "Connected")
+    assert trimmer_connection_status_display(configured, snap_ok) == ("Trimmer", "Connected")
 
     snap_bad = AppSnapshot(
         app="emby",
@@ -156,4 +156,4 @@ def test_trimmer_connection_status_display_variants() -> None:
         missing_total=0,
         cutoff_unmet_total=0,
     )
-    assert trimmer_connection_status_display(configured, snap_bad) == ("Emby", "Not connected")
+    assert trimmer_connection_status_display(configured, snap_bad) == ("Trimmer", "Not connected")

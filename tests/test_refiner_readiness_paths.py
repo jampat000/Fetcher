@@ -55,7 +55,7 @@ def test_sonarr_refiner_validate_folders_requires_paths_when_enabled() -> None:
         output_folder="/out",
     )
     assert err[0] == "watched_output_required"
-    assert "Sonarr Refiner" in (err[1] or "")
+    assert "TV Refiner" in (err[1] or "")
 
 
 def test_sonarr_refiner_validate_audio_requires_primary_when_enabled() -> None:
@@ -69,4 +69,4 @@ def test_sonarr_refiner_validate_audio_requires_primary_when_enabled() -> None:
         output_folder="/o",
     )
     assert err[0] == "primary_audio_required"
-    assert "Sonarr Refiner" in (err[1] or "")
+    assert "TV Refiner" in (err[1] or "")

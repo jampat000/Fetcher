@@ -75,7 +75,7 @@ def test_sonarr_retry_delay_validation_rejects_zero(monkeypatch: pytest.MonkeyPa
                 "sonarr_search_missing": "true",
                 "sonarr_search_upgrades": "true",
                 "sonarr_max_items_per_run": "50",
-                "sonarr_interval_minutes": "60",
+                "sonarr_search_interval_minutes": "60",
                 "sonarr_retry_delay_minutes": "0",
                 "sonarr_schedule_start": "00:00",
                 "sonarr_schedule_end": "23:59",
@@ -98,7 +98,7 @@ def test_radarr_retry_delay_validation_rejects_zero(monkeypatch: pytest.MonkeyPa
                 "radarr_search_missing": "true",
                 "radarr_search_upgrades": "true",
                 "radarr_max_items_per_run": "50",
-                "radarr_interval_minutes": "60",
+                "radarr_search_interval_minutes": "60",
                 "radarr_retry_delay_minutes": "0",
                 "radarr_schedule_start": "00:00",
                 "radarr_schedule_end": "23:59",
@@ -121,7 +121,7 @@ def test_retry_delay_settings_are_isolated_and_persistent(monkeypatch: pytest.Mo
                 "sonarr_search_missing": "true",
                 "sonarr_search_upgrades": "true",
                 "sonarr_max_items_per_run": "50",
-                "sonarr_interval_minutes": "60",
+                "sonarr_search_interval_minutes": "60",
                 "sonarr_retry_delay_minutes": "17",
                 "sonarr_schedule_start": "00:00",
                 "sonarr_schedule_end": "23:59",
@@ -138,7 +138,7 @@ def test_retry_delay_settings_are_isolated_and_persistent(monkeypatch: pytest.Mo
                 "radarr_search_missing": "true",
                 "radarr_search_upgrades": "true",
                 "radarr_max_items_per_run": "50",
-                "radarr_interval_minutes": "60",
+                "radarr_search_interval_minutes": "60",
                 "radarr_retry_delay_minutes": "89",
                 "radarr_schedule_start": "00:00",
                 "radarr_schedule_end": "23:59",
@@ -166,8 +166,8 @@ def test_run_context_uses_per_app_retry_delays_only() -> None:
             row = await get_or_create_settings(session)
             row.sonarr_retry_delay_minutes = 11
             row.radarr_retry_delay_minutes = 73
-            row.sonarr_interval_minutes = 5
-            row.radarr_interval_minutes = 300
+            row.sonarr_search_interval_minutes = 5
+            row.radarr_search_interval_minutes = 300
             row.timezone = "UTC"
             await session.commit()
             return build_run_context(row, arr_manual_scope=None)

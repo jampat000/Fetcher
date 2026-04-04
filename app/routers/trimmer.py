@@ -33,6 +33,7 @@ from app.models import AppSettings, AppSnapshot
 from app.resolvers.api_keys import resolve_emby_api_key
 from app.schedule import normalize_schedule_days_csv, schedule_time_dropdown_choices
 from app.security_utils import encrypt_secret_for_storage
+from app.settings_canonical import trimmer_interval_minutes_read
 from app.time_util import utc_now_naive
 from app.trimmer_service import (
     TRIMMER_REVIEW_ERROR_MISSING_CONNECTION,
@@ -97,7 +98,7 @@ def build_trimmer_overview_config(settings: AppSettings) -> dict[str, object]:
     conn = "Configured" if ((settings.emby_url or "").strip() and bool(key)) else "Missing"
     emby_user = (settings.emby_user_id or "").strip() or "—"
 
-    em_m = max(1, int(settings.emby_interval_minutes or 60))
+    em_m = trimmer_interval_minutes_read(settings)
 
     movie_unwatched_display = f"{mud} days" if mud > 0 else "Off"
     tv_unwatched_display = f"{tud} days" if tud > 0 else "Off"
@@ -348,7 +349,7 @@ async def save_emby_connection_settings(
 @router.post("/trimmer/settings/cleaner", dependencies=AUTH_FORM_DEPS, response_model=None)
 async def save_trimmer_settings(
     request: Request,
-    emby_interval_minutes: int = Form(60),
+    trimmer_interval_minutes: int = Form(60),
     emby_dry_run: bool = Form(False),
     emby_schedule_enabled: bool = Form(False),
     emby_schedule_Mon: int = Form(0),
@@ -413,8 +414,8 @@ async def save_trimmer_settings(
     try:
         row = await get_or_create_settings(session)
         if scope == "schedule":
-            eim = max(5, min(7 * 24 * 60, int(emby_interval_minutes or 60)))
-            row.emby_interval_minutes = eim
+            eim = max(5, min(7 * 24 * 60, int(trimmer_interval_minutes or 60)))
+            row.trimmer_interval_minutes = eim
             row.emby_dry_run = emby_dry_run
             row.emby_schedule_enabled = emby_schedule_enabled
             row.emby_schedule_days = schedule_days_csv_from_named_day_checks(

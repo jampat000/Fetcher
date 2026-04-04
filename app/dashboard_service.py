@@ -1,4 +1,4 @@
-"""Dashboard automation status and live Arr queue totals (non-HTTP service layer)."""
+"""Dashboard scheduled-run status and live Arr queue totals (non-HTTP service layer)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.arr_client import ArrClient, ArrConfig
-from app.arr_intervals import effective_arr_interval_minutes
 from app.db import get_or_create_settings, fetch_latest_app_snapshots
 from app.display_helpers import (
     fmt_local,
@@ -22,6 +21,13 @@ from app.display_helpers import (
 from app.models import ActivityLog, AppSettings, AppSnapshot, JobRunLog
 from app.resolvers.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
 from app.scheduler import compute_job_intervals_minutes, scheduler
+from app.settings_canonical import (
+    movie_refiner_interval_seconds_read,
+    radarr_search_interval_minutes_read,
+    sonarr_search_interval_minutes_read,
+    trimmer_interval_minutes_read,
+    tv_refiner_interval_seconds_read,
+)
 from app.service_logic import _radarr_missing_total_including_unreleased, _sonarr_missing_total_including_unreleased
 from app.time_util import utc_now_naive
 from app.web_common import user_visible_job_run_message
@@ -43,12 +49,12 @@ def _next_run_display(
     unscheduled_state: str = "enabled_unscheduled",
     unscheduled_secondary: str = "No schedule configured",
 ) -> dict[str, str]:
-    """Shared two-line Next Run display model for automation cards."""
+    """Shared two-line Next Run display model for per-app scheduler cards."""
     if not enabled:
         return {
             "state": "disabled",
             "primary": "Off",
-            "secondary": "Automation disabled",
+            "secondary": "Disabled in settings",
         }
     if next_local:
         return {
@@ -73,11 +79,11 @@ def trimmer_connection_status_display(
     settings: AppSettings,
     emby_snap: AppSnapshot | None,
 ) -> tuple[str, str]:
-    """System row: media server backend type label and read-only connection status (Trimmer slot)."""
+    """System row: Trimmer product label and read-only media-server connection status."""
     key = resolve_emby_api_key(settings)
     url = (settings.emby_url or "").strip()
     configured = bool(url and key)
-    backend_type = "Emby"
+    backend_type = "Trimmer"
     if not configured:
         return (backend_type, "Not configured")
     if emby_snap is None:
@@ -229,7 +235,7 @@ def _fetcher_phase_for_dashboard(
     run_busy: bool,
     job_intervals: dict[str, int],
 ) -> tuple[str, str, str]:
-    """Return ``(phase_id, short_label, explanatory_sentence)`` for the global Automation strip.
+    """Return ``(phase_id, short_label, explanatory_sentence)`` for the global status strip.
 
     Global state stays high-level only — per-app retry delay is shown on each app card, not here.
     """
@@ -243,12 +249,12 @@ def _fetcher_phase_for_dashboard(
         return (
             "idle",
             "Idle",
-            "No automation jobs are scheduled. Enable Sonarr, Radarr, or Trimmer (URL + API key) in settings to start interval runs.",
+            "No interval runs are scheduled. Enable Sonarr, Radarr, or Trimmer (URL + API key) in settings to start search and library runs.",
         )
     return (
         "active",
         "Active",
-        "Automation is scheduled for one or more apps. Each card below shows that app's latest status and timing.",
+        "Interval runs are scheduled for one or more apps. Each card below shows that app's latest status and timing.",
     )
 
 
@@ -438,7 +444,7 @@ async def build_dashboard_status(
         dt = settings.sonarr_last_run_at
         if dt:
             next_sonarr_dt = dt + timedelta(
-                minutes=effective_arr_interval_minutes(settings.sonarr_interval_minutes)
+                minutes=sonarr_search_interval_minutes_read(settings)
             )
     if (
         not next_radarr_dt
@@ -449,7 +455,7 @@ async def build_dashboard_status(
         dt = settings.radarr_last_run_at
         if dt:
             next_radarr_dt = dt + timedelta(
-                minutes=effective_arr_interval_minutes(settings.radarr_interval_minutes)
+                minutes=radarr_search_interval_minutes_read(settings)
             )
     if (
         not next_trimmer_dt
@@ -459,7 +465,7 @@ async def build_dashboard_status(
     ):
         dt = settings.emby_last_run_at
         if dt:
-            next_trimmer_dt = dt + timedelta(minutes=max(5, int(settings.emby_interval_minutes or 60)))
+            next_trimmer_dt = dt + timedelta(minutes=trimmer_interval_minutes_read(settings))
 
     next_sonarr_local = fmt_local(next_sonarr_dt, tz) if next_sonarr_dt else ""
     next_radarr_local = fmt_local(next_radarr_dt, tz) if next_radarr_dt else ""
@@ -495,10 +501,10 @@ async def build_dashboard_status(
         next_refiner_display = {
             "state": "disabled",
             "primary": "Off",
-            "secondary": "Automation disabled",
+            "secondary": "Disabled in settings",
         }
     else:
-        _refiner_interval_s = int(getattr(settings, "refiner_interval_seconds", 60) or 60)
+        _refiner_interval_s = movie_refiner_interval_seconds_read(settings)
         if _refiner_interval_s >= 60:
             _interval_label = f"{_refiner_interval_s // 60}m"
         else:
@@ -513,12 +519,10 @@ async def build_dashboard_status(
         next_sonarr_refiner_display = {
             "state": "disabled",
             "primary": "Off",
-            "secondary": "Automation disabled",
+            "secondary": "Disabled in settings",
         }
     else:
-        _sonarr_refiner_interval_s = int(
-            getattr(settings, "sonarr_refiner_interval_seconds", 60) or 60
-        )
+        _sonarr_refiner_interval_s = tv_refiner_interval_seconds_read(settings)
         if _sonarr_refiner_interval_s >= 60:
             _sr_interval_label = f"{_sonarr_refiner_interval_s // 60}m"
         else:

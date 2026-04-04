@@ -926,7 +926,7 @@ h2.gc-title,
   background: #64748b;
 }
 
-/* Compact badge modifiers (used on dashboard Arr + Emby summaries) */
+/* Compact badge modifiers (used on dashboard Arr + Trimmer summaries) */
 .badge.b-on {
   background: rgba(16, 185, 129, 0.1);
   color: #6ee7b7;
@@ -3215,7 +3215,221 @@ textarea.input:focus {
   box-shadow: none;
 }
 
-/* Sonarr/Radarr tab: 3 internal control panels (Connection, Search and cleanup, Limits and schedule) */
+/* --- Phase 4 premium settings IA (soft cards, sentence rows) --- */
+.settings-premium-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  margin-top: var(--space-6);
+  margin-bottom: var(--space-4);
+}
+.settings-premium-stack--arr {
+  margin-top: var(--space-5);
+}
+.settings-premium-card {
+  background: rgba(255, 255, 255, 0.028);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: var(--space-8) var(--space-9);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.035) inset;
+}
+.settings-premium-card--connection .settings-premium-card-body {
+  gap: var(--space-6);
+}
+.settings-premium-card-title {
+  margin: 0 0 var(--space-3);
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  line-height: 1.25;
+}
+.settings-section-blurb {
+  margin: 0 0 var(--space-7);
+  font-size: 14px;
+  line-height: 1.58;
+  color: var(--text2);
+  max-width: 52rem;
+}
+.settings-section-blurb--tight {
+  margin-bottom: var(--space-5);
+}
+.settings-premium-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.settings-premium-card-body > .settings-premium-row .toggle-field.checkline-toggle,
+.settings-premium-row .toggle-field.checkline-toggle {
+  margin: 0;
+}
+.settings-premium-row--schedule-toggle {
+  margin-top: var(--space-1);
+}
+.settings-premium-field-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.settings-premium-label {
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--text2);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.settings-premium-input {
+  width: 100%;
+  max-width: 28rem;
+}
+.settings-premium-secret-wrap {
+  max-width: 28rem;
+}
+.settings-premium-sublabel {
+  display: block;
+  margin: var(--space-4) 0 var(--space-3);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text2);
+}
+.settings-connection-hint {
+  margin: 0 0 var(--space-6);
+}
+.settings-connection-hint .hint {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text2);
+  margin: 0;
+}
+.settings-connection-hint .hint + .hint {
+  margin-top: var(--space-3);
+}
+.settings-sentence-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 15px;
+  color: var(--text);
+  line-height: 1.45;
+}
+.settings-sentence-lead,
+.settings-sentence-tail {
+  color: var(--text);
+}
+.settings-inline-number {
+  width: 5rem;
+  min-width: 4.25rem;
+  text-align: center;
+}
+.settings-field-hint--soft {
+  margin: calc(var(--space-3) * -0.25) 0 0;
+  font-size: 13px;
+  color: var(--text3);
+  line-height: 1.5;
+}
+.settings-schedule-time-row {
+  margin-top: var(--space-3);
+}
+.settings-cleanup-scenario {
+  margin-bottom: 0;
+  padding-bottom: var(--space-7);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+}
+.settings-cleanup-scenario:has(+ .settings-cleanup-interval-sep) {
+  border-bottom: none;
+  padding-bottom: var(--space-5);
+}
+.settings-cleanup-when {
+  margin: 0 0 var(--space-2);
+  font-size: 15px;
+  font-weight: 625;
+  letter-spacing: -0.015em;
+  color: var(--text);
+  line-height: 1.35;
+}
+.settings-cleanup-note {
+  margin: 0 0 var(--space-4);
+  font-size: 13px;
+  color: var(--text2);
+  line-height: 1.5;
+  max-width: 46rem;
+}
+.settings-cleanup-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.settings-cleanup-actions .toggle-field.checkline-toggle {
+  margin: 0;
+}
+.settings-cleanup-caution {
+  margin: var(--space-1) 0 0;
+  font-size: 12px;
+  color: var(--text3);
+  line-height: 1.45;
+  max-width: 40rem;
+}
+.settings-cleanup-interval-sep {
+  height: 0;
+  margin: var(--space-9) 0 var(--space-7);
+  border: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.07) 22%,
+    rgba(255, 255, 255, 0.1) 50%,
+    rgba(255, 255, 255, 0.07) 78%,
+    transparent 100%
+  );
+  min-height: 1px;
+}
+.settings-cleanup-interval-block {
+  margin-top: 0;
+}
+.settings-cleanup-interval-hint {
+  margin: 0 0 var(--space-4);
+}
+/* Cleanup interval: visually muted when disabled (native disabled = obvious inactive control). */
+.number.settings-inline-number.is-cleanup-interval-disabled:disabled,
+input.number.is-cleanup-interval-disabled:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.settings-cleanup-interval-row.is-cleanup-interval-inactive {
+  opacity: 0.92;
+}
+.refiner-watched-timing-card .settings-premium-card-body {
+  gap: var(--space-4);
+}
+.trimmer-timing-outer {
+  margin-bottom: var(--space-6);
+}
+.card.gc .settings-premium-card-title {
+  margin-top: 0;
+}
+.settings-premium-style-card .settings-section-blurb {
+  margin-top: 0;
+}
+.banner--soft-warn {
+  border-color: rgba(245, 158, 11, 0.15);
+  background: rgba(245, 158, 11, 0.06);
+}
+.page-head--minimal .ph-title {
+  margin-bottom: 0;
+}
+.settings-cross-nav {
+  margin: 0 0 var(--space-6);
+  font-size: 13px;
+}
+.trimmer-section-card-title {
+  margin: 0 0 var(--space-3);
+}
+.card.gc.trimmer-section-card {
+  padding-top: var(--space-7);
+}
+
+/* Sonarr/Radarr tab: legacy grid (unused after Phase 4 premium stack; kept for any old markup) */
 .settings-arr-panels {
   display: grid;
   grid-template-columns: 1fr;

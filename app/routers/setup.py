@@ -124,9 +124,9 @@ async def setup_wizard_save(
     emby_url: str = Form(""),
     emby_api_key: str = Form(""),
     emby_user_id: str = Form(""),
-    sonarr_interval_minutes: int = Form(60),
-    radarr_interval_minutes: int = Form(60),
-    emby_interval_minutes: int = Form(60),
+    sonarr_search_interval_minutes: int = Form(60),
+    radarr_search_interval_minutes: int = Form(60),
+    trimmer_interval_minutes: int = Form(60),
     timezone: str = Form("UTC"),
     session: AsyncSession = Depends(get_session),
 ) -> RedirectResponse | JSONResponse:
@@ -228,9 +228,9 @@ async def setup_wizard_save(
                     v = 60
                 return max(5, min(7 * 24 * 60, v))
 
-            row.sonarr_interval_minutes = _clamp_interval(sonarr_interval_minutes)
-            row.radarr_interval_minutes = _clamp_interval(radarr_interval_minutes)
-            row.emby_interval_minutes = _clamp_interval(emby_interval_minutes)
+            row.sonarr_search_interval_minutes = _clamp_interval(sonarr_search_interval_minutes)
+            row.radarr_search_interval_minutes = _clamp_interval(radarr_search_interval_minutes)
+            row.trimmer_interval_minutes = _clamp_interval(trimmer_interval_minutes)
             row.timezone = _resolve_timezone_name(timezone)
         row.updated_at = utc_now_naive()
         if not await try_commit_and_reschedule(session):

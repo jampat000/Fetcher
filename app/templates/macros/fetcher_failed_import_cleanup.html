@@ -1,0 +1,148 @@
+{% from "macros/toggle.html" import toggle_checkbox %}
+
+{# Interval: visible number is disabled until an option is on; hidden field carries name= when disabled so POST/FormData always includes the value. When active, name= moves to the visible input (see app.js). #}
+{% macro sonarr_failed_import_cleanup(settings, cleanup_any) -%}
+{% set _son_cleanup_iv = settings.sonarr_failed_import_cleanup_interval_minutes|default(60, true) %}
+<section class="settings-premium-card" aria-labelledby="sonarr-failed-import-cleanup-title">
+  <h2 class="settings-premium-card-title" id="sonarr-failed-import-cleanup-title">Failed import cleanup</h2>
+  <p class="settings-section-blurb">Automatically checks for failed imports and applies the cleanup rules you have enabled.</p>
+
+  <div class="settings-cleanup-scenario">
+    <h3 class="settings-cleanup-when">When the file is corrupt or unreadable</h3>
+    <p class="settings-cleanup-note">The download finished, but the file cannot be read or imported.</p>
+    <div class="settings-cleanup-actions">
+      {% call toggle_checkbox("sonarr_cleanup_corrupt", settings.sonarr_cleanup_corrupt | default(false)) %}Remove the import from the queue{% endcall %}
+      {% call toggle_checkbox("sonarr_blocklist_corrupt", settings.sonarr_blocklist_corrupt | default(false)) %}Blocklist the download{% endcall %}
+      <p class="settings-cleanup-caution">Stronger step: blocklist tells Sonarr to skip this release next time it searches.</p>
+    </div>
+  </div>
+  <div class="settings-cleanup-scenario">
+    <h3 class="settings-cleanup-when">When the download fails in the client</h3>
+    <p class="settings-cleanup-note">Your download client reports a failed or missing download.</p>
+    <div class="settings-cleanup-actions">
+      {% call toggle_checkbox("sonarr_cleanup_download_failed", settings.sonarr_cleanup_download_failed | default(false)) %}Remove the import from the queue{% endcall %}
+      {% call toggle_checkbox("sonarr_blocklist_download_failed", settings.sonarr_blocklist_download_failed | default(false)) %}Blocklist the download{% endcall %}
+      <p class="settings-cleanup-caution">Stronger step: blocklist tells Sonarr to skip this release next time it searches.</p>
+    </div>
+  </div>
+  <div class="settings-cleanup-scenario">
+    <h3 class="settings-cleanup-when">When something else blocks the import</h3>
+    <p class="settings-cleanup-note">The grab is still queued, but the import did not finish for a reason other than corruption, the client, matching, or upgrade rules.</p>
+    <div class="settings-cleanup-actions">
+      {% call toggle_checkbox("sonarr_cleanup_import_failed", settings.sonarr_cleanup_import_failed | default(false)) %}Remove the import from the queue{% endcall %}
+      {% call toggle_checkbox("sonarr_blocklist_import_failed", settings.sonarr_blocklist_import_failed | default(false)) %}Blocklist the download{% endcall %}
+      <p class="settings-cleanup-caution">Stronger step: blocklist tells Sonarr to skip this release next time it searches.</p>
+    </div>
+  </div>
+  <div class="settings-cleanup-scenario">
+    <h3 class="settings-cleanup-when">When the release is not matched to a show</h3>
+    <p class="settings-cleanup-note">Sonarr could not match this release to an episode on its own.</p>
+    <div class="settings-cleanup-actions">
+      {% call toggle_checkbox("sonarr_cleanup_unmatched", settings.sonarr_cleanup_unmatched | default(false)) %}Remove the import from the queue{% endcall %}
+      {% call toggle_checkbox("sonarr_blocklist_unmatched", settings.sonarr_blocklist_unmatched | default(false)) %}Blocklist the download{% endcall %}
+      <p class="settings-cleanup-caution">Stronger step: blocklist tells Sonarr to skip this release next time it searches.</p>
+    </div>
+  </div>
+  <div class="settings-cleanup-scenario">
+    <h3 class="settings-cleanup-when">When the release is not a wanted upgrade</h3>
+    <p class="settings-cleanup-note">Sonarr rejected this grab because it does not meet your quality or upgrade choices.</p>
+    <div class="settings-cleanup-actions">
+      {% call toggle_checkbox("sonarr_cleanup_quality", settings.sonarr_cleanup_quality | default(false)) %}Remove the import from the queue{% endcall %}
+      {% call toggle_checkbox("sonarr_blocklist_quality", settings.sonarr_blocklist_quality | default(false)) %}Blocklist the download{% endcall %}
+      <p class="settings-cleanup-caution">Stronger step: blocklist tells Sonarr to skip this release next time it searches.</p>
+    </div>
+  </div>
+  <div class="settings-cleanup-scenario">
+    <h3 class="settings-cleanup-when">When cleaning up the queue</h3>
+    <p class="settings-cleanup-note">You can also remove the matching job from your download client so the same item is less likely to reappear later.</p>
+    <div class="settings-cleanup-actions">
+      {% call toggle_checkbox("sonarr_failed_import_remove_from_client", settings.sonarr_failed_import_remove_from_client | default(false)) %}Remove the download from the client{% endcall %}
+    </div>
+  </div>
+
+  <div class="settings-cleanup-interval-sep" role="presentation"></div>
+
+  <div class="settings-cleanup-interval-block">
+    <p class="settings-cleanup-interval-hint muted small" id="sonarr-cleanup-interval-hint" {% if cleanup_any %}hidden{% endif %}>Enable at least one cleanup option below to set a check interval.</p>
+    <div class="settings-sentence-row settings-sentence-row--number settings-cleanup-interval-row" data-cleanup-interval-row="1">
+      <span class="settings-sentence-lead">Check for failed imports every</span>
+      <input type="hidden" id="sonarr_failed_import_cleanup_interval_minutes_hidden" value="{{ _son_cleanup_iv }}" tabindex="-1" aria-hidden="true"{% if not cleanup_any %} name="sonarr_failed_import_cleanup_interval_minutes"{% endif %} />
+      <input id="sonarr_failed_import_cleanup_interval_minutes" class="number settings-inline-number{% if not cleanup_any %} is-cleanup-interval-disabled{% endif %}" type="number" value="{{ _son_cleanup_iv }}" min="1" max="10080" autocomplete="off" inputmode="numeric"{% if cleanup_any %} name="sonarr_failed_import_cleanup_interval_minutes"{% endif %}{% if not cleanup_any %} disabled{% endif %} />
+      <span class="settings-sentence-tail">minutes</span>
+    </div>
+  </div>
+</section>
+{%- endmacro %}
+
+{% macro radarr_failed_import_cleanup(settings, cleanup_any) -%}
+{% set _rad_cleanup_iv = settings.radarr_failed_import_cleanup_interval_minutes|default(60, true) %}
+<section class="settings-premium-card" aria-labelledby="radarr-failed-import-cleanup-title">
+  <h2 class="settings-premium-card-title" id="radarr-failed-import-cleanup-title">Failed import cleanup</h2>
+  <p class="settings-section-blurb">Automatically checks for failed imports and applies the cleanup rules you have enabled.</p>
+
+  <div class="settings-cleanup-scenario">
+    <h3 class="settings-cleanup-when">When the file is corrupt or unreadable</h3>
+    <p class="settings-cleanup-note">The download finished, but the file cannot be read or imported.</p>
+    <div class="settings-cleanup-actions">
+      {% call toggle_checkbox("radarr_cleanup_corrupt", settings.radarr_cleanup_corrupt | default(false)) %}Remove the import from the queue{% endcall %}
+      {% call toggle_checkbox("radarr_blocklist_corrupt", settings.radarr_blocklist_corrupt | default(false)) %}Blocklist the download{% endcall %}
+      <p class="settings-cleanup-caution">Stronger step: blocklist tells Radarr to skip this release next time it searches.</p>
+    </div>
+  </div>
+  <div class="settings-cleanup-scenario">
+    <h3 class="settings-cleanup-when">When the download fails in the client</h3>
+    <p class="settings-cleanup-note">Your download client reports a failed or missing download.</p>
+    <div class="settings-cleanup-actions">
+      {% call toggle_checkbox("radarr_cleanup_download_failed", settings.radarr_cleanup_download_failed | default(false)) %}Remove the import from the queue{% endcall %}
+      {% call toggle_checkbox("radarr_blocklist_download_failed", settings.radarr_blocklist_download_failed | default(false)) %}Blocklist the download{% endcall %}
+      <p class="settings-cleanup-caution">Stronger step: blocklist tells Radarr to skip this release next time it searches.</p>
+    </div>
+  </div>
+  <div class="settings-cleanup-scenario">
+    <h3 class="settings-cleanup-when">When something else blocks the import</h3>
+    <p class="settings-cleanup-note">The grab is still queued, but the import did not finish for a reason other than corruption, the client, matching, or upgrade rules.</p>
+    <div class="settings-cleanup-actions">
+      {% call toggle_checkbox("radarr_cleanup_import_failed", settings.radarr_cleanup_import_failed | default(false)) %}Remove the import from the queue{% endcall %}
+      {% call toggle_checkbox("radarr_blocklist_import_failed", settings.radarr_blocklist_import_failed | default(false)) %}Blocklist the download{% endcall %}
+      <p class="settings-cleanup-caution">Stronger step: blocklist tells Radarr to skip this release next time it searches.</p>
+    </div>
+  </div>
+  <div class="settings-cleanup-scenario">
+    <h3 class="settings-cleanup-when">When the release is not matched to a movie</h3>
+    <p class="settings-cleanup-note">Radarr could not match this release to a movie on its own.</p>
+    <div class="settings-cleanup-actions">
+      {% call toggle_checkbox("radarr_cleanup_unmatched", settings.radarr_cleanup_unmatched | default(false)) %}Remove the import from the queue{% endcall %}
+      {% call toggle_checkbox("radarr_blocklist_unmatched", settings.radarr_blocklist_unmatched | default(false)) %}Blocklist the download{% endcall %}
+      <p class="settings-cleanup-caution">Stronger step: blocklist tells Radarr to skip this release next time it searches.</p>
+    </div>
+  </div>
+  <div class="settings-cleanup-scenario">
+    <h3 class="settings-cleanup-when">When the release is not a wanted upgrade</h3>
+    <p class="settings-cleanup-note">Radarr rejected this grab because it does not meet your quality or upgrade choices.</p>
+    <div class="settings-cleanup-actions">
+      {% call toggle_checkbox("radarr_cleanup_quality", settings.radarr_cleanup_quality | default(false)) %}Remove the import from the queue{% endcall %}
+      {% call toggle_checkbox("radarr_blocklist_quality", settings.radarr_blocklist_quality | default(false)) %}Blocklist the download{% endcall %}
+      <p class="settings-cleanup-caution">Stronger step: blocklist tells Radarr to skip this release next time it searches.</p>
+    </div>
+  </div>
+  <div class="settings-cleanup-scenario">
+    <h3 class="settings-cleanup-when">When cleaning up the queue</h3>
+    <p class="settings-cleanup-note">You can also remove the matching job from your download client so the same item is less likely to reappear later.</p>
+    <div class="settings-cleanup-actions">
+      {% call toggle_checkbox("radarr_failed_import_remove_from_client", settings.radarr_failed_import_remove_from_client | default(false)) %}Remove the download from the client{% endcall %}
+    </div>
+  </div>
+
+  <div class="settings-cleanup-interval-sep" role="presentation"></div>
+
+  <div class="settings-cleanup-interval-block">
+    <p class="settings-cleanup-interval-hint muted small" id="radarr-cleanup-interval-hint" {% if cleanup_any %}hidden{% endif %}>Enable at least one cleanup option below to set a check interval.</p>
+    <div class="settings-sentence-row settings-sentence-row--number settings-cleanup-interval-row" data-cleanup-interval-row="1">
+      <span class="settings-sentence-lead">Check for failed imports every</span>
+      <input type="hidden" id="radarr_failed_import_cleanup_interval_minutes_hidden" value="{{ _rad_cleanup_iv }}" tabindex="-1" aria-hidden="true"{% if not cleanup_any %} name="radarr_failed_import_cleanup_interval_minutes"{% endif %} />
+      <input id="radarr_failed_import_cleanup_interval_minutes" class="number settings-inline-number{% if not cleanup_any %} is-cleanup-interval-disabled{% endif %}" type="number" value="{{ _rad_cleanup_iv }}" min="1" max="10080" autocomplete="off" inputmode="numeric"{% if cleanup_any %} name="radarr_failed_import_cleanup_interval_minutes"{% endif %}{% if not cleanup_any %} disabled{% endif %} />
+      <span class="settings-sentence-tail">minutes</span>
+    </div>
+  </div>
+</section>
+{%- endmacro %}

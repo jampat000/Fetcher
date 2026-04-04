@@ -23,7 +23,7 @@ class SettingsIn(BaseModel):
     sonarr_blocklist_quality: bool = False
     sonarr_failed_import_remove_from_client: bool = False
     sonarr_max_items_per_run: int = Field(default=50, ge=1, le=1000)
-    sonarr_interval_minutes: int = Field(default=60, ge=1, le=7 * 24 * 60)
+    sonarr_search_interval_minutes: int = Field(default=60, ge=1, le=7 * 24 * 60)
 
     radarr_enabled: bool = False
     radarr_url: str = Field(default="", description="Base URL, e.g. http://localhost:7878")
@@ -42,9 +42,9 @@ class SettingsIn(BaseModel):
     radarr_blocklist_quality: bool = False
     radarr_failed_import_remove_from_client: bool = False
     radarr_max_items_per_run: int = Field(default=50, ge=1, le=1000)
-    radarr_interval_minutes: int = Field(default=60, ge=1, le=7 * 24 * 60)
+    radarr_search_interval_minutes: int = Field(default=60, ge=1, le=7 * 24 * 60)
 
-    emby_interval_minutes: int = Field(
+    trimmer_interval_minutes: int = Field(
         default=60,
         ge=5,
         le=7 * 24 * 60,
@@ -62,11 +62,17 @@ class SettingsIn(BaseModel):
         le=365 * 24 * 60,
         description="Min minutes before retrying the same Radarr item search.",
     )
-    failed_import_cleanup_interval_minutes: int = Field(
+    sonarr_failed_import_cleanup_interval_minutes: int = Field(
         default=60,
         ge=1,
         le=7 * 24 * 60,
-        description="How often failed-import cleanup checks run for Sonarr and Radarr.",
+        description="Sonarr failed-import cleanup job interval (minutes).",
+    )
+    radarr_failed_import_cleanup_interval_minutes: int = Field(
+        default=60,
+        ge=1,
+        le=7 * 24 * 60,
+        description="Radarr failed-import cleanup job interval (minutes).",
     )
 
     emby_enabled: bool = False
@@ -83,7 +89,11 @@ class SettingsIn(BaseModel):
     emby_rule_tv_delete_watched: bool = False
     emby_rule_tv_unwatched_days: int = Field(default=0, ge=0, le=36500)
 
-    @field_validator("sonarr_interval_minutes", "radarr_interval_minutes", mode="before")
+    @field_validator(
+        "sonarr_search_interval_minutes",
+        "radarr_search_interval_minutes",
+        mode="before",
+    )
     @classmethod
     def _coerce_arr_run_interval(cls, v: Any) -> int:
         """Coerce invalid/low stored values to 60 minutes."""
@@ -119,4 +129,3 @@ class SetupEmbyTestIn(BaseModel):
     url: str = ""
     api_key: str = ""
     user_id: str = ""
-

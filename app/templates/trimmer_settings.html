@@ -4,10 +4,9 @@
 {% from "macros/trimmer_area.html" import trimmer_area_tabs %}
 {% block content %}
 <div class="wrap">
-  <div class="page-head">
+  <div class="page-head page-head--minimal">
     <div>
       <h1 class="ph-title">Trimmer settings</h1>
-      <p>Configure <strong>Trimmer</strong> here. <strong>Fetcher</strong> (Sonarr/Radarr) lives under <a class="ink-link" href="/settings">Fetcher settings</a>.</p>
     </div>
   </div>
 
@@ -15,7 +14,7 @@
 
   {% if request.query_params.get('saved') == '1' %}
   {% set _ts = (request.query_params.get('trimmer_saved') or '') %}
-  <div class="banner banner-ok" role="status">{% if _ts == 'connection' %}Trimmer settings saved (Emby connection).{% elif _ts == 'schedule' %}Trimmer settings saved (Schedule &amp; limits).{% elif _ts == 'tv_rules' %}Trimmer settings saved (TV rules).{% elif _ts == 'movie_rules' %}Trimmer settings saved (Movie rules).{% elif _ts == 'tv_people' %}Trimmer settings saved (TV people rules).{% elif _ts == 'movie_people' %}Trimmer settings saved (Movie people rules).{% else %}Trimmer settings saved.{% endif %}</div>
+  <div class="banner banner-ok" role="status">{% if _ts == 'connection' %}Trimmer settings saved (Connection).{% elif _ts == 'schedule' %}Trimmer settings saved (Schedule &amp; limits).{% elif _ts == 'tv_rules' %}Trimmer settings saved (TV rules).{% elif _ts == 'movie_rules' %}Trimmer settings saved (Movie rules).{% elif _ts == 'tv_people' %}Trimmer settings saved (TV people rules).{% elif _ts == 'movie_people' %}Trimmer settings saved (Movie people rules).{% else %}Trimmer settings saved.{% endif %}</div>
   {% elif request.query_params.get('save') == 'fail' %}
   <div class="banner banner-warn" role="alert">Could not save (Trimmer settings). Try again. ({{ request.query_params.get('reason', 'error') | e }})</div>
   {% endif %}
@@ -31,37 +30,33 @@
   {% endif %}
 
   {% if not settings.emby_enabled and trimmer_connection_status in ('Not configured', 'Missing') %}
-  <div class="banner banner-warn" role="alert">
-    <strong>Trimmer needs two things before it can run:</strong>
-    <ol style="margin: 6px 0 0 1.2em; padding: 0; font-size: 13px; line-height: 1.7;">
-      <li>Add your Emby URL and API key on the
-          <strong>Emby connection</strong> tab below.</li>
-      <li>Enable Trimmer using the toggle on the
-          <strong>Emby connection</strong> tab.</li>
-    </ol>
+  <div class="banner banner-warn banner--soft-warn" role="status">
+    <strong>Before Trimmer can run:</strong> add your media server URL and API key under <strong>Connection</strong>, then enable Trimmer.
   </div>
   {% elif not settings.emby_enabled %}
   <div class="banner banner-ok trimmer-mode-banner banner--soft" role="status">
-    Trimmer off — Turn on Enable Trimmer below to use dry run or live mode.
+    Trimmer is off. Turn it on under <strong>Connection</strong> when you are ready.
   </div>
   {% elif trimmer_connection_status in ('Not configured', 'Missing') %}
-  <div class="banner banner-warn" role="alert">
-    <strong>Connection required</strong> — add your Emby URL and API key
-    on the Emby connection tab below.
+  <div class="banner banner-warn banner--soft-warn" role="status">
+    Add your media server URL and API key under <strong>Connection</strong>.
   </div>
   {% elif settings.emby_dry_run %}
-  <div class="banner banner-ok trimmer-mode-banner" role="status">
-    <strong>Dry run (safe)</strong> — Fetcher will <em>not</em> delete anything in Emby. Review matches under <a class="ink-link" href="/logs">Logs</a> or <a class="ink-link" href="/trimmer?scan=1">Trimmer</a>; uncheck dry run only when you intend real deletes.
+  <div class="banner banner-ok trimmer-mode-banner banner--soft" role="status">
+    <strong>Dry run</strong> — Trimmer will not delete library titles. Review matches in <a class="ink-link" href="/logs">Logs</a> or <a class="ink-link" href="/trimmer?scan=1">Trimmer</a>. Turn off dry run only when you want real deletes.
   </div>
   {% else %}
-  <div class="banner banner-warn trimmer-mode-banner" role="alert">
-    <strong>Live delete</strong> — Matching items can be <em>removed</em> from Emby on schedule or when you run Trimmer. Re‑enable <strong>Dry run</strong> below if you only want previews.
+  <div class="banner banner-warn trimmer-mode-banner banner--soft-warn" role="alert">
+    <strong>Live delete</strong> — Trimmer can remove matching library titles on schedule. Turn <strong>Dry run</strong> on under Schedule &amp; limits for previews only.
   </div>
   {% endif %}
 
   <nav class="settings-tabs trimmer-settings-section-tabs" aria-label="Trimmer settings sections">
     <a href="#trimmer-connection" class="settings-tab">
-      <span class="settings-tab-dot gray" aria-hidden="true"></span>Emby connection
+      <span class="settings-tab-dot gray" aria-hidden="true"></span>Connection
+    </a>
+    <a href="#trimmer-timing" class="settings-tab">
+      <span class="settings-tab-dot gray" aria-hidden="true"></span>Timing
     </a>
     <a href="#trimmer-schedule" class="settings-tab">
       <span class="settings-tab-dot gray" aria-hidden="true"></span>Schedule &amp; limits
@@ -74,14 +69,14 @@
     </a>
   </nav>
 
-    <div class="card gc stripe-green trimmer-settings-anchor" id="trimmer-connection">
-    <div class="gc-title">Emby connection</div>
+    <div class="card gc stripe-green trimmer-settings-anchor trimmer-section-card" id="trimmer-connection">
+    <h2 class="settings-premium-card-title trimmer-section-card-title">Connection</h2>
     <form method="post" action="/trimmer/settings/connection" data-fetcher-trimmer-async-connection="1">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
       <div class="settings-async-feedback" hidden aria-live="polite"></div>
       {% call toggle_checkbox("emby_enabled", settings.emby_enabled) %}<strong>Enable Trimmer</strong>{% endcall %}
       <p class="hint hint--after-toggle">Use <strong>Dry run</strong> under <a class="ink-link" href="#trimmer-schedule">Schedule &amp; limits</a> to preview matches without deletes.</p>
-    <p class="hint">Enter your Emby URL, API key, and optional user ID.</p>
+    <p class="hint">Media server URL, API key, and optional user ID.</p>
     {% if emby and emby.status_message
         and not emby.status_message.startswith("Test")
         and not emby.status_message.startswith("Connection test")
@@ -91,28 +86,25 @@
     </div>
     {% endif %}
 
-      <div class="row">
-        <div class="field">
-          <label>Emby URL</label>
-          <input class="input" type="text" name="emby_url" value="{{ settings.emby_url }}" placeholder="http://localhost:8096" inputmode="url" autocomplete="off" spellcheck="false" />
-          <div class="small">Connects Fetcher to Emby.</div>
-        </div>
-        <div class="field">
-          <label>Emby user ID (optional)</label>
-          <input class="input" type="text" name="emby_user_id" value="{{ settings.emby_user_id }}" placeholder="Leave blank to use first Emby user" autocomplete="off" />
-        </div>
+      <div class="settings-premium-field-block">
+          <label class="settings-premium-label" for="trimmer-emby-url">Media server URL</label>
+          <input class="input settings-premium-input" id="trimmer-emby-url" type="text" name="emby_url" value="{{ settings.emby_url }}" placeholder="http://localhost:8096" inputmode="url" autocomplete="off" spellcheck="false" />
+      </div>
+      <div class="settings-premium-field-block">
+          <label class="settings-premium-label" for="trimmer-emby-user">User ID (optional)</label>
+          <input class="input settings-premium-input" id="trimmer-emby-user" type="text" name="emby_user_id" value="{{ settings.emby_user_id }}" placeholder="Leave blank to use the first library user" autocomplete="off" />
       </div>
 
-      <label>Emby API key</label>
-      <div class="control">
-        <input class="password" id="emby_api_key" type="password" name="emby_api_key" value="{{ template_emby_api_key }}" placeholder="X-Emby-Token" autocomplete="off" />
+      <label class="settings-premium-label" for="emby_api_key">API key</label>
+      <div class="control settings-premium-secret-wrap">
+        <input class="password" id="emby_api_key" type="password" name="emby_api_key" value="{{ template_emby_api_key }}" placeholder="API token" autocomplete="off" />
         <button class="icon-btn" data-reveal="emby_api_key" type="button">Show</button>
       </div>
-      <div class="small">Create this key in Emby Dashboard → Advanced → API keys.</div>
+      <div class="small settings-field-hint--soft">Create an API key in your media server dashboard (Advanced → API keys).</div>
 
       <div class="btn-row">
         <button class="btn" type="submit">Save connection</button>
-        <button type="submit" class="btn secondary" formaction="/test/emby-form">Test Emby</button>
+        <button type="submit" class="btn secondary" formaction="/test/emby-form">Test connection</button>
       </div>
     </form>
   </div>
@@ -120,30 +112,44 @@
   <form method="post" action="/trimmer/settings/cleaner" data-fetcher-trimmer-async-cleaner="1">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
 
-    <div class="card gc stripe-gray trimmer-settings-anchor" id="trimmer-schedule">
-      <div class="gc-title">Schedule &amp; limits</div>
-      <div class="settings-async-feedback" hidden aria-live="polite"></div>
-      <p class="hint">Set dry run, scan and delete limits, run interval, and schedule window.</p>
-      <div class="settings-stack">
-        {% call toggle_checkbox("emby_dry_run", settings.emby_dry_run) %}<strong>Dry run (safe preview)</strong> — no titles are deleted{% endcall %}
-        <div class="small settings-field-hint">Previews matches without deleting titles.</div>
-        <div class="row">
-          <div class="field">
-            <label>Max items to scan per run</label>
-            <input class="number" type="number" name="emby_max_items_scan" value="{{ settings.emby_max_items_scan }}" min="0" max="100000" />
-            <div class="small">Scans this many items per run. Set 0 to scan the full library.</div>
-          </div>
-          <div class="field">
-            <label>Max deletes per run</label>
-            <input class="number" type="number" name="emby_max_deletes_per_run" value="{{ settings.emby_max_deletes_per_run }}" min="1" max="500" />
+    <div class="trimmer-settings-anchor settings-premium-stack trimmer-timing-outer" id="trimmer-timing">
+      <section class="settings-premium-card refiner-watched-timing-card" aria-labelledby="trimmer-timing-title">
+        <h2 class="settings-premium-card-title" id="trimmer-timing-title">Trimmer timing</h2>
+        <p class="settings-section-blurb">Controls how often Trimmer runs.</p>
+        <div class="settings-premium-card-body">
+          <div class="settings-sentence-row settings-sentence-row--number">
+            <span class="settings-sentence-lead">Run Trimmer every</span>
+            <input class="number settings-inline-number" type="number" name="trimmer_interval_minutes" value="{{ settings.trimmer_interval_minutes | default(60, true) }}" min="5" max="10080" placeholder="60" aria-label="Trimmer interval minutes" />
+            <span class="settings-sentence-tail">minutes</span>
           </div>
         </div>
-        {% call toggle_checkbox("emby_schedule_enabled", settings.emby_schedule_enabled) %}Enable Trimmer schedule window{% endcall %}
+      </section>
+    </div>
+
+    <div class="card gc stripe-gray trimmer-settings-anchor trimmer-section-card" id="trimmer-schedule">
+      <h2 class="settings-premium-card-title trimmer-section-card-title">Schedule &amp; limits</h2>
+      <div class="settings-async-feedback" hidden aria-live="polite"></div>
+      <p class="settings-section-blurb settings-section-blurb--tight">Safe previews, how much Trimmer scans each run, delete cap, and an optional time window.</p>
+      <div class="settings-stack">
+        {% call toggle_checkbox("emby_dry_run", settings.emby_dry_run) %}<strong>Dry run</strong> — preview only, no library deletes{% endcall %}
+        <div class="small settings-field-hint settings-field-hint--soft">Review matches before turning dry run off.</div>
+        <div class="settings-sentence-row settings-sentence-row--number">
+          <span class="settings-sentence-lead">Scan up to</span>
+          <input class="number settings-inline-number" type="number" name="emby_max_items_scan" value="{{ settings.emby_max_items_scan }}" min="0" max="100000" aria-label="Max items to scan per run" />
+          <span class="settings-sentence-tail">library items per run (0 = full library)</span>
+        </div>
+        <div class="settings-sentence-row settings-sentence-row--number">
+          <span class="settings-sentence-lead">Allow up to</span>
+          <input class="number settings-inline-number" type="number" name="emby_max_deletes_per_run" value="{{ settings.emby_max_deletes_per_run }}" min="1" max="500" aria-label="Max deletes per run" />
+          <span class="settings-sentence-tail">deletes per run</span>
+        </div>
+        {% call toggle_checkbox("emby_schedule_enabled", settings.emby_schedule_enabled) %}Only run Trimmer during these hours{% endcall %}
+        <p class="settings-field-hint settings-field-hint--soft">Leave this off to allow runs at any time.</p>
+        <label class="settings-premium-sublabel">Days</label>
         <div>
-          <label>Days</label>
           {{ schedule_days_checkboxes("emby_schedule", emby_schedule_days_selected) }}
         </div>
-        <div class="row schedule-time-row">
+        <div class="row schedule-time-row settings-schedule-time-row">
           {{ schedule_time_select("emby_schedule_start", "Start time", emby_schedule_start_hhmm, schedule_time_choices, emby_start_orphan) }}
           {{ schedule_time_select("emby_schedule_end", "End time", emby_schedule_end_hhmm, schedule_time_choices, emby_end_orphan) }}
         </div>
@@ -151,14 +157,7 @@
           Overnight window detected. Enable both the start day and the next day
           (e.g. Fri + Sat) to cover the full window.
         </div>
-        <div class="small settings-field-hint">Limits runs to the selected days and times.</div>
-        <div class="row row-schedule-pair">
-          <div class="field">
-            <label>Run interval (minutes)</label>
-            <input class="number" type="number" name="emby_interval_minutes" value="{{ settings.emby_interval_minutes | default(60, true) }}" min="5" max="10080" placeholder="60" />
-            <div class="small">Runs Trimmer on this interval.</div>
-          </div>
-        </div>
+        <div class="small settings-field-hint settings-field-hint--soft">When this schedule is on, Trimmer only runs inside the window you set.</div>
       </div>
 
       <div class="btn-row">
@@ -166,10 +165,10 @@
       </div>
     </div>
 
-    <div class="card gc stripe-blue trimmer-settings-anchor" id="trimmer-rules">
-      <div class="gc-title">TV &amp; movie rules</div>
+    <div class="card gc stripe-blue trimmer-settings-anchor trimmer-section-card" id="trimmer-rules">
+      <h2 class="settings-premium-card-title trimmer-section-card-title">TV &amp; movie rules</h2>
       <div class="settings-async-feedback" hidden aria-live="polite"></div>
-      <p class="hint">Set TV and movie rules, then save each section.</p>
+      <p class="settings-section-blurb settings-section-blurb--tight">Deletion rules by medium. Save TV and Movies separately.</p>
       <div class="criteria-grid">
         <div class="criteria-panel">
           <div class="gc-title gc-title--sm">
@@ -241,10 +240,10 @@
       </div>
     </div>
 
-    <div class="card gc stripe-purple trimmer-settings-anchor" id="trimmer-people">
-      <div class="gc-title">People rules</div>
+    <div class="card gc stripe-purple trimmer-settings-anchor trimmer-section-card" id="trimmer-people">
+      <h2 class="settings-premium-card-title trimmer-section-card-title">People rules</h2>
       <div class="settings-async-feedback" hidden aria-live="polite"></div>
-      <p class="hint">Matches titles by credited names and saves TV and movie rules separately.</p>
+      <p class="settings-section-blurb settings-section-blurb--tight">Match library titles by credited names. Save TV and Movies separately.</p>
       <div class="criteria-grid criteria-people-row">
         <div class="criteria-panel people-criteria-panel">
           <div class="gc-title gc-title--sm">

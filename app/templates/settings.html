@@ -1,6 +1,7 @@
 {% extends "layout.html" %}
 {% from "macros/schedule.html" import schedule_time_select, schedule_days_checkboxes %}
 {% from "macros/toggle.html" import toggle_checkbox %}
+{% from "macros/fetcher_failed_import_cleanup.html" import sonarr_failed_import_cleanup, radarr_failed_import_cleanup %}
 {% macro settings_fetcher_save_fail_banner() -%}
 {% if request.query_params.get('save') == 'fail' and request.query_params.get('reason') != 'invalid_ip' %}
 {% set _sr = (request.query_params.get('reason') or '') %}
@@ -74,7 +75,7 @@
       {% elif im == 'fail' %}
       <div class="banner banner-warn" role="alert"><strong>Import</strong> failed: {{ request.query_params.get('reason', 'Unknown error') | e }}</div>
       {% endif %}
-      <p class="small muted lead-muted"><strong>Trimmer</strong> is under <a class="ink-link" href="/trimmer/settings">Trimmer settings</a> and <strong>Refiner</strong> is under <a class="ink-link" href="/refiner/settings">Refiner settings</a>. Each service runs on its own interval and schedule.</p>
+      <p class="small muted lead-muted"><strong>Trimmer</strong> is under <a class="ink-link" href="/trimmer/settings">Trimmer settings</a>. <strong>Movies Refiner</strong> and <strong>TV Refiner</strong> are under <a class="ink-link" href="/refiner/settings">Movies Refiner settings</a> and <a class="ink-link" href="/refiner/sonarr/settings">TV Refiner settings</a>. Each runs on its own interval and schedule.</p>
       <div class="settings-stack settings-global-stack">
         <div class="field settings-global-field">
           <label for="log_retention_days">Log retention (days)</label>
@@ -610,129 +611,84 @@
       {% elif tst == 'sonarr_fail' %}
       <div class="banner banner-warn" role="alert">Sonarr connection failed — check URL, API key, and that Sonarr is reachable.</div>
       {% endif %}
-      <p class="small muted lead-muted">Sonarr automation — URL, API key, searches, schedule, and run interval.</p>
-      {{ arr_connection_hints() }}
-
-      <div class="settings-arr-panels">
-        <section class="settings-arr-panel settings-arr-panel--connection" aria-labelledby="sonarr-panel-connection">
-          <h3 class="settings-arr-panel-title" id="sonarr-panel-connection">Connection</h3>
-          <div class="settings-arr-panel-body">
-            <div class="settings-arr-connection-enable">
-              {% call toggle_checkbox("sonarr_enabled", settings.sonarr_enabled) %}Enable Sonarr{% endcall %}
+      {% set sonarr_cleanup_any = (
+        settings.sonarr_cleanup_corrupt or settings.sonarr_blocklist_corrupt
+        or settings.sonarr_cleanup_download_failed or settings.sonarr_blocklist_download_failed
+        or settings.sonarr_cleanup_import_failed or settings.sonarr_blocklist_import_failed
+        or settings.sonarr_cleanup_unmatched or settings.sonarr_blocklist_unmatched
+        or settings.sonarr_cleanup_quality or settings.sonarr_blocklist_quality
+        or settings.sonarr_failed_import_remove_from_client
+      ) %}
+      <div class="settings-premium-stack settings-premium-stack--arr">
+        <section class="settings-premium-card settings-premium-card--connection" aria-labelledby="sonarr-panel-connection">
+          <h2 class="settings-premium-card-title" id="sonarr-panel-connection">Connection</h2>
+          <div class="settings-connection-hint">{{ arr_connection_hints() }}</div>
+          <div class="settings-premium-card-body">
+            <div class="settings-premium-row">
+              {% call toggle_checkbox("sonarr_enabled", settings.sonarr_enabled) %}Connect to Sonarr{% endcall %}
             </div>
-            <div class="settings-arr-connection-fields">
-              <div class="settings-arr-connection-field">
-                <label for="sonarr_settings_url">Sonarr URL</label>
-                <div class="settings-arr-connection-input-row">
-                  <input class="input settings-arr-panel-input" id="sonarr_settings_url" type="text" name="sonarr_url" value="{{ settings.sonarr_url }}" placeholder="http://localhost:8989" />
-                </div>
-              </div>
-              <div class="settings-arr-connection-field">
-                <label for="sonarr_api_key">Sonarr API key</label>
-                <div class="settings-arr-connection-secret-wrap">
-                  <input class="password settings-arr-connection-secret-input" id="sonarr_api_key" type="password" name="sonarr_api_key" value="{{ template_sonarr_api_key }}" placeholder="X-Api-Key" />
-                  <button class="icon-btn settings-arr-connection-reveal" data-reveal="sonarr_api_key" type="button">Show</button>
-                </div>
-              </div>
+            <div class="settings-premium-field-block">
+              <label class="settings-premium-label" for="sonarr_settings_url">Server URL</label>
+              <input class="input settings-premium-input" id="sonarr_settings_url" type="text" name="sonarr_url" value="{{ settings.sonarr_url }}" placeholder="http://localhost:8989" autocomplete="off" spellcheck="false" />
             </div>
-          </div>
-        </section>
-
-        <section class="settings-arr-panel settings-arr-panel--search-cleanup" aria-labelledby="sonarr-panel-search-cleanup">
-          <h3 class="settings-arr-panel-title" id="sonarr-panel-search-cleanup">Search and cleanup</h3>
-          <div class="settings-arr-panel-body">
-            <div class="settings-arr-behavior" aria-labelledby="sonarr-panel-search-cleanup">
-              <div class="settings-arr-search-toggles">
-                {% call toggle_checkbox("sonarr_search_missing", settings.sonarr_search_missing) %}Search monitored missing items{% endcall %}
-                {% call toggle_checkbox("sonarr_search_upgrades", settings.sonarr_search_upgrades) %}Search cutoff-unmet items (upgrade){% endcall %}
-              </div>
-              <div class="settings-failed-import-block">
-                <p class="small settings-field-hint settings-failed-import-hint settings-failed-import-hint--granular">Clean up Sonarr’s <strong>download queue</strong> by failure type. <strong>Remove</strong> deletes the row; <strong>Blocklist</strong> passes that flag to the API only (no retry). Unless you enable the option below, the underlying job may stay in your download client and Sonarr can re-add the queue row on sync.</p>
-                <div class="settings-granular-failed-import-matrix" role="group" aria-label="Sonarr failed import cleanup by scenario">
-                  <div class="settings-granular-failed-import-matrix-row settings-granular-failed-import-matrix-row--head">
-                    <span class="settings-granular-failed-import-matrix-scenario">Failure type</span>
-                    <span class="settings-granular-failed-import-matrix-colhead">Remove</span>
-                    <span class="settings-granular-failed-import-matrix-colhead">Blocklist</span>
-                  </div>
-                  <div class="settings-granular-failed-import-matrix-row">
-                    <span class="settings-granular-failed-import-matrix-scenario" id="sonarr-scen-corrupt">Corrupt / unreadable file</span>
-                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("sonarr_cleanup_corrupt", settings.sonarr_cleanup_corrupt | default(false)) %}Remove{% endcall %}</div>
-                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("sonarr_blocklist_corrupt", settings.sonarr_blocklist_corrupt | default(false)) %}Blocklist{% endcall %}</div>
-                  </div>
-                  <div class="settings-granular-failed-import-matrix-row">
-                    <span class="settings-granular-failed-import-matrix-scenario" id="sonarr-scen-dlfail">Download failed (client)</span>
-                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("sonarr_cleanup_download_failed", settings.sonarr_cleanup_download_failed | default(false)) %}Remove{% endcall %}</div>
-                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("sonarr_blocklist_download_failed", settings.sonarr_blocklist_download_failed | default(false)) %}Blocklist{% endcall %}</div>
-                  </div>
-                  <div class="settings-granular-failed-import-matrix-row">
-                    <span class="settings-granular-failed-import-matrix-scenario" id="sonarr-scen-impfail">Import failed (other / unclassified)</span>
-                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("sonarr_cleanup_import_failed", settings.sonarr_cleanup_import_failed | default(false)) %}Remove{% endcall %}</div>
-                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("sonarr_blocklist_import_failed", settings.sonarr_blocklist_import_failed | default(false)) %}Blocklist{% endcall %}</div>
-                  </div>
-                  <div class="settings-granular-failed-import-matrix-row">
-                    <span class="settings-granular-failed-import-matrix-scenario" id="sonarr-scen-unmatched">Unmatched / manual import</span>
-                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("sonarr_cleanup_unmatched", settings.sonarr_cleanup_unmatched | default(false)) %}Remove{% endcall %}</div>
-                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("sonarr_blocklist_unmatched", settings.sonarr_blocklist_unmatched | default(false)) %}Blocklist{% endcall %}</div>
-                  </div>
-                  <div class="settings-granular-failed-import-matrix-row">
-                    <span class="settings-granular-failed-import-matrix-scenario" id="sonarr-scen-quality">Not an upgrade / quality</span>
-                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("sonarr_cleanup_quality", settings.sonarr_cleanup_quality | default(false)) %}Remove{% endcall %}</div>
-                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("sonarr_blocklist_quality", settings.sonarr_blocklist_quality | default(false)) %}Blocklist{% endcall %}</div>
-                  </div>
-                </div>
-                <div class="settings-arr-search-toggles settings-failed-import-remove-client-row">
-                  {% call toggle_checkbox("sonarr_failed_import_remove_from_client", settings.sonarr_failed_import_remove_from_client | default(false)) %}Also remove from download client (removeFromClient){% endcall %}
-                  <div class="small settings-field-hint">When on, queue deletes ask Sonarr to remove the job from SABnzbd, qBittorrent, etc., so the same grab cannot pop back after cleanup.</div>
-                </div>
-                <div class="field settings-failed-import-interval-field">
-                  <label for="sonarr_failed_import_cleanup_interval_minutes">Failed import cleanup interval (minutes)</label>
-                  <input id="sonarr_failed_import_cleanup_interval_minutes" class="number" type="number" name="failed_import_cleanup_interval_minutes" value="{{ settings.failed_import_cleanup_interval_minutes|default(60, true) }}" min="1" max="10080" />
-                  <div class="small settings-field-hint">How often to run the cleanup check when at least one remove option is on.</div>
-                </div>
+            <div class="settings-premium-field-block">
+              <label class="settings-premium-label" for="sonarr_api_key">API key</label>
+              <div class="settings-arr-connection-secret-wrap settings-premium-secret-wrap">
+                <input class="password settings-arr-connection-secret-input" id="sonarr_api_key" type="password" name="sonarr_api_key" value="{{ template_sonarr_api_key }}" placeholder="X-Api-Key" autocomplete="off" />
+                <button class="icon-btn settings-arr-connection-reveal" data-reveal="sonarr_api_key" type="button">Show</button>
               </div>
             </div>
           </div>
         </section>
 
-        <section class="settings-arr-panel settings-arr-panel--limits-schedule" aria-labelledby="sonarr-panel-limits">
-          <h3 class="settings-arr-panel-title" id="sonarr-panel-limits">Limits and schedule</h3>
-          <div class="settings-arr-panel-body">
-            <div class="settings-arr-limits-schedule-inner" aria-labelledby="sonarr-panel-limits">
-              <div class="settings-arr-run-limits">
-                <div class="settings-arr-run-limit-field">
-                  <label for="sonarr_max_items_per_run">Max items per run</label>
-                  <input class="number" id="sonarr_max_items_per_run" type="number" name="sonarr_max_items_per_run" value="{{ settings.sonarr_max_items_per_run }}" min="1" max="1000" />
-                </div>
-                <div class="settings-arr-run-limit-field">
-                  <label for="sonarr_retry_delay_minutes">Retry delay (minutes)</label>
-                  <input class="number" id="sonarr_retry_delay_minutes" type="number" name="sonarr_retry_delay_minutes" value="{{ settings.sonarr_retry_delay_minutes }}" min="1" max="525600" />
-                  <div class="small settings-field-hint">Retries failed searches after this delay.</div>
-                </div>
-              </div>
-              <div class="settings-arr-schedule-block">
-                {% call toggle_checkbox("sonarr_schedule_enabled", settings.sonarr_schedule_enabled) %}Enable schedule window{% endcall %}
-                <label>Days</label>
-                {{ schedule_days_checkboxes("sonarr_schedule", sonarr_schedule_days_selected) }}
-                <div class="row schedule-time-row">
-                  {{ schedule_time_select("sonarr_schedule_start", "Start time", sonarr_schedule_start_hhmm, schedule_time_choices, sonarr_start_orphan) }}
-                  {{ schedule_time_select("sonarr_schedule_end", "End time", sonarr_schedule_end_hhmm, schedule_time_choices, sonarr_end_orphan) }}
-                </div>
-                <div class="small settings-field-hint schedule-midnight-hint" id="sonarr-midnight-hint" hidden>
-                  Overnight window detected. Enable both the start day and the next day
-                  (e.g. Fri + Sat) to cover the full window.
-                </div>
-                <div class="small settings-field-hint">Limits runs to the selected days and times.</div>
-                <div class="row">
-                  <div class="field">
-                    <label>Run interval (minutes)</label>
-                    <input class="number" type="number" name="sonarr_interval_minutes" value="{{ settings.sonarr_interval_minutes }}" min="1" max="10080" placeholder="60" />
-                    <div class="small settings-field-hint">Runs searches on this interval.</div>
-                  </div>
-                </div>
-              </div>
+        <section class="settings-premium-card" aria-labelledby="sonarr-search-timing-title">
+          <h2 class="settings-premium-card-title" id="sonarr-search-timing-title">Search timing</h2>
+          <p class="settings-section-blurb">Set how often Fetcher checks for titles, and when those checks are allowed to run.</p>
+          <div class="settings-premium-card-body">
+            <div class="settings-sentence-row settings-sentence-row--number">
+              <span class="settings-sentence-lead">Check for titles every</span>
+              <input class="number settings-inline-number" type="number" name="sonarr_search_interval_minutes" value="{{ settings.sonarr_search_interval_minutes }}" min="1" max="10080" placeholder="60" aria-label="Search interval minutes" />
+              <span class="settings-sentence-tail">minutes</span>
+            </div>
+            <div class="settings-premium-row settings-premium-row--schedule-toggle">
+              {% call toggle_checkbox("sonarr_schedule_enabled", settings.sonarr_schedule_enabled) %}Only check during these hours{% endcall %}
+            </div>
+            <p class="settings-field-hint settings-field-hint--soft">Leave this off to allow checks at any time.</p>
+            <label class="settings-premium-sublabel">Days</label>
+            {{ schedule_days_checkboxes("sonarr_schedule", sonarr_schedule_days_selected) }}
+            <div class="row schedule-time-row settings-schedule-time-row">
+              {{ schedule_time_select("sonarr_schedule_start", "Start time", sonarr_schedule_start_hhmm, schedule_time_choices, sonarr_start_orphan) }}
+              {{ schedule_time_select("sonarr_schedule_end", "End time", sonarr_schedule_end_hhmm, schedule_time_choices, sonarr_end_orphan) }}
+            </div>
+            <p class="settings-field-hint settings-field-hint--soft schedule-midnight-hint" id="sonarr-midnight-hint" hidden>Overnight window: enable both the start day and the next day (for example Fri and Sat) so the full window is covered.</p>
+            <p class="settings-field-hint settings-field-hint--soft">When this schedule is enabled, searches still use the interval above, but only inside the window you set.</p>
+          </div>
+        </section>
+
+        <section class="settings-premium-card" aria-labelledby="sonarr-search-prefs-title">
+          <h2 class="settings-premium-card-title" id="sonarr-search-prefs-title">Search preferences</h2>
+          <p class="settings-section-blurb">Choose how Fetcher handles missing and cutoff-unmet titles when searches run.</p>
+          <div class="settings-premium-card-body">
+            <div class="settings-premium-row">
+              {% call toggle_checkbox("sonarr_search_missing", settings.sonarr_search_missing) %}Search for missing monitored titles{% endcall %}
+            </div>
+            <div class="settings-premium-row">
+              {% call toggle_checkbox("sonarr_search_upgrades", settings.sonarr_search_upgrades) %}Search for cutoff-unmet (upgrade) titles{% endcall %}
+            </div>
+            <div class="settings-sentence-row settings-sentence-row--number">
+              <span class="settings-sentence-lead">Process up to</span>
+              <input class="number settings-inline-number" id="sonarr_max_items_per_run" type="number" name="sonarr_max_items_per_run" value="{{ settings.sonarr_max_items_per_run }}" min="1" max="1000" aria-label="Max items per search run" />
+              <span class="settings-sentence-tail">titles per check</span>
+            </div>
+            <div class="settings-sentence-row settings-sentence-row--number">
+              <span class="settings-sentence-lead">Wait</span>
+              <input class="number settings-inline-number" id="sonarr_retry_delay_minutes" type="number" name="sonarr_retry_delay_minutes" value="{{ settings.sonarr_retry_delay_minutes }}" min="1" max="525600" aria-label="Retry delay minutes" />
+              <span class="settings-sentence-tail">minutes before retrying a failed search</span>
             </div>
           </div>
         </section>
+
+        {{ sonarr_failed_import_cleanup(settings, sonarr_cleanup_any) }}
       </div>
 
       <div class="btn-row">
@@ -760,129 +716,84 @@
       {% elif tst == 'radarr_fail' %}
       <div class="banner banner-warn" role="alert">Radarr connection failed — check URL, API key, and that Radarr is reachable.</div>
       {% endif %}
-      <p class="small muted lead-muted">Radarr automation — URL, API key, searches, schedule, and run interval.</p>
-      {{ arr_connection_hints() }}
-
-      <div class="settings-arr-panels">
-        <section class="settings-arr-panel settings-arr-panel--connection" aria-labelledby="radarr-panel-connection">
-          <h3 class="settings-arr-panel-title" id="radarr-panel-connection">Connection</h3>
-          <div class="settings-arr-panel-body">
-            <div class="settings-arr-connection-enable">
-              {% call toggle_checkbox("radarr_enabled", settings.radarr_enabled) %}Enable Radarr{% endcall %}
+      {% set radarr_cleanup_any = (
+        settings.radarr_cleanup_corrupt or settings.radarr_blocklist_corrupt
+        or settings.radarr_cleanup_download_failed or settings.radarr_blocklist_download_failed
+        or settings.radarr_cleanup_import_failed or settings.radarr_blocklist_import_failed
+        or settings.radarr_cleanup_unmatched or settings.radarr_blocklist_unmatched
+        or settings.radarr_cleanup_quality or settings.radarr_blocklist_quality
+        or settings.radarr_failed_import_remove_from_client
+      ) %}
+      <div class="settings-premium-stack settings-premium-stack--arr">
+        <section class="settings-premium-card settings-premium-card--connection" aria-labelledby="radarr-panel-connection">
+          <h2 class="settings-premium-card-title" id="radarr-panel-connection">Connection</h2>
+          <div class="settings-connection-hint">{{ arr_connection_hints() }}</div>
+          <div class="settings-premium-card-body">
+            <div class="settings-premium-row">
+              {% call toggle_checkbox("radarr_enabled", settings.radarr_enabled) %}Connect to Radarr{% endcall %}
             </div>
-            <div class="settings-arr-connection-fields">
-              <div class="settings-arr-connection-field">
-                <label for="radarr_settings_url">Radarr URL</label>
-                <div class="settings-arr-connection-input-row">
-                  <input class="input settings-arr-panel-input" id="radarr_settings_url" type="text" name="radarr_url" value="{{ settings.radarr_url }}" placeholder="http://localhost:7878" />
-                </div>
-              </div>
-              <div class="settings-arr-connection-field">
-                <label for="radarr_api_key">Radarr API key</label>
-                <div class="settings-arr-connection-secret-wrap">
-                  <input class="password settings-arr-connection-secret-input" id="radarr_api_key" type="password" name="radarr_api_key" value="{{ template_radarr_api_key }}" placeholder="X-Api-Key" />
-                  <button class="icon-btn settings-arr-connection-reveal" data-reveal="radarr_api_key" type="button">Show</button>
-                </div>
-              </div>
+            <div class="settings-premium-field-block">
+              <label class="settings-premium-label" for="radarr_settings_url">Server URL</label>
+              <input class="input settings-premium-input" id="radarr_settings_url" type="text" name="radarr_url" value="{{ settings.radarr_url }}" placeholder="http://localhost:7878" autocomplete="off" spellcheck="false" />
             </div>
-          </div>
-        </section>
-
-        <section class="settings-arr-panel settings-arr-panel--search-cleanup" aria-labelledby="radarr-panel-search-cleanup">
-          <h3 class="settings-arr-panel-title" id="radarr-panel-search-cleanup">Search and cleanup</h3>
-          <div class="settings-arr-panel-body">
-            <div class="settings-arr-behavior" aria-labelledby="radarr-panel-search-cleanup">
-              <div class="settings-arr-search-toggles">
-                {% call toggle_checkbox("radarr_search_missing", settings.radarr_search_missing) %}Search monitored missing items{% endcall %}
-                {% call toggle_checkbox("radarr_search_upgrades", settings.radarr_search_upgrades) %}Search cutoff-unmet items (upgrade){% endcall %}
-              </div>
-              <div class="settings-failed-import-block">
-                <p class="small settings-field-hint settings-failed-import-hint settings-failed-import-hint--granular">Clean up Radarr’s <strong>download queue</strong> by failure type. <strong>Remove</strong> deletes the row; <strong>Blocklist</strong> passes that flag to the API only (no retry). Unless you enable the option below, the underlying job may stay in your download client and Radarr can re-add the queue row on sync.</p>
-                <div class="settings-granular-failed-import-matrix" role="group" aria-label="Radarr failed import cleanup by scenario">
-                  <div class="settings-granular-failed-import-matrix-row settings-granular-failed-import-matrix-row--head">
-                    <span class="settings-granular-failed-import-matrix-scenario">Failure type</span>
-                    <span class="settings-granular-failed-import-matrix-colhead">Remove</span>
-                    <span class="settings-granular-failed-import-matrix-colhead">Blocklist</span>
-                  </div>
-                  <div class="settings-granular-failed-import-matrix-row">
-                    <span class="settings-granular-failed-import-matrix-scenario" id="radarr-scen-corrupt">Corrupt / unreadable file</span>
-                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("radarr_cleanup_corrupt", settings.radarr_cleanup_corrupt | default(false)) %}Remove{% endcall %}</div>
-                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("radarr_blocklist_corrupt", settings.radarr_blocklist_corrupt | default(false)) %}Blocklist{% endcall %}</div>
-                  </div>
-                  <div class="settings-granular-failed-import-matrix-row">
-                    <span class="settings-granular-failed-import-matrix-scenario" id="radarr-scen-dlfail">Download failed (client)</span>
-                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("radarr_cleanup_download_failed", settings.radarr_cleanup_download_failed | default(false)) %}Remove{% endcall %}</div>
-                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("radarr_blocklist_download_failed", settings.radarr_blocklist_download_failed | default(false)) %}Blocklist{% endcall %}</div>
-                  </div>
-                  <div class="settings-granular-failed-import-matrix-row">
-                    <span class="settings-granular-failed-import-matrix-scenario" id="radarr-scen-impfail">Import failed (other / unclassified)</span>
-                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("radarr_cleanup_import_failed", settings.radarr_cleanup_import_failed | default(false)) %}Remove{% endcall %}</div>
-                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("radarr_blocklist_import_failed", settings.radarr_blocklist_import_failed | default(false)) %}Blocklist{% endcall %}</div>
-                  </div>
-                  <div class="settings-granular-failed-import-matrix-row">
-                    <span class="settings-granular-failed-import-matrix-scenario" id="radarr-scen-unmatched">Unmatched / manual import</span>
-                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("radarr_cleanup_unmatched", settings.radarr_cleanup_unmatched | default(false)) %}Remove{% endcall %}</div>
-                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("radarr_blocklist_unmatched", settings.radarr_blocklist_unmatched | default(false)) %}Blocklist{% endcall %}</div>
-                  </div>
-                  <div class="settings-granular-failed-import-matrix-row">
-                    <span class="settings-granular-failed-import-matrix-scenario" id="radarr-scen-quality">Not an upgrade / quality</span>
-                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("radarr_cleanup_quality", settings.radarr_cleanup_quality | default(false)) %}Remove{% endcall %}</div>
-                    <div class="settings-granular-failed-import-matrix-toggle">{% call toggle_checkbox("radarr_blocklist_quality", settings.radarr_blocklist_quality | default(false)) %}Blocklist{% endcall %}</div>
-                  </div>
-                </div>
-                <div class="settings-arr-search-toggles settings-failed-import-remove-client-row">
-                  {% call toggle_checkbox("radarr_failed_import_remove_from_client", settings.radarr_failed_import_remove_from_client | default(false)) %}Also remove from download client (removeFromClient){% endcall %}
-                  <div class="small settings-field-hint">When on, queue deletes ask Radarr to remove the job from SABnzbd, qBittorrent, etc., so the same grab cannot pop back after cleanup.</div>
-                </div>
-                <div class="field settings-failed-import-interval-field">
-                  <label for="radarr_failed_import_cleanup_interval_minutes">Failed import cleanup interval (minutes)</label>
-                  <input id="radarr_failed_import_cleanup_interval_minutes" class="number" type="number" name="failed_import_cleanup_interval_minutes" value="{{ settings.failed_import_cleanup_interval_minutes|default(60, true) }}" min="1" max="10080" />
-                  <div class="small settings-field-hint">How often to run the cleanup check when at least one remove option is on.</div>
-                </div>
+            <div class="settings-premium-field-block">
+              <label class="settings-premium-label" for="radarr_api_key">API key</label>
+              <div class="settings-arr-connection-secret-wrap settings-premium-secret-wrap">
+                <input class="password settings-arr-connection-secret-input" id="radarr_api_key" type="password" name="radarr_api_key" value="{{ template_radarr_api_key }}" placeholder="X-Api-Key" autocomplete="off" />
+                <button class="icon-btn settings-arr-connection-reveal" data-reveal="radarr_api_key" type="button">Show</button>
               </div>
             </div>
           </div>
         </section>
 
-        <section class="settings-arr-panel settings-arr-panel--limits-schedule" aria-labelledby="radarr-panel-limits">
-          <h3 class="settings-arr-panel-title" id="radarr-panel-limits">Limits and schedule</h3>
-          <div class="settings-arr-panel-body">
-            <div class="settings-arr-limits-schedule-inner" aria-labelledby="radarr-panel-limits">
-              <div class="settings-arr-run-limits">
-                <div class="settings-arr-run-limit-field">
-                  <label for="radarr_max_items_per_run">Max items per run</label>
-                  <input class="number" id="radarr_max_items_per_run" type="number" name="radarr_max_items_per_run" value="{{ settings.radarr_max_items_per_run }}" min="1" max="1000" />
-                </div>
-                <div class="settings-arr-run-limit-field">
-                  <label for="radarr_retry_delay_minutes">Retry delay (minutes)</label>
-                  <input class="number" id="radarr_retry_delay_minutes" type="number" name="radarr_retry_delay_minutes" value="{{ settings.radarr_retry_delay_minutes }}" min="1" max="525600" />
-                  <div class="small settings-field-hint">Retries failed searches after this delay.</div>
-                </div>
-              </div>
-              <div class="settings-arr-schedule-block">
-                {% call toggle_checkbox("radarr_schedule_enabled", settings.radarr_schedule_enabled) %}Enable schedule window{% endcall %}
-                <label>Days</label>
-                {{ schedule_days_checkboxes("radarr_schedule", radarr_schedule_days_selected) }}
-                <div class="row schedule-time-row">
-                  {{ schedule_time_select("radarr_schedule_start", "Start time", radarr_schedule_start_hhmm, schedule_time_choices, radarr_start_orphan) }}
-                  {{ schedule_time_select("radarr_schedule_end", "End time", radarr_schedule_end_hhmm, schedule_time_choices, radarr_end_orphan) }}
-                </div>
-                <div class="small settings-field-hint schedule-midnight-hint" id="radarr-midnight-hint" hidden>
-                  Overnight window detected. Enable both the start day and the next day
-                  (e.g. Fri + Sat) to cover the full window.
-                </div>
-                <div class="small settings-field-hint">Limits runs to the selected days and times.</div>
-                <div class="row">
-                  <div class="field">
-                    <label>Run interval (minutes)</label>
-                    <input class="number" type="number" name="radarr_interval_minutes" value="{{ settings.radarr_interval_minutes }}" min="1" max="10080" placeholder="60" />
-                    <div class="small settings-field-hint">Runs searches on this interval.</div>
-                  </div>
-                </div>
-              </div>
+        <section class="settings-premium-card" aria-labelledby="radarr-search-timing-title">
+          <h2 class="settings-premium-card-title" id="radarr-search-timing-title">Search timing</h2>
+          <p class="settings-section-blurb">Set how often Fetcher checks for titles, and when those checks are allowed to run.</p>
+          <div class="settings-premium-card-body">
+            <div class="settings-sentence-row settings-sentence-row--number">
+              <span class="settings-sentence-lead">Check for titles every</span>
+              <input class="number settings-inline-number" type="number" name="radarr_search_interval_minutes" value="{{ settings.radarr_search_interval_minutes }}" min="1" max="10080" placeholder="60" aria-label="Search interval minutes" />
+              <span class="settings-sentence-tail">minutes</span>
+            </div>
+            <div class="settings-premium-row settings-premium-row--schedule-toggle">
+              {% call toggle_checkbox("radarr_schedule_enabled", settings.radarr_schedule_enabled) %}Only check during these hours{% endcall %}
+            </div>
+            <p class="settings-field-hint settings-field-hint--soft">Leave this off to allow checks at any time.</p>
+            <label class="settings-premium-sublabel">Days</label>
+            {{ schedule_days_checkboxes("radarr_schedule", radarr_schedule_days_selected) }}
+            <div class="row schedule-time-row settings-schedule-time-row">
+              {{ schedule_time_select("radarr_schedule_start", "Start time", radarr_schedule_start_hhmm, schedule_time_choices, radarr_start_orphan) }}
+              {{ schedule_time_select("radarr_schedule_end", "End time", radarr_schedule_end_hhmm, schedule_time_choices, radarr_end_orphan) }}
+            </div>
+            <p class="settings-field-hint settings-field-hint--soft schedule-midnight-hint" id="radarr-midnight-hint" hidden>Overnight window: enable both the start day and the next day (for example Fri and Sat) so the full window is covered.</p>
+            <p class="settings-field-hint settings-field-hint--soft">When this schedule is enabled, searches still use the interval above, but only inside the window you set.</p>
+          </div>
+        </section>
+
+        <section class="settings-premium-card" aria-labelledby="radarr-search-prefs-title">
+          <h2 class="settings-premium-card-title" id="radarr-search-prefs-title">Search preferences</h2>
+          <p class="settings-section-blurb">Choose how Fetcher handles missing and cutoff-unmet titles when searches run.</p>
+          <div class="settings-premium-card-body">
+            <div class="settings-premium-row">
+              {% call toggle_checkbox("radarr_search_missing", settings.radarr_search_missing) %}Search for missing monitored titles{% endcall %}
+            </div>
+            <div class="settings-premium-row">
+              {% call toggle_checkbox("radarr_search_upgrades", settings.radarr_search_upgrades) %}Search for cutoff-unmet (upgrade) titles{% endcall %}
+            </div>
+            <div class="settings-sentence-row settings-sentence-row--number">
+              <span class="settings-sentence-lead">Process up to</span>
+              <input class="number settings-inline-number" id="radarr_max_items_per_run" type="number" name="radarr_max_items_per_run" value="{{ settings.radarr_max_items_per_run }}" min="1" max="1000" aria-label="Max items per search run" />
+              <span class="settings-sentence-tail">titles per check</span>
+            </div>
+            <div class="settings-sentence-row settings-sentence-row--number">
+              <span class="settings-sentence-lead">Wait</span>
+              <input class="number settings-inline-number" id="radarr_retry_delay_minutes" type="number" name="radarr_retry_delay_minutes" value="{{ settings.radarr_retry_delay_minutes }}" min="1" max="525600" aria-label="Retry delay minutes" />
+              <span class="settings-sentence-tail">minutes before retrying a failed search</span>
             </div>
           </div>
         </section>
+
+        {{ radarr_failed_import_cleanup(settings, radarr_cleanup_any) }}
       </div>
 
       <div class="btn-row">

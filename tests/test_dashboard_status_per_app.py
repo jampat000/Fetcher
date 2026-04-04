@@ -17,14 +17,16 @@ async def _seed_snapshot_state() -> None:
         row.timezone = "UTC"
         row.sonarr_enabled = True
         row.sonarr_url = "http://localhost:8989"
-        row.sonarr_interval_minutes = 30
+        row.sonarr_search_interval_minutes = 30
         row.radarr_enabled = True
         row.radarr_url = "http://localhost:7878"
-        row.radarr_interval_minutes = 45
+        row.radarr_search_interval_minutes = 45
         row.emby_enabled = True
         row.emby_url = "http://localhost:8096"
         row.emby_api_key = "test-emby-key"
-        row.emby_interval_minutes = 60
+        row.trimmer_interval_minutes = 60
+        row.movie_refiner_interval_seconds = 60
+        row.tv_refiner_interval_seconds = 60
         row.sonarr_last_run_at = datetime(2026, 3, 24, 10, 0, 0)
         row.radarr_last_run_at = datetime(2026, 3, 24, 10, 15, 0)
         row.emby_last_run_at = datetime(2026, 3, 24, 10, 30, 0)
@@ -102,7 +104,7 @@ def test_build_dashboard_status_has_per_app_last_run_status(monkeypatch) -> None
             assert data["next_sonarr_relative"] != ""
             assert data["fetcher_phase"] in ("processing", "idle", "active")
             assert "No line for this app" not in (data["sonarr_automation_sub"] or "")
-            assert data["trimmer_connection_type"] == "Emby"
+            assert data["trimmer_connection_type"] == "Trimmer"
             assert data["trimmer_connection_status"] == "Connected"
 
     asyncio.run(_go())
@@ -155,7 +157,7 @@ def test_build_dashboard_status_unscheduled_and_disabled_next_run_display(monkey
             assert data["next_trimmer_display"] == {
                 "state": "disabled",
                 "primary": "Off",
-                "secondary": "Automation disabled",
+                "secondary": "Disabled in settings",
             }
 
     asyncio.run(_go())
@@ -419,7 +421,7 @@ def test_build_dashboard_status_includes_sonarr_refiner_keys(monkeypatch) -> Non
             assert data["next_sonarr_refiner_display"] == {
                 "state": "disabled",
                 "primary": "Off",
-                "secondary": "Automation disabled",
+                "secondary": "Disabled in settings",
             }
             assert data["sonarr_refiner_enabled"] is False
 
@@ -458,7 +460,7 @@ def test_build_dashboard_status_sonarr_refiner_watching_when_enabled(monkeypatch
             row = await get_or_create_settings(s)
             row.sonarr_refiner_enabled = True
             row.sonarr_refiner_primary_audio_lang = "eng"
-            row.sonarr_refiner_interval_seconds = 30
+            row.tv_refiner_interval_seconds = 30
             await s.commit()
             data = await build_dashboard_status(s, "UTC")
             assert data["next_sonarr_refiner_display"] == {

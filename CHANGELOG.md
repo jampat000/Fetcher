@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 4.0.5 — 2026-04-04
+
+### Added
+
+- **Failed-import cleanup — standalone jobs:** Sonarr and Radarr failed-import cleanup each run on its **own interval**, independent of search schedule windows and search tick timing.
+- **Canonical intervals & migration:** Central **search**, **Trimmer**, **Movies Refiner**, **TV Refiner**, and **per-app** failed-import cleanup interval fields; migration copies legacy columns and splits the old shared cleanup interval into Sonarr and Radarr values. **Setup wizard** saves the canonical fields.
+
+### Changed
+
+- **Settings UI:** Premium layout and clearer structure for Sonarr/Radarr (search timing, preferences, scenario-based cleanup), Trimmer, Movies Refiner, and TV Refiner; cleanup interval honors a true disabled state with reliable saves.
+- **Naming & copy:** More consistent **Trimmer**, **Movies Refiner**, and **TV Refiner** wording across the app; user-visible text favors **search** and scheduled **interval** language over vague “automation” where it matters.
+
+## 4.0.4 — 2026-04-04
+
+### Fixed
+
+- **Refiner ownership guard rewritten** — replaced the fragile movie-ID-based disowned check with a single clean title-match rule. A file is only skipped when Radarr is reachable, the queue has records, and zero records match this file by title in any state. **importPending**/**warning** files now correctly proceed — this unblocks the core workflow where Radarr waits for Refiner to deliver files to the output folder before it can import them.
+- Removed `_find_movie_id_in_inactive_rows` and all associated patchwork introduced in 4.0.3.
+
+## 4.0.3 — 2026-04-04
+
+### Fixed
+
+- **Refiner (movies / Radarr):** Radarr **importPending** (and other inactive queue rows) no longer fail the ownership guard—fallback matches queue rows by path or title so movie ID is recognized while upstream “active only” diagnostics stay unchanged for blocking.
+- **Refiner wrong-content:** `_movie_wrong_content_ctx_for_candidate` uses the same inactive-row fallback for movie ID when `upstream_analyze_path` does not populate it, so wrong-content context works for import-wait files.
+
+## 4.0.2 — 2026-04-04
+
+### Fixed
+
+- **Refiner / ffprobe (Windows):** Decode ffprobe JSON stdout as UTF-8 (`encoding="utf-8"`, `errors="replace"`) so stream metadata with non-Latin characters no longer decodes with the system ANSI code page and surfaces as empty or invalid probe output.
+- **Refiner (movies / Radarr):** When Radarr queue authority is reachable but reports no owning movie for the file, skip processing instead of emitting output with no tracked movie (e.g. disowned queue item after a failed download).
+
 ## 4.0.0 — 2026-04-04
 
 ### Added

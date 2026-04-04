@@ -13,7 +13,6 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_or_create_settings
-from app.arr_intervals import effective_arr_interval_minutes
 from app.arr_client import (
     ArrClient,
     ArrConfig,
@@ -38,30 +37,83 @@ from app.emby_rules import (
     tv_matches_selected_genres,
 )
 from app.radarr_failed_import_cleanup import (
+    RadarrCleanupPolicy,
     radarr_cleanup_policy_from_settings,
     run_radarr_failed_import_queue_cleanup,
 )
 from app.sonarr_failed_import_cleanup import (
+    SonarrCleanupPolicy,
     run_sonarr_failed_import_queue_cleanup,
     sonarr_cleanup_policy_from_settings,
 )
 from app.resolvers.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
+from app.settings_canonical import (
+    radarr_failed_import_cleanup_interval_minutes_read,
+    radarr_search_interval_minutes_read,
+    sonarr_failed_import_cleanup_interval_minutes_read,
+    sonarr_search_interval_minutes_read,
+    trimmer_interval_minutes_read,
+)
 
 logger = logging.getLogger(__name__)
-
-
-def _failed_import_cleanup_interval_minutes(settings: AppSettings) -> int:
-    try:
-        v = int(settings.failed_import_cleanup_interval_minutes)
-    except (TypeError, ValueError):
-        v = 60
-    return max(1, min(10080, v))
 
 
 def _failed_import_cleanup_due(*, now: datetime, last_run: datetime | None, interval_minutes: int) -> bool:
     if last_run is None:
         return True
     return (now - last_run).total_seconds() >= max(1, interval_minutes) * 60
+
+
+def _any_sonarr_failed_import_cleanup_remove(policy: SonarrCleanupPolicy) -> bool:
+    return any(
+        [
+            policy.remove_corrupt,
+            policy.remove_download_failed,
+            policy.remove_import_failed,
+            policy.remove_unmatched,
+            policy.remove_quality,
+        ]
+    )
+
+
+def _any_radarr_failed_import_cleanup_remove(policy: RadarrCleanupPolicy) -> bool:
+    return any(
+        [
+            policy.remove_corrupt,
+            policy.remove_download_failed,
+            policy.remove_import_failed,
+            policy.remove_unmatched,
+            policy.remove_quality,
+        ]
+    )
+
+
+def sonarr_failed_import_cleanup_scheduler_interval_minutes(settings: AppSettings) -> int | None:
+    """APScheduler interval for standalone Sonarr failed-import cleanup, or None when job should not exist."""
+    if not (
+        settings.sonarr_enabled
+        and (settings.sonarr_url or "").strip()
+        and resolve_sonarr_api_key(settings)
+    ):
+        return None
+    policy = sonarr_cleanup_policy_from_settings(settings)
+    if not _any_sonarr_failed_import_cleanup_remove(policy):
+        return None
+    return sonarr_failed_import_cleanup_interval_minutes_read(settings)
+
+
+def radarr_failed_import_cleanup_scheduler_interval_minutes(settings: AppSettings) -> int | None:
+    """APScheduler interval for standalone Radarr failed-import cleanup, or None when job should not exist."""
+    if not (
+        settings.radarr_enabled
+        and (settings.radarr_url or "").strip()
+        and resolve_radarr_api_key(settings)
+    ):
+        return None
+    policy = radarr_cleanup_policy_from_settings(settings)
+    if not _any_radarr_failed_import_cleanup_remove(policy):
+        return None
+    return radarr_failed_import_cleanup_interval_minutes_read(settings)
 
 
 @dataclass(frozen=True)
@@ -100,8 +152,8 @@ def build_run_context(settings: AppSettings, *, arr_manual_scope: ArrManualScope
     rad_key = resolve_radarr_api_key(settings)
     em_key = resolve_emby_api_key(settings)
     tz = (settings.timezone or "UTC").strip() or "UTC"
-    sonarr_tick_m = effective_arr_interval_minutes(settings.sonarr_interval_minutes)
-    radarr_tick_m = effective_arr_interval_minutes(settings.radarr_interval_minutes)
+    sonarr_tick_m = sonarr_search_interval_minutes_read(settings)
+    radarr_tick_m = radarr_search_interval_minutes_read(settings)
     try:
         sonarr_retry_delay_minutes = min(max(1, int(settings.sonarr_retry_delay_minutes)), 365 * 24 * 60)
     except (TypeError, ValueError):
@@ -111,7 +163,7 @@ def build_run_context(settings: AppSettings, *, arr_manual_scope: ArrManualScope
     except (TypeError, ValueError):
         radarr_retry_delay_minutes = 1440
     now = utc_now_naive()
-    emby_interval_m = max(5, int(settings.emby_interval_minutes or 60))
+    emby_interval_m = trimmer_interval_minutes_read(settings)
     do_sonarr_block = bool(
         settings.sonarr_enabled
         and (settings.sonarr_url or "").strip()
@@ -141,7 +193,7 @@ def build_run_context(settings: AppSettings, *, arr_manual_scope: ArrManualScope
         do_radarr_block=do_radarr_block,
     )
 
-# One automation pass at a time (scheduler tick vs manual “search now”).
+# One Sonarr/Radarr search pass at a time (scheduler tick vs manual “search now”).
 _run_once_lock = asyncio.Lock()
 
 
@@ -157,6 +209,192 @@ async def run_once(
             arr_manual_scope=arr_manual_scope,
             scheduled_scope=scheduled_scope,
         )
+
+
+async def run_scheduled_sonarr_failed_import_cleanup(session: AsyncSession) -> None:
+    """Scheduled-only entrypoint: failed-import cleanup (not bundled with Sonarr search ticks)."""
+    settings = await get_or_create_settings(session)
+    interval_m = sonarr_failed_import_cleanup_scheduler_interval_minutes(settings)
+    if interval_m is None:
+        return
+    now = utc_now_naive()
+    if not _failed_import_cleanup_due(
+        now=now,
+        last_run=settings.sonarr_failed_import_cleanup_last_run_at,
+        interval_minutes=interval_m,
+    ):
+        return
+    policy = sonarr_cleanup_policy_from_settings(settings)
+    if not _any_sonarr_failed_import_cleanup_remove(policy):
+        return
+
+    t_start = utc_now_naive()
+    log = JobRunLog(started_at=t_start, ok=False, message="", app="sonarr")
+    session.add(log)
+    _sanitize_pending_log_rows(session)
+    await session.commit()
+    await session.refresh(log)
+
+    actions: list[str] = []
+    son_key = resolve_sonarr_api_key(settings)
+    sonarr = ArrClient(ArrConfig(settings.sonarr_url, son_key))
+    try:
+        await sonarr.health()
+        actions.append(f"Sonarr: failed-import cleanup check started (interval {interval_m}m)")
+        await run_sonarr_failed_import_queue_cleanup(
+            sonarr,
+            session=session,
+            job_run_id=log.id,
+            actions=actions,
+            policy=policy,
+        )
+        settings.sonarr_failed_import_cleanup_last_run_at = utc_now_naive()
+        msg = " | ".join(actions) if actions else "Sonarr: failed-import cleanup (no actions)"
+        log.ok = True
+        log.message = _sanitize_log_text(msg)
+        log.finished_at = utc_now_naive()
+        _sanitize_pending_log_rows(session)
+        await session.commit()
+    except httpx.HTTPStatusError as e:
+        try:
+            body = e.response.text
+            if len(body) > 500:
+                body = body[:500] + "...(truncated)"
+        except Exception:
+            body = "<unavailable>"
+        log.ok = False
+        safe_url = redact_url_for_logging(e.request.url)
+        code = e.response.status_code
+        hint = hint_for_http_status(code)
+        hint_suffix = f" {hint}" if hint else ""
+        log.message = _sanitize_log_text(
+            f"Sonarr failed-import cleanup failed: HTTP {code} for {e.request.method} {safe_url}{hint_suffix} | "
+            f"{redact_sensitive_text(body)}"
+        )
+        log.finished_at = utc_now_naive()
+        session.add(
+            ActivityLog(
+                job_run_id=log.id,
+                app="sonarr",
+                kind="error",
+                status="failed",
+                count=0,
+                detail=_sanitize_log_text((log.message or "")[:500]),
+            )
+        )
+        _sanitize_pending_log_rows(session)
+        await session.commit()
+    except Exception as e:  # noqa: BLE001 - service boundary logging
+        log.ok = False
+        log.message = _sanitize_log_text(f"Sonarr failed-import cleanup failed: {type(e).__name__}: {e}")
+        log.finished_at = utc_now_naive()
+        session.add(
+            ActivityLog(
+                job_run_id=log.id,
+                app="service",
+                kind="error",
+                status="failed",
+                count=0,
+                detail=_sanitize_log_text((log.message or "")[:500]),
+            )
+        )
+        _sanitize_pending_log_rows(session)
+        await session.commit()
+    finally:
+        await sonarr.aclose()
+
+
+async def run_scheduled_radarr_failed_import_cleanup(session: AsyncSession) -> None:
+    """Scheduled-only entrypoint: failed-import cleanup (not bundled with Radarr search ticks)."""
+    settings = await get_or_create_settings(session)
+    interval_m = radarr_failed_import_cleanup_scheduler_interval_minutes(settings)
+    if interval_m is None:
+        return
+    now = utc_now_naive()
+    if not _failed_import_cleanup_due(
+        now=now,
+        last_run=settings.radarr_failed_import_cleanup_last_run_at,
+        interval_minutes=interval_m,
+    ):
+        return
+    policy = radarr_cleanup_policy_from_settings(settings)
+    if not _any_radarr_failed_import_cleanup_remove(policy):
+        return
+
+    t_start = utc_now_naive()
+    log = JobRunLog(started_at=t_start, ok=False, message="", app="radarr")
+    session.add(log)
+    _sanitize_pending_log_rows(session)
+    await session.commit()
+    await session.refresh(log)
+
+    actions: list[str] = []
+    rad_key = resolve_radarr_api_key(settings)
+    radarr = ArrClient(ArrConfig(settings.radarr_url, rad_key))
+    try:
+        await radarr.health()
+        actions.append(f"Radarr: failed-import cleanup check started (interval {interval_m}m)")
+        await run_radarr_failed_import_queue_cleanup(
+            radarr,
+            session=session,
+            job_run_id=log.id,
+            actions=actions,
+            policy=policy,
+        )
+        settings.radarr_failed_import_cleanup_last_run_at = utc_now_naive()
+        msg = " | ".join(actions) if actions else "Radarr: failed-import cleanup (no actions)"
+        log.ok = True
+        log.message = _sanitize_log_text(msg)
+        log.finished_at = utc_now_naive()
+        _sanitize_pending_log_rows(session)
+        await session.commit()
+    except httpx.HTTPStatusError as e:
+        try:
+            body = e.response.text
+            if len(body) > 500:
+                body = body[:500] + "...(truncated)"
+        except Exception:
+            body = "<unavailable>"
+        log.ok = False
+        safe_url = redact_url_for_logging(e.request.url)
+        code = e.response.status_code
+        hint = hint_for_http_status(code)
+        hint_suffix = f" {hint}" if hint else ""
+        log.message = _sanitize_log_text(
+            f"Radarr failed-import cleanup failed: HTTP {code} for {e.request.method} {safe_url}{hint_suffix} | "
+            f"{redact_sensitive_text(body)}"
+        )
+        log.finished_at = utc_now_naive()
+        session.add(
+            ActivityLog(
+                job_run_id=log.id,
+                app="radarr",
+                kind="error",
+                status="failed",
+                count=0,
+                detail=_sanitize_log_text((log.message or "")[:500]),
+            )
+        )
+        _sanitize_pending_log_rows(session)
+        await session.commit()
+    except Exception as e:  # noqa: BLE001 - service boundary logging
+        log.ok = False
+        log.message = _sanitize_log_text(f"Radarr failed-import cleanup failed: {type(e).__name__}: {e}")
+        log.finished_at = utc_now_naive()
+        session.add(
+            ActivityLog(
+                job_run_id=log.id,
+                app="service",
+                kind="error",
+                status="failed",
+                count=0,
+                detail=_sanitize_log_text((log.message or "")[:500]),
+            )
+        )
+        _sanitize_pending_log_rows(session)
+        await session.commit()
+    finally:
+        await radarr.aclose()
 
 
 def _take_int_ids(records: list[dict[str, Any]], *keys: str, limit: int) -> list[int]:
@@ -1378,37 +1616,6 @@ async def _execute_sonarr_block(
     sonarr = ArrClient(ArrConfig(settings.sonarr_url, ctx.son_key))
     try:
         await sonarr.health()
-        sonarr_fail_policy = sonarr_cleanup_policy_from_settings(settings)
-        if (
-            any(
-                [
-                    sonarr_fail_policy.remove_corrupt,
-                    sonarr_fail_policy.remove_download_failed,
-                    sonarr_fail_policy.remove_import_failed,
-                    sonarr_fail_policy.remove_unmatched,
-                    sonarr_fail_policy.remove_quality,
-                ]
-            )
-            and hasattr(sonarr, "queue_page")
-            and hasattr(sonarr, "history_page")
-        ):
-            cleanup_interval_m = _failed_import_cleanup_interval_minutes(settings)
-            if _failed_import_cleanup_due(
-                now=ctx.now,
-                last_run=settings.sonarr_failed_import_cleanup_last_run_at,
-                interval_minutes=cleanup_interval_m,
-            ):
-                actions.append(f"Sonarr: failed-import cleanup check started (interval {cleanup_interval_m}m)")
-                await run_sonarr_failed_import_queue_cleanup(
-                    sonarr,
-                    session=session,
-                    job_run_id=log.id,
-                    actions=actions,
-                    policy=sonarr_fail_policy,
-                )
-                settings.sonarr_failed_import_cleanup_last_run_at = ctx.now
-            else:
-                actions.append(f"Sonarr: failed-import cleanup skipped (interval {cleanup_interval_m}m not due)")
         sonarr_series_title_map: dict[int, str] = {}
         try:
             for s in await sonarr.series():
@@ -1634,38 +1841,6 @@ async def _execute_radarr_block(
     radarr = ArrClient(ArrConfig(settings.radarr_url, ctx.rad_key))
     try:
         await radarr.health()
-
-        radarr_fail_policy = radarr_cleanup_policy_from_settings(settings)
-        if (
-            any(
-                [
-                    radarr_fail_policy.remove_corrupt,
-                    radarr_fail_policy.remove_download_failed,
-                    radarr_fail_policy.remove_import_failed,
-                    radarr_fail_policy.remove_unmatched,
-                    radarr_fail_policy.remove_quality,
-                ]
-            )
-            and hasattr(radarr, "queue_page")
-            and hasattr(radarr, "history_page")
-        ):
-            cleanup_interval_m = _failed_import_cleanup_interval_minutes(settings)
-            if _failed_import_cleanup_due(
-                now=ctx.now,
-                last_run=settings.radarr_failed_import_cleanup_last_run_at,
-                interval_minutes=cleanup_interval_m,
-            ):
-                actions.append(f"Radarr: failed-import cleanup check started (interval {cleanup_interval_m}m)")
-                await run_radarr_failed_import_queue_cleanup(
-                    radarr,
-                    session=session,
-                    job_run_id=log.id,
-                    actions=actions,
-                    policy=radarr_fail_policy,
-                )
-                settings.radarr_failed_import_cleanup_last_run_at = ctx.now
-            else:
-                actions.append(f"Radarr: failed-import cleanup skipped (interval {cleanup_interval_m}m not due)")
 
         radarr_limit = max(1, int((settings.radarr_max_items_per_run or 0) or default_limit))
         radarr_missing_enabled = bool(settings.radarr_search_missing)

@@ -83,8 +83,8 @@
             <span>Refiner</span>
             {% if sidebar_health is defined %}
             <span class="sidebar-health-dots" aria-hidden="true">
-              <span class="sidebar-health-dot sidebar-health-dot--{{ sidebar_health.get('sonarr_refiner', 'unknown') }}" title="Sonarr Refiner (TV)"></span>
-              <span class="sidebar-health-dot sidebar-health-dot--{{ sidebar_health.get('refiner_radarr', 'unknown') }}" title="Radarr Refiner (Movies)"></span>
+              <span class="sidebar-health-dot sidebar-health-dot--{{ sidebar_health.get('sonarr_refiner', 'unknown') }}" title="TV Refiner"></span>
+              <span class="sidebar-health-dot sidebar-health-dot--{{ sidebar_health.get('refiner_radarr', 'unknown') }}" title="Movies Refiner"></span>
             </span>
             {% endif %}
           </a>
@@ -93,7 +93,7 @@
             <span>Trimmer</span>
             {% if sidebar_health is defined %}
             <span class="sidebar-health-dots sidebar-health-dots--solo" aria-hidden="true">
-              <span class="sidebar-health-dot sidebar-health-dot--{{ sidebar_health.get('emby', 'unknown') }}" title="Media server reachability (Emby)"></span>
+              <span class="sidebar-health-dot sidebar-health-dot--{{ sidebar_health.get('emby', 'unknown') }}" title="Trimmer — media server connection"></span>
             </span>
             {% endif %}
           </a>
