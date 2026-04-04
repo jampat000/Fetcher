@@ -10,9 +10,9 @@ from sqlalchemy import func, select
 
 from app.db import SessionLocal, get_or_create_settings
 from app.models import RefinerActivity
+from app.refiner_cleanup import _cleanup_refiner_source_sidecar_artifacts_after_success
 from app.refiner_rules import collect_media_files_under_path, is_refiner_media_candidate
 from app.refiner_service import (
-    _cleanup_refiner_source_sidecar_artifacts_after_success,
     _gather_watched_files,
     run_refiner_pass,
 )

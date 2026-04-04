@@ -3840,9 +3840,6 @@ input.number.is-cleanup-interval-disabled:disabled {
 .automation-card[data-automation-card="trimmer"] .automation-app-hint {
   display: none;
 }
-.automation-card[data-automation-card="sonarr_refiner"] {
-  border-left: 2px solid rgba(59, 130, 246, 0.55);
-}
 .automation-card {
   min-height: 0;
   background: rgba(255, 255, 255, 0.04);

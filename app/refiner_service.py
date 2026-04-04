@@ -22,10 +22,6 @@ from app.models import AppSettings, JobRunLog
 from app.refiner_activity_context import dumps_activity_context, parse_activity_context
 from app.refiner_radarr_wrong_content_actions import execute_radarr_wrong_content_actions
 from app.resolvers.api_keys import resolve_radarr_api_key
-from app.refiner_cleanup import (
-    _cleanup_refiner_source_sidecar_artifacts_after_success,
-    _try_remove_empty_watch_subfolder,
-)
 from app.refiner_activity_persistence import (
     _insert_refiner_processing_row,
     _persist_refiner_activity_safe,
@@ -38,7 +34,6 @@ from app.refiner_pipeline import (
     _activity_snapshot,
     _failure_activity_meta,
     _file_size_bytes,
-    _finalize_output_file,
     _process_one_refiner_file_sync,
 )
 from app.refiner_mux import REFINER_FFMPEG_TIMEOUT_S
