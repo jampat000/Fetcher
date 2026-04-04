@@ -731,7 +731,8 @@ def test_file_age_gate_rejects_growing_file(
     def patched_path_stat(self: Path, *, follow_symlinks: bool = True):
         r = real_path_stat(self, follow_symlinks=follow_symlinks)
         try:
-            same = self.resolve() == f
+            # Do not call Path.resolve() here: resolve() uses stat() and would recurse into this patch.
+            same = os.path.samefile(self, f)
         except OSError:
             same = False
         if not same:
