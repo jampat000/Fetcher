@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 4.0.5 — 2026-04-04
+
+### Added
+
+- **Failed-import cleanup — standalone jobs:** Sonarr and Radarr failed-import cleanup each run on its **own interval**, independent of search schedule windows and search tick timing.
+- **Canonical intervals & migration:** Central **search**, **Trimmer**, **Movies Refiner**, **TV Refiner**, and **per-app** failed-import cleanup interval fields; migration copies legacy columns and splits the old shared cleanup interval into Sonarr and Radarr values. **Setup wizard** saves the canonical fields.
+
+### Changed
+
+- **Settings UI:** Premium layout and clearer structure for Sonarr/Radarr (search timing, preferences, scenario-based cleanup), Trimmer, Movies Refiner, and TV Refiner; cleanup interval honors a true disabled state with reliable saves.
+- **Naming & copy:** More consistent **Trimmer**, **Movies Refiner**, and **TV Refiner** wording across the app; user-visible text favors **search** and scheduled **interval** language over vague “automation” where it matters.
+
 ## 4.0.4 — 2026-04-04
 
 ### Fixed

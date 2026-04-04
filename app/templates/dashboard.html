@@ -162,7 +162,7 @@
       </div>
 
       <div class="automation-card dash-summary-tile" data-automation-card="refiner">
-        <div class="dash-summary-tile-head"><span class="dash-summary-tile-title">Refiner</span></div>
+        <div class="dash-summary-tile-head"><span class="dash-summary-tile-title">Movies &amp; TV Refiner</span></div>
 
         {% if av.refiner_enabled and av.sonarr_refiner_enabled %}
           {% set nm = av.next_refiner_display or {} %}
@@ -231,7 +231,7 @@
           </dl>
         {% endif %}
 
-        {{ automation_sparkline_block(av, "refiner", "Refiner") }}
+        {{ automation_sparkline_block(av, "refiner", "Movies & TV Refiner") }}
         <div class="dash-summary-tile-footer automation-tile-footer automation-footer-shell">
           <div class="automation-footer-note-slot">
             <div id="dash-refiner-live-progress"
@@ -242,7 +242,9 @@
           </div>
           <div class="automation-footer-action-slot">
             {%- if not av.refiner_enabled and not av.sonarr_refiner_enabled -%}
-              <a class="ink-link automation-footer-action" href="/refiner/settings">Refiner settings</a>
+              <span class="automation-footer-action automation-footer-action--pair">
+                <a class="ink-link" href="/refiner/settings">Movies Refiner</a><span class="muted" aria-hidden="true"> · </span><a class="ink-link" href="/refiner/sonarr/settings">TV Refiner</a>
+              </span>
             {%- endif -%}
           </div>
         </div>
@@ -293,7 +295,7 @@
         sonarr_schedule_time_friendly,
         settings.sonarr_search_missing,
         settings.sonarr_search_upgrades,
-        settings.sonarr_interval_minutes,
+        settings.sonarr_search_interval_minutes,
         settings.sonarr_max_items_per_run,
         "card-stripe-blue card-blue"
       ) }}
@@ -307,7 +309,7 @@
         radarr_schedule_time_friendly,
         settings.radarr_search_missing,
         settings.radarr_search_upgrades,
-        settings.radarr_interval_minutes,
+        settings.radarr_search_interval_minutes,
         settings.radarr_max_items_per_run,
         "card-stripe-green card-green"
       ) }}

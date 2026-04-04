@@ -47,7 +47,7 @@ def _automation_view_for_template(settings: Any, dash_status: Mapping[str, Any])
     """Single dict for Automation card rows + footer (dashboard.html ``automation_view`` / ``av``)."""
     def _fallback_display(*, enabled: bool, local: str, rel: str) -> dict[str, str]:
         if not enabled:
-            return {"state": "disabled", "primary": "Off", "secondary": "Automation disabled"}
+            return {"state": "disabled", "primary": "Off", "secondary": "Disabled in settings"}
         if local:
             return {"state": "scheduled", "primary": local, "secondary": rel or ""}
         return {"state": "enabled_unscheduled", "primary": "Always on", "secondary": "No schedule configured"}

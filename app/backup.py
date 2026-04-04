@@ -60,6 +60,30 @@ def parse_backup_datetime_string(s: str) -> datetime:
     return dt
 
 
+def merge_legacy_interval_fields_into_canonical(data: dict[str, Any]) -> None:
+    """Map Phase 3 deprecated keys in an imported ``settings`` dict to canonical keys (in-place).
+
+    Allows restoring backups exported before canonical column names when the file is re-saved
+    at the current schema version.
+    """
+    if "sonarr_search_interval_minutes" not in data and "sonarr_interval_minutes" in data:
+        data["sonarr_search_interval_minutes"] = data["sonarr_interval_minutes"]
+    if "radarr_search_interval_minutes" not in data and "radarr_interval_minutes" in data:
+        data["radarr_search_interval_minutes"] = data["radarr_interval_minutes"]
+    if "trimmer_interval_minutes" not in data and "emby_interval_minutes" in data:
+        data["trimmer_interval_minutes"] = data["emby_interval_minutes"]
+    if "movie_refiner_interval_seconds" not in data and "refiner_interval_seconds" in data:
+        data["movie_refiner_interval_seconds"] = data["refiner_interval_seconds"]
+    if "tv_refiner_interval_seconds" not in data and "sonarr_refiner_interval_seconds" in data:
+        data["tv_refiner_interval_seconds"] = data["sonarr_refiner_interval_seconds"]
+    shared = data.get("failed_import_cleanup_interval_minutes")
+    if shared is not None:
+        if "sonarr_failed_import_cleanup_interval_minutes" not in data:
+            data["sonarr_failed_import_cleanup_interval_minutes"] = shared
+        if "radarr_failed_import_cleanup_interval_minutes" not in data:
+            data["radarr_failed_import_cleanup_interval_minutes"] = shared
+
+
 def app_settings_to_plain(row: AppSettings) -> dict[str, Any]:
     """ORM row → JSON-serializable dict (no `id`)."""
     out: dict[str, Any] = {}
@@ -92,7 +116,7 @@ def build_export_payload(row: AppSettings) -> dict[str, Any]:
             "trimmer": True,
             "refiner": True,
             "note": (
-                "Full app_settings row: Sonarr, Radarr, Emby/Trimmer, Refiner, web authentication, "
+                "Full app_settings row: Sonarr, Radarr, Trimmer (media server), Refiners, web authentication, "
                 "schedules, and schema_version. Excludes activity_log, job_run_log, app_snapshot, "
                 "refiner_activity, and arr_action_log."
             ),
@@ -244,6 +268,7 @@ def apply_settings_dict(row: AppSettings, data: dict[str, Any]) -> None:
 
 async def import_settings_replace(session: AsyncSession, raw: bytes) -> None:
     settings = parse_and_validate_settings_dict(raw)
+    merge_legacy_interval_fields_into_canonical(settings)
     res = await session.execute(select(AppSettings).order_by(AppSettings.id.asc()).limit(1))
     existing = res.scalars().first()
     if not existing:

@@ -689,11 +689,44 @@ async def _migrate_042_refiner_minimum_age(
         )
 
 
+async def _migrate_044_canonical_interval_fields(engine: AsyncEngine) -> None:
+    """Phase 3: canonical interval columns; copy from legacy; split shared cleanup interval."""
+    table = "app_settings"
+    specs: tuple[tuple[str, str], ...] = (
+        ("sonarr_search_interval_minutes", "INTEGER NOT NULL DEFAULT 60"),
+        ("radarr_search_interval_minutes", "INTEGER NOT NULL DEFAULT 60"),
+        ("trimmer_interval_minutes", "INTEGER NOT NULL DEFAULT 60"),
+        ("movie_refiner_interval_seconds", "INTEGER NOT NULL DEFAULT 60"),
+        ("tv_refiner_interval_seconds", "INTEGER NOT NULL DEFAULT 60"),
+        ("sonarr_failed_import_cleanup_interval_minutes", "INTEGER NOT NULL DEFAULT 60"),
+        ("radarr_failed_import_cleanup_interval_minutes", "INTEGER NOT NULL DEFAULT 60"),
+    )
+    added_any = False
+    for col, ddl in specs:
+        if not await _has_column(engine, table=table, column=col):
+            await _add_column(engine, table=table, ddl=f"{col} {ddl}")
+            added_any = True
+    if added_any:
+        mapping = [
+            ("sonarr_search_interval_minutes", "sonarr_interval_minutes"),
+            ("radarr_search_interval_minutes", "radarr_interval_minutes"),
+            ("trimmer_interval_minutes", "emby_interval_minutes"),
+            ("movie_refiner_interval_seconds", "refiner_interval_seconds"),
+            ("tv_refiner_interval_seconds", "sonarr_refiner_interval_seconds"),
+            ("sonarr_failed_import_cleanup_interval_minutes", "failed_import_cleanup_interval_minutes"),
+            ("radarr_failed_import_cleanup_interval_minutes", "failed_import_cleanup_interval_minutes"),
+        ]
+        async with engine.begin() as conn:
+            names = await _column_names_sqlite(conn, table=table)
+            assign = [f"{new_c} = {src_c}" for new_c, src_c in mapping if new_c in names and src_c in names]
+            if assign:
+                await conn.execute(text(f"UPDATE {table} SET {', '.join(assign)}"))
+
+
 async def _migrate_043_sonarr_refiner_pipeline(
     engine: AsyncEngine,
 ) -> None:
-    """Add all sonarr_refiner_* columns for the independent
-    Sonarr Refiner pipeline."""
+    """Add all sonarr_refiner_* columns for the independent TV Refiner pipeline."""
     table = "app_settings"
     for col_name, type_default in SONARR_REFINER_APP_SETTINGS_SQLITE_SPECS:
         if not await _has_column(engine, table=table, column=col_name):
@@ -710,7 +743,7 @@ async def repair_sonarr_refiner_app_settings_columns(
     """Add missing ``sonarr_refiner_*`` columns on
     ``app_settings`` (SQLite only, idempotent).
     Mirrors repair_refiner_app_settings_columns exactly
-    for the Sonarr pipeline."""
+    for the TV Refiner pipeline."""
     if engine.dialect.name != "sqlite":
         logger.warning(
             "app_settings sonarr_refiner repair skipped: "
@@ -819,6 +852,7 @@ async def migrate(engine: AsyncEngine) -> None:
     await _migrate_041_failed_import_remove_from_client(engine)
     await _migrate_042_refiner_minimum_age(engine)
     await _migrate_043_sonarr_refiner_pipeline(engine)
+    await _migrate_044_canonical_interval_fields(engine)
     await repair_sonarr_refiner_app_settings_columns(engine)
     await repair_refiner_app_settings_columns(engine)
 

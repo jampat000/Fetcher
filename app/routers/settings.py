@@ -31,6 +31,11 @@ from app.resolvers.api_keys import resolve_radarr_api_key, resolve_sonarr_api_ke
 from app.schemas import SettingsIn
 from app.schedule import normalize_schedule_days_csv, schedule_time_dropdown_choices
 from app.security_utils import encrypt_secret_for_storage
+from app.settings_canonical import (
+    radarr_failed_import_cleanup_interval_minutes_read,
+    sonarr_failed_import_cleanup_interval_minutes_read,
+    trimmer_interval_minutes_read,
+)
 from app.time_util import utc_now_naive
 from app.ui_templates import templates
 from app.web_common import (
@@ -260,7 +265,7 @@ async def save_settings(
     sonarr_blocklist_quality: bool = Form(False),
     sonarr_failed_import_remove_from_client: bool = Form(False),
     sonarr_max_items_per_run: int = Form(50),
-    sonarr_interval_minutes: int = Form(60),
+    sonarr_search_interval_minutes: int = Form(60),
     sonarr_schedule_enabled: bool = Form(False),
     sonarr_schedule_Mon: int = Form(0),
     sonarr_schedule_Tue: int = Form(0),
@@ -288,7 +293,7 @@ async def save_settings(
     radarr_blocklist_quality: bool = Form(False),
     radarr_failed_import_remove_from_client: bool = Form(False),
     radarr_max_items_per_run: int = Form(50),
-    radarr_interval_minutes: int = Form(60),
+    radarr_search_interval_minutes: int = Form(60),
     radarr_schedule_enabled: bool = Form(False),
     radarr_schedule_Mon: int = Form(0),
     radarr_schedule_Tue: int = Form(0),
@@ -301,7 +306,8 @@ async def save_settings(
     radarr_schedule_end: str = Form("23:59"),
     sonarr_retry_delay_minutes: int = Form(1440),
     radarr_retry_delay_minutes: int = Form(1440),
-    failed_import_cleanup_interval_minutes: int = Form(60),
+    sonarr_failed_import_cleanup_interval_minutes: int = Form(60),
+    radarr_failed_import_cleanup_interval_minutes: int = Form(60),
     log_retention_days: int = Form(14),
     timezone: str = Form("UTC"),
     save_scope: str = Form(""),
@@ -339,12 +345,22 @@ async def save_settings(
         row = await get_or_create_settings(session)
         # Merge intervals from DB for the app not being saved so SettingsIn is well-formed without
         # applying Form defaults to the other app's interval.
-        son_im = sonarr_interval_minutes
-        rad_im = radarr_interval_minutes
+        son_im = sonarr_search_interval_minutes
+        rad_im = radarr_search_interval_minutes
         if scope != "sonarr":
-            son_im = row.sonarr_interval_minutes if row.sonarr_interval_minutes is not None else 60
+            son_im = int(getattr(row, "sonarr_search_interval_minutes", None) or 60)
         if scope != "radarr":
-            rad_im = row.radarr_interval_minutes if row.radarr_interval_minutes is not None else 60
+            rad_im = int(getattr(row, "radarr_search_interval_minutes", None) or 60)
+        trim_im = trimmer_interval_minutes_read(row)
+        if scope == "sonarr":
+            son_cln = max(1, min(10080, int(sonarr_failed_import_cleanup_interval_minutes or 60)))
+            rad_cln = radarr_failed_import_cleanup_interval_minutes_read(row)
+        elif scope == "radarr":
+            rad_cln = max(1, min(10080, int(radarr_failed_import_cleanup_interval_minutes or 60)))
+            son_cln = sonarr_failed_import_cleanup_interval_minutes_read(row)
+        else:
+            son_cln = sonarr_failed_import_cleanup_interval_minutes_read(row)
+            rad_cln = radarr_failed_import_cleanup_interval_minutes_read(row)
 
         def _row_bool(attr: str) -> bool:
             return bool(getattr(row, attr, False))
@@ -399,7 +415,7 @@ async def save_settings(
             sonarr_blocklist_quality=s_bq,
             sonarr_failed_import_remove_from_client=s_rfc,
             sonarr_max_items_per_run=sonarr_max_items_per_run,
-            sonarr_interval_minutes=son_im,
+            sonarr_search_interval_minutes=son_im,
             # schedule fields are not in SettingsIn; set on ORM row below
             radarr_enabled=radarr_enabled,
             radarr_url=_normalize_base_url(radarr_url),
@@ -418,10 +434,12 @@ async def save_settings(
             radarr_blocklist_quality=r_bq,
             radarr_failed_import_remove_from_client=r_rfc,
             radarr_max_items_per_run=radarr_max_items_per_run,
-            radarr_interval_minutes=rad_im,
+            radarr_search_interval_minutes=rad_im,
+            trimmer_interval_minutes=trim_im,
             sonarr_retry_delay_minutes=sonarr_retry_delay_minutes,
             radarr_retry_delay_minutes=radarr_retry_delay_minutes,
-            failed_import_cleanup_interval_minutes=max(1, min(10080, int(failed_import_cleanup_interval_minutes or 60))),
+            sonarr_failed_import_cleanup_interval_minutes=son_cln,
+            radarr_failed_import_cleanup_interval_minutes=rad_cln,
         )
         if scope == "sonarr":
             row.sonarr_enabled = data.sonarr_enabled
@@ -441,9 +459,11 @@ async def save_settings(
             row.sonarr_blocklist_quality = data.sonarr_blocklist_quality
             row.sonarr_failed_import_remove_from_client = data.sonarr_failed_import_remove_from_client
             row.sonarr_max_items_per_run = data.sonarr_max_items_per_run
-            row.sonarr_interval_minutes = data.sonarr_interval_minutes
+            row.sonarr_search_interval_minutes = data.sonarr_search_interval_minutes
             row.sonarr_retry_delay_minutes = data.sonarr_retry_delay_minutes
-            row.failed_import_cleanup_interval_minutes = data.failed_import_cleanup_interval_minutes
+            row.sonarr_failed_import_cleanup_interval_minutes = (
+                data.sonarr_failed_import_cleanup_interval_minutes
+            )
             row.sonarr_schedule_enabled = sonarr_schedule_enabled
             row.sonarr_schedule_days = schedule_days_csv_from_named_day_checks(
                 sonarr_schedule_Mon,
@@ -475,9 +495,11 @@ async def save_settings(
             row.radarr_blocklist_quality = data.radarr_blocklist_quality
             row.radarr_failed_import_remove_from_client = data.radarr_failed_import_remove_from_client
             row.radarr_max_items_per_run = data.radarr_max_items_per_run
-            row.radarr_interval_minutes = data.radarr_interval_minutes
+            row.radarr_search_interval_minutes = data.radarr_search_interval_minutes
             row.radarr_retry_delay_minutes = data.radarr_retry_delay_minutes
-            row.failed_import_cleanup_interval_minutes = data.failed_import_cleanup_interval_minutes
+            row.radarr_failed_import_cleanup_interval_minutes = (
+                data.radarr_failed_import_cleanup_interval_minutes
+            )
             row.radarr_schedule_enabled = radarr_schedule_enabled
             row.radarr_schedule_days = schedule_days_csv_from_named_day_checks(
                 radarr_schedule_Mon,
@@ -497,9 +519,17 @@ async def save_settings(
 
         row.updated_at = utc_now_naive()
         if scope == "sonarr":
-            sched_targets = {"sonarr"}
+            sched_targets = {
+                "sonarr",
+                "sonarr_failed_import_cleanup",
+                "radarr_failed_import_cleanup",
+            }
         elif scope == "radarr":
-            sched_targets = {"radarr"}
+            sched_targets = {
+                "radarr",
+                "sonarr_failed_import_cleanup",
+                "radarr_failed_import_cleanup",
+            }
         else:
             sched_targets = set()
         if not await try_commit_and_reschedule(session, targets=sched_targets):

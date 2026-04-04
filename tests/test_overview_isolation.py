@@ -165,7 +165,7 @@ def test_refiner_overview_compact_configured_state(monkeypatch: pytest.MonkeyPat
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
             row.refiner_enabled = True
-            row.refiner_interval_seconds = 45
+            row.movie_refiner_interval_seconds = 45
             row.refiner_watched_folder = "D:\\Media\\in"
             row.refiner_output_folder = "D:\\Media\\out"
             row.refiner_schedule_enabled = True

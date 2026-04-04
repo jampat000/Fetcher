@@ -140,7 +140,7 @@ def test_dashboard_route_renders_per_app_success_failure_badges(monkeypatch) -> 
             "radarr_missing": 0,
             "radarr_upgrades": 0,
             "emby_matched": 0,
-            "trimmer_connection_type": "Emby",
+            "trimmer_connection_type": "Trimmer",
             "trimmer_connection_status": "Connected",
         }
 
@@ -189,7 +189,7 @@ def test_dashboard_route_empty_states_are_intentional(monkeypatch) -> None:
             "radarr_missing": 0,
             "radarr_upgrades": 0,
             "emby_matched": 0,
-            "trimmer_connection_type": "Emby",
+            "trimmer_connection_type": "Trimmer",
             "trimmer_connection_status": "Not configured",
         }
 
@@ -238,8 +238,8 @@ def test_dashboard_route_disabled_actions_render_inside_shared_footer(monkeypatc
             "next_refiner_relative": "",
             "next_sonarr_display": {"state": "enabled_unscheduled", "primary": "Always on", "secondary": "No schedule configured"},
             "next_radarr_display": {"state": "enabled_unscheduled", "primary": "Always on", "secondary": "No schedule configured"},
-            "next_trimmer_display": {"state": "disabled", "primary": "Off", "secondary": "Automation disabled"},
-            "next_refiner_display": {"state": "disabled", "primary": "Off", "secondary": "Automation disabled"},
+            "next_trimmer_display": {"state": "disabled", "primary": "Off", "secondary": "Disabled in settings"},
+            "next_refiner_display": {"state": "disabled", "primary": "Off", "secondary": "Disabled in settings"},
             "fetcher_phase": "idle",
             "fetcher_phase_label": "Idle",
             "fetcher_phase_detail": "No jobs.",
@@ -251,7 +251,7 @@ def test_dashboard_route_disabled_actions_render_inside_shared_footer(monkeypatc
             "radarr_missing": 0,
             "radarr_upgrades": 0,
             "emby_matched": 0,
-            "trimmer_connection_type": "Emby",
+            "trimmer_connection_type": "Trimmer",
             "trimmer_connection_status": "Not configured",
             "sonarr_sparkline": [],
             "radarr_sparkline": [],
@@ -335,7 +335,8 @@ def test_settings_route_smoke(monkeypatch) -> None:
     with _build_client(monkeypatch) as client:
         resp = client.get("/settings")
     assert resp.status_code == 200
-    assert b"Limits runs to the selected days and times" in resp.content
+    assert b"Only check during these hours" in resp.content
+    assert b"When this schedule is enabled" in resp.content
 
 
 def test_setup_redirect_and_wizard_smoke(monkeypatch) -> None:

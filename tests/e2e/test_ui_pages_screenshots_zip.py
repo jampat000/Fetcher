@@ -72,7 +72,7 @@ def test_capture_ui_pages_zip(e2e_server: str) -> None:
                 ("03-dashboard.png", "/", "h1.ph-title:has-text('Dashboard')"),
                 ("04-settings.png", "/settings", "text=Fetcher settings"),
                 ("05-refiner.png", "/refiner", "h1.ph-title:has-text('Refiner')"),
-                ("06-refiner-settings.png", "/refiner/settings", "h1.ph-title:has-text('Movies Settings')"),
+                ("06-refiner-settings.png", "/refiner/settings", "h1.ph-title:has-text('Movies Refiner')"),
                 ("07-trimmer.png", "/trimmer", "h1.ph-title:has-text('Trimmer')"),
                 ("08-trimmer-settings.png", "/trimmer/settings", "text=Trimmer"),
                 ("09-activity.png", "/activity", "text=Activity"),

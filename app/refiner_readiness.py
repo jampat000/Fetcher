@@ -91,8 +91,8 @@ def sonarr_refiner_validate_settings_save_section(
             return (
                 "watched_output_required",
                 "Watched folder and output folder are both "
-                "required while Sonarr Refiner is on. Set them "
-                "in this section, or turn Sonarr Refiner off "
+                "required while TV Refiner is on. Set them "
+                "in this section, or turn TV Refiner off "
                 "under Processing first.",
             )
         return None, None
@@ -100,7 +100,7 @@ def sonarr_refiner_validate_settings_save_section(
         if enabled and not normalize_lang(primary_lang):
             return (
                 "primary_audio_required",
-                "Primary audio language is required while Sonarr "
+                "Primary audio language is required while TV "
                 "Refiner is on. Choose one in this section.",
             )
         return None, None

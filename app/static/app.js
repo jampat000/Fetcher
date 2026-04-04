@@ -1508,7 +1508,7 @@ function trimmerSaveSuccessMessage(section, saveScope) {
   const sec = String(section || "").toLowerCase();
   const sc = String(saveScope || "").toLowerCase();
   if (sec === "connection" || sc === "connection") {
-    return "Trimmer settings saved (Emby connection).";
+    return "Trimmer settings saved (Connection).";
   }
   if (sec === "schedule" && sc === "schedule") {
     return "Trimmer settings saved (Schedule & limits).";
@@ -1529,8 +1529,8 @@ function trimmerSaveSuccessMessage(section, saveScope) {
 }
 
 const TRIMMER_EMBY_TEST_RESULT_TEXT = {
-  emby_ok: "Emby connection succeeded.",
-  emby_fail: "Emby connection failed — check URL, API key, and that the server is reachable.",
+  emby_ok: "Connection succeeded.",
+  emby_fail: "Connection failed — check URL, API key, and that the server is reachable.",
 };
 
 /** Trimmer /trimmer/settings: strip flash query params; keep hash on the active section (independent from Fetcher `tab=`). */
@@ -1563,8 +1563,8 @@ function refinerSavePipelineLabel(form) {
   return String(p || "")
     .trim()
     .toLowerCase() === "sonarr"
-    ? "Sonarr Refiner"
-    : "Refiner";
+    ? "TV Refiner"
+    : "Movies Refiner";
 }
 
 function refinerSaveScopeLabel(section) {
@@ -1574,7 +1574,7 @@ function refinerSaveScopeLabel(section) {
   if (s === "audio") return "Audio";
   if (s === "subtitles") return "Subtitles";
   if (s === "schedule") return "Schedule & limits";
-  return "Refiner";
+  return "Settings";
 }
 
 function refinerSaveSuccessMessage(section, form) {
@@ -1624,7 +1624,7 @@ function clearRefinerSettingsSaveFeedbackTimer(form) {
   }
 }
 
-/** In-place save + Emby test for Trimmer connection form (separate header from Fetcher settings). */
+/** In-place save + media-server connection test for Trimmer (separate header from Fetcher settings). */
 function initTrimmerSettingsAsyncConnection() {
   document.querySelectorAll('form[data-fetcher-trimmer-async-connection="1"]').forEach((form) => {
     form.addEventListener("submit", (e) => {
@@ -1986,7 +1986,7 @@ function syncRefinerTopBannersFromServerBrief(form) {
     .catch(() => {});
 }
 
-/** In-place save for Refiner settings (same fetch + JSON contract as Trimmer cleaner). */
+/** In-place save for Movies/TV Refiner settings (same fetch + JSON contract as Trimmer cleaner). */
 function initRefinerSettingsAsyncSave() {
   document.querySelectorAll('form[data-fetcher-refiner-async="1"]').forEach((form) => {
     form.addEventListener("submit", (e) => {
@@ -2534,6 +2534,57 @@ function updateMidnightHint(startSel, endSel, hintId) {
   hint.hidden = !(s && e && s > e);
 }
 
+/** Failed-import cleanup interval: visible number stays native-disabled until a cleanup toggle is on.
+ *  Canonical `name` is on a hidden input while disabled (always submits); when active, `name` is on the visible input so edits post. Hidden stays synced for the next disable.
+ */
+function wireFailedImportCleanupInterval(formId, intervalInputId, hintId, prefix) {
+  const form = document.getElementById(formId);
+  if (!form) return;
+  const input = document.getElementById(intervalInputId);
+  const hiddenId = `${intervalInputId}_hidden`;
+  const hidden = document.getElementById(hiddenId);
+  const hint = document.getElementById(hintId);
+  const fieldName = `${prefix}_failed_import_cleanup_interval_minutes`;
+  const sel = [
+    `input[type="checkbox"][name^="${prefix}_cleanup_"]`,
+    `input[type="checkbox"][name^="${prefix}_blocklist_"]`,
+    `input[type="checkbox"][name="${prefix}_failed_import_remove_from_client"]`,
+  ].join(", ");
+  const opts = form.querySelectorAll(sel);
+  if (!input || !hidden || opts.length === 0) return;
+
+  function syncMirrorFromVisible() {
+    if (!input.disabled) hidden.value = input.value;
+  }
+
+  function sync() {
+    let any = false;
+    opts.forEach((c) => {
+      if (c.checked) any = true;
+    });
+    const turningOn = any && input.disabled;
+    if (any) {
+      hidden.removeAttribute("name");
+      input.setAttribute("name", fieldName);
+      input.disabled = false;
+      input.classList.remove("is-cleanup-interval-disabled");
+      if (turningOn) input.value = hidden.value;
+    } else {
+      hidden.value = input.value;
+      input.removeAttribute("name");
+      hidden.setAttribute("name", fieldName);
+      input.disabled = true;
+      input.classList.add("is-cleanup-interval-disabled");
+    }
+    if (hint) hint.hidden = any;
+  }
+
+  input.addEventListener("input", syncMirrorFromVisible);
+  input.addEventListener("change", syncMirrorFromVisible);
+  opts.forEach((c) => c.addEventListener("change", sync));
+  sync();
+}
+
 window.addEventListener("DOMContentLoaded", () => {
   injectMeshAndNoise();
   bindInternalLinksTargetTop();
@@ -2573,6 +2624,19 @@ window.addEventListener("DOMContentLoaded", () => {
   wireMidnightPair(radStart, radEnd, "radarr-midnight-hint");
   wireMidnightPair(embStart, embEnd, "trimmer-midnight-hint");
 
+  wireFailedImportCleanupInterval(
+    "fetcher-settings-sonarr",
+    "sonarr_failed_import_cleanup_interval_minutes",
+    "sonarr-cleanup-interval-hint",
+    "sonarr",
+  );
+  wireFailedImportCleanupInterval(
+    "fetcher-settings-radarr",
+    "radarr_failed_import_cleanup_interval_minutes",
+    "radarr-cleanup-interval-hint",
+    "radarr",
+  );
+
   staggerClass(".hero-stat", 0, 60, "anim-in");
   staggerClass(".card.gc, .gc.card", 0, 80, "anim-in");
   staggerClass(".activity-row", 150, 50, "anim-in");
@@ -2595,8 +2659,8 @@ window.addEventListener("DOMContentLoaded", () => {
   if (qs("test") === "sonarr_fail") showToast("Sonarr connection failed");
   if (qs("test") === "radarr_ok") showToast("Radarr connection succeeded");
   if (qs("test") === "radarr_fail") showToast("Radarr connection failed");
-  if (qs("test") === "emby_ok") showToast("Emby connection succeeded");
-  if (qs("test") === "emby_fail") showToast("Emby connection failed");
+  if (qs("test") === "emby_ok") showToast("Connection succeeded");
+  if (qs("test") === "emby_fail") showToast("Connection failed");
 });
 
 window.addEventListener("pageshow", reapplyPendingScrollAfterPageshow);

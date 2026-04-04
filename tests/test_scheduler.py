@@ -16,9 +16,9 @@ def _arr_settings(**kwargs: object) -> SimpleNamespace:
         emby_enabled=False,
         emby_url="",
         emby_api_key="",
-        sonarr_interval_minutes=60,
-        radarr_interval_minutes=60,
-        emby_interval_minutes=60,
+        sonarr_search_interval_minutes=60,
+        radarr_search_interval_minutes=60,
+        trimmer_interval_minutes=60,
     )
     base.update(kwargs)
     return SimpleNamespace(**base)
@@ -35,9 +35,9 @@ def test_compute_job_intervals_minutes_uses_per_app_intervals() -> None:
         emby_enabled=True,
         emby_url="http://127.0.0.1:8096",
         emby_api_key="ek",
-        sonarr_interval_minutes=30,
-        radarr_interval_minutes=120,
-        emby_interval_minutes=45,
+        sonarr_search_interval_minutes=30,
+        radarr_search_interval_minutes=120,
+        trimmer_interval_minutes=45,
     )
     assert compute_job_intervals_minutes(s) == {
         "sonarr": 30,
@@ -56,7 +56,7 @@ def test_compute_job_intervals_minutes_uses_single_configured_app() -> None:
         sonarr_enabled=True,
         sonarr_url="http://127.0.0.1:8989",
         sonarr_api_key="k",
-        sonarr_interval_minutes=45,
+        sonarr_search_interval_minutes=45,
     )
     assert compute_job_intervals_minutes(s) == {"sonarr": 45}
 
@@ -66,7 +66,7 @@ def test_compute_job_intervals_minutes_excludes_refiner() -> None:
         refiner_enabled=True,
         refiner_watched_folder="D:\\Media\\incoming",
         refiner_output_folder="D:\\Media\\processed",
-        refiner_interval_seconds=120,
+        movie_refiner_interval_seconds=120,
     )
     assert compute_job_intervals_minutes(s) == {}
 
@@ -77,7 +77,7 @@ def test_effective_refiner_interval_seconds_when_configured() -> None:
         refiner_primary_audio_lang="eng",
         refiner_watched_folder="D:\\Media\\incoming",
         refiner_output_folder="D:\\Media\\processed",
-        refiner_interval_seconds=120,
+        movie_refiner_interval_seconds=120,
     )
     assert effective_refiner_interval_seconds(s) == 120
 
@@ -88,7 +88,7 @@ def test_effective_refiner_interval_seconds_none_without_primary_lang() -> None:
         refiner_primary_audio_lang="",
         refiner_watched_folder="D:\\Media\\incoming",
         refiner_output_folder="D:\\Media\\processed",
-        refiner_interval_seconds=120,
+        movie_refiner_interval_seconds=120,
     )
     assert effective_refiner_interval_seconds(s) is None
 
@@ -98,7 +98,7 @@ def test_start_creates_independent_jobs_for_enabled_apps() -> None:
     calls: list[tuple] = []
 
     async def _fake_payload():
-        return ({"sonarr": 30, "radarr": 120, "trimmer": 45}, None, None)
+        return ({"sonarr": 30, "radarr": 120, "trimmer": 45}, None, None, None, None)
 
     class _FakeSched:
         running = False
@@ -125,7 +125,7 @@ def test_start_adds_refiner_job_in_seconds() -> None:
     calls: list[tuple] = []
 
     async def _fake_payload():
-        return ({"sonarr": 30}, 90, None)
+        return ({"sonarr": 30}, 90, None, None, None)
 
     class _FakeSched:
         running = False
@@ -151,7 +151,7 @@ def test_reschedule_updates_only_requested_job() -> None:
     calls: list[tuple] = []
 
     async def _fake_payload():
-        return ({"sonarr": 30, "radarr": 120, "trimmer": 45}, None, None)
+        return ({"sonarr": 30, "radarr": 120, "trimmer": 45}, None, None, None, None)
 
     class _FakeSched:
         running = True
@@ -176,7 +176,7 @@ def test_reschedule_refiner_uses_seconds() -> None:
     calls: list[tuple] = []
 
     async def _fake_payload():
-        return ({}, 42, None)
+        return ({}, 42, None, None, None)
 
     class _FakeSched:
         running = True
@@ -221,6 +221,8 @@ def test_next_runs_by_job_returns_independent_values() -> None:
     assert runs["trimmer"] is None
     assert runs["refiner"] is None
     assert runs["sonarr_refiner"] is None
+    assert runs["sonarr_failed_import_cleanup"] is None
+    assert runs["radarr_failed_import_cleanup"] is None
 
 
 def test_effective_sonarr_refiner_interval_seconds_when_configured() -> None:
@@ -231,7 +233,7 @@ def test_effective_sonarr_refiner_interval_seconds_when_configured() -> None:
         sonarr_refiner_primary_audio_lang="eng",
         sonarr_refiner_watched_folder="D:\\Media\\tv\\incoming",
         sonarr_refiner_output_folder="D:\\Media\\tv\\processed",
-        sonarr_refiner_interval_seconds=120,
+        tv_refiner_interval_seconds=120,
     )
     assert effective_sonarr_refiner_interval_seconds(s) == 120
 
@@ -241,7 +243,7 @@ def test_effective_sonarr_refiner_interval_seconds_none_when_disabled() -> None:
 
     s = _arr_settings(
         sonarr_refiner_enabled=False,
-        sonarr_refiner_interval_seconds=120,
+        tv_refiner_interval_seconds=120,
     )
     assert effective_sonarr_refiner_interval_seconds(s) is None
 
@@ -251,7 +253,7 @@ def test_start_adds_sonarr_refiner_job_in_seconds() -> None:
     calls: list[tuple] = []
 
     async def _fake_payload():
-        return ({}, None, 45)
+        return ({}, None, 45, None, None)
 
     class _FakeSched:
         running = False
@@ -278,7 +280,7 @@ def test_reschedule_sonarr_refiner_uses_seconds() -> None:
     calls: list[tuple] = []
 
     async def _fake_payload():
-        return ({}, None, 30)
+        return ({}, None, 30, None, None)
 
     class _FakeSched:
         running = True
@@ -314,6 +316,88 @@ def test_next_runs_by_job_includes_sonarr_refiner() -> None:
     runs = s.next_runs_by_job()
     assert "sonarr_refiner" in runs
     assert runs["sonarr_refiner"] is None
+    assert "sonarr_failed_import_cleanup" in runs
+    assert "radarr_failed_import_cleanup" in runs
+
+
+def test_start_adds_failed_import_cleanup_jobs_when_intervals_present() -> None:
+    s = ServiceScheduler()
+    calls: list[tuple] = []
+
+    async def _fake_payload():
+        return ({}, None, None, 33, 44)
+
+    class _FakeSched:
+        running = False
+
+        def add_job(
+            self, _fn, _trigger, *, id, replace_existing, next_run_time=None, minutes=None, seconds=None, **_kw
+        ):  # noqa: ANN001
+            if seconds is not None:
+                calls.append((id, "seconds", seconds))
+            else:
+                calls.append((id, "minutes", minutes))
+
+        def start(self) -> None:
+            self.running = True
+
+    s._sched = _FakeSched()
+    s._current_scheduler_intervals = _fake_payload
+    asyncio.run(s.start())
+    assert ("fetcher_sonarr_failed_import_cleanup", "minutes", 33) in calls
+    assert ("fetcher_radarr_failed_import_cleanup", "minutes", 44) in calls
+
+
+def test_reschedule_sonarr_failed_import_cleanup_updates_minutes() -> None:
+    s = ServiceScheduler()
+    calls: list[tuple] = []
+
+    async def _fake_payload():
+        return ({}, None, None, 15, None)
+
+    class _FakeSched:
+        running = True
+
+        def add_job(
+            self, _fn, _trigger, *, id, replace_existing, minutes=None, seconds=None, next_run_time=None, **_kw
+        ):  # noqa: ANN001
+            if seconds is not None:
+                calls.append((id, "seconds", seconds))
+            else:
+                calls.append((id, "minutes", minutes))
+
+        def get_job(self, _id: str):  # noqa: ANN001
+            return None
+
+    s._sched = _FakeSched()
+    s._current_scheduler_intervals = _fake_payload
+    asyncio.run(s.reschedule(targets={"sonarr_failed_import_cleanup"}))
+    assert calls == [("fetcher_sonarr_failed_import_cleanup", "minutes", 15)]
+
+
+def test_reschedule_radarr_failed_import_cleanup_removes_when_disabled() -> None:
+    removed: list[str] = []
+
+    async def _fake_payload():
+        return ({}, None, None, None, None)
+
+    class _FakeSched:
+        running = True
+
+        def add_job(self, *_a, **_k):
+            raise AssertionError("should not add when cleanup disabled")
+
+        def get_job(self, job_id: str):  # noqa: ANN001
+            return object()
+
+        def remove_job(self, job_id: str) -> None:
+            removed.append(job_id)
+
+    s = ServiceScheduler()
+    s._sched = _FakeSched()
+    s._current_scheduler_intervals = _fake_payload
+    asyncio.run(s.reschedule(targets={"radarr_failed_import_cleanup"}))
+    assert removed == ["fetcher_radarr_failed_import_cleanup"]
 
 
 def test_shutdown_ignores_runtime_error_when_loop_closed() -> None:

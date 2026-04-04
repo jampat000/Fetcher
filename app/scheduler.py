@@ -8,20 +8,31 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.schedulers.base import SchedulerNotRunningError
 from sqlalchemy import select
 
-from app.arr_intervals import effective_arr_interval_minutes
 from app.db import SessionLocal
 from app.models import AppSettings
 from app.refiner_readiness import (
     refiner_scheduler_should_run,
     sonarr_refiner_scheduler_should_run,
 )
-from app.refiner_watch_config import clamp_refiner_interval_seconds
 from app.refiner_service import (
     run_scheduled_refiner_pass,
     run_scheduled_sonarr_refiner_pass,
 )
-from app.service_logic import run_once
+from app.service_logic import (
+    radarr_failed_import_cleanup_scheduler_interval_minutes,
+    run_once,
+    run_scheduled_radarr_failed_import_cleanup,
+    run_scheduled_sonarr_failed_import_cleanup,
+    sonarr_failed_import_cleanup_scheduler_interval_minutes,
+)
 from app.resolvers.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
+from app.settings_canonical import (
+    movie_refiner_interval_seconds_read,
+    radarr_search_interval_minutes_read,
+    sonarr_search_interval_minutes_read,
+    trimmer_interval_minutes_read,
+    tv_refiner_interval_seconds_read,
+)
 from app.time_util import utc_now_naive
 
 logger = logging.getLogger(__name__)
@@ -58,7 +69,8 @@ def _radarr_configured(settings: AppSettings) -> bool:
     )
 
 
-def _emby_configured(settings: AppSettings) -> bool:
+def _trimmer_connection_configured(settings: AppSettings) -> bool:
+    """True when Trimmer can run: enabled URL + API key (storage fields remain ``emby_*``)."""
     return bool(
         settings.emby_enabled
         and (settings.emby_url or "").strip()
@@ -78,20 +90,18 @@ def compute_job_intervals_minutes(settings: AppSettings) -> dict[str, int]:
     """Sonarr / Radarr / Trimmer — interval jobs use minutes. (Refiner uses seconds; see ``effective_refiner_interval_seconds``.)"""
     out: dict[str, int] = {}
     if _sonarr_configured(settings):
-        out["sonarr"] = effective_arr_interval_minutes(getattr(settings, "sonarr_interval_minutes", None))
+        out["sonarr"] = sonarr_search_interval_minutes_read(settings)
     if _radarr_configured(settings):
-        out["radarr"] = effective_arr_interval_minutes(getattr(settings, "radarr_interval_minutes", None))
-    if _emby_configured(settings):
-        out["trimmer"] = max(5, int(settings.emby_interval_minutes or 60))
+        out["radarr"] = radarr_search_interval_minutes_read(settings)
+    if _trimmer_connection_configured(settings):
+        out["trimmer"] = trimmer_interval_minutes_read(settings)
     return out
 
 
 def effective_refiner_interval_seconds(settings: AppSettings) -> int | None:
     if not _refiner_configured(settings):
         return None
-    return clamp_refiner_interval_seconds(
-        getattr(settings, "refiner_interval_seconds", None),
-    )
+    return movie_refiner_interval_seconds_read(settings)
 
 
 def effective_sonarr_refiner_interval_seconds(
@@ -99,9 +109,7 @@ def effective_sonarr_refiner_interval_seconds(
 ) -> int | None:
     if not _sonarr_refiner_configured(settings):
         return None
-    return clamp_refiner_interval_seconds(
-        getattr(settings, "sonarr_refiner_interval_seconds", None),
-    )
+    return tv_refiner_interval_seconds_read(settings)
 
 
 class ServiceScheduler:
@@ -114,6 +122,8 @@ class ServiceScheduler:
             "trimmer": "fetcher_trimmer",
             "refiner": "fetcher_refiner",
             "sonarr_refiner": "fetcher_sonarr_refiner",
+            "sonarr_failed_import_cleanup": "fetcher_sonarr_failed_import_cleanup",
+            "radarr_failed_import_cleanup": "fetcher_radarr_failed_import_cleanup",
         }
 
     async def _current_job_intervals_minutes(self) -> dict[str, int]:
@@ -125,7 +135,7 @@ class ServiceScheduler:
 
     async def _current_scheduler_intervals(
         self,
-    ) -> tuple[dict[str, int], int | None, int | None]:
+    ) -> tuple[dict[str, int], int | None, int | None, int | None, int | None]:
         async with SessionLocal() as session:
             settings = (
                 await session.execute(
@@ -135,11 +145,13 @@ class ServiceScheduler:
                 )
             ).scalars().first()
             if not settings:
-                return {}, None, None
+                return {}, None, None, None, None
             return (
                 compute_job_intervals_minutes(settings),
                 effective_refiner_interval_seconds(settings),
                 effective_sonarr_refiner_interval_seconds(settings),
+                sonarr_failed_import_cleanup_scheduler_interval_minutes(settings),
+                radarr_failed_import_cleanup_scheduler_interval_minutes(settings),
             )
 
     async def _run_scope(self, scope: str) -> None:
@@ -154,36 +166,68 @@ class ServiceScheduler:
             except Exception:
                 pass
 
-    async def _job_sonarr(self) -> None:
+    async def _job_sonarr_search_interval(self) -> None:
         await self._run_scope("sonarr")
 
-    async def _job_radarr(self) -> None:
+    async def _job_radarr_search_interval(self) -> None:
         await self._run_scope("radarr")
 
-    async def _job_trimmer(self) -> None:
+    async def _job_trimmer_interval(self) -> None:
         await self._run_scope("trimmer")
 
-    async def _job_refiner(self) -> None:
+    async def _job_movies_refiner_interval(self) -> None:
         async with SessionLocal() as session:
             await run_scheduled_refiner_pass(session)
 
-    async def _job_sonarr_refiner(self) -> None:
+    async def _job_tv_refiner_interval(self) -> None:
         async with SessionLocal() as session:
             await run_scheduled_sonarr_refiner_pass(session)
 
+    async def _job_sonarr_failed_import_cleanup(self) -> None:
+        if self._run_lock.locked():
+            logger.info(
+                "Scheduler: skipping sonarr failed-import cleanup tick — previous run still in progress"
+            )
+            return
+        async with self._run_lock:
+            async with SessionLocal() as session:
+                await run_scheduled_sonarr_failed_import_cleanup(session)
+            try:
+                notify_dashboard_changed()
+            except Exception:
+                pass
+
+    async def _job_radarr_failed_import_cleanup(self) -> None:
+        if self._run_lock.locked():
+            logger.info(
+                "Scheduler: skipping radarr failed-import cleanup tick — previous run still in progress"
+            )
+            return
+        async with self._run_lock:
+            async with SessionLocal() as session:
+                await run_scheduled_radarr_failed_import_cleanup(session)
+            try:
+                notify_dashboard_changed()
+            except Exception:
+                pass
+
     def _job_fn_for_scope(self, scope: str):
         if scope == "sonarr":
-            return self._job_sonarr
+            return self._job_sonarr_search_interval
         if scope == "radarr":
-            return self._job_radarr
+            return self._job_radarr_search_interval
         if scope == "refiner":
-            return self._job_refiner
-        return self._job_trimmer
+            return self._job_movies_refiner_interval
+        return self._job_trimmer_interval
 
     async def start(self) -> None:
-        intervals, refiner_interval_seconds, sonarr_refiner_interval_seconds = (
-            await self._current_scheduler_intervals()
-        )
+        (
+            intervals,
+            refiner_interval_seconds,
+            sonarr_refiner_interval_seconds,
+            sonarr_failed_import_cleanup_minutes,
+            radarr_failed_import_cleanup_minutes,
+        ) = await self._current_scheduler_intervals()
         for scope, minutes in intervals.items():
             self._sched.add_job(
                 self._job_fn_for_scope(scope),
@@ -193,9 +237,27 @@ class ServiceScheduler:
                 replace_existing=True,
                 next_run_time=utc_now_naive(),
             )
+        if sonarr_failed_import_cleanup_minutes is not None:
+            self._sched.add_job(
+                self._job_sonarr_failed_import_cleanup,
+                "interval",
+                minutes=sonarr_failed_import_cleanup_minutes,
+                id=self._job_ids["sonarr_failed_import_cleanup"],
+                replace_existing=True,
+                next_run_time=utc_now_naive(),
+            )
+        if radarr_failed_import_cleanup_minutes is not None:
+            self._sched.add_job(
+                self._job_radarr_failed_import_cleanup,
+                "interval",
+                minutes=radarr_failed_import_cleanup_minutes,
+                id=self._job_ids["radarr_failed_import_cleanup"],
+                replace_existing=True,
+                next_run_time=utc_now_naive(),
+            )
         if refiner_interval_seconds is not None:
             self._sched.add_job(
-                self._job_refiner,
+                self._job_movies_refiner_interval,
                 "interval",
                 seconds=refiner_interval_seconds,
                 id=self._job_ids["refiner"],
@@ -204,7 +266,7 @@ class ServiceScheduler:
             )
         if sonarr_refiner_interval_seconds is not None:
             self._sched.add_job(
-                self._job_sonarr_refiner,
+                self._job_tv_refiner_interval,
                 "interval",
                 seconds=sonarr_refiner_interval_seconds,
                 id=self._job_ids["sonarr_refiner"],
@@ -216,11 +278,23 @@ class ServiceScheduler:
     async def reschedule(self, *, targets: set[str] | None = None) -> None:
         if not self._sched.running:
             return
-        intervals, refiner_interval_seconds, sonarr_refiner_interval_seconds = (
-            await self._current_scheduler_intervals()
-        )
+        (
+            intervals,
+            refiner_interval_seconds,
+            sonarr_refiner_interval_seconds,
+            sonarr_failed_import_cleanup_minutes,
+            radarr_failed_import_cleanup_minutes,
+        ) = await self._current_scheduler_intervals()
         active_targets = (
-            {"sonarr", "radarr", "trimmer", "refiner", "sonarr_refiner"}
+            {
+                "sonarr",
+                "radarr",
+                "trimmer",
+                "refiner",
+                "sonarr_refiner",
+                "sonarr_failed_import_cleanup",
+                "radarr_failed_import_cleanup",
+            }
             if targets is None
             else set(targets)
         )
@@ -235,7 +309,7 @@ class ServiceScheduler:
                         self._sched.remove_job(job_id)
                 else:
                     self._sched.add_job(
-                        self._job_refiner,
+                        self._job_movies_refiner_interval,
                         "interval",
                         seconds=refiner_interval_seconds,
                         id=job_id,
@@ -249,9 +323,37 @@ class ServiceScheduler:
                         self._sched.remove_job(job_id)
                 else:
                     self._sched.add_job(
-                        self._job_sonarr_refiner,
+                        self._job_tv_refiner_interval,
                         "interval",
                         seconds=sonarr_refiner_interval_seconds,
+                        id=job_id,
+                        replace_existing=True,
+                    )
+                continue
+            if scope == "sonarr_failed_import_cleanup":
+                if sonarr_failed_import_cleanup_minutes is None:
+                    job = self._sched.get_job(job_id)
+                    if job:
+                        self._sched.remove_job(job_id)
+                else:
+                    self._sched.add_job(
+                        self._job_sonarr_failed_import_cleanup,
+                        "interval",
+                        minutes=sonarr_failed_import_cleanup_minutes,
+                        id=job_id,
+                        replace_existing=True,
+                    )
+                continue
+            if scope == "radarr_failed_import_cleanup":
+                if radarr_failed_import_cleanup_minutes is None:
+                    job = self._sched.get_job(job_id)
+                    if job:
+                        self._sched.remove_job(job_id)
+                else:
+                    self._sched.add_job(
+                        self._job_radarr_failed_import_cleanup,
+                        "interval",
+                        minutes=radarr_failed_import_cleanup_minutes,
                         id=job_id,
                         replace_existing=True,
                     )
@@ -290,6 +392,8 @@ class ServiceScheduler:
             "trimmer": self._job_next_run_at("trimmer"),
             "refiner": self._job_next_run_at("refiner"),
             "sonarr_refiner": self._job_next_run_at("sonarr_refiner"),
+            "sonarr_failed_import_cleanup": self._job_next_run_at("sonarr_failed_import_cleanup"),
+            "radarr_failed_import_cleanup": self._job_next_run_at("radarr_failed_import_cleanup"),
         }
 
     def is_run_in_progress(self) -> bool:

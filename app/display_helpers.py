@@ -182,7 +182,7 @@ def _relative_phrase_until(dt_future: datetime, now: datetime) -> str:
 
 
 def _fmt_size_bytes_si(n: int) -> str:
-    """Human-readable byte size (decimal GB/MB for display consistency with Refiner activity)."""
+    """Human-readable byte size (decimal GB/MB for display consistency with Remux/refiner activity)."""
     v = max(0, int(n))
     gb = v / (1024**3)
     if gb >= 1.0:

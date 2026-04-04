@@ -28,8 +28,10 @@ class AppSettings(Base):
     sonarr_schedule_days: Mapped[str] = mapped_column(Text, default="")
     sonarr_schedule_start: Mapped[str] = mapped_column(String(5), default="00:00")  # HH:MM
     sonarr_schedule_end: Mapped[str] = mapped_column(String(5), default="23:59")  # HH:MM
-    # Minutes between Sonarr runs when schedule allows (minimum 1; invalid/low values coerced to 60 on startup/save).
+    # Deprecated Phase 3 (one release): use sonarr_search_interval_minutes. Not written by active save paths.
     sonarr_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    # Canonical: minutes between Sonarr search ticks when schedule allows.
+    sonarr_search_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     sonarr_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Radarr
@@ -43,8 +45,10 @@ class AppSettings(Base):
     radarr_schedule_days: Mapped[str] = mapped_column(Text, default="")
     radarr_schedule_start: Mapped[str] = mapped_column(String(5), default="00:00")  # HH:MM
     radarr_schedule_end: Mapped[str] = mapped_column(String(5), default="23:59")  # HH:MM
-    # Minutes between Radarr runs when schedule allows (minimum 1; invalid/low values coerced to 60 on startup/save).
+    # Deprecated Phase 3 (one release): use radarr_search_interval_minutes. Not written by active save paths.
     radarr_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    # Canonical: minutes between Radarr search ticks when schedule allows.
+    radarr_search_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     radarr_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Sonarr granular cleanup — each scenario has a remove toggle
@@ -75,15 +79,20 @@ class AppSettings(Base):
     sonarr_failed_import_remove_from_client: Mapped[bool] = mapped_column(Boolean, default=False)
     radarr_failed_import_remove_from_client: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    # How often Emby Trimmer may run (Trimmer Settings only; independent of Sonarr/Radarr).
+    # Deprecated Phase 3 (one release): use trimmer_interval_minutes. Not written by active save paths.
     emby_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    # Canonical: Trimmer run cadence (minutes).
+    trimmer_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     emby_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # Min minutes before Fetcher retries searching the same Sonarr episode.
     sonarr_retry_delay_minutes: Mapped[int] = mapped_column(Integer, default=1440)
     # Min minutes before Fetcher retries searching the same Radarr movie.
     radarr_retry_delay_minutes: Mapped[int] = mapped_column(Integer, default=1440)
-    # Shared cadence for Sonarr/Radarr failed-import cleanup checks.
+    # Deprecated Phase 3 (one release): per-app cleanup intervals are canonical; not written by active save paths.
     failed_import_cleanup_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    # Canonical: failed-import cleanup cadence per app (minutes).
+    sonarr_failed_import_cleanup_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    radarr_failed_import_cleanup_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     sonarr_failed_import_cleanup_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     radarr_failed_import_cleanup_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # Activity, job_run_log, app_snapshot pruning window (days); clamped 7–3650 when pruning.
@@ -137,8 +146,10 @@ class AppSettings(Base):
     refiner_paths: Mapped[str] = mapped_column(Text, default="")
     # Small preset for choosing the best kept audio stream within allowed languages.
     refiner_audio_preference_mode: Mapped[str] = mapped_column(String(24), default="preferred_langs_quality")
-    # Seconds between watched-folder scans when Refiner is configured (min 5; cap 7 days).
+    # Deprecated Phase 3 (one release): use movie_refiner_interval_seconds. Not written by active save paths.
     refiner_interval_seconds: Mapped[int] = mapped_column(Integer, default=60)
+    # Canonical: Movies (Radarr) Refiner poll interval (seconds).
+    movie_refiner_interval_seconds: Mapped[int] = mapped_column(Integer, default=60)
     refiner_schedule_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     refiner_schedule_days: Mapped[str] = mapped_column(Text, default="")
     refiner_schedule_start: Mapped[str] = mapped_column(String(5), default="00:00")
@@ -201,9 +212,12 @@ class AppSettings(Base):
     sonarr_refiner_minimum_age_seconds: Mapped[int] = mapped_column(
         Integer, default=60
     )
+    # Deprecated Phase 3 (one release): use tv_refiner_interval_seconds. Not written by active save paths.
     sonarr_refiner_interval_seconds: Mapped[int] = mapped_column(
         Integer, default=60
     )
+    # Canonical: TV (Sonarr) Refiner poll interval (seconds).
+    tv_refiner_interval_seconds: Mapped[int] = mapped_column(Integer, default=60)
     sonarr_refiner_schedule_enabled: Mapped[bool] = mapped_column(
         Boolean, default=False
     )

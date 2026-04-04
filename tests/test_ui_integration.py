@@ -214,24 +214,24 @@ def test_settings_page_has_forms(monkeypatch: pytest.MonkeyPatch) -> None:
     assert b"name=\"radarr_cleanup_corrupt\"" in r.content
     assert b"name=\"sonarr_cleanup_import_failed\"" in r.content
     assert b"name=\"radarr_cleanup_import_failed\"" in r.content
-    assert html.count("re-add the queue row on sync.") == 2
     assert html.count('id="sonarr-panel-connection"') == 1
     assert html.count('id="radarr-panel-connection"') == 1
-    assert html.count('id="sonarr-panel-search-cleanup"') == 1
-    assert html.count('id="radarr-panel-search-cleanup"') == 1
-    assert html.count("Search and cleanup</h3>") == 2
-    assert html.count('id="sonarr-panel-limits"') == 1
-    assert html.count('id="radarr-panel-limits"') == 1
-    assert html.count("Limits and schedule</h3>") == 2
-    assert html.count("settings-arr-panels") == 2
+    assert html.count('id="sonarr-search-timing-title"') == 1
+    assert html.count('id="radarr-search-timing-title"') == 1
+    assert html.count("Search timing</h2>") == 2
+    assert html.count("Search preferences</h2>") == 2
+    assert html.count("Failed import cleanup</h2>") == 2
+    assert html.count("settings-premium-stack--arr") == 2
     assert html.count("Search behavior") == 0
-    assert html.count("Failed import cleanup interval (minutes)") == 2
-    assert html.count("How often to run the cleanup check when at least one remove option is on.") == 2
+    assert html.count("Check for failed imports every") == 2
+    assert html.count("Enable at least one cleanup option below to set a check interval.") == 2
+    assert 'id="sonarr_failed_import_cleanup_interval_minutes_hidden"' in html
+    assert 'id="radarr_failed_import_cleanup_interval_minutes_hidden"' in html
     assert html.count("Run limits") == 0
     assert "each Sonarr run removes" not in html
     assert "each Radarr run removes" not in html
 
-    assert html.count("Runs searches on this interval.") == 2
+    assert html.count("Check for titles every") == 2
     assert "How often Sonarr runs are due" not in html
     assert "How often Radarr runs are due" not in html
 
@@ -318,21 +318,22 @@ def test_refiner_micro_helper_text_is_present(monkeypatch: pytest.MonkeyPatch) -
     html = r.text
     assert "Reads from the watched folder and writes finished files to the output folder." in html
     assert "With dry run off, originals are removed only after output is written successfully." in html
-    assert "Keeps selected languages and removes unselected audio tracks." in html
+    assert "Keeps the languages you want and drops the rest on each movie." in html
     assert "Preferred languages (highest quality)" in html
     assert "Preferred languages (strict)" in html
     assert "Quality across all languages" in html
     assert 'trimmer-settings-section-tabs' in html
-    assert "Watched folder check interval (seconds)" in html
+    assert "Check the watched folder for movies every" in html
     assert 'id="refiner-watched-folder-interval-sec"' in html
     assert "refiner-folders-interval-wrap" in html
-    assert 'name="refiner_interval_seconds"' in html
+    assert 'name="movie_refiner_interval_seconds"' in html
+    i_timing = html.index('id="refiner-movies-watched-timing"')
     i_folders = html.index('id="refiner-folders"')
     i_interval = html.index("refiner-folders-interval-wrap")
     i_min_age = html.index('id="refiner-minimum-age-sec"')
     i_advanced = html.index("refiner-folders-advanced")
     i_sched = html.index('id="refiner-schedule"')
-    assert i_folders < i_interval < i_min_age < i_advanced < i_sched
+    assert i_timing < i_folders < i_interval < i_min_age < i_advanced < i_sched
     assert 'name="refiner_minimum_age_seconds"' in html
     assert "Minimum file age (seconds)" in html
     assert 'href="#refiner-processing"' in html
@@ -340,8 +341,8 @@ def test_refiner_micro_helper_text_is_present(monkeypatch: pytest.MonkeyPatch) -
     assert 'id="refiner-schedule"' in html
     assert "refiner-work" in html
     assert "refiner_default_work_folder_path" not in html
-    assert "Checks the watched folder on this interval and processes ready files." in html
-    assert "Limits processing to the selected days and times." in html
+    assert "Controls how often Movies Refiner checks the movie watched folder" in html
+    assert "Limits processing to the selected days and times when enabled." in html
     assert "Enter the full folder path (e.g. F:\\Downloads\\Movies)" in html
     assert "Enter the destination folder for processed files" in html
     assert "Temporary working directory for processing" in html
@@ -389,7 +390,7 @@ def test_post_refiner_save_async_header_returns_json(monkeypatch: pytest.MonkeyP
                 "refiner_watched_folder": "D:\\incoming",
                 "refiner_output_folder": "D:\\processed-async",
                 "refiner_schedule_enabled": "false",
-                "refiner_interval_seconds": "120",
+                "movie_refiner_interval_seconds": "120",
                 **{f"refiner_schedule_{d}": "0" for d in _WEEKDAYS},
             },
             headers={
@@ -404,7 +405,7 @@ def test_post_refiner_save_async_header_returns_json(monkeypatch: pytest.MonkeyP
     async def verify() -> None:
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            assert row.refiner_interval_seconds == 120
+            assert row.movie_refiner_interval_seconds == 120
 
     asyncio.run(verify())
 
@@ -425,7 +426,7 @@ def test_refiner_save_async_validation_returns_json(monkeypatch: pytest.MonkeyPa
                 "refiner_watched_folder": "D:\\incoming",
                 "refiner_output_folder": "D:\\processed",
                 "refiner_schedule_enabled": "false",
-                "refiner_interval_seconds": "60",
+                "movie_refiner_interval_seconds": "60",
                 **{f"refiner_schedule_{d}": "0" for d in _WEEKDAYS},
             },
             headers={
@@ -459,7 +460,7 @@ def test_refiner_processing_save_async_allows_enable_without_audio_or_folders(
                 "refiner_watched_folder": "",
                 "refiner_output_folder": "",
                 "refiner_schedule_enabled": "false",
-                "refiner_interval_seconds": "60",
+                "movie_refiner_interval_seconds": "60",
                 **{f"refiner_schedule_{d}": "0" for d in _WEEKDAYS},
             },
             headers={
@@ -488,7 +489,7 @@ def test_refiner_folders_save_async_rejects_missing_paths_when_enabled(
                 "refiner_watched_folder": "",
                 "refiner_output_folder": "",
                 "refiner_schedule_enabled": "false",
-                "refiner_interval_seconds": "60",
+                "movie_refiner_interval_seconds": "60",
                 **{f"refiner_schedule_{d}": "0" for d in _WEEKDAYS},
             },
             headers={
@@ -576,7 +577,7 @@ def test_refiner_dry_run_save_does_not_modify_emby_dry_run(monkeypatch: pytest.M
                 "refiner_watched_folder": "D:\\incoming",
                 "refiner_output_folder": "D:\\processed",
                 "refiner_schedule_enabled": "false",
-                "refiner_interval_seconds": "60",
+                "movie_refiner_interval_seconds": "60",
                 **{f"refiner_schedule_{d}": "0" for d in _WEEKDAYS},
             },
             headers={"Content-Type": "application/x-www-form-urlencoded"},
@@ -592,7 +593,7 @@ def test_refiner_dry_run_save_does_not_modify_emby_dry_run(monkeypatch: pytest.M
             assert row.emby_dry_run is True
             assert row.refiner_dry_run is False
             assert row.refiner_audio_preference_mode == "preferred_langs_quality"
-            assert row.refiner_interval_seconds == 60
+            assert row.movie_refiner_interval_seconds == 60
 
     asyncio.run(verify())
 
@@ -612,7 +613,7 @@ def test_trimmer_dry_run_save_does_not_modify_refiner_dry_run(monkeypatch: pytes
         *_schedule_flag_pairs("emby_schedule"),
         ("emby_schedule_start", "00:00"),
         ("emby_schedule_end", "23:59"),
-        ("emby_interval_minutes", "60"),
+        ("trimmer_interval_minutes", "60"),
         ("emby_max_items_scan", "100"),
         ("emby_max_deletes_per_run", "5"),
         ("save_scope", "schedule"),
@@ -647,7 +648,7 @@ def test_refiner_page_is_separate_from_trimmer(monkeypatch: pytest.MonkeyPatch) 
     with _client(monkeypatch) as client:
         r = client.get("/refiner/settings")
     assert r.status_code == 200
-    assert "Movies Settings" in r.text
+    assert "Movies Refiner" in r.text
     assert "Trimmer settings" in r.text
 
 
@@ -656,7 +657,7 @@ def test_refiner_overview_page_exists_and_has_tabs(monkeypatch: pytest.MonkeyPat
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
             row.refiner_enabled = True
-            row.refiner_interval_seconds = 45
+            row.movie_refiner_interval_seconds = 45
             await session.commit()
 
     asyncio.run(seed())
@@ -679,14 +680,14 @@ def test_sonarr_refiner_settings_page_loads_and_formactions(monkeypatch: pytest.
         r = client.get("/refiner/sonarr/settings")
     assert r.status_code == 200
     html = r.text
-    assert "TV Settings" in html
+    assert "TV Refiner" in html
     assert 'data-fetcher-refiner-pipeline="sonarr"' in html
     assert 'formaction="/refiner/sonarr/settings/save?refiner_section=processing"' in html
     assert 'formaction="/refiner/sonarr/settings/save?refiner_section=folders"' in html
     assert 'formaction="/refiner/sonarr/settings/save?refiner_section=audio"' in html
     assert 'formaction="/refiner/sonarr/settings/save?refiner_section=subtitles"' in html
     assert 'formaction="/refiner/sonarr/settings/save?refiner_section=schedule"' in html
-    assert 'name="sonarr_refiner_interval_seconds"' in html
+    assert 'name="tv_refiner_interval_seconds"' in html
     assert 'name="sonarr_refiner_minimum_age_seconds"' in html
     i_tabs = html.index("refiner-area-tabs")
     chunk = html[i_tabs : i_tabs + 900]
@@ -716,7 +717,7 @@ def test_post_sonarr_refiner_save_async_header_returns_json(monkeypatch: pytest.
                 "sonarr_refiner_watched_folder": "D:\\tv-in",
                 "sonarr_refiner_output_folder": "D:\\tv-out",
                 "sonarr_refiner_schedule_enabled": "false",
-                "sonarr_refiner_interval_seconds": "90",
+                "tv_refiner_interval_seconds": "90",
                 "sonarr_refiner_minimum_age_seconds": "120",
                 **{f"sonarr_refiner_schedule_{d}": "0" for d in _WEEKDAYS},
             },
@@ -732,7 +733,7 @@ def test_post_sonarr_refiner_save_async_header_returns_json(monkeypatch: pytest.
     async def verify() -> None:
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            assert row.sonarr_refiner_interval_seconds == 90
+            assert row.tv_refiner_interval_seconds == 90
             assert row.sonarr_refiner_minimum_age_seconds == 120
 
     asyncio.run(verify())
@@ -854,9 +855,9 @@ def test_post_setup_wizard_step4_redirects_to_step5(monkeypatch: pytest.MonkeyPa
             "/setup/4",
             data={
                 "wizard_action": "continue",
-                "sonarr_interval_minutes": "45",
-                "radarr_interval_minutes": "90",
-                "emby_interval_minutes": "120",
+                "sonarr_search_interval_minutes": "45",
+                "radarr_search_interval_minutes": "90",
+                "trimmer_interval_minutes": "120",
                 "timezone": "UTC",
             },
             follow_redirects=False,
@@ -897,8 +898,8 @@ def test_post_settings_validation_error_redirects_not_422(monkeypatch: pytest.Mo
         "radarr_schedule_enabled": "false",
         "radarr_schedule_start": "00:00",
         "radarr_schedule_end": "23:59",
-        "sonarr_interval_minutes": "60",
-        "radarr_interval_minutes": "60",
+        "sonarr_search_interval_minutes": "60",
+        "radarr_search_interval_minutes": "60",
         "sonarr_retry_delay_minutes": "1440",
         "radarr_retry_delay_minutes": "1440",
         "log_retention_days": "90",
@@ -1023,7 +1024,7 @@ def test_post_trimmer_cleaner_async_header_returns_json(monkeypatch: pytest.Monk
         ("emby_schedule_end", "18:00"),
         ("emby_max_items_scan", "2000"),
         ("emby_max_deletes_per_run", "25"),
-        ("emby_interval_minutes", "95"),
+        ("trimmer_interval_minutes", "95"),
         ("save_scope", "schedule"),
     ]
     encoded = urlencode(pairs)
@@ -1042,7 +1043,7 @@ def test_post_trimmer_cleaner_async_header_returns_json(monkeypatch: pytest.Monk
     async def verify_interval() -> None:
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            assert row.emby_interval_minutes == 95
+            assert row.trimmer_interval_minutes == 95
 
     asyncio.run(verify_interval())
 
@@ -1059,7 +1060,7 @@ def test_post_trimmer_cleaner_save_scope_from_query_when_missing_from_body(
         ("emby_schedule_end", "18:00"),
         ("emby_max_items_scan", "2000"),
         ("emby_max_deletes_per_run", "25"),
-        ("emby_interval_minutes", "93"),
+        ("trimmer_interval_minutes", "93"),
     ]
     encoded = urlencode(pairs)
     with _client(monkeypatch) as client:
@@ -1077,7 +1078,7 @@ def test_post_trimmer_cleaner_save_scope_from_query_when_missing_from_body(
     async def verify_interval() -> None:
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            assert row.emby_interval_minutes == 93
+            assert row.trimmer_interval_minutes == 93
 
     asyncio.run(verify_interval())
 
@@ -1089,7 +1090,7 @@ def test_trimmer_cleaner_validation_async_returns_json(monkeypatch: pytest.Monke
             "/trimmer/settings/cleaner?trimmer_section=people",
             data={
                 "save_scope": "tv",
-                "emby_interval_minutes": "not-an-int",
+                "trimmer_interval_minutes": "not-an-int",
             },
             headers={
                 "Content-Type": "application/x-www-form-urlencoded",
@@ -1109,7 +1110,7 @@ def test_post_trimmer_cleaner_rejects_missing_save_scope(monkeypatch: pytest.Mon
         ("emby_schedule_end", "23:59"),
         ("emby_max_items_scan", "2000"),
         ("emby_max_deletes_per_run", "25"),
-        ("emby_interval_minutes", "60"),
+        ("trimmer_interval_minutes", "60"),
     ]
     encoded = urlencode(pairs)
     with _client(monkeypatch) as client:
@@ -1135,7 +1136,7 @@ def test_post_trimmer_cleaner_async_rejects_invalid_save_scope_json(monkeypatch:
         ("emby_schedule_end", "23:59"),
         ("emby_max_items_scan", "2000"),
         ("emby_max_deletes_per_run", "25"),
-        ("emby_interval_minutes", "60"),
+        ("trimmer_interval_minutes", "60"),
         ("save_scope", "sonarr"),
     ]
     encoded = urlencode(pairs)
@@ -1162,7 +1163,7 @@ def test_post_trimmer_cleaner_rejects_legacy_global_save_scope(monkeypatch: pyte
         ("emby_schedule_end", "23:59"),
         ("emby_max_items_scan", "2000"),
         ("emby_max_deletes_per_run", "25"),
-        ("emby_interval_minutes", "30"),
+        ("trimmer_interval_minutes", "30"),
         ("save_scope", "global"),
     ]
     encoded = urlencode(pairs)
@@ -1191,7 +1192,7 @@ def test_post_trimmer_cleaner_legacy_global_async_json(monkeypatch: pytest.Monke
                 "emby_schedule_end": "23:59",
                 "emby_max_items_scan": "2000",
                 "emby_max_deletes_per_run": "25",
-                "emby_interval_minutes": "60",
+                "trimmer_interval_minutes": "60",
                 "save_scope": "global",
             },
             headers={"X-Fetcher-Trimmer-Settings-Async": "1"},
@@ -1206,7 +1207,7 @@ def test_post_trimmer_cleaner_legacy_global_does_not_mutate_db(monkeypatch: pyte
     async def seed() -> None:
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.emby_interval_minutes = 88
+            row.trimmer_interval_minutes = 88
             row.emby_dry_run = True
             row.emby_max_items_scan = 2000
             await session.commit()
@@ -1220,7 +1221,7 @@ def test_post_trimmer_cleaner_legacy_global_does_not_mutate_db(monkeypatch: pyte
         ("emby_schedule_end", "23:59"),
         ("emby_max_items_scan", "1"),
         ("emby_max_deletes_per_run", "99"),
-        ("emby_interval_minutes", "5"),
+        ("trimmer_interval_minutes", "5"),
         ("save_scope", "global"),
     ]
     encoded = urlencode(pairs)
@@ -1237,7 +1238,7 @@ def test_post_trimmer_cleaner_legacy_global_does_not_mutate_db(monkeypatch: pyte
     async def verify() -> None:
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            assert row.emby_interval_minutes == 88
+            assert row.trimmer_interval_minutes == 88
             assert row.emby_dry_run is True
             assert row.emby_max_items_scan == 2000
 
@@ -1254,7 +1255,7 @@ def test_post_trimmer_cleaner_rejects_save_scope_all(monkeypatch: pytest.MonkeyP
         ("emby_schedule_end", "23:59"),
         ("emby_max_items_scan", "2000"),
         ("emby_max_deletes_per_run", "25"),
-        ("emby_interval_minutes", "60"),
+        ("trimmer_interval_minutes", "60"),
         ("save_scope", "all"),
     ]
     with _client(monkeypatch) as client:
@@ -1272,7 +1273,7 @@ def test_post_trimmer_cleaner_save_scope_all_async_json(monkeypatch: pytest.Monk
     with _client(monkeypatch) as client:
         resp = client.post(
             "/trimmer/settings/cleaner",
-            data={"save_scope": "all", "emby_interval_minutes": "99"},
+            data={"save_scope": "all", "trimmer_interval_minutes": "99"},
             headers={"X-Fetcher-Trimmer-Settings-Async": "1"},
         )
     assert resp.status_code == 200
@@ -1285,7 +1286,7 @@ def test_post_trimmer_cleaner_save_scope_all_does_not_mutate_db(monkeypatch: pyt
     async def seed() -> None:
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.emby_interval_minutes = 33
+            row.trimmer_interval_minutes = 33
             row.emby_rule_movie_watched_rating_below = 5
             row.emby_rule_tv_unwatched_days = 20
             await session.commit()
@@ -1293,7 +1294,7 @@ def test_post_trimmer_cleaner_save_scope_all_does_not_mutate_db(monkeypatch: pyt
     asyncio.run(seed())
     pairs: list[tuple[str, str]] = [
         ("save_scope", "all"),
-        ("emby_interval_minutes", "1"),
+        ("trimmer_interval_minutes", "1"),
         ("emby_rule_movie_watched_rating_below", "9"),
         ("emby_rule_tv_unwatched_days", "99"),
     ]
@@ -1310,7 +1311,7 @@ def test_post_trimmer_cleaner_save_scope_all_does_not_mutate_db(monkeypatch: pyt
     async def verify() -> None:
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            assert row.emby_interval_minutes == 33
+            assert row.trimmer_interval_minutes == 33
             assert row.emby_rule_movie_watched_rating_below == 5
             assert row.emby_rule_tv_unwatched_days == 20
 
@@ -1336,7 +1337,7 @@ def test_trimmer_schedule_save_does_not_update_rule_columns(monkeypatch: pytest.
         ("emby_schedule_end", "11:00"),
         ("emby_max_items_scan", "1234"),
         ("emby_max_deletes_per_run", "15"),
-        ("emby_interval_minutes", "45"),
+        ("trimmer_interval_minutes", "45"),
         ("save_scope", "schedule"),
         ("emby_rule_movie_watched_rating_below", "1"),
         ("emby_rule_tv_unwatched_days", "2"),
@@ -1355,7 +1356,7 @@ def test_trimmer_schedule_save_does_not_update_rule_columns(monkeypatch: pytest.
     async def verify() -> None:
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            assert row.emby_interval_minutes == 45
+            assert row.trimmer_interval_minutes == 45
             assert row.emby_max_items_scan == 1234
             assert row.emby_rule_movie_watched_rating_below == 7
             assert row.emby_rule_tv_unwatched_days == 42
@@ -1446,7 +1447,7 @@ def test_trimmer_cleaner_validation_redirect_preserves_section_in_url(monkeypatc
             "/trimmer/settings/cleaner?trimmer_section=people",
             data={
                 "save_scope": "tv",
-                "emby_interval_minutes": "not-an-int",
+                "trimmer_interval_minutes": "not-an-int",
             },
             follow_redirects=False,
         )
@@ -1461,7 +1462,7 @@ def test_global_fetcher_save_does_not_mutate_trimmer_emby_interval(monkeypatch: 
     async def seed() -> None:
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.emby_interval_minutes = 77
+            row.trimmer_interval_minutes = 77
             row.emby_dry_run = True
             await session.commit()
 
@@ -1486,7 +1487,7 @@ def test_global_fetcher_save_does_not_mutate_trimmer_emby_interval(monkeypatch: 
     async def verify() -> None:
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            assert row.emby_interval_minutes == 77
+            assert row.trimmer_interval_minutes == 77
             assert row.emby_dry_run is True
 
     asyncio.run(verify())
@@ -1497,7 +1498,7 @@ def test_trimmer_schedule_save_does_not_mutate_sonarr_fields(monkeypatch: pytest
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
             row.sonarr_url = "http://sonarr-preserved.example:8989"
-            row.sonarr_interval_minutes = 31
+            row.sonarr_search_interval_minutes = 31
             await session.commit()
 
     asyncio.run(seed())
@@ -1509,7 +1510,7 @@ def test_trimmer_schedule_save_does_not_mutate_sonarr_fields(monkeypatch: pytest
         ("emby_schedule_end", "20:00"),
         ("emby_max_items_scan", "100"),
         ("emby_max_deletes_per_run", "5"),
-        ("emby_interval_minutes", "55"),
+        ("trimmer_interval_minutes", "55"),
         ("save_scope", "schedule"),
     ]
     encoded = urlencode(pairs)
@@ -1526,8 +1527,8 @@ def test_trimmer_schedule_save_does_not_mutate_sonarr_fields(monkeypatch: pytest
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
             assert row.sonarr_url == "http://sonarr-preserved.example:8989"
-            assert row.sonarr_interval_minutes == 31
-            assert row.emby_interval_minutes == 55
+            assert row.sonarr_search_interval_minutes == 31
+            assert row.trimmer_interval_minutes == 55
 
     asyncio.run(verify())
 
@@ -1542,7 +1543,7 @@ def test_post_trimmer_settings_full(monkeypatch: pytest.MonkeyPatch) -> None:
         ("emby_schedule_end", "17:00"),
         ("emby_max_items_scan", "1500"),
         ("emby_max_deletes_per_run", "10"),
-        ("emby_interval_minutes", "60"),
+        ("trimmer_interval_minutes", "60"),
         ("save_scope", "schedule"),
     ]
     tv_pairs: list[tuple[str, str]] = [
@@ -1751,8 +1752,8 @@ def test_global_save_updates_only_retention_timezone(monkeypatch: pytest.MonkeyP
     async def seed() -> None:
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.sonarr_interval_minutes = 33
-            row.radarr_interval_minutes = 44
+            row.sonarr_search_interval_minutes = 33
+            row.radarr_search_interval_minutes = 44
             row.sonarr_max_items_per_run = 50
             row.sonarr_retry_delay_minutes = 1440
             row.radarr_retry_delay_minutes = 1440
@@ -1771,7 +1772,7 @@ def test_global_save_updates_only_retention_timezone(monkeypatch: pytest.MonkeyP
         "sonarr_schedule_enabled": "false",
         "sonarr_schedule_start": "00:00",
         "sonarr_schedule_end": "23:59",
-        "sonarr_interval_minutes": "99",
+        "sonarr_search_interval_minutes": "99",
         "radarr_enabled": "true",
         "radarr_url": "http://localhost:7878",
         "radarr_api_key": "def",
@@ -1781,7 +1782,7 @@ def test_global_save_updates_only_retention_timezone(monkeypatch: pytest.MonkeyP
         "radarr_schedule_enabled": "false",
         "radarr_schedule_start": "00:00",
         "radarr_schedule_end": "23:59",
-        "radarr_interval_minutes": "88",
+        "radarr_search_interval_minutes": "88",
         "sonarr_retry_delay_minutes": "720",
         "radarr_retry_delay_minutes": "720",
         "log_retention_days": "120",
@@ -1804,8 +1805,8 @@ def test_global_save_updates_only_retention_timezone(monkeypatch: pytest.MonkeyP
     async def verify_db() -> None:
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            assert row.sonarr_interval_minutes == 33
-            assert row.radarr_interval_minutes == 44
+            assert row.sonarr_search_interval_minutes == 33
+            assert row.radarr_search_interval_minutes == 44
             assert row.sonarr_max_items_per_run == 50
             assert row.sonarr_retry_delay_minutes == 1440
             assert row.radarr_retry_delay_minutes == 1440
@@ -1824,8 +1825,8 @@ def test_sonarr_save_preserves_radarr_interval_when_post_includes_wrong_radarr_i
     async def seed() -> None:
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.radarr_interval_minutes = 30
-            row.sonarr_interval_minutes = 45
+            row.radarr_search_interval_minutes = 30
+            row.sonarr_search_interval_minutes = 45
             await session.commit()
 
     asyncio.run(seed())
@@ -1839,7 +1840,7 @@ def test_sonarr_save_preserves_radarr_interval_when_post_includes_wrong_radarr_i
         "sonarr_schedule_enabled": "false",
         "sonarr_schedule_start": "00:00",
         "sonarr_schedule_end": "23:59",
-        "sonarr_interval_minutes": "45",
+        "sonarr_search_interval_minutes": "45",
         "radarr_enabled": "false",
         "radarr_url": "",
         "radarr_api_key": "",
@@ -1849,7 +1850,7 @@ def test_sonarr_save_preserves_radarr_interval_when_post_includes_wrong_radarr_i
         "radarr_schedule_enabled": "false",
         "radarr_schedule_start": "00:00",
         "radarr_schedule_end": "23:59",
-        "radarr_interval_minutes": "999",
+        "radarr_search_interval_minutes": "999",
         "sonarr_retry_delay_minutes": "1440",
         "radarr_retry_delay_minutes": "1440",
         "log_retention_days": "90",
@@ -1870,14 +1871,14 @@ def test_sonarr_save_preserves_radarr_interval_when_post_includes_wrong_radarr_i
         assert resp.status_code == 303
         page = client.get("/settings")
     html = page.text
-    assert re.search(r'name="radarr_interval_minutes"[^>]*\bvalue="30"', html) or re.search(
-        r'value="30"[^>]*name="radarr_interval_minutes"', html
+    assert re.search(r'name="radarr_search_interval_minutes"[^>]*\bvalue="30"', html) or re.search(
+        r'value="30"[^>]*name="radarr_search_interval_minutes"', html
     )
 
     async def verify_db() -> None:
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            assert row.radarr_interval_minutes == 30
+            assert row.radarr_search_interval_minutes == 30
 
     asyncio.run(verify_db())
 
@@ -1902,7 +1903,7 @@ def test_sonarr_granular_cleanup_saves_without_touching_radarr_fields(
         "sonarr_search_upgrades": "true",
         "sonarr_cleanup_corrupt": "true",
         "sonarr_max_items_per_run": "50",
-        "sonarr_interval_minutes": "60",
+        "sonarr_search_interval_minutes": "60",
         "sonarr_retry_delay_minutes": "15",
         "sonarr_schedule_start": "00:00",
         "sonarr_schedule_end": "23:59",
@@ -1939,8 +1940,8 @@ def test_sonarr_schedule_all_days_stays_enabled(monkeypatch: pytest.MonkeyPatch)
         "radarr_max_items_per_run": "50",
         "radarr_schedule_start": "00:00",
         "radarr_schedule_end": "23:59",
-        "sonarr_interval_minutes": "60",
-        "radarr_interval_minutes": "60",
+        "sonarr_search_interval_minutes": "60",
+        "radarr_search_interval_minutes": "60",
         "radarr_schedule_enabled": "false",
         "sonarr_retry_delay_minutes": "1440",
         "radarr_retry_delay_minutes": "1440",

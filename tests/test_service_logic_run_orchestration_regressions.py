@@ -10,7 +10,12 @@ from sqlalchemy import delete, desc, select
 
 from app.db import SessionLocal, get_or_create_settings
 from app.models import ActivityLog, AppSnapshot, ArrActionLog, JobRunLog
-from app.service_logic import ArrManualScope, run_once
+from app.service_logic import (
+    ArrManualScope,
+    run_once,
+    run_scheduled_radarr_failed_import_cleanup,
+    run_scheduled_sonarr_failed_import_cleanup,
+)
 
 
 async def _set_settings(**updates: Any) -> None:
@@ -135,6 +140,37 @@ def test_run_once_sonarr_schedule_skip_branch(monkeypatch: pytest.MonkeyPatch) -
     assert asyncio.run(_settings_row()).sonarr_last_run_at is None
 
 
+def test_run_once_radarr_schedule_skip_branch(monkeypatch: pytest.MonkeyPatch) -> None:
+    asyncio.run(_clear_run_tables())
+    asyncio.run(
+        _set_settings(
+            sonarr_enabled=False,
+            radarr_enabled=True,
+            radarr_url="http://localhost:7878",
+            radarr_search_missing=True,
+            radarr_search_upgrades=False,
+            radarr_last_run_at=None,
+            emby_enabled=False,
+        )
+    )
+    constructed = {"count": 0}
+
+    monkeypatch.setattr("app.service_logic.resolve_sonarr_api_key", lambda _s: "")
+    monkeypatch.setattr("app.service_logic.resolve_radarr_api_key", lambda _s: "rk")
+    monkeypatch.setattr("app.service_logic.resolve_emby_api_key", lambda _s: "")
+    monkeypatch.setattr("app.service_logic.in_window", lambda **_kw: False)
+
+    class _ShouldNotConstruct:
+        def __init__(self, _cfg):
+            constructed["count"] += 1
+
+    monkeypatch.setattr("app.service_logic.ArrClient", _ShouldNotConstruct)
+    result = asyncio.run(_run_once_scheduled("radarr"))
+    assert result.ok is True
+    assert result.message == "Radarr: skipped (outside schedule window)"
+    assert constructed["count"] == 0
+
+
 def test_run_once_sonarr_no_internal_interval_skip_anymore(monkeypatch: pytest.MonkeyPatch) -> None:
     fixed_now = datetime(2026, 3, 23, 12, 0, 0)
     asyncio.run(_clear_run_tables())
@@ -144,7 +180,7 @@ def test_run_once_sonarr_no_internal_interval_skip_anymore(monkeypatch: pytest.M
             sonarr_url="http://localhost:8989",
             sonarr_search_missing=True,
             sonarr_search_upgrades=False,
-            sonarr_interval_minutes=60,
+            sonarr_search_interval_minutes=60,
             sonarr_last_run_at=fixed_now - timedelta(minutes=5),
             radarr_enabled=False,
             emby_enabled=False,
@@ -198,6 +234,140 @@ def test_run_once_sonarr_no_internal_interval_skip_anymore(monkeypatch: pytest.M
     assert seen["health"] == 1
     assert asyncio.run(_settings_row()).sonarr_last_run_at == fixed_now
     assert asyncio.run(_activity_count_for("sonarr", "missing")) == 0
+
+
+def test_run_once_sonarr_tick_does_not_run_failed_import_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixed_now = datetime(2026, 3, 23, 12, 0, 0)
+    asyncio.run(_clear_run_tables())
+    asyncio.run(
+        _set_settings(
+            sonarr_enabled=True,
+            sonarr_url="http://localhost:8989",
+            sonarr_search_missing=True,
+            sonarr_search_upgrades=False,
+            sonarr_search_interval_minutes=60,
+            sonarr_last_run_at=fixed_now - timedelta(minutes=5),
+            sonarr_cleanup_corrupt=True,
+            sonarr_failed_import_cleanup_interval_minutes=1,
+            radarr_failed_import_cleanup_interval_minutes=1,
+            sonarr_failed_import_cleanup_last_run_at=None,
+            radarr_enabled=False,
+            emby_enabled=False,
+        )
+    )
+    monkeypatch.setattr("app.service_logic.utc_now_naive", lambda: fixed_now)
+    monkeypatch.setattr("app.service_logic.resolve_sonarr_api_key", lambda _s: "k")
+    monkeypatch.setattr("app.service_logic.resolve_radarr_api_key", lambda _s: "")
+    monkeypatch.setattr("app.service_logic.resolve_emby_api_key", lambda _s: "")
+    seen = {"health": 0, "cleanup": 0}
+
+    class _FakeArrClient:
+        def __init__(self, _cfg):
+            pass
+
+        async def health(self):
+            seen["health"] += 1
+
+        async def series(self):
+            return [{"id": 10}]
+
+        async def episodes_for_series(self, *, series_id: int):
+            assert series_id == 10
+            return [
+                {"id": 1, "monitored": True, "hasFile": True},
+                {"id": 2, "monitored": True, "hasFile": True},
+                {"id": 3, "monitored": False, "hasFile": False},
+            ]
+
+        async def wanted_missing(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def wanted_cutoff_unmet(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def queue_page(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def history_page(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def aclose(self):
+            return None
+
+    async def _cleanup(*_a, **_k):
+        seen["cleanup"] += 1
+
+    monkeypatch.setattr("app.service_logic.in_window", lambda **_kw: True)
+    monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
+    monkeypatch.setattr("app.service_logic.run_sonarr_failed_import_queue_cleanup", _cleanup)
+    result = asyncio.run(_run_once())
+    assert result.ok is True
+    assert seen["cleanup"] == 0
+
+
+def test_run_once_radarr_tick_does_not_run_failed_import_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixed_now = datetime(2026, 3, 23, 12, 0, 0)
+    asyncio.run(_clear_run_tables())
+    asyncio.run(
+        _set_settings(
+            sonarr_enabled=False,
+            radarr_enabled=True,
+            radarr_url="http://localhost:7878",
+            radarr_search_missing=True,
+            radarr_search_upgrades=False,
+            radarr_search_interval_minutes=60,
+            radarr_last_run_at=fixed_now - timedelta(minutes=5),
+            radarr_cleanup_corrupt=True,
+            sonarr_failed_import_cleanup_interval_minutes=1,
+            radarr_failed_import_cleanup_interval_minutes=1,
+            radarr_failed_import_cleanup_last_run_at=None,
+            emby_enabled=False,
+        )
+    )
+    monkeypatch.setattr("app.service_logic.utc_now_naive", lambda: fixed_now)
+    monkeypatch.setattr("app.service_logic.resolve_sonarr_api_key", lambda _s: "")
+    monkeypatch.setattr("app.service_logic.resolve_radarr_api_key", lambda _s: "rk")
+    monkeypatch.setattr("app.service_logic.resolve_emby_api_key", lambda _s: "")
+    seen = {"health": 0, "cleanup": 0}
+
+    class _FakeArrClient:
+        def __init__(self, _cfg):
+            pass
+
+        async def health(self):
+            seen["health"] += 1
+
+        async def movies(self):
+            return []
+
+        async def wanted_missing(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def wanted_cutoff_unmet(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def queue_page(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def history_page(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def aclose(self):
+            return None
+
+    async def _cleanup(*_a, **_k):
+        seen["cleanup"] += 1
+
+    monkeypatch.setattr("app.service_logic.in_window", lambda **_kw: True)
+    monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
+    monkeypatch.setattr("app.service_logic.run_radarr_failed_import_queue_cleanup", _cleanup)
+    result = asyncio.run(_run_once_scheduled("radarr"))
+    assert result.ok is True
+    assert seen["cleanup"] == 0
 
 
 def test_scheduled_scoped_run_sonarr_only(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -865,6 +1035,135 @@ def test_run_once_manual_radarr_failure_writes_failed_activity(monkeypatch: pyte
     assert act.status == "failed"
 
 
+async def _run_scheduled_sonarr_failed_import_cleanup() -> None:
+    async with SessionLocal() as s:
+        await run_scheduled_sonarr_failed_import_cleanup(s)
+
+
+async def _run_scheduled_radarr_failed_import_cleanup() -> None:
+    async with SessionLocal() as s:
+        await run_scheduled_radarr_failed_import_cleanup(s)
+
+
+def test_scheduled_sonarr_failed_import_cleanup_ignores_search_schedule_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cleanup is not gated by Sonarr search hours; in_window must not run on this path."""
+    fixed_now = datetime(2026, 3, 27, 12, 0, 0)
+    asyncio.run(_clear_run_tables())
+    asyncio.run(
+        _set_settings(
+            sonarr_enabled=True,
+            sonarr_url="http://localhost:8989",
+            sonarr_search_missing=False,
+            sonarr_search_upgrades=False,
+            sonarr_schedule_enabled=True,
+            sonarr_schedule_days="",
+            sonarr_schedule_start="09:00",
+            sonarr_schedule_end="17:00",
+            sonarr_cleanup_corrupt=True,
+            sonarr_failed_import_cleanup_interval_minutes=60,
+            radarr_failed_import_cleanup_interval_minutes=60,
+            sonarr_failed_import_cleanup_last_run_at=None,
+            radarr_enabled=False,
+            emby_enabled=False,
+        )
+    )
+    seen = {"cleanup_calls": 0}
+
+    class _FakeArrClient:
+        def __init__(self, _cfg):
+            pass
+
+        async def health(self):
+            return None
+
+        async def queue_page(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def history_page(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def aclose(self):
+            return None
+
+    async def _cleanup(*args, **kwargs):
+        seen["cleanup_calls"] += 1
+
+    def _in_window_forbidden(**_kw):
+        raise AssertionError("scheduled failed-import cleanup must not use search in_window")
+
+    monkeypatch.setattr("app.service_logic.utc_now_naive", lambda: fixed_now)
+    monkeypatch.setattr("app.service_logic.resolve_sonarr_api_key", lambda _s: "k")
+    monkeypatch.setattr("app.service_logic.resolve_radarr_api_key", lambda _s: "")
+    monkeypatch.setattr("app.service_logic.resolve_emby_api_key", lambda _s: "")
+    monkeypatch.setattr("app.service_logic.in_window", _in_window_forbidden)
+    monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
+    monkeypatch.setattr("app.service_logic.run_sonarr_failed_import_queue_cleanup", _cleanup)
+    asyncio.run(_run_scheduled_sonarr_failed_import_cleanup())
+    assert seen["cleanup_calls"] == 1
+    assert asyncio.run(_settings_row()).sonarr_failed_import_cleanup_last_run_at == fixed_now
+
+
+def test_scheduled_radarr_failed_import_cleanup_ignores_search_schedule_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cleanup is not gated by Radarr search hours; in_window must not run on this path."""
+    fixed_now = datetime(2026, 3, 27, 12, 0, 0)
+    asyncio.run(_clear_run_tables())
+    asyncio.run(
+        _set_settings(
+            sonarr_enabled=False,
+            radarr_enabled=True,
+            radarr_url="http://localhost:7878",
+            radarr_search_missing=False,
+            radarr_search_upgrades=False,
+            radarr_schedule_enabled=True,
+            radarr_schedule_days="",
+            radarr_schedule_start="09:00",
+            radarr_schedule_end="17:00",
+            radarr_cleanup_corrupt=True,
+            sonarr_failed_import_cleanup_interval_minutes=15,
+            radarr_failed_import_cleanup_interval_minutes=15,
+            radarr_failed_import_cleanup_last_run_at=fixed_now - timedelta(minutes=20),
+            emby_enabled=False,
+        )
+    )
+    seen = {"cleanup_calls": 0}
+
+    class _FakeArrClient:
+        def __init__(self, _cfg):
+            pass
+
+        async def health(self):
+            return None
+
+        async def queue_page(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def history_page(self, **kwargs):
+            return {"records": [], "totalRecords": 0}
+
+        async def aclose(self):
+            return None
+
+    async def _cleanup(*args, **kwargs):
+        seen["cleanup_calls"] += 1
+
+    def _in_window_forbidden(**_kw):
+        raise AssertionError("scheduled failed-import cleanup must not use search in_window")
+
+    monkeypatch.setattr("app.service_logic.utc_now_naive", lambda: fixed_now)
+    monkeypatch.setattr("app.service_logic.resolve_sonarr_api_key", lambda _s: "")
+    monkeypatch.setattr("app.service_logic.resolve_radarr_api_key", lambda _s: "rk")
+    monkeypatch.setattr("app.service_logic.resolve_emby_api_key", lambda _s: "")
+    monkeypatch.setattr("app.service_logic.in_window", _in_window_forbidden)
+    monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
+    monkeypatch.setattr("app.service_logic.run_radarr_failed_import_queue_cleanup", _cleanup)
+    asyncio.run(_run_scheduled_radarr_failed_import_cleanup())
+    assert seen["cleanup_calls"] == 1
+
+
 def test_sonarr_failed_import_cleanup_interval_skip_when_not_due(monkeypatch: pytest.MonkeyPatch) -> None:
     fixed_now = datetime(2026, 3, 27, 12, 0, 0)
     asyncio.run(_clear_run_tables())
@@ -874,10 +1173,11 @@ def test_sonarr_failed_import_cleanup_interval_skip_when_not_due(monkeypatch: py
             sonarr_url="http://localhost:8989",
             sonarr_search_missing=False,
             sonarr_search_upgrades=False,
-            sonarr_interval_minutes=1,
+            sonarr_search_interval_minutes=1,
             sonarr_last_run_at=fixed_now - timedelta(minutes=10),
             sonarr_cleanup_corrupt=True,
-            failed_import_cleanup_interval_minutes=60,
+            sonarr_failed_import_cleanup_interval_minutes=60,
+            radarr_failed_import_cleanup_interval_minutes=60,
             sonarr_failed_import_cleanup_last_run_at=fixed_now - timedelta(minutes=5),
             radarr_enabled=False,
             emby_enabled=False,
@@ -924,8 +1224,7 @@ def test_sonarr_failed_import_cleanup_interval_skip_when_not_due(monkeypatch: py
     monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
     monkeypatch.setattr("app.service_logic._wanted_queue_total", _wanted_total)
     monkeypatch.setattr("app.service_logic.run_sonarr_failed_import_queue_cleanup", _cleanup)
-    result = asyncio.run(_run_once("sonarr_missing"))
-    assert result.ok is True
+    asyncio.run(_run_scheduled_sonarr_failed_import_cleanup())
     assert seen["cleanup_calls"] == 0
     assert asyncio.run(_settings_row()).sonarr_failed_import_cleanup_last_run_at == fixed_now - timedelta(minutes=5)
 
@@ -940,10 +1239,11 @@ def test_radarr_failed_import_cleanup_interval_runs_when_due(monkeypatch: pytest
             radarr_url="http://localhost:7878",
             radarr_search_missing=False,
             radarr_search_upgrades=False,
-            radarr_interval_minutes=1,
+            radarr_search_interval_minutes=1,
             radarr_last_run_at=fixed_now - timedelta(minutes=10),
             radarr_cleanup_corrupt=True,
-            failed_import_cleanup_interval_minutes=15,
+            sonarr_failed_import_cleanup_interval_minutes=15,
+            radarr_failed_import_cleanup_interval_minutes=15,
             radarr_failed_import_cleanup_last_run_at=fixed_now - timedelta(minutes=20),
             emby_enabled=False,
         )
@@ -989,8 +1289,7 @@ def test_radarr_failed_import_cleanup_interval_runs_when_due(monkeypatch: pytest
     monkeypatch.setattr("app.service_logic.ArrClient", _FakeArrClient)
     monkeypatch.setattr("app.service_logic._wanted_queue_total", _wanted_total)
     monkeypatch.setattr("app.service_logic.run_radarr_failed_import_queue_cleanup", _cleanup)
-    result = asyncio.run(_run_once("radarr_missing"))
-    assert result.ok is True
+    asyncio.run(_run_scheduled_radarr_failed_import_cleanup())
     assert seen["cleanup_calls"] == 1
     assert asyncio.run(_settings_row()).radarr_failed_import_cleanup_last_run_at == fixed_now
 
