@@ -3594,6 +3594,7 @@ textarea.input:focus {
 .automation-cards {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
   gap: var(--space-6);
 }
 @media (max-width: 1024px) {
@@ -3606,17 +3607,6 @@ textarea.input:focus {
     grid-template-columns: 1fr;
   }
 }
-.automation-card {
-  min-height: 0;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.065);
-  border-radius: var(--r-lg);
-  padding: 12px 13px;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  justify-content: flex-start;
-}
 .automation-card[data-automation-card="sonarr"] {
   border-left: 2px solid rgba(59, 130, 246, 0.55);
 }
@@ -3628,6 +3618,91 @@ textarea.input:focus {
 }
 .automation-card[data-automation-card="trimmer"] {
   border-left: 2px solid rgba(16, 185, 129, 0.55);
+}
+.automation-card[data-automation-card="trimmer"] .automation-app-hint {
+  display: none;
+}
+.automation-card[data-automation-card="sonarr_refiner"] {
+  border-left: 2px solid rgba(59, 130, 246, 0.55);
+}
+.automation-card {
+  min-height: 0;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.065);
+  border-radius: var(--r-lg);
+  padding: 12px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  justify-content: flex-start;
+}
+.automation-group {
+  display: contents;
+}
+.automation-group-label {
+  grid-column: span 2;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.45);
+  padding: 0 2px 0;
+  margin-bottom: calc(var(--space-6) * -0.5);
+}
+.refiner-pipeline-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.refiner-pipeline-section + .refiner-pipeline-section {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(148, 163, 184, 0.1);
+}
+.refiner-pipeline-label {
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.5);
+  margin-bottom: 1px;
+}
+.refiner-pipeline-last-run {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  font-weight: 560;
+  color: rgba(248, 250, 252, 0.97);
+  line-height: 1.35;
+}
+.refiner-pipeline-next-run {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: nowrap;
+  gap: 0;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: rgba(148, 163, 184, 0.85);
+  line-height: 1.35;
+  white-space: nowrap;
+  min-width: 0;
+}
+.refiner-pipeline-next-run .automation-next-run-primary {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: rgba(226, 232, 240, 0.95);
+}
+.refiner-pipeline-next-run .automation-next-run-secondary {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: rgba(148, 163, 184, 0.85) !important;
+}
+.refiner-pipeline-next-run-sep {
+  padding: 0 4px;
+  user-select: none;
 }
 .automation-card.dash-summary-tile {
   gap: 8px;
@@ -3682,6 +3757,23 @@ textarea.input:focus {
   display: flex;
   flex-direction: column;
   gap: 7px;
+}
+.automation-card[data-automation-card="sonarr"] .dash-summary-meta,
+.automation-card[data-automation-card="radarr"] .dash-summary-meta,
+.automation-card[data-automation-card="trimmer"] .dash-summary-meta,
+.automation-card[data-automation-card="refiner"] .dash-summary-meta {
+  min-height: 64px;
+}
+.automation-card.dash-summary-tile > .dash-summary-meta {
+  flex: 1;
+  min-height: 0;
+}
+.automation-card.dash-summary-tile > .refiner-dual-stack {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 64px;
 }
 .automation-cards .dash-summary-meta-row {
   display: grid;
@@ -3763,14 +3855,14 @@ textarea.input:focus {
   color: rgba(168, 184, 200, 0.86);
 }
 .automation-cards .automation-footer-shell {
-  min-height: 46px;
+  min-height: 0;
 }
 .automation-cards .automation-footer-note-slot {
-  min-height: 18px;
+  min-height: 0;
   width: 100%;
 }
 .automation-cards .automation-footer-action-slot {
-  min-height: 16px;
+  min-height: 0;
   width: 100%;
 }
 .automation-cards .automation-tile-footer .automation-footer-note.dash-summary-tile-hint {
@@ -3803,7 +3895,7 @@ textarea.input:focus {
   flex-direction: column;
   align-items: flex-start;
   justify-content: flex-start;
-  min-height: 34px;
+  min-height: 0;
   line-height: 1.32;
 }
 .automation-cards .automation-next-run-primary {
@@ -4774,15 +4866,14 @@ form[action="/trimmer/settings/cleaner"] .card.gc .toggle-label {
 }
 
 .automation-cards .dash-sparkline-wrap {
-  padding: 4px 0 0;
+  flex-shrink: 0;
+  padding: 6px 0 2px;
 }
 
 .automation-cards .dash-sparkline-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
 }
 
 .automation-cards .dash-sparkline-label {

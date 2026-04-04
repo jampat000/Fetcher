@@ -135,7 +135,7 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
             "show_setup_wizard": show_setup_wizard,
             "template_sonarr_api_key": template_sonarr_api_key,
             "template_radarr_api_key": template_radarr_api_key,
-            "sidebar_health": sidebar_health_dots(snaps),
+            "sidebar_health": sidebar_health_dots(snaps, settings),
             "log_files": log_files,
             "logs_display": logs_display,
         },

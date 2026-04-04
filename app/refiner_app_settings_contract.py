@@ -35,6 +35,7 @@ REFINER_APP_SETTINGS_SQLITE_SPECS: tuple[tuple[str, str], ...] = (
     ("refiner_last_run_at", "DATETIME"),
     ("refiner_current_pass_total", "INTEGER NOT NULL DEFAULT 0"),
     ("refiner_current_pass_done", "INTEGER NOT NULL DEFAULT 0"),
+    ("refiner_minimum_age_seconds", "INTEGER NOT NULL DEFAULT 60"),
 )
 
 # Raw values SQLite stores after ``ADD COLUMN`` backfill (``sqlite3`` / aiosqlite row access).
@@ -63,4 +64,5 @@ REFINER_APP_SETTINGS_EXPECTED_SQLITE_VALUES: dict[str, int | str | None] = {
     "refiner_last_run_at": None,
     "refiner_current_pass_total": 0,
     "refiner_current_pass_done": 0,
+    "refiner_minimum_age_seconds": 60,
 }

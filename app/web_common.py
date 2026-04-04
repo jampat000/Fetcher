@@ -37,14 +37,21 @@ ACTIVITY_TAB_TRIMMER = "trimmer"
 ACTIVITY_TAB_REFINER = "refiner"
 
 
-def sidebar_health_dots(snapshots: dict[str, Any]) -> dict[str, str]:
+def sidebar_health_dots(
+    snapshots: dict[str, Any],
+    settings: Any = None,
+) -> dict[str, str]:
     """Return ``ok``, ``fail``, or ``unknown`` per integration snapshot.
 
-    Keys: ``sonarr``, ``radarr``, ``emby`` (media server; Trimmer/Refiner). Layout uses
-    only ``sonarr`` + ``radarr`` next to **Settings**; **Refiner** / **Trimmer** use ``emby``.
+    Keys: ``sonarr``, ``radarr``, ``emby`` (media server; Trimmer). Layout uses
+    ``sonarr`` + ``radarr`` next to **Settings**; **Trimmer** uses ``emby``.
+    **Emby**: latest ``AppSnapshot`` when present; otherwise ``ok`` when Trimmer is
+    enabled with URL and a resolvable API key (connection not yet probed).
+    **Refiner** uses ``refiner_radarr`` and ``sonarr_refiner`` when ``settings`` is passed
+    (scheduler-ready = ``ok``, else ``unknown``).
     """
     result: dict[str, str] = {}
-    for app in ("sonarr", "radarr", "emby"):
+    for app in ("sonarr", "radarr"):
         snap = snapshots.get(app)
         if snap is None:
             result[app] = "unknown"
@@ -52,6 +59,38 @@ def sidebar_health_dots(snapshots: dict[str, Any]) -> dict[str, str]:
             result[app] = "ok"
         else:
             result[app] = "fail"
+
+    emby_snap = snapshots.get("emby")
+    if emby_snap is not None:
+        result["emby"] = "ok" if bool(getattr(emby_snap, "ok", False)) else "fail"
+    elif settings is not None:
+        from app.resolvers.api_keys import resolve_emby_api_key
+
+        emby_url = (getattr(settings, "emby_url", None) or "").strip()
+        emby_key = resolve_emby_api_key(settings)
+        emby_enabled = bool(getattr(settings, "emby_enabled", False))
+        if emby_enabled and emby_url and emby_key:
+            result["emby"] = "ok"
+        else:
+            result["emby"] = "unknown"
+    else:
+        result["emby"] = "unknown"
+
+    if settings is not None:
+        from app.refiner_readiness import (
+            refiner_scheduler_should_run,
+            sonarr_refiner_scheduler_should_run,
+        )
+
+        result["refiner_radarr"] = (
+            "ok" if refiner_scheduler_should_run(settings) else "unknown"
+        )
+        result["sonarr_refiner"] = (
+            "ok" if sonarr_refiner_scheduler_should_run(settings) else "unknown"
+        )
+    else:
+        result["refiner_radarr"] = "unknown"
+        result["sonarr_refiner"] = "unknown"
     return result
 
 
@@ -149,22 +188,29 @@ def filter_activity_display_for_search(rows: list[dict[str, Any]], q: str | None
     return [r for r in rows if activity_row_matches_search(r, needle)]
 _ACTIVITY_LOG_LEGACY_MORE = re.compile(r"^\+\d+ more$")
 # ``waiting=`` was added in v3.5.1; older rows omit it (treated as 0).
+# ``cleanup_needed=`` appears in batch summaries from v3.9.x onward; omitting it is treated as 0.
 _REFINER_BATCH_LOG = re.compile(
-    r"Refiner\s*\(([^)]*)\):\s*processed=(\d+)\s+unchanged=(\d+)\s+dry_run_items=(\d+)\s+(?:waiting=(\d+)\s+)?errors=(\d+)",
+    r"Refiner\s*\(([^)]*)\):\s*processed=(\d+)\s+unchanged=(\d+)\s+dry_run_items=(\d+)\s+"
+    r"(?:waiting=(\d+)\s+)?(?:cleanup_needed=(\d+)\s+)?errors=(\d+)",
     re.I | re.DOTALL,
 )
 
 
-def parse_refiner_batch_activity_detail(detail: str) -> tuple[str, int, int, int, int, int] | None:
-    """Return (trigger, processed, unchanged, dry_run, waiting, errors) or None if not a batch summary line."""
+def parse_refiner_batch_activity_detail(detail: str) -> tuple[str, int, int, int, int, int, int] | None:
+    """Return (trigger, processed, unchanged, dry_run, waiting,
+    cleanup_needed, errors) or None if not a batch summary line.
+    waiting is always 0 for rows written by 4.0.0+;
+    the field is optional in the regex for backward
+    compatibility with older rows."""
     m = _REFINER_BATCH_LOG.search((detail or "").replace("\n", " ").strip())
     if not m:
         return None
     trigger = (m.group(1) or "scheduled").strip()
     proc, noop, dry = (int(m.group(i)) for i in range(2, 5))
     wait = int(m.group(5) or 0)
-    err = int(m.group(6))
-    return trigger, proc, noop, dry, wait, err
+    cleanup = int(m.group(6) or 0)
+    err = int(m.group(7))
+    return trigger, proc, noop, dry, wait, cleanup, err
 
 
 def activity_log_title_lines(detail: str) -> list[str]:
@@ -286,8 +332,8 @@ def _activity_log_outcome_class(e: ActivityLog) -> str:
     if kind == "refiner" and app == "refiner":
         parsed = parse_refiner_batch_activity_detail(getattr(e, "detail", "") or "")
         if parsed is not None:
-            _trigger, proc, noop, dry, wait, err = parsed
-            if err > 0:
+            _trigger, proc, noop, dry, wait, cleanup, err = parsed
+            if err > 0 or cleanup > 0:
                 return "failed"
             if wait > 0 and proc + noop + dry == 0:
                 return "waiting"
@@ -318,8 +364,8 @@ def _activity_primary_label(e: ActivityLog) -> str:
     if kind == "refiner" and app == "refiner":
         parsed = parse_refiner_batch_activity_detail(getattr(e, "detail", "") or "")
         if parsed is not None:
-            _trigger, proc, noop, dry, wait, err = parsed
-            if err > 0:
+            _trigger, proc, noop, dry, wait, cleanup, err = parsed
+            if err > 0 or cleanup > 0:
                 return "Refiner failed"
             if wait > 0 and proc + noop + dry == 0:
                 return "Refiner waiting"
@@ -370,7 +416,7 @@ def _humanize_refiner_batch_log_detail(detail: str) -> list[str] | None:
     parsed = parse_refiner_batch_activity_detail(detail or "")
     if parsed is None:
         return None
-    trigger, proc, noop, dry, wait, err = parsed
+    trigger, proc, noop, dry, wait, cleanup, err = parsed
     bits: list[str] = []
     if proc:
         bits.append(f"{proc} refined")
@@ -378,6 +424,8 @@ def _humanize_refiner_batch_log_detail(detail: str) -> list[str] | None:
         bits.append(f"{noop} unchanged")
     if dry:
         bits.append(f"{dry} dry run")
+    if cleanup:
+        bits.append(f"{cleanup} cleanup needed")
     if wait:
         bits.append(f"{wait} waiting on upstream")
     if err:
@@ -663,6 +711,21 @@ def refiner_settings_redirect_url(
         return f"/refiner/settings?{'&'.join(parts)}{frag}"
     err = quote(str(reason or "error").replace("\n", " ").strip()[:240], safe="")
     return f"/refiner/settings?save=fail&reason={err}{sec_q_fail}{frag}"
+
+
+def sonarr_refiner_settings_redirect_url(
+    *, saved: bool, reason: str | None = None, section: str | None = None
+) -> str:
+    frag = refiner_settings_fragment(section)
+    sec_token = refiner_settings_saved_query_value(section)
+    sec_q_fail = f"&refiner_section={quote(sec_token, safe='')}" if sec_token else ""
+    if saved:
+        parts = ["saved=1"]
+        if sec_token:
+            parts.append(f"refiner_saved={quote(sec_token, safe='')}")
+        return f"/refiner/sonarr/settings?{'&'.join(parts)}{frag}"
+    err = quote(str(reason or "error").replace("\n", " ").strip()[:240], safe="")
+    return f"/refiner/sonarr/settings?save=fail&reason={err}{sec_q_fail}{frag}"
 
 
 def settings_looks_like_existing_fetcher_install(settings: AppSettings) -> bool:

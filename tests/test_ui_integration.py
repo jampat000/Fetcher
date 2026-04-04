@@ -329,9 +329,12 @@ def test_refiner_micro_helper_text_is_present(monkeypatch: pytest.MonkeyPatch) -
     assert 'name="refiner_interval_seconds"' in html
     i_folders = html.index('id="refiner-folders"')
     i_interval = html.index("refiner-folders-interval-wrap")
+    i_min_age = html.index('id="refiner-minimum-age-sec"')
     i_advanced = html.index("refiner-folders-advanced")
     i_sched = html.index('id="refiner-schedule"')
-    assert i_folders < i_interval < i_advanced < i_sched
+    assert i_folders < i_interval < i_min_age < i_advanced < i_sched
+    assert 'name="refiner_minimum_age_seconds"' in html
+    assert "Minimum file age (seconds)" in html
     assert 'href="#refiner-processing"' in html
     assert 'id="refiner-folders"' in html
     assert 'id="refiner-schedule"' in html
@@ -537,12 +540,17 @@ def test_refiner_readiness_brief_api_json(monkeypatch: pytest.MonkeyPatch) -> No
     assert len(body["issues"]) >= 1
 
 
-def test_refiner_settings_page_has_syncable_banner_ids(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_refiner_banner_ids_overview_and_movies_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Off state banner lives on Overview only; settings keeps readiness for inline fixes."""
     with _client(monkeypatch) as client:
-        r = client.get("/refiner/settings")
-    assert r.status_code == 200
-    assert 'id="refiner-banner-off"' in r.text
-    assert 'id="refiner-banner-readiness"' in r.text
+        overview = client.get("/refiner")
+        settings_page = client.get("/refiner/settings")
+    assert overview.status_code == 200
+    assert settings_page.status_code == 200
+    assert 'id="refiner-banner-off"' in overview.text
+    assert 'id="refiner-banner-readiness"' in overview.text
+    assert 'id="refiner-banner-off"' not in settings_page.text
+    assert 'id="refiner-banner-readiness"' in settings_page.text
 
 
 def test_refiner_dry_run_save_does_not_modify_emby_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -639,7 +647,7 @@ def test_refiner_page_is_separate_from_trimmer(monkeypatch: pytest.MonkeyPatch) 
     with _client(monkeypatch) as client:
         r = client.get("/refiner/settings")
     assert r.status_code == 200
-    assert "Refiner settings" in r.text
+    assert "Movies Settings" in r.text
     assert "Trimmer settings" in r.text
 
 
@@ -659,6 +667,75 @@ def test_refiner_overview_page_exists_and_has_tabs(monkeypatch: pytest.MonkeyPat
     assert "45s" in r.text
     assert 'href="/refiner"' in r.text
     assert 'href="/refiner/settings"' in r.text
+    assert 'href="/refiner/sonarr/settings"' in r.text
+    nav = r.text
+    i_tabs = nav.index('refiner-area-tabs')
+    chunk = nav[i_tabs : i_tabs + 900]
+    assert chunk.index('href="/refiner/sonarr/settings"') < chunk.index('href="/refiner/settings"')
+
+
+def test_sonarr_refiner_settings_page_loads_and_formactions(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _client(monkeypatch) as client:
+        r = client.get("/refiner/sonarr/settings")
+    assert r.status_code == 200
+    html = r.text
+    assert "TV Settings" in html
+    assert 'data-fetcher-refiner-pipeline="sonarr"' in html
+    assert 'formaction="/refiner/sonarr/settings/save?refiner_section=processing"' in html
+    assert 'formaction="/refiner/sonarr/settings/save?refiner_section=folders"' in html
+    assert 'formaction="/refiner/sonarr/settings/save?refiner_section=audio"' in html
+    assert 'formaction="/refiner/sonarr/settings/save?refiner_section=subtitles"' in html
+    assert 'formaction="/refiner/sonarr/settings/save?refiner_section=schedule"' in html
+    assert 'name="sonarr_refiner_interval_seconds"' in html
+    assert 'name="sonarr_refiner_minimum_age_seconds"' in html
+    i_tabs = html.index("refiner-area-tabs")
+    chunk = html[i_tabs : i_tabs + 900]
+    assert chunk.index('href="/refiner/sonarr/settings"') < chunk.index('href="/refiner/settings"')
+    assert "TV" in chunk and "Movies" in chunk
+
+
+def test_post_sonarr_refiner_save_async_header_returns_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def seed() -> None:
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.sonarr_refiner_primary_audio_lang = "eng"
+            await session.commit()
+
+    asyncio.run(seed())
+    with _client(monkeypatch) as client:
+        resp = client.post(
+            "/refiner/sonarr/settings/save?refiner_section=folders",
+            data={
+                "sonarr_refiner_enabled": "true",
+                "sonarr_refiner_dry_run": "true",
+                "sonarr_refiner_primary_audio_lang": "eng",
+                "sonarr_refiner_secondary_audio_lang": "",
+                "sonarr_refiner_tertiary_audio_lang": "",
+                "sonarr_refiner_default_audio_slot": "primary",
+                "sonarr_refiner_audio_preference_mode": "preferred_langs_quality",
+                "sonarr_refiner_watched_folder": "D:\\tv-in",
+                "sonarr_refiner_output_folder": "D:\\tv-out",
+                "sonarr_refiner_schedule_enabled": "false",
+                "sonarr_refiner_interval_seconds": "90",
+                "sonarr_refiner_minimum_age_seconds": "120",
+                **{f"sonarr_refiner_schedule_{d}": "0" for d in _WEEKDAYS},
+            },
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "X-Fetcher-Refiner-Settings-Async": "1",
+            },
+        )
+    assert resp.status_code == 200
+    assert "application/json" in (resp.headers.get("content-type") or "").lower()
+    assert resp.json() == {"ok": True, "section": "folders"}
+
+    async def verify() -> None:
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            assert row.sonarr_refiner_interval_seconds == 90
+            assert row.sonarr_refiner_minimum_age_seconds == 120
+
+    asyncio.run(verify())
 
 
 def test_trimmer_settings_section_visibility_script_registered() -> None:

@@ -11,9 +11,15 @@ from sqlalchemy import select
 from app.arr_intervals import effective_arr_interval_minutes
 from app.db import SessionLocal
 from app.models import AppSettings
-from app.refiner_readiness import refiner_scheduler_should_run
+from app.refiner_readiness import (
+    refiner_scheduler_should_run,
+    sonarr_refiner_scheduler_should_run,
+)
 from app.refiner_watch_config import clamp_refiner_interval_seconds
-from app.refiner_service import run_scheduled_refiner_pass
+from app.refiner_service import (
+    run_scheduled_refiner_pass,
+    run_scheduled_sonarr_refiner_pass,
+)
 from app.service_logic import run_once
 from app.resolvers.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
 from app.time_util import utc_now_naive
@@ -64,6 +70,10 @@ def _refiner_configured(settings: AppSettings) -> bool:
     return refiner_scheduler_should_run(settings)
 
 
+def _sonarr_refiner_configured(settings: AppSettings) -> bool:
+    return sonarr_refiner_scheduler_should_run(settings)
+
+
 def compute_job_intervals_minutes(settings: AppSettings) -> dict[str, int]:
     """Sonarr / Radarr / Trimmer — interval jobs use minutes. (Refiner uses seconds; see ``effective_refiner_interval_seconds``.)"""
     out: dict[str, int] = {}
@@ -84,6 +94,16 @@ def effective_refiner_interval_seconds(settings: AppSettings) -> int | None:
     )
 
 
+def effective_sonarr_refiner_interval_seconds(
+    settings: AppSettings,
+) -> int | None:
+    if not _sonarr_refiner_configured(settings):
+        return None
+    return clamp_refiner_interval_seconds(
+        getattr(settings, "sonarr_refiner_interval_seconds", None),
+    )
+
+
 class ServiceScheduler:
     def __init__(self) -> None:
         self._sched = AsyncIOScheduler()
@@ -93,6 +113,7 @@ class ServiceScheduler:
             "radarr": "fetcher_radarr",
             "trimmer": "fetcher_trimmer",
             "refiner": "fetcher_refiner",
+            "sonarr_refiner": "fetcher_sonarr_refiner",
         }
 
     async def _current_job_intervals_minutes(self) -> dict[str, int]:
@@ -102,12 +123,24 @@ class ServiceScheduler:
                 return {}
             return compute_job_intervals_minutes(settings)
 
-    async def _current_scheduler_intervals(self) -> tuple[dict[str, int], int | None]:
+    async def _current_scheduler_intervals(
+        self,
+    ) -> tuple[dict[str, int], int | None, int | None]:
         async with SessionLocal() as session:
-            settings = (await session.execute(select(AppSettings).order_by(AppSettings.id.asc()).limit(1))).scalars().first()
+            settings = (
+                await session.execute(
+                    select(AppSettings)
+                    .order_by(AppSettings.id.asc())
+                    .limit(1)
+                )
+            ).scalars().first()
             if not settings:
-                return {}, None
-            return compute_job_intervals_minutes(settings), effective_refiner_interval_seconds(settings)
+                return {}, None, None
+            return (
+                compute_job_intervals_minutes(settings),
+                effective_refiner_interval_seconds(settings),
+                effective_sonarr_refiner_interval_seconds(settings),
+            )
 
     async def _run_scope(self, scope: str) -> None:
         if self._run_lock.locked():
@@ -134,6 +167,10 @@ class ServiceScheduler:
         async with SessionLocal() as session:
             await run_scheduled_refiner_pass(session)
 
+    async def _job_sonarr_refiner(self) -> None:
+        async with SessionLocal() as session:
+            await run_scheduled_sonarr_refiner_pass(session)
+
     def _job_fn_for_scope(self, scope: str):
         if scope == "sonarr":
             return self._job_sonarr
@@ -144,7 +181,9 @@ class ServiceScheduler:
         return self._job_trimmer
 
     async def start(self) -> None:
-        intervals, refiner_interval_seconds = await self._current_scheduler_intervals()
+        intervals, refiner_interval_seconds, sonarr_refiner_interval_seconds = (
+            await self._current_scheduler_intervals()
+        )
         for scope, minutes in intervals.items():
             self._sched.add_job(
                 self._job_fn_for_scope(scope),
@@ -163,14 +202,27 @@ class ServiceScheduler:
                 replace_existing=True,
                 next_run_time=utc_now_naive(),
             )
+        if sonarr_refiner_interval_seconds is not None:
+            self._sched.add_job(
+                self._job_sonarr_refiner,
+                "interval",
+                seconds=sonarr_refiner_interval_seconds,
+                id=self._job_ids["sonarr_refiner"],
+                replace_existing=True,
+                next_run_time=utc_now_naive(),
+            )
         self._sched.start()
 
     async def reschedule(self, *, targets: set[str] | None = None) -> None:
         if not self._sched.running:
             return
-        intervals, refiner_interval_seconds = await self._current_scheduler_intervals()
+        intervals, refiner_interval_seconds, sonarr_refiner_interval_seconds = (
+            await self._current_scheduler_intervals()
+        )
         active_targets = (
-            {"sonarr", "radarr", "trimmer", "refiner"} if targets is None else set(targets)
+            {"sonarr", "radarr", "trimmer", "refiner", "sonarr_refiner"}
+            if targets is None
+            else set(targets)
         )
         for scope in active_targets:
             if scope not in self._job_ids:
@@ -186,6 +238,20 @@ class ServiceScheduler:
                         self._job_refiner,
                         "interval",
                         seconds=refiner_interval_seconds,
+                        id=job_id,
+                        replace_existing=True,
+                    )
+                continue
+            if scope == "sonarr_refiner":
+                if sonarr_refiner_interval_seconds is None:
+                    job = self._sched.get_job(job_id)
+                    if job:
+                        self._sched.remove_job(job_id)
+                else:
+                    self._sched.add_job(
+                        self._job_sonarr_refiner,
+                        "interval",
+                        seconds=sonarr_refiner_interval_seconds,
                         id=job_id,
                         replace_existing=True,
                     )
@@ -223,6 +289,7 @@ class ServiceScheduler:
             "radarr": self._job_next_run_at("radarr"),
             "trimmer": self._job_next_run_at("trimmer"),
             "refiner": self._job_next_run_at("refiner"),
+            "sonarr_refiner": self._job_next_run_at("sonarr_refiner"),
         }
 
     def is_run_in_progress(self) -> bool:

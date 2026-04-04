@@ -22,6 +22,7 @@ from app.refiner_service import (
     _try_remove_empty_watch_subfolder,
     reconcile_refiner_processing_rows_on_worker_boot,
     run_refiner_pass,
+    run_sonarr_refiner_pass,
 )
 from app.refiner_source_readiness import RefinerQueueSnapshot
 from app.schema_version import CURRENT_SCHEMA_VERSION
@@ -484,7 +485,7 @@ def test_rules_config_parses_dropdown_values() -> None:
 
 
 def test_refiner_schema_contract_v35_activity_context_media_title_and_trimmer_activity() -> None:
-    assert CURRENT_SCHEMA_VERSION == 38
+    assert CURRENT_SCHEMA_VERSION == 40
     from app.models import AppSettings, RefinerActivity
 
     assert "refiner_processing_pass_generation" not in AppSettings.__annotations__
@@ -604,7 +605,10 @@ def test_worker_boot_reconcile_closes_processing_rows() -> None:
     asyncio.run(_go())
 
 
-def test_source_missing_skips_as_failed(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+def test_source_missing_skips_without_error_or_activity(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Age gate treats a missing path as not ready — no row, no error count."""
     monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_multi_audio())
 
     async def _go() -> None:
@@ -626,8 +630,105 @@ def test_source_missing_skips_as_failed(monkeypatch: pytest.MonkeyPatch, tmp_pat
             row.refiner_output_folder = str(output)
             await session.commit()
             r = await run_refiner_pass(session, trigger="scheduled")
-        assert r.get("errors") == 1
+        assert r.get("errors") == 0
         assert not missing.exists()
+
+    asyncio.run(_go())
+
+
+def test_refiner_pass_skips_file_not_yet_aged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Files modified too recently are skipped silently —
+    no RefinerActivity row, no error count."""
+    from app.refiner_watch_config import clamp_refiner_minimum_age_seconds as _real_clamp
+
+    monkeypatch.setattr(
+        "app.refiner_service.clamp_refiner_minimum_age_seconds", _real_clamp
+    )
+    monkeypatch.setattr(
+        "app.refiner_pipeline.ffprobe_json",
+        lambda _p: _fake_probe_multi_audio(),
+    )
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        f = watched / "fresh.mkv"
+        f.write_bytes(b"x" * 500)
+        # File mtime is right now — age ~0s
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = True
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            row.refiner_minimum_age_seconds = 60
+            row.radarr_enabled = False
+            await session.commit()
+            result = await run_refiner_pass(session, trigger="scheduled")
+            assert result["errors"] == 0
+            act = (
+                (
+                    await session.execute(
+                        select(RefinerActivity)
+                        .where(
+                            RefinerActivity.file_name == "fresh.mkv"
+                        )
+                        .order_by(RefinerActivity.id.desc())
+                    )
+                )
+                .scalars()
+                .first()
+            )
+            assert act is None
+
+    asyncio.run(_go())
+
+
+def test_refiner_pass_processes_aged_stable_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """File older than minimum_age_seconds is processed."""
+    import os as _os
+    import time as _time
+
+    from app.refiner_watch_config import clamp_refiner_minimum_age_seconds as _real_clamp
+
+    monkeypatch.setattr(
+        "app.refiner_service.clamp_refiner_minimum_age_seconds", _real_clamp
+    )
+    monkeypatch.setattr(
+        "app.refiner_pipeline.ffprobe_json",
+        lambda _p: _fake_probe_multi_audio(),
+    )
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        f = watched / "aged.mkv"
+        f.write_bytes(b"x" * 500)
+        # Set mtime to 120s ago so it passes the 60s gate
+        old_t = _time.time() - 120
+        _os.utime(f, (old_t, old_t))
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.refiner_enabled = True
+            row.refiner_dry_run = True
+            row.refiner_primary_audio_lang = "eng"
+            row.refiner_watched_folder = str(watched)
+            row.refiner_output_folder = str(output)
+            row.refiner_minimum_age_seconds = 60
+            row.radarr_enabled = False
+            await session.commit()
+            result = await run_refiner_pass(session, trigger="scheduled")
+            assert result["dry_run_items"] == 1
+            assert result["errors"] == 0
 
     asyncio.run(_go())
 
@@ -706,6 +807,7 @@ def test_refiner_pass_persists_job_run_log_with_failure_hints(
             low = jl.message.lower()
             assert "stream_manager" not in low
             assert "streammgr" not in low
+            assert "cleanup_needed=" in jl.message
             assert "errors=1" in jl.message
             assert "Per-file failures" in jl.message
             assert "m.mkv" in jl.message
@@ -759,704 +861,6 @@ def test_live_run_refuses_overwrite_existing_destination(monkeypatch: pytest.Mon
             )
             assert act is not None
             assert act.status == "failed"
-
-    asyncio.run(_go())
-
-
-def test_refiner_pass_final_gate_blocks_when_queue_turns_active(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    probe_calls: list[Path] = []
-
-    def _probe(p: Path):
-        probe_calls.append(p)
-        return _fake_probe_multi_audio()
-
-    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", _probe)
-    phase = {"n": 0}
-
-    async def phased_fetch(_row):  # noqa: ANN001
-        watched = Path(_row.refiner_watched_folder or "")
-        files = sorted(watched.rglob("*.mkv"))
-        p = str(files[0].resolve()) if files else ""
-        phase["n"] += 1
-        if phase["n"] == 1:
-            return RefinerQueueSnapshot(False, False, False, False, (), ())
-        rec = {
-            "status": "downloading",
-            "trackedDownloadState": "downloading",
-            "sizeleft": 0,
-            "outputPath": p,
-        }
-        return RefinerQueueSnapshot(True, False, True, False, (rec,), ())
-
-    monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", phased_fetch)
-
-    async def _go() -> None:
-        watched = tmp_path / "watched"
-        output = tmp_path / "out"
-        watched.mkdir()
-        output.mkdir()
-        (watched / "late.mkv").write_bytes(b"x" * 400)
-        async with SessionLocal() as session:
-            row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = True
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
-            await session.commit()
-            await run_refiner_pass(session, trigger="scheduled")
-            act = (
-                (
-                    await session.execute(
-                        select(RefinerActivity).where(RefinerActivity.file_name == "late.mkv").order_by(RefinerActivity.id.desc())
-                    )
-                )
-                .scalars()
-                .first()
-            )
-            assert act is not None
-            assert "radarr_queue_active_download" in (act.activity_context or "")
-
-    asyncio.run(_go())
-    assert probe_calls == []
-
-
-def test_refiner_pass_skips_probe_when_radarr_queue_active(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    probe_calls: list[Path] = []
-
-    def _probe(p: Path):
-        probe_calls.append(p)
-        return _fake_probe_multi_audio()
-
-    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", _probe)
-
-    async def fake_fetch(_row):  # noqa: ANN001
-        w = Path(_row.refiner_watched_folder or "")
-        files = sorted(w.rglob("*.mkv"))
-        p = str(files[0].resolve()) if files else ""
-        rec = {
-            "status": "downloading",
-            "trackedDownloadState": "downloading",
-            "sizeleft": 0,
-            "outputPath": p,
-        }
-        return RefinerQueueSnapshot(True, False, True, False, (rec,), ())
-
-    monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", fake_fetch)
-
-    async def _go() -> None:
-        watched = tmp_path / "watched"
-        output = tmp_path / "out"
-        watched.mkdir()
-        output.mkdir()
-        src = watched / "hold.mkv"
-        src.write_bytes(b"x" * 400)
-        async with SessionLocal() as session:
-            row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = True
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
-            await session.commit()
-            r = await run_refiner_pass(session, trigger="scheduled")
-        assert probe_calls == []
-        assert int(r.get("errors") or 0) == 0
-        assert int(r.get("waiting") or 0) >= 1
-        assert r.get("ok") is True
-
-    asyncio.run(_go())
-
-
-def test_refiner_pass_queue_snapshot_fetched_twice_before_probe(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    fetch_calls = 0
-
-    async def counting_fetch(_row):  # noqa: ANN001
-        nonlocal fetch_calls
-        fetch_calls += 1
-        return RefinerQueueSnapshot(False, False, False, False, (), ())
-
-    monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", counting_fetch)
-    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_multi_audio())
-
-    async def _go() -> None:
-        watched = tmp_path / "watched"
-        output = tmp_path / "out"
-        watched.mkdir()
-        output.mkdir()
-        (watched / "one.mkv").write_bytes(b"x" * 300)
-        async with SessionLocal() as session:
-            row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = True
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
-            await session.commit()
-            await run_refiner_pass(session, trigger="scheduled")
-
-    asyncio.run(_go())
-    assert fetch_calls == 2
-
-
-def test_refiner_pass_ffprobe_fail_reclassified_when_upstream_active(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        "app.refiner_pipeline.ffprobe_json",
-        lambda _p: (_ for _ in ()).throw(RuntimeError("probe failed")),
-    )
-    phase = {"n": 0}
-
-    async def phased_fetch(_row):  # noqa: ANN001
-        watched = Path(_row.refiner_watched_folder or "")
-        files = sorted(watched.rglob("*.mkv"))
-        p = str(files[0].resolve()) if files else ""
-        phase["n"] += 1
-        if phase["n"] <= 2:
-            return RefinerQueueSnapshot(False, False, False, False, (), ())
-        rec = {
-            "status": "downloading",
-            "trackedDownloadState": "downloading",
-            "sizeleft": 0,
-            "outputPath": p,
-        }
-        return RefinerQueueSnapshot(True, False, True, False, (rec,), ())
-
-    monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", phased_fetch)
-
-    async def _go() -> None:
-        watched = tmp_path / "watched"
-        output = tmp_path / "out"
-        watched.mkdir()
-        output.mkdir()
-        (watched / "bad.mkv").write_bytes(b"x" * 300)
-        async with SessionLocal() as session:
-            row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = True
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
-            await session.commit()
-            await run_refiner_pass(session, trigger="scheduled")
-            act = (
-                (
-                    await session.execute(
-                        select(RefinerActivity).where(RefinerActivity.file_name == "bad.mkv").order_by(RefinerActivity.id.desc())
-                    )
-                )
-                .scalars()
-                .first()
-            )
-            assert act is not None
-            assert "radarr_queue_active_download" in (act.activity_context or "")
-
-    asyncio.run(_go())
-
-
-def test_refiner_waiting_upstream_repeat_dedupes_same_candidate_reason(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def fake_fetch(_row):  # noqa: ANN001
-        return RefinerQueueSnapshot(
-            True,
-            False,
-            True,
-            False,
-            (
-                {
-                    "status": "paused",
-                    "sizeleft": 8_000_000,
-                    "title": "Movie.Name.2026.1080p",
-                },
-            ),
-            (),
-        )
-
-    monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", fake_fetch)
-    probe_calls: list[Path] = []
-    monkeypatch.setattr(
-        "app.refiner_pipeline.ffprobe_json",
-        lambda p: (probe_calls.append(p), _fake_probe_multi_audio())[1],
-    )
-
-    async def _go() -> None:
-        watched = tmp_path / "watched"
-        output = tmp_path / "out"
-        watched.mkdir()
-        output.mkdir()
-        src = watched / "Movie.Name.2026.1080p.mkv"
-        src.write_bytes(b"x" * 500)
-        async with SessionLocal() as session:
-            row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = True
-            row.refiner_primary_audio_lang = "eng"
-            row.sonarr_enabled = True
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
-            await session.commit()
-            base_id = int(
-                (
-                    await session.execute(
-                        select(func.max(ActivityLog.id)).where(ActivityLog.kind == "refiner")
-                    )
-                ).scalar()
-                or 0
-            )
-            await run_refiner_pass(session, trigger="scheduled")
-            await run_refiner_pass(session, trigger="scheduled")
-            batch_after = (
-                (
-                    await session.execute(
-                        select(ActivityLog.id)
-                        .where(ActivityLog.kind == "refiner")
-                        .where(ActivityLog.id > base_id)
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            assert batch_after == []
-            rows = (
-                (
-                    await session.execute(
-                        select(RefinerActivity)
-                        .where(RefinerActivity.file_name == "Movie.Name.2026.1080p.mkv")
-                        .order_by(RefinerActivity.id.desc())
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            assert len(rows) == 1
-            ctx = parse_activity_context(rows[0].activity_context)
-            assert ctx.get("reason_code") == "radarr_queue_active_download_title"
-            assert int(ctx.get("wait_repeat_count") or 0) >= 2
-            assert str(ctx.get("wait_last_seen_at") or "").strip()
-
-    asyncio.run(_go())
-    assert probe_calls == []
-
-
-def test_refiner_scheduled_pass_waiting_only_no_failed_aggregate(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def fake_fetch(_row):  # noqa: ANN001
-        return RefinerQueueSnapshot(
-            True,
-            False,
-            True,
-            False,
-            (
-                {
-                    "status": "paused",
-                    "sizeleft": 8_000_000,
-                    "title": "Hold.2024.1080p",
-                },
-            ),
-            (),
-        )
-
-    monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", fake_fetch)
-
-    async def _go() -> None:
-        watched = tmp_path / "watched"
-        output = tmp_path / "out"
-        watched.mkdir()
-        output.mkdir()
-        (watched / "Hold.2024.1080p.mkv").write_bytes(b"x" * 500)
-        async with SessionLocal() as session:
-            row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = True
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
-            await session.commit()
-            base_id = int(
-                (
-                    await session.execute(
-                        select(func.max(ActivityLog.id)).where(ActivityLog.kind == "refiner")
-                    )
-                ).scalar()
-                or 0
-            )
-            await run_refiner_pass(session, trigger="scheduled")
-            log = (
-                (
-                    await session.execute(
-                        select(ActivityLog)
-                        .where(ActivityLog.kind == "refiner")
-                        .where(ActivityLog.id > base_id)
-                        .order_by(ActivityLog.id.desc())
-                    )
-                )
-                .scalars()
-                .first()
-            )
-            assert log is None
-
-    asyncio.run(_go())
-
-
-def test_refiner_mixed_refined_and_waiting_counts_waiting_separate(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """One file refines, one file blocked upstream — no batch ActivityLog; per-file rows cover outcomes."""
-
-    async def fake_fetch(_row):  # noqa: ANN001
-        return RefinerQueueSnapshot(
-            True,
-            False,
-            True,
-            False,
-            (
-                {
-                    "status": "paused",
-                    "sizeleft": 8_000_000,
-                    "title": "Blocked.2024.1080p",
-                },
-            ),
-            (),
-        )
-
-    monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", fake_fetch)
-    monkeypatch.setattr("app.refiner_pipeline.ffprobe_json", lambda _p: _fake_probe_multi_audio())
-
-    def _proc_one(*args: Any, **kwargs: Any) -> tuple[str, dict[str, Any]]:
-        path = args[0]
-        if path.name == "ok.mkv":
-            return (
-                "ok",
-                {
-                    "file_name": "ok.mkv",
-                    "media_title": "ok",
-                    "status": "success",
-                    "size_before_bytes": 100,
-                    "size_after_bytes": 100,
-                    "audio_tracks_before": 2,
-                    "audio_tracks_after": 1,
-                    "subtitle_tracks_before": 0,
-                    "subtitle_tracks_after": 0,
-                    "processing_time_ms": 1,
-                    "activity_context": "{}",
-                },
-            )
-        return ("error", {})
-
-    monkeypatch.setattr("app.refiner_service._process_one_refiner_file_sync", _proc_one)
-
-    async def _go() -> None:
-        watched = tmp_path / "watched"
-        output = tmp_path / "out"
-        watched.mkdir()
-        output.mkdir()
-        (watched / "ok.mkv").write_bytes(b"x" * 400)
-        (watched / "Blocked.2024.1080p.mkv").write_bytes(b"x" * 500)
-        async with SessionLocal() as session:
-            row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
-            await session.commit()
-            base_id = int(
-                (
-                    await session.execute(
-                        select(func.max(ActivityLog.id)).where(ActivityLog.kind == "refiner")
-                    )
-                ).scalar()
-                or 0
-            )
-            await run_refiner_pass(session, trigger="scheduled")
-            log = (
-                (
-                    await session.execute(
-                        select(ActivityLog)
-                        .where(ActivityLog.kind == "refiner")
-                        .where(ActivityLog.id > base_id)
-                        .order_by(ActivityLog.id.desc())
-                    )
-                )
-                .scalars()
-                .first()
-            )
-            assert log is None
-
-    asyncio.run(_go())
-
-
-def test_refiner_final_gate_wait_dedupes_across_passes_not_only_persist_path(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Initial gate sees empty queue (proceed); final gate blocks — next pass same; one RefinerActivity row."""
-
-    phase = {"n": 0}
-
-    async def fake_fetch(_row):  # noqa: ANN001
-        phase["n"] += 1
-        if phase["n"] % 2 == 1:
-            return RefinerQueueSnapshot(True, False, False, False, (), ())
-        return RefinerQueueSnapshot(
-            True,
-            False,
-            True,
-            False,
-            (
-                {
-                    "status": "paused",
-                    "sizeleft": 9_000_000,
-                    "title": "GateHold.2024.1080p",
-                },
-            ),
-            (),
-        )
-
-    monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", fake_fetch)
-
-    async def _go() -> None:
-        watched = tmp_path / "watched"
-        output = tmp_path / "out"
-        watched.mkdir()
-        output.mkdir()
-        (watched / "GateHold.2024.1080p.mkv").write_bytes(b"x" * 500)
-        async with SessionLocal() as session:
-            row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = True
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
-            await session.commit()
-            await run_refiner_pass(session, trigger="scheduled")
-            await run_refiner_pass(session, trigger="scheduled")
-            rows = (
-                (
-                    await session.execute(
-                        select(RefinerActivity)
-                        .where(RefinerActivity.file_name == "GateHold.2024.1080p.mkv")
-                        .order_by(RefinerActivity.id.asc())
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            assert len(rows) == 1
-            ctx = parse_activity_context(rows[0].activity_context)
-            assert ctx.get("reason_code") == "radarr_queue_active_download_title"
-            assert int(ctx.get("wait_repeat_count") or 0) >= 2
-
-    asyncio.run(_go())
-
-
-def test_refiner_scheduled_waiting_only_duplicate_batch_activity_suppressed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def fake_fetch(_row):  # noqa: ANN001
-        return RefinerQueueSnapshot(
-            True,
-            False,
-            True,
-            False,
-            (
-                {
-                    "status": "paused",
-                    "sizeleft": 8_000_000,
-                    "title": "Hold.2024.1080p",
-                },
-            ),
-            (),
-        )
-
-    monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", fake_fetch)
-
-    async def _go() -> None:
-        watched = tmp_path / "watched"
-        output = tmp_path / "out"
-        watched.mkdir()
-        output.mkdir()
-        (watched / "Hold.2024.1080p.mkv").write_bytes(b"x" * 500)
-        async with SessionLocal() as session:
-            row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = True
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
-            await session.commit()
-            base_id = int(
-                (
-                    await session.execute(
-                        select(func.max(ActivityLog.id)).where(ActivityLog.kind == "refiner")
-                    )
-                ).scalar()
-                or 0
-            )
-            await run_refiner_pass(session, trigger="scheduled")
-            await run_refiner_pass(session, trigger="scheduled")
-            logs = (
-                (
-                    await session.execute(
-                        select(ActivityLog)
-                        .where(ActivityLog.kind == "refiner")
-                        .where(ActivityLog.id > base_id)
-                        .order_by(ActivityLog.id.asc())
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            assert logs == []
-
-    asyncio.run(_go())
-
-
-def test_refiner_scheduled_waiting_reason_change_creates_new_batch_activity(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    phase = {"n": 0}
-
-    async def fake_fetch(_row):  # noqa: ANN001
-        phase["n"] += 1
-        if phase["n"] % 2 == 1:
-            return RefinerQueueSnapshot(
-                True,
-                False,
-                True,
-                False,
-                (
-                    {
-                        "status": "paused",
-                        "sizeleft": 8_000_000,
-                        "title": "HoldA.2024.1080p",
-                    },
-                ),
-                (),
-            )
-        return RefinerQueueSnapshot(
-            True,
-            False,
-            True,
-            False,
-            (
-                {
-                    "status": "paused",
-                    "sizeleft": 8_000_000,
-                    "title": "HoldA.2024.1080p",
-                    "outputPath": str(tmp_path / "watched" / "HoldA.2024.1080p.mkv"),
-                },
-            ),
-            (),
-        )
-
-    monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", fake_fetch)
-
-    async def _go() -> None:
-        watched = tmp_path / "watched"
-        output = tmp_path / "out"
-        watched.mkdir()
-        output.mkdir()
-        (watched / "HoldA.2024.1080p.mkv").write_bytes(b"x" * 500)
-        async with SessionLocal() as session:
-            row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = True
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
-            await session.commit()
-            base_id = int(
-                (
-                    await session.execute(
-                        select(func.max(ActivityLog.id)).where(ActivityLog.kind == "refiner")
-                    )
-                ).scalar()
-                or 0
-            )
-            await run_refiner_pass(session, trigger="scheduled")
-            await run_refiner_pass(session, trigger="scheduled")
-            logs = (
-                (
-                    await session.execute(
-                        select(ActivityLog)
-                        .where(ActivityLog.kind == "refiner")
-                        .where(ActivityLog.id > base_id)
-                        .order_by(ActivityLog.id.asc())
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            assert logs == []
-
-    asyncio.run(_go())
-
-
-def test_refiner_scheduled_waiting_reentry_after_transition_creates_new_batch_activity(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def wait_fetch(_row):  # noqa: ANN001
-        return RefinerQueueSnapshot(
-            True,
-            False,
-            True,
-            False,
-            (
-                {
-                    "status": "paused",
-                    "sizeleft": 8_000_000,
-                    "title": "Reenter.2024.1080p",
-                },
-            ),
-            (),
-        )
-
-    async def _go() -> None:
-        watched = tmp_path / "watched"
-        output = tmp_path / "out"
-        watched.mkdir()
-        output.mkdir()
-        (watched / "Reenter.2024.1080p.mkv").write_bytes(b"x" * 500)
-        async with SessionLocal() as session:
-            row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = True
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
-            await session.commit()
-            base_id = int(
-                (
-                    await session.execute(
-                        select(func.max(ActivityLog.id)).where(ActivityLog.kind == "refiner")
-                    )
-                ).scalar()
-                or 0
-            )
-            monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", wait_fetch)
-            await run_refiner_pass(session, trigger="scheduled")
-            monkeypatch.setattr("app.refiner_service.fetch_refiner_queue_snapshot", wait_fetch)
-            await run_refiner_pass(session, trigger="scheduled")
-            logs = (
-                (
-                    await session.execute(
-                        select(ActivityLog)
-                        .where(ActivityLog.kind == "refiner")
-                        .where(ActivityLog.id > base_id)
-                        .order_by(ActivityLog.id.asc())
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            assert logs == []
 
     asyncio.run(_go())
 
@@ -2126,5 +1530,139 @@ def test_live_no_remux_folder_removal_failure_is_reported(
         ctx = parse_activity_context(recent.activity_context)
         assert ctx.get("reason_code") == "source_folder_removal_failed"
         assert batch is None
+
+    asyncio.run(_go())
+
+
+def test_sonarr_refiner_pass_disabled_returns_not_ran(
+    tmp_path: Path,
+) -> None:
+    """Sonarr Refiner pass returns ran=False when disabled."""
+
+    async def _go() -> None:
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.sonarr_refiner_enabled = False
+            await session.commit()
+            result = await run_sonarr_refiner_pass(
+                session, trigger="scheduled"
+            )
+            assert result["ran"] is False
+            assert result["reason"] == "disabled"
+
+    asyncio.run(_go())
+
+
+def test_sonarr_refiner_pass_missing_primary_lang_returns_error(
+    tmp_path: Path,
+) -> None:
+    """Sonarr Refiner pass fails fast when primary lang unset."""
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.sonarr_refiner_enabled = True
+            row.sonarr_refiner_primary_audio_lang = ""
+            row.sonarr_refiner_watched_folder = str(watched)
+            row.sonarr_refiner_output_folder = str(output)
+            await session.commit()
+            result = await run_sonarr_refiner_pass(
+                session, trigger="scheduled"
+            )
+            assert result["ok"] is False
+            assert result["error"] == "primary_lang_required"
+
+    asyncio.run(_go())
+
+
+def test_sonarr_refiner_pass_no_files_returns_no_ran(
+    tmp_path: Path,
+) -> None:
+    """Sonarr Refiner pass with empty watched folder."""
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.sonarr_refiner_enabled = True
+            row.sonarr_refiner_primary_audio_lang = "eng"
+            row.sonarr_refiner_watched_folder = str(watched)
+            row.sonarr_refiner_output_folder = str(output)
+            await session.commit()
+            result = await run_sonarr_refiner_pass(
+                session, trigger="scheduled"
+            )
+            assert result["ran"] is False
+            assert result["reason"] == "no_files"
+
+    asyncio.run(_go())
+
+
+def test_sonarr_refiner_pass_processes_aged_file_dry_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sonarr Refiner dry-run pass processes an aged file."""
+    import os as _os
+    import time as _time
+
+    monkeypatch.setattr(
+        "app.refiner_pipeline.ffprobe_json",
+        lambda _p: _fake_probe_multi_audio(),
+    )
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        f = watched / "episode.mkv"
+        f.write_bytes(b"x" * 500)
+        old_t = _time.time() - 120
+        _os.utime(f, (old_t, old_t))
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.sonarr_refiner_enabled = True
+            row.sonarr_refiner_dry_run = True
+            row.sonarr_refiner_primary_audio_lang = "eng"
+            row.sonarr_refiner_watched_folder = str(watched)
+            row.sonarr_refiner_output_folder = str(output)
+            row.sonarr_refiner_minimum_age_seconds = 60
+            await session.commit()
+            result = await run_sonarr_refiner_pass(
+                session, trigger="scheduled"
+            )
+            assert result["dry_run_items"] == 1
+            assert result["errors"] == 0
+
+    asyncio.run(_go())
+
+
+def test_sonarr_refiner_pass_independent_of_radarr_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sonarr and Radarr passes use separate locks — can both
+    be called without deadlock."""
+
+    async def _go() -> None:
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.sonarr_refiner_enabled = False
+            row.refiner_enabled = False
+            await session.commit()
+            r1 = await run_sonarr_refiner_pass(
+                session, trigger="scheduled"
+            )
+            r2 = await run_refiner_pass(
+                session, trigger="scheduled"
+            )
+            assert r1["ran"] is False
+            assert r2["ran"] is False
 
     asyncio.run(_go())

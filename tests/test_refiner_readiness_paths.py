@@ -42,3 +42,31 @@ def test_refiner_validate_folders_section_accepts_posix_strings() -> None:
         output_folder="/output",
     )
     assert err == (None, None)
+
+
+def test_sonarr_refiner_validate_folders_requires_paths_when_enabled() -> None:
+    from app.refiner_readiness import sonarr_refiner_validate_settings_save_section
+
+    err = sonarr_refiner_validate_settings_save_section(
+        "folders",
+        enabled=True,
+        primary_lang="eng",
+        watched_folder="",
+        output_folder="/out",
+    )
+    assert err[0] == "watched_output_required"
+    assert "Sonarr Refiner" in (err[1] or "")
+
+
+def test_sonarr_refiner_validate_audio_requires_primary_when_enabled() -> None:
+    from app.refiner_readiness import sonarr_refiner_validate_settings_save_section
+
+    err = sonarr_refiner_validate_settings_save_section(
+        "audio",
+        enabled=True,
+        primary_lang="",
+        watched_folder="/w",
+        output_folder="/o",
+    )
+    assert err[0] == "primary_audio_required"
+    assert "Sonarr Refiner" in (err[1] or "")

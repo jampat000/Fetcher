@@ -93,6 +93,7 @@ function shouldRestoreAfterRedirect() {
   if (path === "/settings" && sp.get("tab")) return false;
   if (path === "/trimmer/settings" && (window.location.hash || "").trim()) return false;
   if (path === "/refiner/settings" && (window.location.hash || "").trim()) return false;
+  if (path === "/refiner/sonarr/settings" && (window.location.hash || "").trim()) return false;
   return true;
 }
 
@@ -706,7 +707,7 @@ function renderDashboardAutomationSparkline(elId, spark) {
 
 function applyDashboardAutomationSparklines(data) {
   if (!data) return;
-  ["sonarr", "radarr", "refiner", "trimmer"].forEach((app) => {
+  ["sonarr", "radarr", "refiner", "sonarr_refiner", "trimmer"].forEach((app) => {
     const key = `${app}_sparkline`;
     if (!Array.isArray(data[key])) return;
     renderDashboardAutomationSparkline(`dash-sparkline-${app}`, data[key]);
@@ -731,10 +732,19 @@ function applyDashboardAutomationStatus(data) {
     const tick = document.getElementById(tickId);
     const rel = relId ? document.getElementById(relId) : null;
     const block = tick ? tick.closest(".automation-next-run-block") : null;
+    const pipe = tick && !block ? tick.closest(".refiner-pipeline-next-run") : null;
+    function syncRefinerPipeSep() {
+      if (!pipe || !rel) return;
+      const sep = pipe.querySelector(".refiner-pipeline-next-run-sep");
+      if (sep) sep.hidden = !String(rel.textContent || "").trim();
+    }
     if (displayObj && typeof displayObj === "object" && tick && rel) {
       tick.textContent = String(displayObj.primary || "");
       rel.textContent = String(displayObj.secondary || "");
-      if (block) block.setAttribute("data-next-run-state", String(displayObj.state || ""));
+      const st = String(displayObj.state || "");
+      if (block) block.setAttribute("data-next-run-state", st);
+      else if (pipe) pipe.setAttribute("data-next-run-state", st);
+      syncRefinerPipeSep();
       return;
     }
     if (tick) {
@@ -749,11 +759,22 @@ function applyDashboardAutomationStatus(data) {
       }
     }
     if (block) block.setAttribute("data-next-run-state", "enabled_unscheduled");
+    else if (pipe) {
+      pipe.setAttribute("data-next-run-state", "enabled_unscheduled");
+      syncRefinerPipeSep();
+    }
   }
 
   setNextTick("dash-next-sonarr-tick", "dash-next-sonarr-rel", data.next_sonarr_tick_local, data.next_sonarr_relative, data.next_sonarr_display);
   setNextTick("dash-next-radarr-tick", "dash-next-radarr-rel", data.next_radarr_tick_local, data.next_radarr_relative, data.next_radarr_display);
   setNextTick("dash-next-refiner-tick", "dash-next-refiner-rel", data.next_refiner_tick_local, data.next_refiner_relative, data.next_refiner_display);
+  setNextTick(
+    "dash-next-sonarr-refiner-tick",
+    "dash-next-sonarr-refiner-rel",
+    data.next_sonarr_refiner_tick_local,
+    data.next_sonarr_refiner_relative,
+    data.next_sonarr_refiner_display,
+  );
   setNextTick("dash-next-trimmer-tick", "dash-next-trimmer-rel", data.next_trimmer_tick_local, data.next_trimmer_relative, data.next_trimmer_display);
 
   const lastSonarr = document.getElementById("dash-last-sonarr-run");
@@ -798,22 +819,41 @@ function applyDashboardAutomationStatus(data) {
       lastTrimmer.innerHTML = `<strong class="dash-summary-time-emphasis" id="dash-last-trimmer-rel">${rel}</strong>${ok}`;
     } else lastTrimmer.innerHTML = '<span class="dash-summary-empty-state">Not yet run</span>';
   }
-  const lastRefiner = document.getElementById("dash-last-refiner-run");
-  if (lastRefiner) {
-    const r = data.last_refiner_run || {};
-    if (r.time_local) {
-      const ok =
-        r.ok === true
-          ? ' <span class="status-pill status-pill-ok">Succeeded</span>'
-          : r.ok === false
-            ? ' <span class="status-pill status-pill-fail">Failed</span>'
-            : r.outcome === "waiting"
-              ? ' <span class="status-pill status-pill-idle">Waiting</span>'
-            : "";
-      lastRefiner.innerHTML =
-        `<strong class="dash-summary-time-emphasis" id="dash-last-refiner-rel">${escapeHtml(r.relative || r.time_local)}</strong>${ok}`;
-    } else {
-      lastRefiner.innerHTML = '<span class="dash-summary-empty-state">Not yet run</span>';
+  const lastRefinerMovies = document.getElementById("dash-last-refiner-run");
+  const lastRefinerTv = document.getElementById("dash-last-sonarr-refiner-run");
+  if (lastRefinerMovies || lastRefinerTv) {
+    const rMovies = data.last_refiner_run || {};
+    const rTv = data.last_sonarr_refiner_run || {};
+    const moviesOn = data.next_refiner_display && data.next_refiner_display.state !== "disabled";
+    const tvOn =
+      data.next_sonarr_refiner_display && data.next_sonarr_refiner_display.state !== "disabled";
+
+    function refinerLastRunInnerHtml(r, emphasisId) {
+      if (!r.time_local) return '<span class="dash-summary-empty-state">Not yet run</span>';
+      const rel = escapeHtml(r.relative || r.time_local || "");
+      const idAttr = emphasisId ? ` id="${emphasisId}"` : "";
+      const strong = `<strong class="dash-summary-time-emphasis"${idAttr}>${rel}</strong>`;
+      if (r.ok === true) return `${strong} <span class="status-pill status-pill-ok">Succeeded</span>`;
+      if (r.ok === false) return `${strong} <span class="status-pill status-pill-fail">Failed</span>`;
+      return strong;
+    }
+
+    if (lastRefinerMovies && lastRefinerTv) {
+      lastRefinerMovies.innerHTML = moviesOn
+        ? refinerLastRunInnerHtml(rMovies, "dash-last-refiner-rel")
+        : '<span class="dash-summary-empty-state">Not configured</span>';
+      lastRefinerTv.innerHTML = tvOn
+        ? refinerLastRunInnerHtml(rTv, "dash-last-sonarr-refiner-rel")
+        : '<span class="dash-summary-empty-state">Not configured</span>';
+    } else if (lastRefinerMovies && !lastRefinerTv) {
+      const lastRefinerDd = lastRefinerMovies;
+      if (moviesOn) {
+        lastRefinerDd.innerHTML = `<span id="dash-last-refiner-rel">${refinerLastRunInnerHtml(rMovies, "")}</span>`;
+      } else if (tvOn) {
+        lastRefinerDd.innerHTML = `<span id="dash-last-sonarr-refiner-rel">${refinerLastRunInnerHtml(rTv, "")}</span>`;
+      } else {
+        lastRefinerDd.innerHTML = '<span class="dash-summary-empty-state">Not configured</span>';
+      }
     }
   }
   const refinerProgress = document.getElementById("dash-refiner-live-progress");
@@ -825,6 +865,15 @@ function applyDashboardAutomationStatus(data) {
       refinerProgress.hidden = false;
     } else {
       refinerProgress.hidden = true;
+    }
+  }
+  const sonarrRefinerProgress = document.getElementById("dash-sonarr-refiner-live-progress");
+  if (sonarrRefinerProgress) {
+    const total = data.sonarr_refiner_live_total || 0;
+    const done = data.sonarr_refiner_live_done || 0;
+    sonarrRefinerProgress.hidden = !total;
+    if (total) {
+      sonarrRefinerProgress.textContent = `Remuxing ${done} of ${total} files\u2026`;
     }
   }
   applyDashboardAutomationSparklines(data);
@@ -919,10 +968,14 @@ function startDashboardStatusPolling() {
             data.last_radarr_run,
             data.last_trimmer_run,
             data.last_refiner_run,
+            data.last_sonarr_refiner_run,
             data.sonarr_sparkline,
             data.radarr_sparkline,
             data.refiner_sparkline,
+            data.sonarr_refiner_sparkline,
             data.trimmer_sparkline,
+            data.sonarr_refiner_live_total,
+            data.sonarr_refiner_live_done,
           ]);
           if (hash === lastPayloadHash) {
             intervalMs = Math.min(intervalMs * 2, 60000);
@@ -972,10 +1025,14 @@ function startDashboardStatusPolling() {
             data.last_radarr_run,
             data.last_trimmer_run,
             data.last_refiner_run,
+            data.last_sonarr_refiner_run,
             data.sonarr_sparkline,
             data.radarr_sparkline,
             data.refiner_sparkline,
+            data.sonarr_refiner_sparkline,
             data.trimmer_sparkline,
+            data.sonarr_refiner_live_total,
+            data.sonarr_refiner_live_done,
           ]);
           if (typeof window.fetcherLiveTilesPollNow === "function") {
             window.fetcherLiveTilesPollNow();
@@ -1501,6 +1558,15 @@ function syncTrimmerSettingsUrlAfterInPlacePost(sectionKey) {
   }
 }
 
+function refinerSavePipelineLabel(form) {
+  const p = form && form.dataset && form.dataset.fetcherRefinerPipeline;
+  return String(p || "")
+    .trim()
+    .toLowerCase() === "sonarr"
+    ? "Sonarr Refiner"
+    : "Refiner";
+}
+
 function refinerSaveScopeLabel(section) {
   const s = String(section || "").toLowerCase();
   if (s === "processing") return "Processing";
@@ -1511,14 +1577,15 @@ function refinerSaveScopeLabel(section) {
   return "Refiner";
 }
 
-function refinerSaveSuccessMessage(section) {
+function refinerSaveSuccessMessage(section, form) {
+  const label = refinerSavePipelineLabel(form);
   const s = String(section || "").toLowerCase();
-  if (s === "processing") return "Refiner settings saved (Processing).";
-  if (s === "folders") return "Refiner settings saved (Folders).";
-  if (s === "audio") return "Refiner settings saved (Audio).";
-  if (s === "subtitles") return "Refiner settings saved (Subtitles).";
-  if (s === "schedule") return "Refiner settings saved (Schedule & limits).";
-  return "Refiner settings saved.";
+  if (s === "processing") return `${label} settings saved (Processing).`;
+  if (s === "folders") return `${label} settings saved (Folders).`;
+  if (s === "audio") return `${label} settings saved (Audio).`;
+  if (s === "subtitles") return `${label} settings saved (Subtitles).`;
+  if (s === "schedule") return `${label} settings saved (Schedule & limits).`;
+  return `${label} settings saved.`;
 }
 
 function refinerSaveFailMessage(section, reason, message) {
@@ -1890,14 +1957,14 @@ function syncRefinerTopBannersFromServerBrief(form) {
       const off = document.getElementById("refiner-banner-off");
       const readyBanner = document.getElementById("refiner-banner-readiness");
       const list = document.getElementById("refiner-readiness-list");
-      if (!off || !readyBanner) return;
+      if (!off && !readyBanner) return;
       const issues = Array.isArray(data.issues) ? data.issues : [];
       let phase;
       if (!data.enabled) phase = "off";
       else if (issues.length > 0) phase = "not_ready";
       else phase = "ready";
-      off.hidden = phase !== "off";
-      readyBanner.hidden = phase !== "not_ready";
+      if (off) off.hidden = phase !== "off";
+      if (readyBanner) readyBanner.hidden = phase !== "not_ready";
       if (list) {
         if (phase === "not_ready") {
           const onSettings = (window.location.pathname || "").indexOf("/refiner/settings") >= 0;
@@ -1996,7 +2063,7 @@ function initRefinerSettingsAsyncSave() {
           if (data && typeof data.ok === "boolean") {
             if (data.ok) {
               const section = String(data.section || "processing");
-              const okMsg = refinerSaveSuccessMessage(section);
+              const okMsg = refinerSaveSuccessMessage(section, form);
               setFetcherSettingsInPlaceFeedback(feedback, "ok", okMsg);
               syncRefinerSettingsUrlAfterInPlacePost(section);
               syncRefinerTopBannersFromServerBrief(form);

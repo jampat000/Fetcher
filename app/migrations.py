@@ -7,6 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncConnection
 
 from app.refiner_app_settings_contract import REFINER_APP_SETTINGS_SQLITE_SPECS
 from app.schema_version import CURRENT_SCHEMA_VERSION
+from app.sonarr_refiner_app_settings_contract import (
+    SONARR_REFINER_APP_SETTINGS_SQLITE_SPECS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -670,6 +673,112 @@ async def _migrate_041_failed_import_remove_from_client(engine: AsyncEngine) -> 
             )
 
 
+async def _migrate_042_refiner_minimum_age(
+    engine: AsyncEngine,
+) -> None:
+    """Add refiner_minimum_age_seconds to app_settings
+    (Radarr Refiner file-age gate, default 60s)."""
+    table = "app_settings"
+    if not await _has_column(
+        engine, table=table, column="refiner_minimum_age_seconds"
+    ):
+        await _add_column(
+            engine,
+            table=table,
+            ddl="refiner_minimum_age_seconds INTEGER NOT NULL DEFAULT 60",
+        )
+
+
+async def _migrate_043_sonarr_refiner_pipeline(
+    engine: AsyncEngine,
+) -> None:
+    """Add all sonarr_refiner_* columns for the independent
+    Sonarr Refiner pipeline."""
+    table = "app_settings"
+    for col_name, type_default in SONARR_REFINER_APP_SETTINGS_SQLITE_SPECS:
+        if not await _has_column(engine, table=table, column=col_name):
+            await _add_column(
+                engine,
+                table=table,
+                ddl=f"{col_name} {type_default}",
+            )
+
+
+async def repair_sonarr_refiner_app_settings_columns(
+    engine: AsyncEngine,
+) -> None:
+    """Add missing ``sonarr_refiner_*`` columns on
+    ``app_settings`` (SQLite only, idempotent).
+    Mirrors repair_refiner_app_settings_columns exactly
+    for the Sonarr pipeline."""
+    if engine.dialect.name != "sqlite":
+        logger.warning(
+            "app_settings sonarr_refiner repair skipped: "
+            "dialect is not sqlite (%r)",
+            engine.dialect.name,
+        )
+        return
+
+    logger.info(
+        "schema repair starting: app_settings "
+        "sonarr_refiner_* columns (single transaction)"
+    )
+    async with engine.begin() as conn:
+        if not await _app_settings_table_exists_on_conn(conn):
+            logger.warning(
+                "schema repair: app_settings table missing; "
+                "cannot add sonarr_refiner_* columns here"
+            )
+            return
+
+        names = await _column_names_sqlite(
+            conn, table="app_settings"
+        )
+        added_any = False
+        for col_name, type_default in (
+            SONARR_REFINER_APP_SETTINGS_SQLITE_SPECS
+        ):
+            if col_name in names:
+                logger.info(
+                    "app_settings schema repair: column %s "
+                    "already present",
+                    col_name,
+                )
+                continue
+            ddl = f"{col_name} {type_default}"
+            stmt = text(
+                f"ALTER TABLE app_settings ADD COLUMN {ddl}"
+            )
+            try:
+                await conn.execute(stmt)
+            except Exception as exc:
+                logger.error(
+                    "app_settings schema repair failed: "
+                    "ADD COLUMN %s (%s) — %s",
+                    col_name,
+                    ddl,
+                    exc,
+                )
+                raise
+            logger.info(
+                "app_settings schema repair: added column %s",
+                col_name,
+            )
+            names.add(col_name)
+            added_any = True
+
+    if added_any:
+        logger.info(
+            "schema repair complete: app_settings "
+            "sonarr_refiner_* columns (ALTER applied)"
+        )
+    else:
+        logger.info(
+            "schema repair complete: app_settings "
+            "sonarr_refiner_* columns (no changes needed)"
+        )
+
+
 async def migrate(engine: AsyncEngine) -> None:
     await _migrate_001_sonarr_per_app_columns(engine)
     await _migrate_002_radarr_per_app_columns(engine)
@@ -708,6 +817,9 @@ async def migrate(engine: AsyncEngine) -> None:
     await _migrate_039_granular_cleanup(engine)
     await _migrate_040_import_failed_cleanup_columns(engine)
     await _migrate_041_failed_import_remove_from_client(engine)
+    await _migrate_042_refiner_minimum_age(engine)
+    await _migrate_043_sonarr_refiner_pipeline(engine)
+    await repair_sonarr_refiner_app_settings_columns(engine)
     await repair_refiner_app_settings_columns(engine)
 
     logger.info(

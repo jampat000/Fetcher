@@ -98,7 +98,7 @@ def test_start_creates_independent_jobs_for_enabled_apps() -> None:
     calls: list[tuple] = []
 
     async def _fake_payload():
-        return ({"sonarr": 30, "radarr": 120, "trimmer": 45}, None)
+        return ({"sonarr": 30, "radarr": 120, "trimmer": 45}, None, None)
 
     class _FakeSched:
         running = False
@@ -125,7 +125,7 @@ def test_start_adds_refiner_job_in_seconds() -> None:
     calls: list[tuple] = []
 
     async def _fake_payload():
-        return ({"sonarr": 30}, 90)
+        return ({"sonarr": 30}, 90, None)
 
     class _FakeSched:
         running = False
@@ -151,7 +151,7 @@ def test_reschedule_updates_only_requested_job() -> None:
     calls: list[tuple] = []
 
     async def _fake_payload():
-        return ({"sonarr": 30, "radarr": 120, "trimmer": 45}, None)
+        return ({"sonarr": 30, "radarr": 120, "trimmer": 45}, None, None)
 
     class _FakeSched:
         running = True
@@ -176,7 +176,7 @@ def test_reschedule_refiner_uses_seconds() -> None:
     calls: list[tuple] = []
 
     async def _fake_payload():
-        return ({}, 42)
+        return ({}, 42, None)
 
     class _FakeSched:
         running = True
@@ -220,6 +220,100 @@ def test_next_runs_by_job_returns_independent_values() -> None:
     assert runs["radarr"] == datetime(2026, 3, 24, 12, 30, 0)
     assert runs["trimmer"] is None
     assert runs["refiner"] is None
+    assert runs["sonarr_refiner"] is None
+
+
+def test_effective_sonarr_refiner_interval_seconds_when_configured() -> None:
+    from app.scheduler import effective_sonarr_refiner_interval_seconds
+
+    s = _arr_settings(
+        sonarr_refiner_enabled=True,
+        sonarr_refiner_primary_audio_lang="eng",
+        sonarr_refiner_watched_folder="D:\\Media\\tv\\incoming",
+        sonarr_refiner_output_folder="D:\\Media\\tv\\processed",
+        sonarr_refiner_interval_seconds=120,
+    )
+    assert effective_sonarr_refiner_interval_seconds(s) == 120
+
+
+def test_effective_sonarr_refiner_interval_seconds_none_when_disabled() -> None:
+    from app.scheduler import effective_sonarr_refiner_interval_seconds
+
+    s = _arr_settings(
+        sonarr_refiner_enabled=False,
+        sonarr_refiner_interval_seconds=120,
+    )
+    assert effective_sonarr_refiner_interval_seconds(s) is None
+
+
+def test_start_adds_sonarr_refiner_job_in_seconds() -> None:
+    s = ServiceScheduler()
+    calls: list[tuple] = []
+
+    async def _fake_payload():
+        return ({}, None, 45)
+
+    class _FakeSched:
+        running = False
+
+        def add_job(
+            self, _fn, _trigger, *, id, replace_existing, next_run_time=None, minutes=None, seconds=None, **_kw
+        ):  # noqa: ANN001
+            if seconds is not None:
+                calls.append((id, "seconds", seconds))
+            else:
+                calls.append((id, "minutes", minutes))
+
+        def start(self) -> None:
+            self.running = True
+
+    s._sched = _FakeSched()
+    s._current_scheduler_intervals = _fake_payload
+    asyncio.run(s.start())
+    assert ("fetcher_sonarr_refiner", "seconds", 45) in calls
+
+
+def test_reschedule_sonarr_refiner_uses_seconds() -> None:
+    s = ServiceScheduler()
+    calls: list[tuple] = []
+
+    async def _fake_payload():
+        return ({}, None, 30)
+
+    class _FakeSched:
+        running = True
+
+        def add_job(
+            self, _fn, _trigger, *, id, replace_existing, minutes=None, seconds=None, next_run_time=None, **_kw
+        ):  # noqa: ANN001
+            if seconds is not None:
+                calls.append((id, "seconds", seconds))
+            else:
+                calls.append((id, "minutes", minutes))
+
+        def get_job(self, _id: str):  # noqa: ANN001
+            return None
+
+    s._sched = _FakeSched()
+    s._current_scheduler_intervals = _fake_payload
+    asyncio.run(s.reschedule(targets={"sonarr_refiner"}))
+    assert calls == [("fetcher_sonarr_refiner", "seconds", 30)]
+
+
+def test_next_runs_by_job_includes_sonarr_refiner() -> None:
+    s = ServiceScheduler()
+
+    class _FakeSched:
+        running = True
+
+        @staticmethod
+        def get_job(job_id: str):
+            return None
+
+    s._sched = _FakeSched()
+    runs = s.next_runs_by_job()
+    assert "sonarr_refiner" in runs
+    assert runs["sonarr_refiner"] is None
 
 
 def test_shutdown_ignores_runtime_error_when_loop_closed() -> None:

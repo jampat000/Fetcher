@@ -19,9 +19,7 @@ from app.display_helpers import (
     _relative_phrase_past,
     _relative_phrase_until,
 )
-from app.models import ActivityLog, AppSettings, AppSnapshot, JobRunLog, RefinerActivity
-from app.refiner_activity_context import parse_activity_context
-from app.refiner_outcome_classify import RefinerOutcomeClass, classify_refiner_activity_context
+from app.models import ActivityLog, AppSettings, AppSnapshot, JobRunLog
 from app.resolvers.api_keys import resolve_emby_api_key, resolve_radarr_api_key, resolve_sonarr_api_key
 from app.scheduler import compute_job_intervals_minutes, scheduler
 from app.service_logic import _radarr_missing_total_including_unreleased, _sonarr_missing_total_including_unreleased
@@ -70,21 +68,6 @@ def _next_run_display(
         "secondary": "",
     }
 
-
-def _refiner_dashboard_outcome_from_row(row: RefinerActivity | None) -> str:
-    """Return dashboard-level Refiner outcome: success | failed | waiting | none."""
-    if row is None:
-        return "none"
-    st = (row.status or "").strip().lower()
-    if st == "success":
-        return "success"
-    if st != "failed":
-        return "none"
-    ctx = parse_activity_context(getattr(row, "activity_context", None))
-    oc, _hint, _retry = classify_refiner_activity_context(ctx, status=st)
-    if oc is RefinerOutcomeClass.BLOCKED_WAITING:
-        return "waiting"
-    return "failed"
 
 def trimmer_connection_status_display(
     settings: AppSettings,
@@ -274,7 +257,10 @@ async def _sparkline_for_app(session: AsyncSession, app: str) -> list[bool | Non
         (
             await session.execute(
                 select(JobRunLog.ok)
-                .where(JobRunLog.app == app, JobRunLog.finished_at.isnot(None))
+                .where(
+                    JobRunLog.app == app,
+                    JobRunLog.finished_at.isnot(None),
+                )
                 .order_by(desc(JobRunLog.id))
                 .limit(7)
             )
@@ -282,6 +268,22 @@ async def _sparkline_for_app(session: AsyncSession, app: str) -> list[bool | Non
         .scalars()
         .all()
     )
+    if not rows and app == "trimmer":
+        rows = (
+            (
+                await session.execute(
+                    select(JobRunLog.ok)
+                    .where(
+                        JobRunLog.app.is_(None),
+                        JobRunLog.finished_at.isnot(None),
+                    )
+                    .order_by(desc(JobRunLog.id))
+                    .limit(7)
+                )
+            )
+            .scalars()
+            .all()
+        )
     result = [bool(r) for r in rows]
     while len(result) < 7:
         result.append(None)
@@ -333,10 +335,17 @@ async def build_dashboard_status(
     next_radarr_dt = next_runs.get("radarr")
     next_trimmer_dt = next_runs.get("trimmer")
     next_refiner_dt = next_runs.get("refiner")
+    next_sonarr_refiner_dt = next_runs.get("sonarr_refiner")
     settings = await get_or_create_settings(session)
     snaps = snapshots if snapshots is not None else await fetch_latest_app_snapshots(session)
     refiner_pass_total = int(getattr(settings, "refiner_current_pass_total", 0) or 0)
     refiner_pass_done = int(getattr(settings, "refiner_current_pass_done", 0) or 0)
+    sonarr_refiner_pass_total = int(
+        getattr(settings, "sonarr_refiner_current_pass_total", 0) or 0
+    )
+    sonarr_refiner_pass_done = int(
+        getattr(settings, "sonarr_refiner_current_pass_done", 0) or 0
+    )
 
     def _latest_snapshot_for(app_name: str) -> AppSnapshot | None:
         snap = snaps.get(app_name)
@@ -384,29 +393,40 @@ async def build_dashboard_status(
     last_radarr = _last_from(settings.radarr_last_run_at, _latest_snapshot_for("radarr"))
     last_trimmer = _last_from(settings.emby_last_run_at, _latest_snapshot_for("emby"))
     last_refiner = _last_from(settings.refiner_last_run_at, None)
-    # Derive Refiner card state from the latest per-file outcome, classifying blocked waits.
-    _last_ra = (
+    _last_refiner_log = (
         (
             await session.execute(
-                select(RefinerActivity).order_by(desc(RefinerActivity.id)).limit(1)
+                select(JobRunLog)
+                .where(JobRunLog.app == "refiner")
+                .where(JobRunLog.finished_at.isnot(None))
+                .order_by(desc(JobRunLog.id))
+                .limit(1)
             )
         )
         .scalars()
         .first()
     )
-    refiner_outcome = _refiner_dashboard_outcome_from_row(_last_ra)
-    last_refiner["outcome"] = refiner_outcome
-    if refiner_outcome == "success":
-        last_refiner["ok"] = True
-    elif refiner_outcome == "failed":
-        last_refiner["ok"] = False
+    if _last_refiner_log is not None:
+        last_refiner["ok"] = bool(_last_refiner_log.ok)
     else:
         last_refiner["ok"] = None
-    # skipped/processing/none/waiting keep ok=None; template/js render waiting via outcome.
+    last_refiner["outcome"] = "none"
     if settings.refiner_last_run_at:
         last_refiner["time_iso"] = settings.refiner_last_run_at.isoformat()
     else:
         last_refiner["time_iso"] = ""
+
+    last_sonarr_refiner = _last_from(
+        getattr(settings, "sonarr_refiner_last_run_at", None),
+        None,
+    )
+    last_sonarr_refiner["outcome"] = "none"
+    if getattr(settings, "sonarr_refiner_last_run_at", None):
+        last_sonarr_refiner["time_iso"] = (
+            settings.sonarr_refiner_last_run_at.isoformat()
+        )
+    else:
+        last_sonarr_refiner["time_iso"] = ""
 
     # If scheduler next-run is unavailable in this process, keep useful per-app timing by estimating from last+interval.
     if (
@@ -449,6 +469,10 @@ async def build_dashboard_status(
     next_radarr_relative = _relative_phrase_until(next_radarr_dt, now) if next_radarr_dt else ""
     next_trimmer_relative = _relative_phrase_until(next_trimmer_dt, now) if next_trimmer_dt else ""
     next_refiner_relative = _relative_phrase_until(next_refiner_dt, now) if next_refiner_dt else ""
+    next_sonarr_refiner_local = fmt_local(next_sonarr_refiner_dt, tz) if next_sonarr_refiner_dt else ""
+    next_sonarr_refiner_relative = (
+        _relative_phrase_until(next_sonarr_refiner_dt, now) if next_sonarr_refiner_dt else ""
+    )
     next_sonarr_display = _next_run_display(
         enabled=bool(settings.sonarr_enabled),
         schedule_enabled=bool(settings.sonarr_schedule_enabled),
@@ -483,6 +507,26 @@ async def build_dashboard_status(
             "state": "watching",
             "primary": "Watching for files",
             "secondary": f"Scans every {_interval_label}",
+        }
+
+    if not getattr(settings, "sonarr_refiner_enabled", False):
+        next_sonarr_refiner_display = {
+            "state": "disabled",
+            "primary": "Off",
+            "secondary": "Automation disabled",
+        }
+    else:
+        _sonarr_refiner_interval_s = int(
+            getattr(settings, "sonarr_refiner_interval_seconds", 60) or 60
+        )
+        if _sonarr_refiner_interval_s >= 60:
+            _sr_interval_label = f"{_sonarr_refiner_interval_s // 60}m"
+        else:
+            _sr_interval_label = f"{_sonarr_refiner_interval_s}s"
+        next_sonarr_refiner_display = {
+            "state": "watching",
+            "primary": "Watching for files",
+            "secondary": f"Scans every {_sr_interval_label}",
         }
 
     job_intervals = compute_job_intervals_minutes(settings)
@@ -538,6 +582,7 @@ async def build_dashboard_status(
     sonarr_spark = await _sparkline_for_app(session, "sonarr")
     radarr_spark = await _sparkline_for_app(session, "radarr")
     refiner_spark = await _sparkline_for_app(session, "refiner")
+    sonarr_refiner_spark = await _sparkline_for_app(session, "sonarr_refiner")
     trimmer_spark = await _sparkline_for_app(session, "trimmer")
     return {
         "last_run": last_run_display,
@@ -577,6 +622,16 @@ async def build_dashboard_status(
         "trimmer_sparkline": trimmer_spark,
         "refiner_live_total": refiner_pass_total,
         "refiner_live_done": refiner_pass_done,
+        "last_sonarr_refiner_run": last_sonarr_refiner,
+        "next_sonarr_refiner_tick_local": next_sonarr_refiner_local,
+        "next_sonarr_refiner_relative": next_sonarr_refiner_relative,
+        "next_sonarr_refiner_display": next_sonarr_refiner_display,
+        "sonarr_refiner_sparkline": sonarr_refiner_spark,
+        "sonarr_refiner_live_total": sonarr_refiner_pass_total,
+        "sonarr_refiner_live_done": sonarr_refiner_pass_done,
+        "sonarr_refiner_enabled": bool(
+            getattr(settings, "sonarr_refiner_enabled", False)
+        ),
     }
 
 

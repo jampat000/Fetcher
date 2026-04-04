@@ -107,6 +107,26 @@ def _automation_view_for_template(settings: Any, dash_status: Mapping[str, Any])
         "trimmer_sparkline": dash_status.get("trimmer_sparkline", []),
         "refiner_live_total": dash_status.get("refiner_live_total", 0),
         "refiner_live_done": dash_status.get("refiner_live_done", 0),
+        "last_sonarr_refiner_run": dash_status.get(
+            "last_sonarr_refiner_run",
+            {
+                "time_local": "",
+                "ok": None,
+                "relative": "",
+                "time_iso": "",
+                "outcome": "none",
+            },
+        ),
+        "next_sonarr_refiner_display": dash_status.get("next_sonarr_refiner_display")
+        or _fallback_display(
+            enabled=bool(getattr(settings, "sonarr_refiner_enabled", False)),
+            local=str(dash_status.get("next_sonarr_refiner_tick_local") or ""),
+            rel=str(dash_status.get("next_sonarr_refiner_relative") or ""),
+        ),
+        "sonarr_refiner_sparkline": dash_status.get("sonarr_refiner_sparkline", []),
+        "sonarr_refiner_live_total": dash_status.get("sonarr_refiner_live_total", 0),
+        "sonarr_refiner_live_done": dash_status.get("sonarr_refiner_live_done", 0),
+        "sonarr_refiner_enabled": bool(getattr(settings, "sonarr_refiner_enabled", False)),
     }
 
 
@@ -238,7 +258,7 @@ async def dashboard(request: Request, session: AsyncSession = Depends(get_sessio
             "now_local": now_local(tz),
             "timezone": tz,
             "csrf_token": await get_csrf_token_for_template(request, session),
-            "sidebar_health": sidebar_health_dots(snapshots),
+            "sidebar_health": sidebar_health_dots(snapshots, settings),
         },
     )
 
@@ -344,6 +364,6 @@ async def activity_page(
             "timezone": tz,
             "csrf_token": await get_csrf_token_for_template(request, session),
             "show_setup_wizard": show_setup_wizard,
-            "sidebar_health": sidebar_health_dots(snaps_act),
+            "sidebar_health": sidebar_health_dots(snaps_act, settings),
         },
     )

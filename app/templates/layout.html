@@ -77,12 +77,14 @@
             {% endif %}
           </a>
           <div class="sidebar-divider" aria-hidden="true"></div>
-          <a href="/refiner" class="sidebar-link {% if request.url.path in ['/refiner', '/refiner/settings'] %}active{% endif %}">
+          <a href="/refiner" class="sidebar-link {% if request.url.path in ['/refiner', '/refiner/settings',
+            '/refiner/sonarr/settings'] %}active{% endif %}">
             <i data-lucide="sliders-horizontal" class="sidebar-icon"></i>
             <span>Refiner</span>
             {% if sidebar_health is defined %}
-            <span class="sidebar-health-dots sidebar-health-dots--solo" aria-hidden="true">
-              <span class="sidebar-health-dot sidebar-health-dot--{{ sidebar_health.get('emby', 'unknown') }}" title="Media server reachability (Emby)"></span>
+            <span class="sidebar-health-dots" aria-hidden="true">
+              <span class="sidebar-health-dot sidebar-health-dot--{{ sidebar_health.get('sonarr_refiner', 'unknown') }}" title="Sonarr Refiner (TV)"></span>
+              <span class="sidebar-health-dot sidebar-health-dot--{{ sidebar_health.get('refiner_radarr', 'unknown') }}" title="Radarr Refiner (Movies)"></span>
             </span>
             {% endif %}
           </a>

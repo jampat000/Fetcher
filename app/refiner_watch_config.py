@@ -16,3 +16,19 @@ def clamp_refiner_interval_seconds(raw: object) -> int:
         REFINER_WATCH_INTERVAL_SEC_MIN,
         min(REFINER_WATCH_INTERVAL_SEC_MAX, v),
     )
+
+
+REFINER_MINIMUM_AGE_SEC_MIN = 10
+REFINER_MINIMUM_AGE_SEC_MAX = 300
+REFINER_MINIMUM_AGE_SEC_DEFAULT = 60
+
+
+def clamp_refiner_minimum_age_seconds(raw: object) -> int:
+    try:
+        v = int(raw)
+    except (TypeError, ValueError):
+        v = REFINER_MINIMUM_AGE_SEC_DEFAULT
+    return max(
+        REFINER_MINIMUM_AGE_SEC_MIN,
+        min(REFINER_MINIMUM_AGE_SEC_MAX, v),
+    )

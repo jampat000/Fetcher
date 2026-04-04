@@ -1,13 +1,17 @@
-{# Top tabs when working in the Refiner feature (overview vs settings). #}
+{# Top tabs when working in the Refiner feature. #}
 {% macro refiner_area_tabs(active) %}
 <nav class="settings-tabs refiner-area-tabs" aria-label="Refiner">
   <a href="/refiner" class="settings-tab {% if active == 'overview' %}is-active{% endif %}">
     <span class="settings-tab-dot gray" aria-hidden="true"></span>
     Overview
   </a>
+  <a href="/refiner/sonarr/settings" class="settings-tab {% if active == 'sonarr_settings' %}is-active{% endif %}">
+    <span class="settings-tab-dot blue" aria-hidden="true"></span>
+    TV
+  </a>
   <a href="/refiner/settings" class="settings-tab {% if active == 'settings' %}is-active{% endif %}">
-    <span class="settings-tab-dot gray" aria-hidden="true"></span>
-    Settings
+    <span class="settings-tab-dot amber" aria-hidden="true"></span>
+    Movies
   </a>
 </nav>
 {% endmacro %}
