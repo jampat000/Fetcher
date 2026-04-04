@@ -65,6 +65,52 @@ _refiner_lock = asyncio.Lock()
 _sonarr_refiner_lock = asyncio.Lock()
 
 
+def _find_movie_id_in_inactive_rows(
+    fp: Path, snap: RefinerQueueSnapshot
+) -> int | None:
+    """Match Radarr queue rows that upstream_analyze_path skips for movie ID (e.g. importPending).
+
+    Path match wins for any row (Radarr still owns the file). Title fallback skips rows that
+    look actively downloading to reduce false positives.
+    """
+    from app.refiner_source_readiness import (
+        _normalize_releaseish_title,
+        _resolved_key,
+        derive_title_fallback_candidate,
+        path_matches_queue_record,
+    )
+
+    file_key = _resolved_key(fp)
+    candidate_title_raw, _ = derive_title_fallback_candidate(fp)
+    candidate_norm = _normalize_releaseish_title(candidate_title_raw)
+    stem_norm = _normalize_releaseish_title(fp.stem)
+
+    for rec in snap.radarr_records:
+        if not isinstance(rec, dict):
+            continue
+        mov = rec.get("movie") if isinstance(rec.get("movie"), dict) else {}
+        mid = mov.get("id")
+        if not isinstance(mid, int) or mid <= 0:
+            continue
+        if path_matches_queue_record(file_key, rec):
+            return mid
+        state = str(rec.get("trackedDownloadState") or "").strip().lower()
+        status = str(rec.get("status") or "").strip().lower()
+        if state == "downloading" or status == "downloading":
+            continue
+        title = str(rec.get("title") or "").strip()
+        if title:
+            title_norm = _normalize_releaseish_title(title)
+            if title_norm and (
+                candidate_norm.startswith(title_norm)
+                or title_norm.startswith(candidate_norm)
+                or stem_norm.startswith(title_norm)
+                or title_norm.startswith(stem_norm)
+            ):
+                return mid
+    return None
+
+
 async def _movie_wrong_content_ctx_for_candidate(
     fp: Path, row: AppSettings, snap: RefinerQueueSnapshot
 ) -> dict[str, Any] | None:
@@ -74,6 +120,8 @@ async def _movie_wrong_content_ctx_for_candidate(
     _, _, _, ud = upstream_analyze_path(fp, snap)
     mid = ud.get("radarr_refiner_target_movie_id")
     if not isinstance(mid, int) or mid <= 0:
+        mid = _find_movie_id_in_inactive_rows(fp, snap)
+    if not isinstance(mid, int) or mid is None or mid <= 0:
         return None
     url = (row.radarr_url or "").strip()
     key = resolve_radarr_api_key(row)
@@ -416,20 +464,23 @@ async def run_refiner_pass(
                 if snap.authority_useful:
                     _, _, _, own_diag = upstream_analyze_path(fp, snap)
                     if own_diag.get("radarr_refiner_target_movie_id") is None:
-                        logger.info(
-                            "Refiner: skipping %s — Radarr authority"
-                            " is reachable but reports no owning"
-                            " movie for this file (radarr_disowned)."
-                            " File may be from a failed download."
-                            " Manual review recommended.",
-                            fp.name,
-                        )
-                        row.refiner_current_pass_done += 1
-                        try:
-                            await session.commit()
-                        except Exception:
-                            pass
-                        continue
+                        # importPending and similar rows are inactive in upstream_analyze_path,
+                        # so movie ID may be unset there — still Radarr-owned.
+                        if _find_movie_id_in_inactive_rows(fp, snap) is None:
+                            logger.info(
+                                "Refiner: skipping %s — Radarr authority"
+                                " is reachable but reports no owning"
+                                " movie for this file (radarr_disowned)."
+                                " File may be from a failed download."
+                                " Manual review recommended.",
+                                fp.name,
+                            )
+                            row.refiner_current_pass_done += 1
+                            try:
+                                await session.commit()
+                            except Exception:
+                                pass
+                            continue
 
             act_id = await _insert_refiner_processing_row(fp.name)
             status: str = "error"

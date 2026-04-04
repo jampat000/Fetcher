@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 4.0.3 — 2026-04-04
+
+### Fixed
+
+- **Refiner (movies / Radarr):** Radarr **importPending** (and other inactive queue rows) no longer fail the ownership guard—fallback matches queue rows by path or title so movie ID is recognized while upstream “active only” diagnostics stay unchanged for blocking.
+- **Refiner wrong-content:** `_movie_wrong_content_ctx_for_candidate` uses the same inactive-row fallback for movie ID when `upstream_analyze_path` does not populate it, so wrong-content context works for import-wait files.
+
 ## 4.0.2 — 2026-04-04
 
 ### Fixed
