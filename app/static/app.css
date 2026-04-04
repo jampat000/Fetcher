@@ -3606,6 +3606,10 @@ textarea.input:focus {
   .automation-cards {
     grid-template-columns: 1fr;
   }
+  /* span 2 would imply a second column and defeat the 1fr layout */
+  .automation-cards > .automation-group-label {
+    grid-column: 1 / -1;
+  }
 }
 .automation-card[data-automation-card="sonarr"] {
   border-left: 2px solid rgba(59, 130, 246, 0.55);
