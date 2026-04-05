@@ -59,6 +59,10 @@ def test_api_dashboard_status_ok(monkeypatch) -> None:
     assert data["sonarr_upgrades"] >= 0
     assert data["radarr_upgrades"] >= 0
     assert data["emby_matched"] >= 0
+    assert "last_sonarr_cleanup_run" in data
+    assert "last_radarr_cleanup_run" in data
+    assert "next_sonarr_cleanup_display" in data
+    assert "next_radarr_cleanup_display" in data
 
 
 def test_dashboard_route_smoke(monkeypatch) -> None:

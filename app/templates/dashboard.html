@@ -111,21 +111,50 @@
 
       <div class="automation-card dash-summary-tile" data-automation-card="sonarr">
         <div class="dash-summary-tile-head"><span class="dash-summary-tile-title">Sonarr</span></div>
-        <dl class="dash-summary-meta">
-          <div class="dash-summary-meta-row">
-            <dt>Last run</dt>
-            <dd class="dash-summary-meta-dd" id="dash-last-sonarr-run">
-              {% if av.last_sonarr_run.time_local %}
-                <strong class="dash-summary-time-emphasis" id="dash-last-sonarr-rel">{{ av.last_sonarr_run.relative }}</strong>
-                {% if av.last_sonarr_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif av.last_sonarr_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
-              {% else %}<span class="dash-summary-empty-state">Not yet run</span>{% endif %}
-            </dd>
+        <div class="automation-arr-substack">
+          <div class="automation-subjob-section">
+            <div class="automation-subjob-label">Search</div>
+            <dl class="dash-summary-meta">
+              <div class="dash-summary-meta-row">
+                <dt>Last run</dt>
+                <dd class="dash-summary-meta-dd" id="dash-last-sonarr-run">
+                  {% if av.last_sonarr_run.time_local %}
+                    <strong class="dash-summary-time-emphasis" id="dash-last-sonarr-rel">{{ av.last_sonarr_run.relative }}</strong>
+                    {% if av.last_sonarr_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif av.last_sonarr_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
+                  {% else %}<span class="dash-summary-empty-state">Not yet run</span>{% endif %}
+                </dd>
+              </div>
+              <div class="dash-summary-meta-row">
+                <dt>Next run</dt>
+                <dd class="dash-summary-meta-dd automation-card-subline">{{ next_run_block(av.next_sonarr_display, "dash-next-sonarr-tick", "dash-next-sonarr-rel") }}</dd>
+              </div>
+            </dl>
           </div>
-          <div class="dash-summary-meta-row">
-            <dt>Next run</dt>
-            <dd class="dash-summary-meta-dd automation-card-subline">{{ next_run_block(av.next_sonarr_display, "dash-next-sonarr-tick", "dash-next-sonarr-rel") }}</dd>
+          <div class="automation-subjob-section">
+            <div class="automation-subjob-label">Cleanup</div>
+            <dl class="dash-summary-meta">
+              <div class="dash-summary-meta-row">
+                <dt>Last run</dt>
+                <dd class="dash-summary-meta-dd" id="dash-last-sonarr-cleanup-run">
+                  {% if not av.sonarr_enabled %}
+                    <span class="dash-summary-empty-state">Off</span>
+                  {% elif not av.sonarr_cleanup_ui_active %}
+                    <span class="dash-summary-empty-state">Not scheduled</span>
+                  {% elif av.last_sonarr_cleanup_run.time_local %}
+                    <strong class="dash-summary-time-emphasis" id="dash-last-sonarr-cleanup-rel">{{ av.last_sonarr_cleanup_run.relative }}</strong>
+                    {% if av.last_sonarr_cleanup_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif av.last_sonarr_cleanup_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
+                  {% else %}
+                    <span class="dash-summary-empty-state">Not yet run</span>
+                  {% endif %}
+                </dd>
+              </div>
+              <div class="dash-summary-meta-row">
+                <dt>Next run</dt>
+                <dd class="dash-summary-meta-dd automation-card-subline">{{ next_run_block(av.next_sonarr_cleanup_display, "dash-next-sonarr-cleanup-tick", "dash-next-sonarr-cleanup-rel") }}</dd>
+              </div>
+            </dl>
           </div>
-        </dl>
+        </div>
         {{ automation_sparkline_block(av, "sonarr", "Sonarr") }}
         <div class="dash-summary-tile-footer automation-tile-footer automation-footer-shell">
           <div class="automation-footer-note-slot">
@@ -137,21 +166,50 @@
 
       <div class="automation-card dash-summary-tile" data-automation-card="radarr">
         <div class="dash-summary-tile-head"><span class="dash-summary-tile-title">Radarr</span></div>
-        <dl class="dash-summary-meta">
-          <div class="dash-summary-meta-row">
-            <dt>Last run</dt>
-            <dd class="dash-summary-meta-dd" id="dash-last-radarr-run">
-              {% if av.last_radarr_run.time_local %}
-                <strong class="dash-summary-time-emphasis" id="dash-last-radarr-rel">{{ av.last_radarr_run.relative }}</strong>
-                {% if av.last_radarr_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif av.last_radarr_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
-              {% else %}<span class="dash-summary-empty-state">Not yet run</span>{% endif %}
-            </dd>
+        <div class="automation-arr-substack">
+          <div class="automation-subjob-section">
+            <div class="automation-subjob-label">Search</div>
+            <dl class="dash-summary-meta">
+              <div class="dash-summary-meta-row">
+                <dt>Last run</dt>
+                <dd class="dash-summary-meta-dd" id="dash-last-radarr-run">
+                  {% if av.last_radarr_run.time_local %}
+                    <strong class="dash-summary-time-emphasis" id="dash-last-radarr-rel">{{ av.last_radarr_run.relative }}</strong>
+                    {% if av.last_radarr_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif av.last_radarr_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
+                  {% else %}<span class="dash-summary-empty-state">Not yet run</span>{% endif %}
+                </dd>
+              </div>
+              <div class="dash-summary-meta-row">
+                <dt>Next run</dt>
+                <dd class="dash-summary-meta-dd automation-card-subline">{{ next_run_block(av.next_radarr_display, "dash-next-radarr-tick", "dash-next-radarr-rel") }}</dd>
+              </div>
+            </dl>
           </div>
-          <div class="dash-summary-meta-row">
-            <dt>Next run</dt>
-            <dd class="dash-summary-meta-dd automation-card-subline">{{ next_run_block(av.next_radarr_display, "dash-next-radarr-tick", "dash-next-radarr-rel") }}</dd>
+          <div class="automation-subjob-section">
+            <div class="automation-subjob-label">Cleanup</div>
+            <dl class="dash-summary-meta">
+              <div class="dash-summary-meta-row">
+                <dt>Last run</dt>
+                <dd class="dash-summary-meta-dd" id="dash-last-radarr-cleanup-run">
+                  {% if not av.radarr_enabled %}
+                    <span class="dash-summary-empty-state">Off</span>
+                  {% elif not av.radarr_cleanup_ui_active %}
+                    <span class="dash-summary-empty-state">Not scheduled</span>
+                  {% elif av.last_radarr_cleanup_run.time_local %}
+                    <strong class="dash-summary-time-emphasis" id="dash-last-radarr-cleanup-rel">{{ av.last_radarr_cleanup_run.relative }}</strong>
+                    {% if av.last_radarr_cleanup_run.ok is sameas true %}<span class="status-pill status-pill-ok">Succeeded</span>{% elif av.last_radarr_cleanup_run.ok is sameas false %}<span class="status-pill status-pill-fail">Failed</span>{% endif %}
+                  {% else %}
+                    <span class="dash-summary-empty-state">Not yet run</span>
+                  {% endif %}
+                </dd>
+              </div>
+              <div class="dash-summary-meta-row">
+                <dt>Next run</dt>
+                <dd class="dash-summary-meta-dd automation-card-subline">{{ next_run_block(av.next_radarr_cleanup_display, "dash-next-radarr-cleanup-tick", "dash-next-radarr-cleanup-rel") }}</dd>
+              </div>
+            </dl>
           </div>
-        </dl>
+        </div>
         {{ automation_sparkline_block(av, "radarr", "Radarr") }}
         <div class="dash-summary-tile-footer automation-tile-footer automation-footer-shell">
           <div class="automation-footer-note-slot">

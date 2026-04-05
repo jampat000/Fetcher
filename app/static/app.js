@@ -766,7 +766,21 @@ function applyDashboardAutomationStatus(data) {
   }
 
   setNextTick("dash-next-sonarr-tick", "dash-next-sonarr-rel", data.next_sonarr_tick_local, data.next_sonarr_relative, data.next_sonarr_display);
+  setNextTick(
+    "dash-next-sonarr-cleanup-tick",
+    "dash-next-sonarr-cleanup-rel",
+    data.next_sonarr_cleanup_tick_local,
+    data.next_sonarr_cleanup_relative,
+    data.next_sonarr_cleanup_display,
+  );
   setNextTick("dash-next-radarr-tick", "dash-next-radarr-rel", data.next_radarr_tick_local, data.next_radarr_relative, data.next_radarr_display);
+  setNextTick(
+    "dash-next-radarr-cleanup-tick",
+    "dash-next-radarr-cleanup-rel",
+    data.next_radarr_cleanup_tick_local,
+    data.next_radarr_cleanup_relative,
+    data.next_radarr_cleanup_display,
+  );
   setNextTick("dash-next-refiner-tick", "dash-next-refiner-rel", data.next_refiner_tick_local, data.next_refiner_relative, data.next_refiner_display);
   setNextTick(
     "dash-next-sonarr-refiner-tick",
@@ -805,6 +819,47 @@ function applyDashboardAutomationStatus(data) {
       lastRadarr.innerHTML = `<strong class="dash-summary-time-emphasis" id="dash-last-radarr-rel">${rel}</strong>${ok}`;
     } else lastRadarr.innerHTML = '<span class="dash-summary-empty-state">Not yet run</span>';
   }
+
+  function updateArrCleanupLastRun(ddId, relEmphasisId, dispRaw, runRaw) {
+    const el = document.getElementById(ddId);
+    if (!el) return;
+    const disp = dispRaw && typeof dispRaw === "object" ? dispRaw : null;
+    if (!disp || disp.state === undefined) return;
+    const r = runRaw && typeof runRaw === "object" ? runRaw : {};
+    const primaryLower = String(disp.primary || "").trim().toLowerCase();
+    if (disp.state === "disabled" && primaryLower === "off") {
+      el.innerHTML = '<span class="dash-summary-empty-state">Off</span>';
+      return;
+    }
+    if (disp.state === "disabled" && primaryLower === "not scheduled") {
+      el.innerHTML = '<span class="dash-summary-empty-state">Not scheduled</span>';
+      return;
+    }
+    if (r.time_local) {
+      const rel = escapeHtml(r.relative || r.time_local || "");
+      const ok =
+        r.ok === true
+          ? ' <span class="status-pill status-pill-ok">Succeeded</span>'
+          : r.ok === false
+            ? ' <span class="status-pill status-pill-fail">Failed</span>'
+            : "";
+      el.innerHTML = `<strong class="dash-summary-time-emphasis" id="${relEmphasisId}">${rel}</strong>${ok}`;
+    } else el.innerHTML = '<span class="dash-summary-empty-state">Not yet run</span>';
+  }
+
+  updateArrCleanupLastRun(
+    "dash-last-sonarr-cleanup-run",
+    "dash-last-sonarr-cleanup-rel",
+    data.next_sonarr_cleanup_display,
+    data.last_sonarr_cleanup_run,
+  );
+  updateArrCleanupLastRun(
+    "dash-last-radarr-cleanup-run",
+    "dash-last-radarr-cleanup-rel",
+    data.next_radarr_cleanup_display,
+    data.last_radarr_cleanup_run,
+  );
+
   const lastTrimmer = document.getElementById("dash-last-trimmer-run");
   if (lastTrimmer) {
     const r = data.last_trimmer_run || {};
@@ -970,7 +1025,9 @@ function startDashboardStatusPolling() {
           var hash = JSON.stringify([
             data.fetcher_phase,
             data.last_sonarr_run,
+            data.last_sonarr_cleanup_run,
             data.last_radarr_run,
+            data.last_radarr_cleanup_run,
             data.last_trimmer_run,
             data.last_refiner_run,
             data.last_sonarr_refiner_run,
@@ -1027,7 +1084,9 @@ function startDashboardStatusPolling() {
           lastPayloadHash = JSON.stringify([
             data.fetcher_phase,
             data.last_sonarr_run,
+            data.last_sonarr_cleanup_run,
             data.last_radarr_run,
+            data.last_radarr_cleanup_run,
             data.last_trimmer_run,
             data.last_refiner_run,
             data.last_sonarr_refiner_run,

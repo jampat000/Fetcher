@@ -28,7 +28,12 @@ from app.settings_canonical import (
     trimmer_interval_minutes_read,
     tv_refiner_interval_seconds_read,
 )
-from app.service_logic import _radarr_missing_total_including_unreleased, _sonarr_missing_total_including_unreleased
+from app.service_logic import (
+    _radarr_missing_total_including_unreleased,
+    _sonarr_missing_total_including_unreleased,
+    radarr_failed_import_cleanup_scheduler_interval_minutes,
+    sonarr_failed_import_cleanup_scheduler_interval_minutes,
+)
 from app.time_util import utc_now_naive
 from app.web_common import user_visible_job_run_message
 
@@ -258,6 +263,23 @@ def _fetcher_phase_for_dashboard(
     )
 
 
+async def _latest_finished_cleanup_job_ok(session: AsyncSession, app: str) -> bool | None:
+    """Most recent finished JobRunLog row for failed-import cleanup (shared ``app`` column with search)."""
+    row = (
+        await session.execute(
+            select(JobRunLog.ok)
+            .where(JobRunLog.app == app)
+            .where(JobRunLog.finished_at.isnot(None))
+            .where(JobRunLog.message.like("%failed-import cleanup%"))
+            .order_by(desc(JobRunLog.id))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return None
+    return bool(row)
+
+
 async def _sparkline_for_app(session: AsyncSession, app: str) -> list[bool | None]:
     rows = (
         (
@@ -479,6 +501,100 @@ async def build_dashboard_status(
     next_sonarr_refiner_relative = (
         _relative_phrase_until(next_sonarr_refiner_dt, now) if next_sonarr_refiner_dt else ""
     )
+
+    sonarr_cleanup_interval_m = sonarr_failed_import_cleanup_scheduler_interval_minutes(settings)
+    radarr_cleanup_interval_m = radarr_failed_import_cleanup_scheduler_interval_minutes(settings)
+    next_sonarr_cleanup_dt = next_runs.get("sonarr_failed_import_cleanup")
+    next_radarr_cleanup_dt = next_runs.get("radarr_failed_import_cleanup")
+    if (
+        not next_sonarr_cleanup_dt
+        and sonarr_cleanup_interval_m is not None
+        and settings.sonarr_enabled
+        and settings.sonarr_failed_import_cleanup_last_run_at
+    ):
+        next_sonarr_cleanup_dt = settings.sonarr_failed_import_cleanup_last_run_at + timedelta(
+            minutes=sonarr_cleanup_interval_m
+        )
+    if (
+        not next_radarr_cleanup_dt
+        and radarr_cleanup_interval_m is not None
+        and settings.radarr_enabled
+        and settings.radarr_failed_import_cleanup_last_run_at
+    ):
+        next_radarr_cleanup_dt = settings.radarr_failed_import_cleanup_last_run_at + timedelta(
+            minutes=radarr_cleanup_interval_m
+        )
+    next_sonarr_cleanup_local = fmt_local(next_sonarr_cleanup_dt, tz) if next_sonarr_cleanup_dt else ""
+    next_radarr_cleanup_local = fmt_local(next_radarr_cleanup_dt, tz) if next_radarr_cleanup_dt else ""
+    next_sonarr_cleanup_relative = (
+        _relative_phrase_until(next_sonarr_cleanup_dt, now) if next_sonarr_cleanup_dt else ""
+    )
+    next_radarr_cleanup_relative = (
+        _relative_phrase_until(next_radarr_cleanup_dt, now) if next_radarr_cleanup_dt else ""
+    )
+
+    last_sonarr_cleanup_run: dict[str, Any] = {"time_local": "", "ok": None, "relative": ""}
+    if settings.sonarr_enabled and sonarr_cleanup_interval_m is not None:
+        _s_clean_dt = settings.sonarr_failed_import_cleanup_last_run_at
+        if _s_clean_dt:
+            last_sonarr_cleanup_run = _last_from(_s_clean_dt, None)
+            last_sonarr_cleanup_run["ok"] = await _latest_finished_cleanup_job_ok(
+                session, "sonarr"
+            )
+
+    last_radarr_cleanup_run: dict[str, Any] = {"time_local": "", "ok": None, "relative": ""}
+    if settings.radarr_enabled and radarr_cleanup_interval_m is not None:
+        _r_clean_dt = settings.radarr_failed_import_cleanup_last_run_at
+        if _r_clean_dt:
+            last_radarr_cleanup_run = _last_from(_r_clean_dt, None)
+            last_radarr_cleanup_run["ok"] = await _latest_finished_cleanup_job_ok(
+                session, "radarr"
+            )
+
+    if not settings.sonarr_enabled:
+        next_sonarr_cleanup_display = {
+            "state": "disabled",
+            "primary": "Off",
+            "secondary": "Sonarr disabled in settings",
+        }
+    elif sonarr_cleanup_interval_m is None:
+        next_sonarr_cleanup_display = {
+            "state": "disabled",
+            "primary": "Not scheduled",
+            "secondary": "No failed-import cleanup actions enabled",
+        }
+    else:
+        next_sonarr_cleanup_display = _next_run_display(
+            enabled=True,
+            schedule_enabled=True,
+            next_local=next_sonarr_cleanup_local,
+            next_relative=next_sonarr_cleanup_relative,
+            unscheduled_state="scheduled",
+            unscheduled_secondary="",
+        )
+
+    if not settings.radarr_enabled:
+        next_radarr_cleanup_display = {
+            "state": "disabled",
+            "primary": "Off",
+            "secondary": "Radarr disabled in settings",
+        }
+    elif radarr_cleanup_interval_m is None:
+        next_radarr_cleanup_display = {
+            "state": "disabled",
+            "primary": "Not scheduled",
+            "secondary": "No failed-import cleanup actions enabled",
+        }
+    else:
+        next_radarr_cleanup_display = _next_run_display(
+            enabled=True,
+            schedule_enabled=True,
+            next_local=next_radarr_cleanup_local,
+            next_relative=next_radarr_cleanup_relative,
+            unscheduled_state="scheduled",
+            unscheduled_secondary="",
+        )
+
     next_sonarr_display = _next_run_display(
         enabled=bool(settings.sonarr_enabled),
         schedule_enabled=bool(settings.sonarr_schedule_enabled),
@@ -636,6 +752,18 @@ async def build_dashboard_status(
         "sonarr_refiner_enabled": bool(
             getattr(settings, "sonarr_refiner_enabled", False)
         ),
+        "last_sonarr_cleanup_run": last_sonarr_cleanup_run,
+        "last_radarr_cleanup_run": last_radarr_cleanup_run,
+        "next_sonarr_cleanup_tick_local": next_sonarr_cleanup_local,
+        "next_radarr_cleanup_tick_local": next_radarr_cleanup_local,
+        "next_sonarr_cleanup_relative": next_sonarr_cleanup_relative,
+        "next_radarr_cleanup_relative": next_radarr_cleanup_relative,
+        "next_sonarr_cleanup_display": next_sonarr_cleanup_display,
+        "next_radarr_cleanup_display": next_radarr_cleanup_display,
+        "sonarr_cleanup_ui_active": bool(settings.sonarr_enabled)
+        and sonarr_cleanup_interval_m is not None,
+        "radarr_cleanup_ui_active": bool(settings.radarr_enabled)
+        and radarr_cleanup_interval_m is not None,
     }
 
 

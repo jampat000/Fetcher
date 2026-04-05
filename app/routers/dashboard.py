@@ -58,6 +58,14 @@ def _automation_view_for_template(settings: Any, dash_status: Mapping[str, Any])
         "fetcher_phase_detail": dash_status["fetcher_phase_detail"],
         "last_sonarr_run": dash_status["last_sonarr_run"],
         "last_radarr_run": dash_status["last_radarr_run"],
+        "last_sonarr_cleanup_run": dash_status.get(
+            "last_sonarr_cleanup_run",
+            {"time_local": "", "ok": None, "relative": ""},
+        ),
+        "last_radarr_cleanup_run": dash_status.get(
+            "last_radarr_cleanup_run",
+            {"time_local": "", "ok": None, "relative": ""},
+        ),
         "last_trimmer_run": dash_status["last_trimmer_run"],
         "last_refiner_run": dash_status.get(
             "last_refiner_run", {"time_local": "", "ok": None, "relative": "", "time_iso": ""}
@@ -80,12 +88,24 @@ def _automation_view_for_template(settings: Any, dash_status: Mapping[str, Any])
             local=str(dash_status.get("next_sonarr_tick_local") or ""),
             rel=str(dash_status.get("next_sonarr_relative") or ""),
         ),
+        "next_sonarr_cleanup_display": dash_status.get("next_sonarr_cleanup_display")
+        or {
+            "state": "disabled",
+            "primary": "Not scheduled",
+            "secondary": "No failed-import cleanup actions enabled",
+        },
         "next_radarr_display": dash_status.get("next_radarr_display")
         or _fallback_display(
             enabled=bool(settings.radarr_enabled),
             local=str(dash_status.get("next_radarr_tick_local") or ""),
             rel=str(dash_status.get("next_radarr_relative") or ""),
         ),
+        "next_radarr_cleanup_display": dash_status.get("next_radarr_cleanup_display")
+        or {
+            "state": "disabled",
+            "primary": "Not scheduled",
+            "secondary": "No failed-import cleanup actions enabled",
+        },
         "next_refiner_display": dash_status.get("next_refiner_display")
         or _fallback_display(
             enabled=bool(settings.refiner_enabled),
@@ -127,6 +147,8 @@ def _automation_view_for_template(settings: Any, dash_status: Mapping[str, Any])
         "sonarr_refiner_live_total": dash_status.get("sonarr_refiner_live_total", 0),
         "sonarr_refiner_live_done": dash_status.get("sonarr_refiner_live_done", 0),
         "sonarr_refiner_enabled": bool(getattr(settings, "sonarr_refiner_enabled", False)),
+        "sonarr_cleanup_ui_active": bool(dash_status.get("sonarr_cleanup_ui_active")),
+        "radarr_cleanup_ui_active": bool(dash_status.get("radarr_cleanup_ui_active")),
     }
 
 

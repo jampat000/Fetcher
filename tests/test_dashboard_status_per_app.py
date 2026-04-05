@@ -106,6 +106,9 @@ def test_build_dashboard_status_has_per_app_last_run_status(monkeypatch) -> None
             assert "No line for this app" not in (data["sonarr_automation_sub"] or "")
             assert data["trimmer_connection_type"] == "Trimmer"
             assert data["trimmer_connection_status"] == "Connected"
+            assert "last_sonarr_cleanup_run" in data
+            assert "next_sonarr_cleanup_display" in data
+            assert "sonarr_cleanup_ui_active" in data
 
     asyncio.run(_go())
 

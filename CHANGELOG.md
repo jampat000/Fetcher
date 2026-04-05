@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 4.0.7 — 2026-04-05
+
+### Changed
+
+- **Refiner (internal):** Consolidated duplicated Radarr (movies) and Sonarr (TV) per-file runner orchestration into a single shared helper in `refiner_service`—callbacks keep movie-only vs TV-only behavior; no intentional processing, logging, or accounting changes.
+- **Dashboard:** Sonarr and Radarr automation tiles group **Search** and **Cleanup** (failed-import cleanup) with last/next lines each; payload and live polling carry the extra fields only—no scheduler or job behavior changes.
+
+### Notes
+
+- Maintenance-only release: no new features, no schema or migration changes, no rebranding. Milestone **v5.0.0** remains reserved for a later major release (rebrand and watched/output cleanup work).
+
 ## 4.0.6 — 2026-04-04
 
 ### Changed
