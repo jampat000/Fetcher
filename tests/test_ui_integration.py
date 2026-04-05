@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from app.db import SessionLocal, get_or_create_settings
 from app.main import app
+from tests.jwt_secrets import FETCHER_JWT_SECRET_TEST
 
 _WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
@@ -1706,7 +1707,7 @@ def test_get_settings_save_fail_banner_visible_on_sonarr_tab(monkeypatch: pytest
 
 
 def test_test_sonarr_post_does_not_mutate_app_settings_url(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+    monkeypatch.setenv("FETCHER_JWT_SECRET", FETCHER_JWT_SECRET_TEST)
 
     async def seed() -> None:
         async with SessionLocal() as session:

@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from app.db import SessionLocal, get_or_create_settings
 from app.main import app
 from app.trimmer_service import TRIMMER_REVIEW_ERROR_MISSING_CONNECTION
+from tests.jwt_secrets import FETCHER_JWT_SECRET_TEST
 
 
 def _client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
@@ -74,7 +75,7 @@ def _install_fake_scan_dependencies(monkeypatch: pytest.MonkeyPatch, *, item_nam
 
 
 def test_trimmer_page_no_scan_fast_path(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+    monkeypatch.setenv("FETCHER_JWT_SECRET", FETCHER_JWT_SECRET_TEST)
     captured = _capture_template_context(monkeypatch)
     asyncio.run(
         _set_trimmer_state(
@@ -96,7 +97,7 @@ def test_trimmer_page_no_scan_fast_path(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_trimmer_page_missing_emby_url_or_key_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+    monkeypatch.setenv("FETCHER_JWT_SECRET", FETCHER_JWT_SECRET_TEST)
     captured = _capture_template_context(monkeypatch)
     asyncio.run(
         _set_trimmer_state(
@@ -115,7 +116,7 @@ def test_trimmer_page_missing_emby_url_or_key_error(monkeypatch: pytest.MonkeyPa
 
 
 def test_trimmer_scan_success_context_shaping(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+    monkeypatch.setenv("FETCHER_JWT_SECRET", FETCHER_JWT_SECRET_TEST)
     captured = _capture_template_context(monkeypatch)
     _install_fake_scan_dependencies(monkeypatch, item_name="My Candidate")
     asyncio.run(
@@ -146,7 +147,7 @@ def test_trimmer_scan_success_context_shaping(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_trimmer_scan_dry_run_skips_live_delete_and_last_run_commit(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+    monkeypatch.setenv("FETCHER_JWT_SECRET", FETCHER_JWT_SECRET_TEST)
     _capture_template_context(monkeypatch)
     _install_fake_scan_dependencies(monkeypatch)
     called = {"live_delete": 0}
@@ -179,7 +180,7 @@ def test_trimmer_scan_dry_run_skips_live_delete_and_last_run_commit(monkeypatch:
 
 
 def test_trimmer_scan_live_mode_calls_delete_and_persists_last_run(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+    monkeypatch.setenv("FETCHER_JWT_SECRET", FETCHER_JWT_SECRET_TEST)
     # Keep this regression test stable even when CI injects ARR API keys in env.
     monkeypatch.delenv("FETCHER_SONARR_API_KEY", raising=False)
     monkeypatch.delenv("FETCHER_RADARR_API_KEY", raising=False)

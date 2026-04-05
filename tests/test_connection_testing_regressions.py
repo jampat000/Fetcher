@@ -14,6 +14,7 @@ from app.setup_helpers import (
     test_radarr_connection as run_radarr_connection_test,
     test_sonarr_connection as run_sonarr_connection_test,
 )
+from tests.jwt_secrets import FETCHER_JWT_SECRET_TEST
 
 
 def _client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
@@ -51,7 +52,7 @@ async def _latest_snapshot() -> AppSnapshot:
 
 
 def test_settings_test_sonarr_redirect_snapshot_and_key_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+    monkeypatch.setenv("FETCHER_JWT_SECRET", FETCHER_JWT_SECRET_TEST)
     asyncio.run(_clear_snapshots())
     asyncio.run(_set_settings(sonarr_url="http://sonarr.local:8989", sonarr_api_key="db-key"))
     seen: dict[str, Any] = {"resolver_called": 0, "service_called": 0, "api_key": None}
@@ -87,7 +88,7 @@ def test_settings_test_sonarr_redirect_snapshot_and_key_resolution(monkeypatch: 
 
 
 def test_settings_test_sonarr_async_header_returns_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+    monkeypatch.setenv("FETCHER_JWT_SECRET", FETCHER_JWT_SECRET_TEST)
     asyncio.run(_clear_snapshots())
     asyncio.run(_set_settings(sonarr_url="http://sonarr.local:8989", sonarr_api_key="db-key"))
 
@@ -109,7 +110,7 @@ def test_settings_test_sonarr_async_header_returns_json(monkeypatch: pytest.Monk
 
 
 def test_settings_test_radarr_httpstatuserror_message_and_lifecycle(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+    monkeypatch.setenv("FETCHER_JWT_SECRET", FETCHER_JWT_SECRET_TEST)
     asyncio.run(_clear_snapshots())
     asyncio.run(_set_settings(radarr_url="http://radarr.local:7878", radarr_api_key="db-key"))
     seen = {"service_called": 0}
@@ -144,7 +145,7 @@ def test_settings_test_radarr_httpstatuserror_message_and_lifecycle(monkeypatch:
 
 
 def test_settings_test_radarr_async_header_returns_json_on_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+    monkeypatch.setenv("FETCHER_JWT_SECRET", FETCHER_JWT_SECRET_TEST)
     asyncio.run(_clear_snapshots())
     asyncio.run(_set_settings(radarr_url="http://radarr.local:7878", radarr_api_key="db-key"))
 
@@ -215,7 +216,7 @@ def test_setup_helper_http_error_reports_exception_class(monkeypatch: pytest.Mon
 
 
 def test_api_setup_test_sonarr_uses_resolver_and_returns_helper_shape(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+    monkeypatch.setenv("FETCHER_JWT_SECRET", FETCHER_JWT_SECRET_TEST)
     seen: dict[str, Any] = {"scope": None, "api_key": None, "helper_key": None}
 
     def _resolve(api_key: str, scope: str) -> str:
@@ -243,7 +244,7 @@ def test_api_setup_test_sonarr_uses_resolver_and_returns_helper_shape(monkeypatc
 
 
 def test_api_setup_test_radarr_propagates_helper_httpstatus_message(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+    monkeypatch.setenv("FETCHER_JWT_SECRET", FETCHER_JWT_SECRET_TEST)
 
     async def _helper(_url: str, _key: str) -> tuple[bool, str]:
         return (

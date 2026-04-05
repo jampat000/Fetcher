@@ -6,6 +6,12 @@ import logging
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.jwt_secrets import (
+    FETCHER_JWT_SECRET_TEST,
+    FETCHER_JWT_SECRET_TEST_MISMATCH_APP,
+    FETCHER_JWT_SECRET_TEST_MISMATCH_ENV,
+)
+
 from app.auth import hash_password
 from app.db import SessionLocal, get_or_create_settings
 from app.main import app
@@ -61,7 +67,7 @@ def test_startup_fails_without_fetcher_jwt_secret(monkeypatch: pytest.MonkeyPatc
 
 def test_startup_warns_when_data_encryption_key_missing(monkeypatch: pytest.MonkeyPatch, caplog) -> None:
     _scheduler_noop(monkeypatch)
-    monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+    monkeypatch.setenv("FETCHER_JWT_SECRET", FETCHER_JWT_SECRET_TEST)
     monkeypatch.delenv("FETCHER_DATA_ENCRYPTION_KEY", raising=False)
     caplog.set_level(logging.WARNING)
     with TestClient(app):
@@ -71,7 +77,7 @@ def test_startup_warns_when_data_encryption_key_missing(monkeypatch: pytest.Monk
 
 def test_refresh_token_cannot_be_reused_after_rotation(monkeypatch: pytest.MonkeyPatch) -> None:
     _scheduler_noop(monkeypatch)
-    monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+    monkeypatch.setenv("FETCHER_JWT_SECRET", FETCHER_JWT_SECRET_TEST)
     asyncio.run(_seed_auth_state())
     with TestClient(app) as client:
         first = _token_pair(client)
@@ -98,7 +104,7 @@ def _http_exception_message(resp) -> str:
 
 def test_api_invalid_bearer_token_returns_actionable_json(monkeypatch: pytest.MonkeyPatch) -> None:
     _scheduler_noop(monkeypatch)
-    monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+    monkeypatch.setenv("FETCHER_JWT_SECRET", FETCHER_JWT_SECRET_TEST)
     asyncio.run(_seed_auth_state())
     with TestClient(app) as client:
         r = client.get(
@@ -116,7 +122,7 @@ def test_api_invalid_bearer_token_returns_actionable_json(monkeypatch: pytest.Mo
 
 def test_api_refresh_token_as_bearer_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     _scheduler_noop(monkeypatch)
-    monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+    monkeypatch.setenv("FETCHER_JWT_SECRET", FETCHER_JWT_SECRET_TEST)
     asyncio.run(_seed_auth_state())
     with TestClient(app) as client:
         tokens = _token_pair(client)
@@ -133,11 +139,11 @@ def test_api_refresh_token_as_bearer_rejected(monkeypatch: pytest.MonkeyPatch) -
 
 def test_refresh_validation_fails_with_wrong_jwt_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     _scheduler_noop(monkeypatch)
-    monkeypatch.setenv("FETCHER_JWT_SECRET", "jwt-secret-a")
+    monkeypatch.setenv("FETCHER_JWT_SECRET", FETCHER_JWT_SECRET_TEST_MISMATCH_ENV)
     asyncio.run(_seed_auth_state())
     with TestClient(app) as client:
         first = _token_pair(client)
-        app.state.jwt_secret = "jwt-secret-b"
+        app.state.jwt_secret = FETCHER_JWT_SECRET_TEST_MISMATCH_APP
         r = client.post("/api/auth/refresh", json={"refresh_token": first["refresh_token"]})
         assert r.status_code == 401
         assert r.json() == {"message": "Invalid refresh token"}
@@ -145,7 +151,7 @@ def test_refresh_validation_fails_with_wrong_jwt_secret(monkeypatch: pytest.Monk
 
 def test_invalid_login_does_not_reveal_username_existence(monkeypatch: pytest.MonkeyPatch) -> None:
     _scheduler_noop(monkeypatch)
-    monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+    monkeypatch.setenv("FETCHER_JWT_SECRET", FETCHER_JWT_SECRET_TEST)
     asyncio.run(_seed_auth_state())
     with TestClient(app) as client:
         wrong_user = client.post(
@@ -173,7 +179,7 @@ def test_invalid_login_does_not_reveal_username_existence(monkeypatch: pytest.Mo
 
 def test_password_hash_upgrade_only_after_successful_verification(monkeypatch: pytest.MonkeyPatch) -> None:
     _scheduler_noop(monkeypatch)
-    monkeypatch.setenv("FETCHER_JWT_SECRET", "test-jwt-secret-for-pytest-only")
+    monkeypatch.setenv("FETCHER_JWT_SECRET", FETCHER_JWT_SECRET_TEST)
     asyncio.run(_seed_auth_state())
 
     async def _get_hash() -> str:
