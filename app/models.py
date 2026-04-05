@@ -28,8 +28,6 @@ class AppSettings(Base):
     sonarr_schedule_days: Mapped[str] = mapped_column(Text, default="")
     sonarr_schedule_start: Mapped[str] = mapped_column(String(5), default="00:00")  # HH:MM
     sonarr_schedule_end: Mapped[str] = mapped_column(String(5), default="23:59")  # HH:MM
-    # Deprecated Phase 3 (one release): use sonarr_search_interval_minutes. Not written by active save paths.
-    sonarr_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     # Canonical: minutes between Sonarr search ticks when schedule allows.
     sonarr_search_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     sonarr_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -45,8 +43,6 @@ class AppSettings(Base):
     radarr_schedule_days: Mapped[str] = mapped_column(Text, default="")
     radarr_schedule_start: Mapped[str] = mapped_column(String(5), default="00:00")  # HH:MM
     radarr_schedule_end: Mapped[str] = mapped_column(String(5), default="23:59")  # HH:MM
-    # Deprecated Phase 3 (one release): use radarr_search_interval_minutes. Not written by active save paths.
-    radarr_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     # Canonical: minutes between Radarr search ticks when schedule allows.
     radarr_search_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     radarr_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -79,8 +75,6 @@ class AppSettings(Base):
     sonarr_failed_import_remove_from_client: Mapped[bool] = mapped_column(Boolean, default=False)
     radarr_failed_import_remove_from_client: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    # Deprecated Phase 3 (one release): use trimmer_interval_minutes. Not written by active save paths.
-    emby_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     # Canonical: Trimmer run cadence (minutes).
     trimmer_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     emby_last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -88,8 +82,6 @@ class AppSettings(Base):
     sonarr_retry_delay_minutes: Mapped[int] = mapped_column(Integer, default=1440)
     # Min minutes before Fetcher retries searching the same Radarr movie.
     radarr_retry_delay_minutes: Mapped[int] = mapped_column(Integer, default=1440)
-    # Deprecated Phase 3 (one release): per-app cleanup intervals are canonical; not written by active save paths.
-    failed_import_cleanup_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     # Canonical: failed-import cleanup cadence per app (minutes).
     sonarr_failed_import_cleanup_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     radarr_failed_import_cleanup_interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
@@ -146,8 +138,6 @@ class AppSettings(Base):
     refiner_paths: Mapped[str] = mapped_column(Text, default="")
     # Small preset for choosing the best kept audio stream within allowed languages.
     refiner_audio_preference_mode: Mapped[str] = mapped_column(String(24), default="preferred_langs_quality")
-    # Deprecated Phase 3 (one release): use movie_refiner_interval_seconds. Not written by active save paths.
-    refiner_interval_seconds: Mapped[int] = mapped_column(Integer, default=60)
     # Canonical: Movies (Radarr) Refiner poll interval (seconds).
     movie_refiner_interval_seconds: Mapped[int] = mapped_column(Integer, default=60)
     refiner_schedule_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -210,10 +200,6 @@ class AppSettings(Base):
         String(24), default="preferred_langs_quality"
     )
     sonarr_refiner_minimum_age_seconds: Mapped[int] = mapped_column(
-        Integer, default=60
-    )
-    # Deprecated Phase 3 (one release): use tv_refiner_interval_seconds. Not written by active save paths.
-    sonarr_refiner_interval_seconds: Mapped[int] = mapped_column(
         Integer, default=60
     )
     # Canonical: TV (Sonarr) Refiner poll interval (seconds).

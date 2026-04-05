@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 4.0.9 — 2026-04-05
+
+### Changed
+
+- **Schema / migrations:** Removed deprecated **legacy interval** columns from `app_settings` after aligning on **canonical** interval fields (search, Trimmer, Movies Refiner, TV Refiner, per-app failed-import cleanup). **`CURRENT_SCHEMA_VERSION` is 42** with migrations **044+045** (add canonical if needed, **canonical-first** backfill so stale legacy values cannot overwrite real saved canonical data on realistic v4.0.x upgrades, then drop legacy columns). Older migrate steps are guarded so they do not recreate dropped legacy columns on post-purge databases.
+
+### Notes
+
+- **Schema and migration cleanup only** — not a feature release. **v5.0.0** remains reserved for Media Butler rebranding and watched/temp/output cleanup work (not in this release).
+
 ## 4.0.8 — 2026-04-05
 
 ### Changed
