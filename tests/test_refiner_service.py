@@ -485,7 +485,7 @@ def test_rules_config_parses_dropdown_values() -> None:
 
 
 def test_refiner_schema_contract_v35_activity_context_media_title_and_trimmer_activity() -> None:
-    assert CURRENT_SCHEMA_VERSION == 41
+    assert CURRENT_SCHEMA_VERSION == 42
     from app.models import AppSettings, RefinerActivity
 
     assert "refiner_processing_pass_generation" not in AppSettings.__annotations__

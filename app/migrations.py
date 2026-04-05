@@ -86,6 +86,10 @@ async def _migrate_004_radarr_schedule_columns(engine: AsyncEngine) -> None:
 
 async def _migrate_005_arr_interval_minutes_columns(engine: AsyncEngine) -> None:
     table = "app_settings"
+    # After migration 044+045, canonical search intervals exist and legacy columns stay dropped —
+    # do not re-add sonarr_/radarr_interval_minutes or migrate() will overwrite canonical values.
+    if await _has_column(engine, table=table, column="sonarr_search_interval_minutes"):
+        return
     if not await _has_column(engine, table=table, column="sonarr_interval_minutes"):
         await _add_column(engine, table=table, ddl="sonarr_interval_minutes INTEGER NOT NULL DEFAULT 0")
     if not await _has_column(engine, table=table, column="radarr_interval_minutes"):
@@ -105,8 +109,13 @@ async def _migrate_006_arr_last_run_at_columns(engine: AsyncEngine) -> None:
 async def _migrate_007_emby_interval_minutes(engine: AsyncEngine) -> None:
     """Emby Trimmer run cadence (seed from interval_minutes on older DBs that still have that column)."""
     table = "app_settings"
-    if not await _has_column(engine, table=table, column="emby_interval_minutes"):
-        await _add_column(engine, table=table, ddl="emby_interval_minutes INTEGER NOT NULL DEFAULT 60")
+    if await _has_column(engine, table=table, column="emby_interval_minutes"):
+        return
+    # After 044+045, trimmer_interval_minutes is canonical and emby_interval must not be recreated.
+    if await _has_column(engine, table=table, column="trimmer_interval_minutes"):
+        return
+    await _add_column(engine, table=table, ddl="emby_interval_minutes INTEGER NOT NULL DEFAULT 60")
+    if await _has_column(engine, table=table, column="interval_minutes"):
         async with engine.begin() as conn:
             await conn.execute(text("UPDATE app_settings SET emby_interval_minutes = interval_minutes WHERE 1=1"))
 
@@ -116,17 +125,21 @@ async def _migrate_008_arr_interval_defaults_applied(engine: AsyncEngine) -> Non
     table = "app_settings"
     if not await _has_column(engine, table=table, column="arr_interval_defaults_applied"):
         await _add_column(engine, table=table, ddl="arr_interval_defaults_applied BOOLEAN NOT NULL DEFAULT 0")
-        async with engine.begin() as conn:
-            await conn.execute(
-                text(
-                    """
-                    UPDATE app_settings
-                    SET sonarr_interval_minutes = CASE WHEN sonarr_interval_minutes = 0 THEN 60 ELSE sonarr_interval_minutes END,
-                        radarr_interval_minutes = CASE WHEN radarr_interval_minutes = 0 THEN 60 ELSE radarr_interval_minutes END,
-                        arr_interval_defaults_applied = 1
-                    """
+        if await _has_column(engine, table=table, column="sonarr_interval_minutes"):
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        """
+                        UPDATE app_settings
+                        SET sonarr_interval_minutes = CASE WHEN sonarr_interval_minutes = 0 THEN 60 ELSE sonarr_interval_minutes END,
+                            radarr_interval_minutes = CASE WHEN radarr_interval_minutes = 0 THEN 60 ELSE radarr_interval_minutes END,
+                            arr_interval_defaults_applied = 1
+                        """
+                    )
                 )
-            )
+        else:
+            async with engine.begin() as conn:
+                await conn.execute(text("UPDATE app_settings SET arr_interval_defaults_applied = 1"))
 
 
 async def _migrate_009_timezone(engine: AsyncEngine) -> None:
@@ -460,11 +473,14 @@ async def _migrate_029_refiner_activity(engine: AsyncEngine) -> None:
 async def _migrate_030_failed_import_cleanup_interval(engine: AsyncEngine) -> None:
     table = "app_settings"
     if not await _has_column(engine, table=table, column="failed_import_cleanup_interval_minutes"):
-        await _add_column(
-            engine,
-            table=table,
-            ddl="failed_import_cleanup_interval_minutes INTEGER NOT NULL DEFAULT 60",
-        )
+        if not await _has_column(
+            engine, table=table, column="sonarr_failed_import_cleanup_interval_minutes"
+        ):
+            await _add_column(
+                engine,
+                table=table,
+                ddl="failed_import_cleanup_interval_minutes INTEGER NOT NULL DEFAULT 60",
+            )
     if not await _has_column(engine, table=table, column="sonarr_failed_import_cleanup_last_run_at"):
         await _add_column(engine, table=table, ddl="sonarr_failed_import_cleanup_last_run_at DATETIME")
     if not await _has_column(engine, table=table, column="radarr_failed_import_cleanup_last_run_at"):
@@ -690,7 +706,16 @@ async def _migrate_042_refiner_minimum_age(
 
 
 async def _migrate_044_canonical_interval_fields(engine: AsyncEngine) -> None:
-    """Phase 3: canonical interval columns; copy from legacy; split shared cleanup interval."""
+    """Phase 3: add canonical interval columns and backfill from legacy where appropriate.
+
+    **Precedence (v4.0.9+):** Active releases only *wrote* canonical interval fields; legacy columns
+    could remain at stale defaults. Copy legacy → canonical **only** for canonical columns **just
+    added** in this run (SQLite backfill defaults). If canonical already existed (real user row),
+    it wins — we never overwrite from legacy, then 045 drops obsolete legacy columns.
+
+    Legacy-only DBs: canonical column missing → added here → backfilled from legacy.
+    Mixed v4.0.x DBs: canonical already present → not in ``newly_added`` → no copy from stale legacy.
+    """
     table = "app_settings"
     specs: tuple[tuple[str, str], ...] = (
         ("sonarr_search_interval_minutes", "INTEGER NOT NULL DEFAULT 60"),
@@ -701,26 +726,49 @@ async def _migrate_044_canonical_interval_fields(engine: AsyncEngine) -> None:
         ("sonarr_failed_import_cleanup_interval_minutes", "INTEGER NOT NULL DEFAULT 60"),
         ("radarr_failed_import_cleanup_interval_minutes", "INTEGER NOT NULL DEFAULT 60"),
     )
-    added_any = False
+    newly_added: set[str] = set()
     for col, ddl in specs:
         if not await _has_column(engine, table=table, column=col):
             await _add_column(engine, table=table, ddl=f"{col} {ddl}")
-            added_any = True
-    if added_any:
-        mapping = [
-            ("sonarr_search_interval_minutes", "sonarr_interval_minutes"),
-            ("radarr_search_interval_minutes", "radarr_interval_minutes"),
-            ("trimmer_interval_minutes", "emby_interval_minutes"),
-            ("movie_refiner_interval_seconds", "refiner_interval_seconds"),
-            ("tv_refiner_interval_seconds", "sonarr_refiner_interval_seconds"),
-            ("sonarr_failed_import_cleanup_interval_minutes", "failed_import_cleanup_interval_minutes"),
-            ("radarr_failed_import_cleanup_interval_minutes", "failed_import_cleanup_interval_minutes"),
+            newly_added.add(col)
+    mapping = [
+        ("sonarr_search_interval_minutes", "sonarr_interval_minutes"),
+        ("radarr_search_interval_minutes", "radarr_interval_minutes"),
+        ("trimmer_interval_minutes", "emby_interval_minutes"),
+        ("movie_refiner_interval_seconds", "refiner_interval_seconds"),
+        ("tv_refiner_interval_seconds", "sonarr_refiner_interval_seconds"),
+        ("sonarr_failed_import_cleanup_interval_minutes", "failed_import_cleanup_interval_minutes"),
+        ("radarr_failed_import_cleanup_interval_minutes", "failed_import_cleanup_interval_minutes"),
+    ]
+    async with engine.begin() as conn:
+        names = await _column_names_sqlite(conn, table=table)
+        assign = [
+            f"{new_c} = {src_c}"
+            for new_c, src_c in mapping
+            if new_c in newly_added and new_c in names and src_c in names
         ]
-        async with engine.begin() as conn:
-            names = await _column_names_sqlite(conn, table=table)
-            assign = [f"{new_c} = {src_c}" for new_c, src_c in mapping if new_c in names and src_c in names]
-            if assign:
-                await conn.execute(text(f"UPDATE {table} SET {', '.join(assign)}"))
+        if assign:
+            await conn.execute(text(f"UPDATE {table} SET {', '.join(assign)}"))
+
+
+async def _migrate_045_drop_legacy_interval_columns(engine: AsyncEngine) -> None:
+    """Drop legacy interval columns superseded by canonical fields in migration 044.
+
+    These columns are no longer read or written by any active code path.
+    """
+    table = "app_settings"
+    for col in (
+        "sonarr_interval_minutes",
+        "radarr_interval_minutes",
+        "emby_interval_minutes",
+        "failed_import_cleanup_interval_minutes",
+        "refiner_interval_seconds",
+        "sonarr_refiner_interval_seconds",
+    ):
+        if await _has_column(engine, table=table, column=col):
+            async with engine.begin() as conn:
+                await conn.execute(text(f"ALTER TABLE {table} DROP COLUMN {col}"))
+            logger.info("migration 045: dropped legacy column %s.%s", table, col)
 
 
 async def _migrate_043_sonarr_refiner_pipeline(
@@ -853,6 +901,7 @@ async def migrate(engine: AsyncEngine) -> None:
     await _migrate_042_refiner_minimum_age(engine)
     await _migrate_043_sonarr_refiner_pipeline(engine)
     await _migrate_044_canonical_interval_fields(engine)
+    await _migrate_045_drop_legacy_interval_columns(engine)
     await repair_sonarr_refiner_app_settings_columns(engine)
     await repair_refiner_app_settings_columns(engine)
 
