@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 4.0.8 — 2026-04-05
+
+### Changed
+
+- **Tests:** Reduced pytest warning noise—JWT-related tests use length-safe HS256 secrets (RFC 7518); narrow `filterwarnings` entry for the upstream passlib/argon2 `__version__` deprecation only.
+
+### Notes
+
+- Test and developer ergonomics only: no runtime behavior changes, no schema or migration changes, no rebranding. **v5.0.0** remains reserved for the later major release (rebrand and watched/output cleanup).
+
 ## 4.0.7 — 2026-04-05
 
 ### Changed
