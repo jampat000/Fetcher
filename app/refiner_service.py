@@ -11,7 +11,7 @@ import logging
 import re as _re
 import time
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Awaitable, Callable, Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -59,6 +59,128 @@ logger = logging.getLogger(__name__)
 
 _refiner_lock = asyncio.Lock()
 _sonarr_refiner_lock = asyncio.Lock()
+
+
+class _RefinerPassPerFilePreActivity:
+    """Result of Radarr/Sonarr-specific gating immediately before the activity row + pipeline try."""
+
+    __slots__ = ("skipped", "queue_snap")
+
+    def __init__(
+        self,
+        *,
+        skipped: bool,
+        queue_snap: RefinerQueueSnapshot | None = None,
+    ) -> None:
+        self.skipped = skipped
+        self.queue_snap = queue_snap
+
+
+async def _run_refiner_pass_per_file_loop(
+    *,
+    files: list[Path],
+    minimum_age: int,
+    log_age_skip: Callable[[Path, str], None],
+    log_unexpected_thread_failure: Callable[[Path], None],
+    increment_pass_progress: Callable[[], Awaitable[None]],
+    before_activity_row: Callable[[Path], Awaitable[_RefinerPassPerFilePreActivity]],
+    process_file: Callable[
+        [Path, float, RefinerQueueSnapshot | None],
+        Awaitable[tuple[str, dict[str, Any] | None]],
+    ],
+) -> tuple[int, int, int, int, int, list[str], list[str]]:
+    """Shared per-file orchestration for Radarr and Sonarr Refiner passes (behavior-preserving)."""
+    ok_c = dry_c = err_c = cleanup_c = 0
+    noop_c = 0
+    failure_notes: list[str] = []
+    cleanup_notes: list[str] = []
+    for fp in files:
+        t_job = time.perf_counter()
+        age_ok, age_why = refiner_file_age_gate(fp, minimum_age)
+        if not age_ok:
+            log_age_skip(fp, age_why)
+            await increment_pass_progress()
+            continue
+        pre = await before_activity_row(fp)
+        if pre.skipped:
+            continue
+        act_id = await _insert_refiner_processing_row(fp.name)
+        status: str = "error"
+        meta: dict[str, Any] | None = None
+        try:
+            status, meta = await process_file(fp, t_job, pre.queue_snap)
+        except Exception:
+            log_unexpected_thread_failure(fp)
+            sb_e = 0
+            try:
+                sb_e = await asyncio.to_thread(_file_size_bytes, fp)
+            except Exception:
+                pass
+            meta = _failure_activity_meta(
+                fp.name,
+                size_before=sb_e,
+                audio_before=0,
+                subs_before=0,
+                t0=t_job,
+            )
+            meta["failure_hint"] = (
+                "Unexpected error during processing "
+                "(thread, timeout, or cancellation). "
+                "See the Fetcher log file for the full traceback."
+            )
+            meta.setdefault("_refiner_reason_code", "")
+        finally:
+            if meta is None:
+                sb_f = 0
+                try:
+                    sb_f = await asyncio.to_thread(_file_size_bytes, fp)
+                except Exception:
+                    pass
+                meta = _failure_activity_meta(
+                    fp.name,
+                    size_before=sb_f,
+                    audio_before=0,
+                    subs_before=0,
+                    t0=t_job,
+                )
+            if meta.get("failure_hint") and not str(
+                meta.get("activity_context") or ""
+            ).strip():
+                meta["activity_context"] = _activity_snapshot(
+                    failure_reason=str(meta["failure_hint"]).strip()[:8000]
+                )
+            if act_id is not None:
+                await _update_refiner_activity_row(act_id, meta)
+            else:
+                await _persist_refiner_activity_safe(meta)
+        if status == "ok":
+            ok_c += 1
+        elif status == "dry_run":
+            dry_c += 1
+        elif status == "cleanup_needed":
+            hint = (meta or {}).get("failure_hint") or (
+                "Post-finalize cleanup did not fully complete."
+            )
+            rc_note = str(
+                (meta or {}).get("_refiner_reason_code") or ""
+            ).strip().lower()
+            line_c = format_per_file_job_log_line(
+                fp.name, str(hint), reason_code=rc_note
+            )
+            cleanup_c += 1
+            cleanup_notes.append(line_c)
+        else:
+            hint = (meta or {}).get("failure_hint") or ("Processing failed.")
+            rc_note = str(
+                (meta or {}).get("_refiner_reason_code") or ""
+            ).strip().lower()
+            line_e = format_per_file_job_log_line(
+                fp.name, str(hint), reason_code=rc_note
+            )
+            err_c += 1
+            failure_notes.append(line_e)
+        await increment_pass_progress()
+    return ok_c, dry_c, err_c, cleanup_c, noop_c, failure_notes, cleanup_notes
 
 
 def _any_queue_row_matches_file(fp: Path, snap: RefinerQueueSnapshot) -> bool:
@@ -423,27 +545,18 @@ async def run_refiner_pass(
         row.refiner_current_pass_total = len(files)
         row.refiner_current_pass_done = 0
         await session.commit()
-        ok_c = dry_c = err_c = cleanup_c = 0
-        noop_c = 0
-        failure_notes: list[str] = []
-        cleanup_notes: list[str] = []
         minimum_age = clamp_refiner_minimum_age_seconds(
             getattr(row, "refiner_minimum_age_seconds", 60)
         )
-        for fp in files:
-            t_job = time.perf_counter()
-            age_ok, age_why = refiner_file_age_gate(fp, minimum_age)
-            if not age_ok:
-                logger.debug(
-                    "Refiner: skipping %s — %s", fp.name, age_why
-                )
-                row.refiner_current_pass_done += 1
-                try:
-                    await session.commit()
-                except Exception:
-                    pass
-                continue
 
+        async def _bump_movie_pass() -> None:
+            row.refiner_current_pass_done += 1
+            try:
+                await session.commit()
+            except Exception:
+                pass
+
+        async def _movie_before_activity(fp: Path) -> _RefinerPassPerFilePreActivity:
             # Radarr ownership guard.
             # Fires on live and dry runs.
             # Only skips when ALL of these are true:
@@ -471,169 +584,108 @@ async def run_refiner_pass(
                         " a failed or cleared download.",
                         fp.name,
                     )
-                    row.refiner_current_pass_done += 1
-                    try:
-                        await session.commit()
-                    except Exception:
-                        pass
-                    continue
+                    await _bump_movie_pass()
+                    return _RefinerPassPerFilePreActivity(skipped=True)
+            return _RefinerPassPerFilePreActivity(skipped=False, queue_snap=snap)
 
-            act_id = await _insert_refiner_processing_row(fp.name)
-            status: str = "error"
-            meta: dict[str, Any] | None = None
-            try:
-                wc_ctx: dict[str, Any] | None = None
-                if not dry and row.radarr_enabled:
-                    if snap is not None and snap.authority_useful:
+        async def _movie_process_file(
+            fp: Path,
+            _t_job: float,
+            queue_snap: RefinerQueueSnapshot | None,
+        ) -> tuple[str, dict[str, Any] | None]:
+            wc_ctx: dict[str, Any] | None = None
+            snap = queue_snap
+            if not dry and row.radarr_enabled:
+                if snap is not None and snap.authority_useful:
+                    wc_ctx = await _movie_wrong_content_ctx_for_candidate(
+                        fp, row, snap
+                    )
+                elif snap is None:
+                    snap = await fetch_refiner_queue_snapshot(row)
+                    if snap.authority_useful:
                         wc_ctx = await _movie_wrong_content_ctx_for_candidate(
                             fp, row, snap
                         )
-                    elif snap is None:
-                        snap = await fetch_refiner_queue_snapshot(row)
-                        if snap.authority_useful:
-                            wc_ctx = await _movie_wrong_content_ctx_for_candidate(
-                                fp, row, snap
-                            )
-                status, meta = await asyncio.to_thread(
-                    _process_one_refiner_file_sync,
-                    fp,
-                    cfg,
-                    dry,
-                    watched_root,
-                    output_root,
-                    work_dir,
-                    wc_ctx,
-                )
-                action_payload = (meta or {}).pop(
-                    "_radarr_wrong_content_actions", None
-                )
-                if (
-                    action_payload
-                    and str(
-                        (meta or {}).get("_refiner_reason_code") or ""
-                    ).strip().lower()
-                    == "radarr_wrong_content"
-                ):
-                    auto = await execute_radarr_wrong_content_actions(
-                        row,
-                        queue_id=action_payload.get("queue_id"),
-                        movie_id=int(action_payload["movie_id"]),
-                        dry_run=bool(action_payload.get("dry_run")),
-                    )
-                    ctxd = parse_activity_context(
-                        str((meta or {}).get("activity_context") or "")
-                    )
-                    ctxd.pop("v", None)
-                    errs = (
-                        auto.get("errors")
-                        if isinstance(auto.get("errors"), list)
-                        else []
-                    )
-                    err_s = ";".join(str(x) for x in errs)[:500]
-                    ctxd["radarr_wrong_content_automation"] = {
-                        "queue_delete_ok": bool(
-                            auto.get("queue_delete_ok")
-                        ),
-                        "queue_delete_attempted": bool(
-                            auto.get("queue_delete_attempted")
-                        ),
-                        "queue_blocklist_requested": bool(
-                            auto.get("queue_blocklist_requested")
-                        ),
-                        "movies_search_ok": bool(
-                            auto.get("movies_search_ok")
-                        ),
-                        "dry_run": bool(auto.get("dry_run")),
-                        "error_summary": err_s,
-                    }
-                    meta["activity_context"] = dumps_activity_context(
-                        ctxd
-                    )
-            except Exception:
-                logger.exception(
-                    "Refiner: unexpected failure for %s "
-                    "(thread error, cancellation, or timeout)",
-                    fp.name,
-                )
-                sb_e = 0
-                try:
-                    sb_e = await asyncio.to_thread(_file_size_bytes, fp)
-                except Exception:
-                    pass
-                meta = _failure_activity_meta(
-                    fp.name,
-                    size_before=sb_e,
-                    audio_before=0,
-                    subs_before=0,
-                    t0=t_job,
-                )
-                meta["failure_hint"] = (
-                    "Unexpected error during processing "
-                    "(thread, timeout, or cancellation). "
-                    "See the Fetcher log file for the full traceback."
-                )
-                meta.setdefault("_refiner_reason_code", "")
-            finally:
-                if meta is None:
-                    sb_f = 0
-                    try:
-                        sb_f = await asyncio.to_thread(
-                            _file_size_bytes, fp
-                        )
-                    except Exception:
-                        pass
-                    meta = _failure_activity_meta(
-                        fp.name,
-                        size_before=sb_f,
-                        audio_before=0,
-                        subs_before=0,
-                        t0=t_job,
-                    )
-                if meta.get("failure_hint") and not str(
-                    meta.get("activity_context") or ""
-                ).strip():
-                    meta["activity_context"] = _activity_snapshot(
-                        failure_reason=str(
-                            meta["failure_hint"]
-                        ).strip()[:8000]
-                    )
-                if act_id is not None:
-                    await _update_refiner_activity_row(act_id, meta)
-                else:
-                    await _persist_refiner_activity_safe(meta)
-            if status == "ok":
-                ok_c += 1
-            elif status == "dry_run":
-                dry_c += 1
-            elif status == "cleanup_needed":
-                hint = (meta or {}).get("failure_hint") or (
-                    "Post-finalize cleanup did not fully complete."
-                )
-                rc_note = str(
+            status, meta = await asyncio.to_thread(
+                _process_one_refiner_file_sync,
+                fp,
+                cfg,
+                dry,
+                watched_root,
+                output_root,
+                work_dir,
+                wc_ctx,
+            )
+            action_payload = (meta or {}).pop(
+                "_radarr_wrong_content_actions", None
+            )
+            if (
+                action_payload
+                and str(
                     (meta or {}).get("_refiner_reason_code") or ""
                 ).strip().lower()
-                line_c = format_per_file_job_log_line(
-                    fp.name, str(hint), reason_code=rc_note
+                == "radarr_wrong_content"
+            ):
+                auto = await execute_radarr_wrong_content_actions(
+                    row,
+                    queue_id=action_payload.get("queue_id"),
+                    movie_id=int(action_payload["movie_id"]),
+                    dry_run=bool(action_payload.get("dry_run")),
                 )
-                cleanup_c += 1
-                cleanup_notes.append(line_c)
-            else:
-                hint = (meta or {}).get("failure_hint") or (
-                    "Processing failed."
+                ctxd = parse_activity_context(
+                    str((meta or {}).get("activity_context") or "")
                 )
-                rc_note = str(
-                    (meta or {}).get("_refiner_reason_code") or ""
-                ).strip().lower()
-                line_e = format_per_file_job_log_line(
-                    fp.name, str(hint), reason_code=rc_note
+                ctxd.pop("v", None)
+                errs = (
+                    auto.get("errors")
+                    if isinstance(auto.get("errors"), list)
+                    else []
                 )
-                err_c += 1
-                failure_notes.append(line_e)
-            row.refiner_current_pass_done += 1
-            try:
-                await session.commit()
-            except Exception:
-                pass
+                err_s = ";".join(str(x) for x in errs)[:500]
+                ctxd["radarr_wrong_content_automation"] = {
+                    "queue_delete_ok": bool(
+                        auto.get("queue_delete_ok")
+                    ),
+                    "queue_delete_attempted": bool(
+                        auto.get("queue_delete_attempted")
+                    ),
+                    "queue_blocklist_requested": bool(
+                        auto.get("queue_blocklist_requested")
+                    ),
+                    "movies_search_ok": bool(
+                        auto.get("movies_search_ok")
+                    ),
+                    "dry_run": bool(auto.get("dry_run")),
+                    "error_summary": err_s,
+                }
+                meta["activity_context"] = dumps_activity_context(
+                    ctxd
+                )
+            return status, meta
+
+        def _log_movie_age_skip(fp: Path, age_why: str) -> None:
+            logger.debug(
+                "Refiner: skipping %s — %s", fp.name, age_why
+            )
+
+        def _log_movie_thread_fail(fp: Path) -> None:
+            logger.exception(
+                "Refiner: unexpected failure for %s "
+                "(thread error, cancellation, or timeout)",
+                fp.name,
+            )
+
+        ok_c, dry_c, err_c, cleanup_c, noop_c, failure_notes, cleanup_notes = (
+            await _run_refiner_pass_per_file_loop(
+                files=files,
+                minimum_age=minimum_age,
+                log_age_skip=_log_movie_age_skip,
+                log_unexpected_thread_failure=_log_movie_thread_fail,
+                increment_pass_progress=_bump_movie_pass,
+                before_activity_row=_movie_before_activity,
+                process_file=_movie_process_file,
+            )
+        )
         row.refiner_current_pass_total = 0
         row.refiner_current_pass_done = 0
         row.refiner_last_run_at = utc_now_naive()
@@ -838,129 +890,64 @@ async def run_sonarr_refiner_pass(
         row.sonarr_refiner_current_pass_total = len(files)
         row.sonarr_refiner_current_pass_done = 0
         await session.commit()
-        ok_c = dry_c = err_c = cleanup_c = 0
-        noop_c = 0
-        failure_notes: list[str] = []
-        cleanup_notes: list[str] = []
         minimum_age = clamp_refiner_minimum_age_seconds(
             getattr(row, "sonarr_refiner_minimum_age_seconds", 60)
         )
-        for fp in files:
-            t_job = time.perf_counter()
-            age_ok, age_why = refiner_file_age_gate(fp, minimum_age)
-            if not age_ok:
-                logger.debug(
-                    "Sonarr Refiner: skipping %s — %s",
-                    fp.name, age_why,
-                )
-                row.sonarr_refiner_current_pass_done += 1
-                try:
-                    await session.commit()
-                except Exception:
-                    pass
-                continue
-            act_id = await _insert_refiner_processing_row(fp.name)
-            status: str = "error"
-            meta: dict[str, Any] | None = None
-            try:
-                # Wrong-content detection for Sonarr not yet
-                # implemented — wc_ctx is always None.
-                wc_ctx: dict[str, Any] | None = None
-                status, meta = await asyncio.to_thread(
-                    _process_one_refiner_file_sync,
-                    fp,
-                    cfg,
-                    dry,
-                    watched_root,
-                    output_root,
-                    work_dir,
-                    wc_ctx,
-                )
-            except Exception:
-                logger.exception(
-                    "Sonarr Refiner: unexpected failure for %s "
-                    "(thread error, cancellation, or timeout)",
-                    fp.name,
-                )
-                sb_e = 0
-                try:
-                    sb_e = await asyncio.to_thread(_file_size_bytes, fp)
-                except Exception:
-                    pass
-                meta = _failure_activity_meta(
-                    fp.name,
-                    size_before=sb_e,
-                    audio_before=0,
-                    subs_before=0,
-                    t0=t_job,
-                )
-                meta["failure_hint"] = (
-                    "Unexpected error during processing "
-                    "(thread, timeout, or cancellation). "
-                    "See the Fetcher log file for the full traceback."
-                )
-                meta.setdefault("_refiner_reason_code", "")
-            finally:
-                if meta is None:
-                    sb_f = 0
-                    try:
-                        sb_f = await asyncio.to_thread(
-                            _file_size_bytes, fp
-                        )
-                    except Exception:
-                        pass
-                    meta = _failure_activity_meta(
-                        fp.name,
-                        size_before=sb_f,
-                        audio_before=0,
-                        subs_before=0,
-                        t0=t_job,
-                    )
-                if meta.get("failure_hint") and not str(
-                    meta.get("activity_context") or ""
-                ).strip():
-                    meta["activity_context"] = _activity_snapshot(
-                        failure_reason=str(
-                            meta["failure_hint"]
-                        ).strip()[:8000]
-                    )
-                if act_id is not None:
-                    await _update_refiner_activity_row(act_id, meta)
-                else:
-                    await _persist_refiner_activity_safe(meta)
-            if status == "ok":
-                ok_c += 1
-            elif status == "dry_run":
-                dry_c += 1
-            elif status == "cleanup_needed":
-                hint = (meta or {}).get("failure_hint") or (
-                    "Post-finalize cleanup did not fully complete."
-                )
-                rc_note = str(
-                    (meta or {}).get("_refiner_reason_code") or ""
-                ).strip().lower()
-                line_c = format_per_file_job_log_line(
-                    fp.name, str(hint), reason_code=rc_note
-                )
-                cleanup_c += 1
-                cleanup_notes.append(line_c)
-            else:
-                hint = (meta or {}).get("failure_hint") or (
-                    "Processing failed."
-                )
-                rc_note = str(
-                    (meta or {}).get("_refiner_reason_code") or ""
-                ).strip().lower()
-                line_e = format_per_file_job_log_line(
-                    fp.name, str(hint), reason_code=rc_note
-                )
-                err_c += 1
-                failure_notes.append(line_e)
+
+        async def _bump_sonarr_pass() -> None:
             row.sonarr_refiner_current_pass_done += 1
             try:
                 await session.commit()
             except Exception:
                 pass
+
+        async def _sonarr_before_activity(_fp: Path) -> _RefinerPassPerFilePreActivity:
+            return _RefinerPassPerFilePreActivity(skipped=False, queue_snap=None)
+
+        async def _sonarr_process_file(
+            fp: Path,
+            _t_job: float,
+            _queue_snap: RefinerQueueSnapshot | None,
+        ) -> tuple[str, dict[str, Any] | None]:
+            # Wrong-content detection for Sonarr not yet
+            # implemented — wc_ctx is always None.
+            wc_ctx: dict[str, Any] | None = None
+            status, meta = await asyncio.to_thread(
+                _process_one_refiner_file_sync,
+                fp,
+                cfg,
+                dry,
+                watched_root,
+                output_root,
+                work_dir,
+                wc_ctx,
+            )
+            return status, meta
+
+        def _log_sonarr_age_skip(fp: Path, age_why: str) -> None:
+            logger.debug(
+                "Sonarr Refiner: skipping %s — %s",
+                fp.name, age_why,
+            )
+
+        def _log_sonarr_thread_fail(fp: Path) -> None:
+            logger.exception(
+                "Sonarr Refiner: unexpected failure for %s "
+                "(thread error, cancellation, or timeout)",
+                fp.name,
+            )
+
+        ok_c, dry_c, err_c, cleanup_c, noop_c, failure_notes, cleanup_notes = (
+            await _run_refiner_pass_per_file_loop(
+                files=files,
+                minimum_age=minimum_age,
+                log_age_skip=_log_sonarr_age_skip,
+                log_unexpected_thread_failure=_log_sonarr_thread_fail,
+                increment_pass_progress=_bump_sonarr_pass,
+                before_activity_row=_sonarr_before_activity,
+                process_file=_sonarr_process_file,
+            )
+        )
         row.sonarr_refiner_current_pass_total = 0
         row.sonarr_refiner_current_pass_done = 0
         row.sonarr_refiner_last_run_at = utc_now_naive()

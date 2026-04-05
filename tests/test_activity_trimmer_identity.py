@@ -2,17 +2,35 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.dashboard_service import trimmer_connection_status_display
+from app.db import SessionLocal, get_or_create_settings
 from app.migrations import migrate
 from app.main import app
 from app.models import ActivityLog, AppSettings, AppSnapshot, Base
+
+
+def _reset_dashboard_default_app_settings_for_layout_tests() -> None:
+    """Other modules' tests share the same on-disk DB and may leave Emby/Refiner rows populated."""
+
+    async def _go() -> None:
+        async with SessionLocal() as s:
+            await s.execute(delete(AppSnapshot))
+            row = await get_or_create_settings(s)
+            row.refiner_enabled = False
+            row.emby_enabled = False
+            row.emby_url = ""
+            row.emby_api_key = ""
+            await s.commit()
+
+    asyncio.run(_go())
 
 
 def test_dashboard_overview_row_order_and_no_system_section(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -50,11 +68,15 @@ def test_dashboard_automation_and_overview_use_summary_tile_pattern(monkeypatch:
 
     monkeypatch.setattr("app.main.scheduler.start", _noop_start)
     monkeypatch.setattr("app.main.scheduler.shutdown", _noop_shutdown)
+    _reset_dashboard_default_app_settings_for_layout_tests()
     with TestClient(app) as client:
         r = client.get("/")
     assert r.status_code == 200
     assert "dash-summary-tile" in r.text
     assert "dash-summary-meta-row" in r.text
+    assert "automation-subjob-label" in r.text
+    assert "Search" in r.text
+    assert "Cleanup" in r.text
     assert "Latest event" not in r.text
     assert "data-automation-card=\"refiner\"" in r.text
     i_son = r.text.index("data-automation-card=\"sonarr\"")
@@ -75,6 +97,7 @@ def test_dashboard_trimmer_tool_shows_media_note_when_connection_unconfigured(mo
 
     monkeypatch.setattr("app.main.scheduler.start", _noop_start)
     monkeypatch.setattr("app.main.scheduler.shutdown", _noop_shutdown)
+    _reset_dashboard_default_app_settings_for_layout_tests()
     with TestClient(app) as client:
         r = client.get("/")
     assert r.status_code == 200
