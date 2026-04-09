@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 4.0.10 — 2026-04-09
+
+### Fixed
+
+- **Refiner import-wait escape hatch:** Files with a matching Radarr queue row in importPending + warning state are no longer skipped indefinitely. An inactive title-match now allows Refiner to proceed so Radarr can import the processed output. Fixes files sitting in E:\Completed-Movies for hours with no action taken.
+
 ## 4.0.9 — 2026-04-05
 
 ### Changed

@@ -22,7 +22,7 @@ from app.refiner_service import (
     _rules_config_from_settings,
     reconcile_refiner_processing_rows_on_worker_boot,
     run_refiner_pass,
-    run_sonarr_refiner_pass,
+    run_tv_refiner_pass,
 )
 from app.refiner_source_readiness import RefinerQueueSnapshot
 from app.schema_version import CURRENT_SCHEMA_VERSION
@@ -62,12 +62,12 @@ def test_dry_run_no_file_changes(monkeypatch: pytest.MonkeyPatch, tmp_path) -> N
         f.write_bytes(b"original")
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = True
-            row.refiner_primary_audio_lang = "eng"
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = True
+            row.movie_refiner_primary_audio_lang = "eng"
             row.sonarr_enabled = True
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             r = await run_refiner_pass(session, trigger="scheduled")
         assert calls == []
@@ -103,11 +103,11 @@ def test_live_run_moves_to_output_and_deletes_source(monkeypatch: pytest.MonkeyP
         (f.parent / "readme.nfo").write_text("rel", encoding="utf-8")
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             r = await run_refiner_pass(session, trigger="scheduled")
         assert len(calls) == 1
@@ -146,11 +146,11 @@ def test_live_no_remux_copies_to_output_removes_source_and_empty_folder(
         output.mkdir()
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             r = await run_refiner_pass(session, trigger="scheduled")
         assert calls == []
@@ -184,11 +184,11 @@ def test_live_no_remux_leaves_folder_when_other_files_remain(
         output.mkdir()
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             await run_refiner_pass(session, trigger="scheduled")
         assert not f.exists()
@@ -212,11 +212,11 @@ def test_dry_run_no_remux_does_not_copy_or_delete(monkeypatch: pytest.MonkeyPatc
         (watched / "solo.par2").write_bytes(b"p")
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = True
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = True
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             r = await run_refiner_pass(session, trigger="scheduled")
         assert int(r.get("dry_run_items") or 0) >= 1
@@ -254,11 +254,11 @@ def test_live_no_remux_source_folder_tree_removed_with_nested_dirs(
         output.mkdir()
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             r = await run_refiner_pass(session, trigger="scheduled")
         assert r.get("errors") == 0
@@ -293,11 +293,11 @@ def test_live_remux_source_folder_tree_removed_with_nested_dirs(
         output.mkdir()
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             r = await run_refiner_pass(session, trigger="scheduled")
         assert r.get("remuxed") == 1
@@ -325,11 +325,11 @@ def test_source_preserved_on_failure(monkeypatch: pytest.MonkeyPatch, tmp_path) 
         (watched / "m.par2").write_bytes(b"parity")
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             r = await run_refiner_pass(session, trigger="scheduled")
         assert r.get("errors") == 1
@@ -364,12 +364,12 @@ def test_custom_work_folder_used(monkeypatch: pytest.MonkeyPatch, tmp_path) -> N
         f.write_bytes(b"orig")
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
-            row.refiner_work_folder = str(work)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
+            row.movie_refiner_work_folder = str(work)
             await session.commit()
             await run_refiner_pass(session, trigger="scheduled")
         assert seen and seen[0] == work.resolve()
@@ -383,11 +383,11 @@ def test_missing_watched_or_output_folders_rejected(monkeypatch: pytest.MonkeyPa
     async def _go() -> None:
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(tmp_path / "watched")
-            row.refiner_output_folder = ""
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(tmp_path / "watched")
+            row.movie_refiner_output_folder = ""
             await session.commit()
             result = await run_refiner_pass(session, trigger="scheduled")
         assert result.get("ok") is False
@@ -418,12 +418,12 @@ def test_default_work_folder_usage(monkeypatch: pytest.MonkeyPatch, tmp_path) ->
         f.write_bytes(b"orig")
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
-            row.refiner_work_folder = ""
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
+            row.movie_refiner_work_folder = ""
             await session.commit()
             await run_refiner_pass(session, trigger="scheduled")
         assert seen
@@ -434,9 +434,9 @@ def test_default_work_folder_usage(monkeypatch: pytest.MonkeyPatch, tmp_path) ->
 
 def test_pipeline_settings_parser(tmp_path) -> None:
     class _Row:
-        refiner_watched_folder = str(tmp_path / "watched")
-        refiner_output_folder = str(tmp_path / "out")
-        refiner_work_folder = str(tmp_path / "work")
+        movie_refiner_watched_folder = str(tmp_path / "watched")
+        movie_refiner_output_folder = str(tmp_path / "out")
+        movie_refiner_work_folder = str(tmp_path / "work")
 
     watched, output, work = _pipeline_from_settings(_Row())  # type: ignore[arg-type]
     assert watched is not None and watched.name == "watched"
@@ -452,9 +452,9 @@ def test_pipeline_settings_accepts_posix_style_paths(tmp_path) -> None:
     (root / "work").mkdir(parents=True)
 
     class _Row:
-        refiner_watched_folder = str(root / "downloads")
-        refiner_output_folder = str(root / "output")
-        refiner_work_folder = str(root / "work")
+        movie_refiner_watched_folder = str(root / "downloads")
+        movie_refiner_output_folder = str(root / "output")
+        movie_refiner_work_folder = str(root / "work")
 
     watched, output, work = _pipeline_from_settings(_Row())  # type: ignore[arg-type]
     assert watched is not None and watched.name == "downloads"
@@ -464,17 +464,17 @@ def test_pipeline_settings_accepts_posix_style_paths(tmp_path) -> None:
 
 def test_rules_config_parses_dropdown_values() -> None:
     class _Row:
-        refiner_enabled = True
-        refiner_primary_audio_lang = "eng"
-        refiner_secondary_audio_lang = "spa"
-        refiner_tertiary_audio_lang = ""
-        refiner_default_audio_slot = "secondary"
-        refiner_remove_commentary = True
-        refiner_subtitle_mode = "remove_all"
-        refiner_subtitle_langs_csv = ""
-        refiner_preserve_forced_subs = True
-        refiner_preserve_default_subs = True
-        refiner_audio_preference_mode = "best_available"
+        movie_refiner_enabled = True
+        movie_refiner_primary_audio_lang = "eng"
+        movie_refiner_secondary_audio_lang = "spa"
+        movie_refiner_tertiary_audio_lang = ""
+        movie_refiner_default_audio_slot = "secondary"
+        movie_refiner_remove_commentary = True
+        movie_refiner_subtitle_mode = "remove_all"
+        movie_refiner_subtitle_langs_csv = ""
+        movie_refiner_preserve_forced_subs = True
+        movie_refiner_preserve_default_subs = True
+        movie_refiner_audio_preference_mode = "best_available"
 
     cfg = _rules_config_from_settings(_Row())  # type: ignore[arg-type]
     assert cfg is not None
@@ -485,7 +485,7 @@ def test_rules_config_parses_dropdown_values() -> None:
 
 
 def test_refiner_schema_contract_v35_activity_context_media_title_and_trimmer_activity() -> None:
-    assert CURRENT_SCHEMA_VERSION == 42
+    assert CURRENT_SCHEMA_VERSION == 44
     from app.models import AppSettings, RefinerActivity
 
     assert "refiner_processing_pass_generation" not in AppSettings.__annotations__
@@ -623,11 +623,11 @@ def test_source_missing_skips_without_error_or_activity(
         )
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             r = await run_refiner_pass(session, trigger="scheduled")
         assert r.get("errors") == 0
@@ -661,12 +661,12 @@ def test_refiner_pass_skips_file_not_yet_aged(
         # File mtime is right now — age ~0s
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = True
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
-            row.refiner_minimum_age_seconds = 60
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = True
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
+            row.movie_refiner_minimum_age_seconds = 60
             row.radarr_enabled = False
             await session.commit()
             result = await run_refiner_pass(session, trigger="scheduled")
@@ -718,12 +718,12 @@ def test_refiner_pass_processes_aged_stable_file(
         _os.utime(f, (old_t, old_t))
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = True
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
-            row.refiner_minimum_age_seconds = 60
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = True
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
+            row.movie_refiner_minimum_age_seconds = 60
             row.radarr_enabled = False
             await session.commit()
             result = await run_refiner_pass(session, trigger="scheduled")
@@ -756,11 +756,11 @@ def test_refiner_pass_calls_insert_then_update_per_file(monkeypatch: pytest.Monk
         (watched / "m.mkv").write_bytes(b"x")
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = True
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = True
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             await run_refiner_pass(session, trigger="scheduled")
 
@@ -789,11 +789,11 @@ def test_refiner_pass_persists_job_run_log_with_failure_hints(
         f.write_bytes(b"original")
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             await run_refiner_pass(session, trigger="scheduled")
             jl = (
@@ -837,11 +837,11 @@ def test_live_run_refuses_overwrite_existing_destination(monkeypatch: pytest.Mon
         existing.write_bytes(b"existing")
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             r = await run_refiner_pass(session, trigger="scheduled")
             assert r.get("ok") is False
@@ -930,12 +930,12 @@ def test_wrong_content_stop_leaves_watched_item_untouched_end_to_end(
         sibling_file.write_text("stay", encoding="utf-8")
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
             row.radarr_enabled = True
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             r = await run_refiner_pass(session, trigger="scheduled")
             act = (
@@ -982,13 +982,13 @@ def test_live_no_remux_keep_selected_preserves_external_srt_next_to_output(
         output.mkdir()
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_subtitle_mode = "keep_selected"
-            row.refiner_subtitle_langs_csv = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_subtitle_mode = "keep_selected"
+            row.movie_refiner_subtitle_langs_csv = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             r = await run_refiner_pass(session, trigger="scheduled")
         assert r.get("errors") == 0
@@ -1037,13 +1037,13 @@ def test_live_no_remux_subtitle_target_collision_fails_without_finalize(
         (output / "only.en.srt").write_text("exists", encoding="utf-8")
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_subtitle_mode = "keep_selected"
-            row.refiner_subtitle_langs_csv = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_subtitle_mode = "keep_selected"
+            row.movie_refiner_subtitle_langs_csv = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             r = await run_refiner_pass(session, trigger="scheduled")
         assert r.get("errors") == 1
@@ -1074,13 +1074,13 @@ def test_live_no_remux_finalize_failure_rolls_back_preserved_sidecars(
         (watched / "only.en.srt").write_text("s", encoding="utf-8")
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_subtitle_mode = "keep_selected"
-            row.refiner_subtitle_langs_csv = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_subtitle_mode = "keep_selected"
+            row.movie_refiner_subtitle_langs_csv = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             r = await run_refiner_pass(session, trigger="scheduled")
         assert r.get("errors") == 1
@@ -1108,12 +1108,12 @@ def test_live_no_remux_remove_all_does_not_copy_external_srt(
         output.mkdir()
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_subtitle_mode = "remove_all"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_subtitle_mode = "remove_all"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             await run_refiner_pass(session, trigger="scheduled")
         assert (output / "sub" / "a.mkv").exists()
@@ -1148,13 +1148,13 @@ def test_live_remux_keep_selected_preserves_external_srt(
         (sibling / "unrelated.other.srt").write_text("leave", encoding="utf-8")
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_subtitle_mode = "keep_selected"
-            row.refiner_subtitle_langs_csv = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_subtitle_mode = "keep_selected"
+            row.movie_refiner_subtitle_langs_csv = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             r = await run_refiner_pass(session, trigger="scheduled")
         assert r.get("remuxed") == 1
@@ -1189,13 +1189,13 @@ def test_live_remux_subtitle_collision_removes_output_and_fails(
         (watched / "m.en.srt").write_text("side", encoding="utf-8")
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_subtitle_mode = "keep_selected"
-            row.refiner_subtitle_langs_csv = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_subtitle_mode = "keep_selected"
+            row.movie_refiner_subtitle_langs_csv = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             r = await run_refiner_pass(session, trigger="scheduled")
         assert r.get("errors") == 1
@@ -1220,13 +1220,13 @@ def test_dry_run_keep_selected_does_not_copy_external_srt(
         (watched / "solo.en.srt").write_text("sub", encoding="utf-8")
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = True
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_subtitle_mode = "keep_selected"
-            row.refiner_subtitle_langs_csv = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = True
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_subtitle_mode = "keep_selected"
+            row.movie_refiner_subtitle_langs_csv = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             await run_refiner_pass(session, trigger="scheduled")
         assert not (output / "solo.mkv").exists()
@@ -1256,13 +1256,13 @@ def test_live_keep_selected_does_not_touch_sibling_folder(
         output.mkdir()
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_subtitle_mode = "keep_selected"
-            row.refiner_subtitle_langs_csv = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_subtitle_mode = "keep_selected"
+            row.movie_refiner_subtitle_langs_csv = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             await run_refiner_pass(session, trigger="scheduled")
         assert (other / "ghost.en.srt").read_text(encoding="utf-8") == "untouched"
@@ -1288,13 +1288,13 @@ def test_refiner_failure_path_does_not_copy_subtitles(
         (watched / "m.en.srt").write_text("s", encoding="utf-8")
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_subtitle_mode = "keep_selected"
-            row.refiner_subtitle_langs_csv = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_subtitle_mode = "keep_selected"
+            row.movie_refiner_subtitle_langs_csv = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             await run_refiner_pass(session, trigger="scheduled")
         assert not (output / "m.mkv").exists()
@@ -1319,12 +1319,12 @@ def test_dry_run_keeps_stale_refiner_work_files(monkeypatch: pytest.MonkeyPatch,
         (watched / "m.mkv").write_bytes(b"x")
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = True
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
-            row.refiner_work_folder = str(work)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = True
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
+            row.movie_refiner_work_folder = str(work)
             await session.commit()
             r = await run_refiner_pass(session, trigger="scheduled")
         assert int(r.get("dry_run_items") or 0) >= 1
@@ -1349,12 +1349,12 @@ def test_live_run_deletes_stale_refiner_work_files(monkeypatch: pytest.MonkeyPat
         (watched / "m.mkv").write_bytes(b"x")
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
-            row.refiner_work_folder = str(work)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
+            row.movie_refiner_work_folder = str(work)
             await session.commit()
             await run_refiner_pass(session, trigger="scheduled")
         assert not stale.exists()
@@ -1393,11 +1393,11 @@ def test_live_no_remux_source_cleanup_failure_is_reported_and_siblings_untouched
         (sibling / "stay.txt").write_text("stay", encoding="utf-8")
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             base_id = int(
                 (
@@ -1456,12 +1456,12 @@ def test_live_no_remux_watch_root_media_keeps_watched_root(
         (watched / "rootitem.en.srt").write_text("s", encoding="utf-8")
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_subtitle_mode = "remove_all"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_subtitle_mode = "remove_all"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             r = await run_refiner_pass(session, trigger="scheduled")
             recent = (
@@ -1504,11 +1504,11 @@ def test_live_no_remux_folder_removal_failure_is_reported(
         (sibling / "keep.txt").write_text("stay", encoding="utf-8")
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
             await session.commit()
             base_id = int(
                 (
@@ -1550,17 +1550,17 @@ def test_live_no_remux_folder_removal_failure_is_reported(
     asyncio.run(_go())
 
 
-def test_sonarr_refiner_pass_disabled_returns_not_ran(
+def test_tv_refiner_pass_disabled_returns_not_ran(
     tmp_path: Path,
 ) -> None:
-    """Sonarr Refiner pass returns ran=False when disabled."""
+    """TV Refiner pass returns ran=False when disabled."""
 
     async def _go() -> None:
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.sonarr_refiner_enabled = False
+            row.tv_refiner_enabled = False
             await session.commit()
-            result = await run_sonarr_refiner_pass(
+            result = await run_tv_refiner_pass(
                 session, trigger="scheduled"
             )
             assert result["ran"] is False
@@ -1569,10 +1569,10 @@ def test_sonarr_refiner_pass_disabled_returns_not_ran(
     asyncio.run(_go())
 
 
-def test_sonarr_refiner_pass_missing_primary_lang_returns_error(
+def test_tv_refiner_pass_missing_primary_lang_returns_error(
     tmp_path: Path,
 ) -> None:
-    """Sonarr Refiner pass fails fast when primary lang unset."""
+    """TV Refiner pass fails fast when primary lang unset."""
 
     async def _go() -> None:
         watched = tmp_path / "watched"
@@ -1581,12 +1581,12 @@ def test_sonarr_refiner_pass_missing_primary_lang_returns_error(
         output.mkdir()
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.sonarr_refiner_enabled = True
-            row.sonarr_refiner_primary_audio_lang = ""
-            row.sonarr_refiner_watched_folder = str(watched)
-            row.sonarr_refiner_output_folder = str(output)
+            row.tv_refiner_enabled = True
+            row.tv_refiner_primary_audio_lang = ""
+            row.tv_refiner_watched_folder = str(watched)
+            row.tv_refiner_output_folder = str(output)
             await session.commit()
-            result = await run_sonarr_refiner_pass(
+            result = await run_tv_refiner_pass(
                 session, trigger="scheduled"
             )
             assert result["ok"] is False
@@ -1595,10 +1595,10 @@ def test_sonarr_refiner_pass_missing_primary_lang_returns_error(
     asyncio.run(_go())
 
 
-def test_sonarr_refiner_pass_no_files_returns_no_ran(
+def test_tv_refiner_pass_no_files_returns_no_ran(
     tmp_path: Path,
 ) -> None:
-    """Sonarr Refiner pass with empty watched folder."""
+    """TV Refiner pass with empty watched folder."""
 
     async def _go() -> None:
         watched = tmp_path / "watched"
@@ -1607,12 +1607,12 @@ def test_sonarr_refiner_pass_no_files_returns_no_ran(
         output.mkdir()
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.sonarr_refiner_enabled = True
-            row.sonarr_refiner_primary_audio_lang = "eng"
-            row.sonarr_refiner_watched_folder = str(watched)
-            row.sonarr_refiner_output_folder = str(output)
+            row.tv_refiner_enabled = True
+            row.tv_refiner_primary_audio_lang = "eng"
+            row.tv_refiner_watched_folder = str(watched)
+            row.tv_refiner_output_folder = str(output)
             await session.commit()
-            result = await run_sonarr_refiner_pass(
+            result = await run_tv_refiner_pass(
                 session, trigger="scheduled"
             )
             assert result["ran"] is False
@@ -1621,10 +1621,10 @@ def test_sonarr_refiner_pass_no_files_returns_no_ran(
     asyncio.run(_go())
 
 
-def test_sonarr_refiner_pass_processes_aged_file_dry_run(
+def test_tv_refiner_pass_processes_aged_file_dry_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Sonarr Refiner dry-run pass processes an aged file."""
+    """TV Refiner dry-run pass processes an aged file."""
     import os as _os
     import time as _time
 
@@ -1644,14 +1644,14 @@ def test_sonarr_refiner_pass_processes_aged_file_dry_run(
         _os.utime(f, (old_t, old_t))
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.sonarr_refiner_enabled = True
-            row.sonarr_refiner_dry_run = True
-            row.sonarr_refiner_primary_audio_lang = "eng"
-            row.sonarr_refiner_watched_folder = str(watched)
-            row.sonarr_refiner_output_folder = str(output)
-            row.sonarr_refiner_minimum_age_seconds = 60
+            row.tv_refiner_enabled = True
+            row.tv_refiner_dry_run = True
+            row.tv_refiner_primary_audio_lang = "eng"
+            row.tv_refiner_watched_folder = str(watched)
+            row.tv_refiner_output_folder = str(output)
+            row.tv_refiner_minimum_age_seconds = 60
             await session.commit()
-            result = await run_sonarr_refiner_pass(
+            result = await run_tv_refiner_pass(
                 session, trigger="scheduled"
             )
             assert result["dry_run_items"] == 1
@@ -1660,19 +1660,18 @@ def test_sonarr_refiner_pass_processes_aged_file_dry_run(
     asyncio.run(_go())
 
 
-def test_sonarr_refiner_pass_independent_of_radarr_lock(
+def test_tv_refiner_pass_independent_of_radarr_lock(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Sonarr and Radarr passes use separate locks — can both
-    be called without deadlock."""
+    """TV and Movies Refiner passes use separate locks — both can be invoked without deadlock."""
 
     async def _go() -> None:
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.sonarr_refiner_enabled = False
-            row.refiner_enabled = False
+            row.tv_refiner_enabled = False
+            row.movie_refiner_enabled = False
             await session.commit()
-            r1 = await run_sonarr_refiner_pass(
+            r1 = await run_tv_refiner_pass(
                 session, trigger="scheduled"
             )
             r2 = await run_refiner_pass(
@@ -1728,12 +1727,12 @@ def test_refiner_pass_skips_radarr_disowned_file(
         _os.utime(f, (old_t, old_t))
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = False
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
-            row.refiner_minimum_age_seconds = 60
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = False
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
+            row.movie_refiner_minimum_age_seconds = 60
             row.radarr_enabled = True
             await session.commit()
             result = await run_refiner_pass(
@@ -1795,12 +1794,12 @@ def test_refiner_pass_disowned_check_skips_on_dry_run(
         _os.utime(f, (old_t, old_t))
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = True
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
-            row.refiner_minimum_age_seconds = 60
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = True
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
+            row.movie_refiner_minimum_age_seconds = 60
             row.radarr_enabled = True
             await session.commit()
             result = await run_refiner_pass(
@@ -1849,12 +1848,12 @@ def test_refiner_pass_proceeds_when_radarr_fetch_fails(
         _os.utime(f, (old_t, old_t))
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = True
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
-            row.refiner_minimum_age_seconds = 60
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = True
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
+            row.movie_refiner_minimum_age_seconds = 60
             row.radarr_enabled = True
             await session.commit()
             result = await run_refiner_pass(
@@ -1888,12 +1887,12 @@ def test_refiner_pass_proceeds_when_radarr_disabled(
         _os.utime(f, (old_t, old_t))
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = True
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
-            row.refiner_minimum_age_seconds = 60
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = True
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
+            row.movie_refiner_minimum_age_seconds = 60
             row.radarr_enabled = False
             await session.commit()
             result = await run_refiner_pass(
@@ -1953,17 +1952,81 @@ def test_refiner_pass_proceeds_for_import_pending_file(
         _os.utime(f, (old_t, old_t))
         async with SessionLocal() as session:
             row = await get_or_create_settings(session)
-            row.refiner_enabled = True
-            row.refiner_dry_run = True
-            row.refiner_primary_audio_lang = "eng"
-            row.refiner_watched_folder = str(watched)
-            row.refiner_output_folder = str(output)
-            row.refiner_minimum_age_seconds = 60
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = True
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
+            row.movie_refiner_minimum_age_seconds = 60
             row.radarr_enabled = True
             await session.commit()
             result = await run_refiner_pass(
                 session, trigger="scheduled"
             )
+            assert result["dry_run_items"] == 1
+            assert result["errors"] == 0
+
+    asyncio.run(_go())
+
+
+def test_refiner_proceeds_for_inactive_import_pending_title_match(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Inactive importPending row that title-matches the file should allow proceed."""
+    import os as _os
+    import time as _time
+
+    async def _fake_snap(row):
+        from app.refiner_source_readiness import RefinerQueueSnapshot
+
+        return RefinerQueueSnapshot(
+            radarr_configured=True,
+            sonarr_configured=False,
+            radarr_fetch_succeeded=True,
+            sonarr_fetch_succeeded=False,
+            radarr_records=(
+                {
+                    "title": "The.Towering.Inferno.1974.1080p.BluRay.X264-YTS",
+                    "trackedDownloadState": "importPending",
+                    "trackedDownloadStatus": "warning",
+                    "status": "completed",
+                    "sizeleft": 0,
+                    "sizeLeft": None,
+                },
+            ),
+            sonarr_records=(),
+        )
+
+    monkeypatch.setattr(
+        "app.refiner_service.fetch_refiner_queue_snapshot",
+        _fake_snap,
+    )
+    monkeypatch.setattr(
+        "app.refiner_pipeline.ffprobe_json",
+        lambda _p: _fake_probe_multi_audio(),
+    )
+
+    async def _go() -> None:
+        watched = tmp_path / "watched"
+        output = tmp_path / "out"
+        watched.mkdir()
+        output.mkdir()
+        f = watched / "The.Towering.Inferno.1974.1080p.BluRay.X264-YTS.mkv"
+        f.write_bytes(b"x" * 500)
+        old_t = _time.time() - 120
+        _os.utime(f, (old_t, old_t))
+        async with SessionLocal() as session:
+            row = await get_or_create_settings(session)
+            row.movie_refiner_enabled = True
+            row.movie_refiner_dry_run = True
+            row.movie_refiner_primary_audio_lang = "eng"
+            row.movie_refiner_watched_folder = str(watched)
+            row.movie_refiner_output_folder = str(output)
+            row.movie_refiner_minimum_age_seconds = 60
+            row.radarr_enabled = True
+            await session.commit()
+            result = await run_refiner_pass(session, trigger="scheduled")
+            # importPending inactive title match -> proceeds
             assert result["dry_run_items"] == 1
             assert result["errors"] == 0
 

@@ -496,10 +496,10 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
         "radarr_row_bucket_counts": {},
         "radarr_row_bucket_samples": {},
         "radarr_candidate_saw_likely_row_class": False,
-        "radarr_refiner_target_queue_id": None,
-        "radarr_refiner_target_movie_id": None,
-        "radarr_refiner_target_movie_title": "",
-        "radarr_refiner_target_movie_year": None,
+        "movie_refiner_target_queue_id": None,
+        "movie_refiner_target_movie_id": None,
+        "movie_refiner_target_movie_title": "",
+        "movie_refiner_target_movie_year": None,
     }
 
     if not snap.authority_useful:
@@ -625,19 +625,19 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
                     )
             elif path_matched:
                 inactive_match = True
-            if app == "radarr" and (path_matched or title_matched) and diag.get("radarr_refiner_target_movie_id") is None:
+            if app == "radarr" and (path_matched or title_matched) and diag.get("movie_refiner_target_movie_id") is None:
                 mov = rec.get("movie") if isinstance(rec.get("movie"), dict) else {}
                 mid = mov.get("id")
                 if isinstance(mid, int) and mid > 0:
-                    diag["radarr_refiner_target_movie_id"] = mid
+                    diag["movie_refiner_target_movie_id"] = mid
                     qrid = rec.get("id")
                     if isinstance(qrid, int) and qrid > 0:
-                        diag["radarr_refiner_target_queue_id"] = qrid
+                        diag["movie_refiner_target_queue_id"] = qrid
                     elif isinstance(qrid, str) and qrid.isdigit():
-                        diag["radarr_refiner_target_queue_id"] = int(qrid)
-                    diag["radarr_refiner_target_movie_title"] = str(mov.get("title") or "").strip()[:400]
+                        diag["movie_refiner_target_queue_id"] = int(qrid)
+                    diag["movie_refiner_target_movie_title"] = str(mov.get("title") or "").strip()[:400]
                     y = mov.get("year")
-                    diag["radarr_refiner_target_movie_year"] = int(y) if isinstance(y, int) else None
+                    diag["movie_refiner_target_movie_year"] = int(y) if isinstance(y, int) else None
             if active and (path_matched or title_matched):
                 if app == "radarr" and _is_import_pending_no_eligible_nonblocking(rec, q_paths):
                     nonblocking_import_wait_count += 1
@@ -751,6 +751,39 @@ def upstream_analyze_path(path: Path, snap: RefinerQueueSnapshot) -> tuple[bool,
                     rc = "sonarr_queue_active_download_title" if title_matched and not path_matched else "sonarr_queue_active_download"
                 diag["upstream_block_match_kind"] = "title" if title_matched and not path_matched else "path"
                 return True, rc, msg
+        if app == "radarr" and not (title_fallback_used or inactive_match):
+            # Inactive title-match escape hatch:
+            # If no active row matched but an inactive importPending/importBlocked row title-matches
+            # this file, treat it as owned and waiting for Refiner output, and allow proceed.
+            for idx, rec in enumerate(records):
+                if not isinstance(rec, dict):
+                    continue
+                td_state = _norm_status(rec.get("trackedDownloadState"))
+                if td_state not in ("importpending", "importblocked"):
+                    continue
+                if queue_record_upstream_active(rec):
+                    continue
+                matched, title_raw = _title_fallback_match(candidate_stem_norm, rec)
+                if matched:
+                    logger.info(
+                        "Refiner: inactive importPending row title-matched %s "
+                        "— allowing proceed (import wait escape hatch). "
+                        "Queue row title: %s",
+                        path.name,
+                        title_raw,
+                    )
+                    diag["inactive_path_match_radarr"] = True
+                    diag["title_fallback_used_radarr"] = True
+                    diag["title_fallback_match_title_radarr"] = title_raw
+                    mov = rec.get("movie") if isinstance(rec.get("movie"), dict) else {}
+                    mid = mov.get("id")
+                    if isinstance(mid, int) and mid > 0 and diag.get("movie_refiner_target_movie_id") is None:
+                        diag["movie_refiner_target_movie_id"] = mid
+                        diag["movie_refiner_target_movie_title"] = str(mov.get("title") or "").strip()[:400]
+                        y = mov.get("year")
+                        diag["movie_refiner_target_movie_year"] = int(y) if isinstance(y, int) else None
+                    return None
+
         if app == "radarr":
             diag["radarr_upstream_active_rows"] = active_count
             diag["radarr_active_path_samples"] = active_samples
