@@ -204,7 +204,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2.6.1
+        uses: softprops/action-gh-release@v3.0.0
         with:
           body: ${{ steps.install.outputs.body }}
           files: release-asset/FetcherSetup.exe
