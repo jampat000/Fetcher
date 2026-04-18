@@ -86,7 +86,7 @@ jobs:
       # pass checkout_ref = tag so the image is built from the release commit (ref trap).
       - name: Dispatch Build installer and Docker publish
         if: steps.tag_push.outputs.dispatch == 'true'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
