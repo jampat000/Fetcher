@@ -35,11 +35,11 @@ cffi==2.0.0
     #   cryptography
 click==8.3.1
     # via uvicorn
-cryptography==46.0.6
+cryptography==46.0.7
     # via -r requirements.in
 deprecated==1.3.1
     # via limits
-fastapi==0.135.2
+fastapi==0.136.0
     # via -r requirements.in
 greenlet==3.3.2
     # via sqlalchemy
@@ -65,7 +65,7 @@ limits==5.8.0
     # via slowapi
 markupsafe==3.0.3
     # via jinja2
-packaging==26.0
+packaging==26.1
     # via
     #   -r requirements.in
     #   limits
@@ -73,12 +73,12 @@ passlib[argon2,bcrypt]==1.7.4
     # via -r requirements.in
 pycparser==3.0
     # via cffi
-pydantic==2.12.5
+pydantic==2.13.2
     # via
     #   -r requirements.in
     #   fastapi
     #   pydantic-settings
-pydantic-core==2.41.5
+pydantic-core==2.46.2
     # via pydantic
 pydantic-settings==2.13.1
     # via -r requirements.in
@@ -88,7 +88,7 @@ python-dotenv==1.2.2
     # via
     #   pydantic-settings
     #   uvicorn
-python-multipart==0.0.22
+python-multipart==0.0.26
     # via -r requirements.in
 pyyaml==6.0.3
     # via
@@ -96,7 +96,7 @@ pyyaml==6.0.3
     #   uvicorn
 slowapi==0.1.9
     # via -r requirements.in
-sqlalchemy==2.0.48
+sqlalchemy==2.0.49
     # via -r requirements.in
 starlette==0.52.1
     # via fastapi
@@ -115,9 +115,9 @@ typing-inspection==0.4.2
     #   pydantic-settings
 tzlocal==5.3.1
     # via apscheduler
-uvicorn[standard]==0.42.0
+uvicorn[standard]==0.44.0
     # via -r requirements.in
-uvloop==0.22.1; sys_platform != "win32"
+uvloop==0.22.1
     # via uvicorn
 watchfiles==1.1.1
     # via uvicorn
